@@ -6,9 +6,14 @@ import zipfile
 import base64
 import uuid
 import shutil
+import hashlib
 import logging
 import argparse
+import datetime
+from pathlib import Path
 from typing import List, Optional
+
+import yaml
 
 import ebooklib
 from ebooklib import epub
@@ -60,94 +65,80 @@ class RecipeList(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Paprika category taxonomy
+# Paprika category taxonomy  (loaded from categories.yaml)
 # ---------------------------------------------------------------------------
 
-# Flat list mirroring the user's existing Paprika category tree.
-# Sub-categories are included as standalone strings — Paprika matches them by
-# name regardless of nesting, so "Cake" and "Dessert" both work independently.
-PAPRIKA_CATEGORIES: List[str] = [
-    "Appetizers",
-    "Baking Basics",
-    "Barbeque",
-    "Beans",
-    "Bread And Buns",
-    "Breakfast",
-    "camping",
-    "Deep Fried",
-    "Dessert",
-    "Dessert/Almond",
-    "Dessert/Bars",
-    "Dessert/Cake",
-    "Dessert/Chocolate",
-    "Dessert/Cookies",
-    "Dessert/Fruit",
-    "Dessert/Gluten free",
-    "Dessert/Pie",
-    "Dessert/Pistachio",
-    "Dessert/Pudding",
-    "Dessert/Quick Bread",
-    "Dessert/Summer Fruit",
-    "Dessert/Sweets for Wedding",
-    "Dips",
-    "Jam",
-    "Mains",
-    "Mains/Beef Dishes",
-    "Mains/Braises",
-    "Mains/Chicken Dishes",
-    "Mains/Egg Dishes",
-    "Mains/Fish and Seafood",
-    "Mains/Grilled",
-    "Mains/Pasta and Noodles",
-    "Mains/Pork Dishes",
-    "Mains/Savoury Pies",
-    "Mains/Seafood Dishes",
-    "Mains/Turkey Dishes",
-    "Pantry Items",
-    "Pastries",
-    "Pizza",
-    "Preserving",
-    "Pressure Cooker",
-    "Regional Cuisine",
-    "Regional Cuisine/African",
-    "Regional Cuisine/Central European",
-    "Regional Cuisine/Chinese",
-    "Regional Cuisine/French",
-    "Regional Cuisine/Greek",
-    "Regional Cuisine/Indian",
-    "Regional Cuisine/Italian",
-    "Regional Cuisine/Japanese",
-    "Regional Cuisine/Korean",
-    "Regional Cuisine/Middle Eastern",
-    "Regional Cuisine/South And Central American",
-    "Regional Cuisine/Spain",
-    "Regional Cuisine/Thai",
-    "Regional Cuisine/Vietnamese",
-    "Salads",
-    "Sandwiches and Filled Buns",
-    "Simple Dinner",
-    "Slow Cooker",
-    "Soup",
-    "Sous Vide",
-    "Vegetables",
-]
+_CATEGORIES_FILE = Path(__file__).parent / "categories.yaml"
+
+
+def _load_category_tree(path: Path = _CATEGORIES_FILE) -> List[tuple]:
+    """
+    Parse categories.yaml into a list of (leaf, parent_or_None) tuples.
+
+    YAML format:
+        categories:
+          - TopLevel
+          - Parent:
+              - Child1
+              - Child2
+
+    Falls back to an empty list and logs a warning if the file is missing or
+    malformed, so the script still runs (categories will fall back to
+    "EPUB Imports").
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        entries = data.get("categories", [])
+    except FileNotFoundError:
+        log.warning("categories.yaml not found at %s — no categories will be assigned.", path)
+        return []
+    except Exception as e:
+        log.warning("Failed to load categories.yaml (%s) — no categories will be assigned.", e)
+        return []
+
+    tree: List[tuple] = []
+    for entry in entries:
+        if isinstance(entry, str):
+            tree.append((entry, None))
+        elif isinstance(entry, dict):
+            for parent, children in entry.items():
+                tree.append((parent, None))
+                for child in (children or []):
+                    tree.append((str(child), parent))
+    return tree
+
+
+_CATEGORY_TREE: List[tuple] = _load_category_tree()
+
+# Flat list of unique leaf names — these are the strings written to JSON.
+PAPRIKA_CATEGORIES: List[str] = list(dict.fromkeys(leaf for leaf, _ in _CATEGORY_TREE))
 
 
 def categorise_recipe(recipe: "RecipeExtraction") -> List[str]:
     """
     Ask Gemini to assign 1–3 categories from PAPRIKA_CATEGORIES that best fit
-    this recipe.  Returns a list of matching category strings.  Falls back to
-    ["EPUB Imports"] if the API call fails or returns nothing useful.
+    this recipe.  Returns a list of leaf category name strings exactly as they
+    appear in Paprika.  Falls back to ["EPUB Imports"] on failure.
     """
-    category_list = "\n".join(f"- {c}" for c in PAPRIKA_CATEGORIES)
+    # Build a human-readable hierarchy for the prompt (indented sub-categories)
+    lines = []
+    for leaf, parent in _CATEGORY_TREE:
+        if parent is None:
+            lines.append(f"- {leaf}")
+        else:
+            lines.append(f"    - {leaf}  (sub-category of {parent})")
+    category_list = "\n".join(lines)
+
     ingredient_sample = "\n".join(recipe.ingredients[:10])
 
     prompt = f"""You are a recipe categorisation assistant.
 
 Given the recipe details below, select the 1 to 3 most appropriate categories
-from the provided list.  Prefer specific sub-categories (e.g. "Dessert/Cake")
-over their parent ("Dessert") when the recipe clearly fits.  Only choose
-categories from the list — do not invent new ones.
+from the provided list.  Prefer specific sub-categories over their parent when
+the recipe clearly fits (e.g. choose "Cake" rather than "Dessert" for a cake).
+Only choose category names from the list — do not invent new ones.
+Return the exact category name as shown (the leaf name, not "Parent/Child").
 
 Return ONLY a JSON array of strings, e.g. ["Pizza", "Baking Basics"]
 
@@ -431,10 +422,12 @@ def create_paprika_export(
     output_dir: str,
     image_dir: str,
     export_filename: str,
+    book_source: str = "EPUB Auto-Import",
 ) -> bool:
     """
     Bundle recipes into a .paprikarecipes archive (ZIP of gzipped JSON files).
     Returns True on success, False if nothing was written.
+    book_source should be "Title — Author" derived from the EPUB metadata.
     """
     if not recipes:
         log.warning("No recipes to export — skipping bundle creation.")
@@ -462,21 +455,45 @@ def create_paprika_export(
                         recipe.name,
                     )
 
+            created = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            prep = recipe.prep_time or ""
+            cook = recipe.cook_time or ""
+
+            # Derive total_time when both parts are present and simple (e.g. "15 mins")
+            total = ""
+            try:
+                if prep and cook:
+                    def _mins(s: str) -> int:
+                        m = re.search(r"(\d+)", s)
+                        return int(m.group(1)) if m else 0
+                    t = _mins(prep) + _mins(cook)
+                    if t:
+                        total = f"{t} mins"
+            except Exception:
+                pass
+
             paprika_dict = {
                 "uid": recipe_uid,
                 "name": recipe.name,
                 "directions": "\n".join(recipe.directions),
                 "ingredients": "\n".join(recipe.ingredients),
-                "prep_time": recipe.prep_time or "",
-                "cook_time": recipe.cook_time or "",
+                "prep_time": prep,
+                "cook_time": cook,
+                "total_time": total,
                 "servings": recipe.servings or "",
                 "notes": recipe.notes or "",
                 "description": "",
                 "nutritional_info": "",
                 "difficulty": "",
                 "rating": 0,
-                "source": "EPUB Auto-Import",
+                "source": book_source,
+                "source_url": "",
+                "image_url": "",
                 "categories": getattr(recipe, "_categories", ["EPUB Imports"]),
+                "created": created,
+                "hash": hashlib.sha256(recipe_uid.encode()).hexdigest(),
+                "photo_hash": "",
+                "photo_large": None,
             }
 
             if photo_name and photo_data:
@@ -516,6 +533,21 @@ def process_epub(epub_path: str, output_dir: str):
     except Exception as e:
         log.error("Failed to open EPUB: %s", e)
         return
+
+    # Extract title and author from EPUB metadata for the source field
+    def _first_meta(key: str) -> str:
+        vals = book.get_metadata("DC", key)
+        return str(vals[0][0]).strip() if vals else ""
+
+    title = _first_meta("title")
+    author = _first_meta("creator")
+    if title and author:
+        book_source = f"{title} — {author}"
+    elif title:
+        book_source = title
+    else:
+        book_source = "EPUB Auto-Import"
+    log.info("Book source: %s", book_source)
 
     log.info("Extracting images to disk...")
     image_dir = extract_all_images(book, output_dir)
@@ -566,7 +598,7 @@ def process_epub(epub_path: str, output_dir: str):
     epub_stem = os.path.splitext(os.path.basename(epub_path))[0]
     export_filename = f"{epub_stem}.paprikarecipes"
 
-    success = create_paprika_export(all_recipes, output_dir, image_dir, export_filename)
+    success = create_paprika_export(all_recipes, output_dir, image_dir, export_filename, book_source)
 
     # Only clean up temporary images if the export succeeded
     if success and os.path.exists(image_dir):

@@ -12,6 +12,7 @@ Sections:
   7. needs_table_normalisation  — baker's % trigger detection
   8. normalise_baker_table      — pre-processing pass (mocked)
   9. categorise_recipe          — Paprika taxonomy assignment (mocked)
+ 10. _load_category_tree        — YAML taxonomy loader
 """
 
 import base64
@@ -42,6 +43,8 @@ with patch("google.genai.Client"), patch("dotenv.load_dotenv"):
         normalise_baker_table,
         split_large_chunk,
         PAPRIKA_CATEGORIES,
+        _load_category_tree,
+        _CATEGORY_TREE,
     )
 
 # ---------------------------------------------------------------------------
@@ -292,9 +295,12 @@ class TestCreatePaprikaExport:
 
     def test_required_paprika_keys_present(self, tmp_path):
         """Core keys are always present; photo/photo_data only appear when an image exists."""
-        required_keys = {"uid", "name", "directions", "ingredients", "prep_time",
-                         "cook_time", "servings", "notes",
-                         "source", "categories", "rating"}
+        required_keys = {
+            "uid", "name", "directions", "ingredients", "prep_time", "cook_time",
+            "total_time", "servings", "notes", "source", "source_url", "categories",
+            "rating", "created", "hash", "description", "nutritional_info",
+            "difficulty", "image_url",
+        }
         recipes = [make_recipe("Tart")]
         create_paprika_export(recipes, str(tmp_path), str(tmp_path), "out.paprikarecipes")
         with zipfile.ZipFile(tmp_path / "out.paprikarecipes") as zf:
@@ -819,10 +825,10 @@ class TestCategoriseRecipe:
     def test_valid_multiple_categories_returned(self):
         with patch("recipeparser.client") as mock_client:
             mock_client.models.generate_content.return_value = self._mock_response(
-                ["Dessert/Cake", "Dessert"]
+                ["Cake", "Dessert"]
             )
             result = categorise_recipe(_make_recipe_for_cat("Chocolate Cake"))
-        assert result == ["Dessert/Cake", "Dessert"]
+        assert result == ["Cake", "Dessert"]
 
     def test_invalid_category_filtered_out(self):
         """Categories not in PAPRIKA_CATEGORIES must be silently dropped."""
@@ -885,12 +891,12 @@ class TestCategoriseRecipe:
     def test_categories_written_into_paprika_export(self, tmp_path):
         """Categories assigned by categorise_recipe must appear in the exported JSON."""
         recipe = _make_recipe_for_cat("Chicken Curry")
-        recipe._categories = ["Mains/Chicken Dishes", "Regional Cuisine/Indian"]
+        recipe._categories = ["Chicken Dishes", "Indian"]
         create_paprika_export([recipe], str(tmp_path), str(tmp_path), "out.paprikarecipes")
         with zipfile.ZipFile(tmp_path / "out.paprikarecipes") as zf:
             raw = zf.read(zf.namelist()[0])
         data = json.loads(gzip.decompress(raw).decode("utf-8"))
-        assert data["categories"] == ["Mains/Chicken Dishes", "Regional Cuisine/Indian"]
+        assert data["categories"] == ["Chicken Dishes", "Indian"]
 
     def test_no_categories_attribute_falls_back_in_export(self, tmp_path):
         """Recipes without _categories set must still export with the fallback."""
@@ -900,3 +906,113 @@ class TestCategoriseRecipe:
             raw = zf.read(zf.namelist()[0])
         data = json.loads(gzip.decompress(raw).decode("utf-8"))
         assert data["categories"] == ["EPUB Imports"]
+
+    def test_book_source_written_to_export(self, tmp_path):
+        """book_source parameter must appear as the source field in exported JSON."""
+        recipe = _make_recipe_for_cat("Risotto")
+        create_paprika_export(
+            [recipe], str(tmp_path), str(tmp_path), "out.paprikarecipes",
+            book_source="Italian Food — Elizabeth David"
+        )
+        with zipfile.ZipFile(tmp_path / "out.paprikarecipes") as zf:
+            raw = zf.read(zf.namelist()[0])
+        data = json.loads(gzip.decompress(raw).decode("utf-8"))
+        assert data["source"] == "Italian Food — Elizabeth David"
+
+    def test_total_time_derived_from_prep_and_cook(self, tmp_path):
+        """total_time should be the sum of prep and cook when both are simple minute strings."""
+        recipe = RecipeExtraction(
+            name="Quick Pasta",
+            ingredients=["pasta", "sauce"],
+            directions=["Boil pasta.", "Add sauce."],
+            prep_time="10 mins",
+            cook_time="20 mins",
+        )
+        create_paprika_export([recipe], str(tmp_path), str(tmp_path), "out.paprikarecipes")
+        with zipfile.ZipFile(tmp_path / "out.paprikarecipes") as zf:
+            raw = zf.read(zf.namelist()[0])
+        data = json.loads(gzip.decompress(raw).decode("utf-8"))
+        assert data["total_time"] == "30 mins"
+
+    def test_total_time_empty_when_times_missing(self, tmp_path):
+        """total_time should be empty string when prep or cook time is absent."""
+        recipe = _make_recipe_for_cat("Mystery Stew")
+        create_paprika_export([recipe], str(tmp_path), str(tmp_path), "out.paprikarecipes")
+        with zipfile.ZipFile(tmp_path / "out.paprikarecipes") as zf:
+            raw = zf.read(zf.namelist()[0])
+        data = json.loads(gzip.decompress(raw).decode("utf-8"))
+        assert data["total_time"] == ""
+
+
+# ---------------------------------------------------------------------------
+# 10. _load_category_tree  — YAML taxonomy loader
+# ---------------------------------------------------------------------------
+
+class TestLoadCategoryTree:
+    """Tests for the YAML-based category taxonomy loader."""
+
+    def _write_yaml(self, tmp_path, content: str):
+        p = tmp_path / "categories.yaml"
+        p.write_text(content, encoding="utf-8")
+        return p
+
+    def test_loads_top_level_categories(self, tmp_path):
+        p = self._write_yaml(tmp_path, "categories:\n  - Soup\n  - Salads\n")
+        tree = _load_category_tree(p)
+        assert ("Soup", None) in tree
+        assert ("Salads", None) in tree
+
+    def test_loads_subcategories_with_parent(self, tmp_path):
+        p = self._write_yaml(tmp_path, "categories:\n  - Dessert:\n      - Cake\n      - Pie\n")
+        tree = _load_category_tree(p)
+        assert ("Dessert", None) in tree
+        assert ("Cake", "Dessert") in tree
+        assert ("Pie", "Dessert") in tree
+
+    def test_mixed_top_level_and_nested(self, tmp_path):
+        p = self._write_yaml(tmp_path, (
+            "categories:\n"
+            "  - Soup\n"
+            "  - Mains:\n"
+            "      - Beef Dishes\n"
+            "  - Salads\n"
+        ))
+        tree = _load_category_tree(p)
+        assert ("Soup", None) in tree
+        assert ("Mains", None) in tree
+        assert ("Beef Dishes", "Mains") in tree
+        assert ("Salads", None) in tree
+
+    def test_missing_file_returns_empty_list(self, tmp_path):
+        tree = _load_category_tree(tmp_path / "nonexistent.yaml")
+        assert tree == []
+
+    def test_malformed_yaml_returns_empty_list(self, tmp_path):
+        p = self._write_yaml(tmp_path, "categories: ][invalid yaml")
+        tree = _load_category_tree(p)
+        assert tree == []
+
+    def test_empty_categories_list_returns_empty(self, tmp_path):
+        p = self._write_yaml(tmp_path, "categories: []\n")
+        tree = _load_category_tree(p)
+        assert tree == []
+
+    def test_paprika_categories_derived_from_tree(self, tmp_path):
+        """PAPRIKA_CATEGORIES must only contain leaf names (no duplicates)."""
+        assert len(PAPRIKA_CATEGORIES) == len(set(PAPRIKA_CATEGORIES))
+        # Every entry in PAPRIKA_CATEGORIES must be a leaf in the tree
+        tree_leaves = {leaf for leaf, _ in _CATEGORY_TREE}
+        for cat in PAPRIKA_CATEGORIES:
+            assert cat in tree_leaves
+
+    def test_real_categories_yaml_loads_correctly(self):
+        """The actual categories.yaml in the project must parse without errors."""
+        from recipeparser import _CATEGORIES_FILE
+        tree = _load_category_tree(_CATEGORIES_FILE)
+        assert len(tree) > 0, "categories.yaml loaded but was empty"
+        # Spot-check a few known entries
+        leaves = {leaf for leaf, _ in tree}
+        assert "Soup" in leaves
+        assert "Cake" in leaves
+        assert "Italian" in leaves
+        assert "Chicken Dishes" in leaves
