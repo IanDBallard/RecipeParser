@@ -4,19 +4,10 @@ import re
 import time
 from typing import Optional
 
+from recipeparser.config import BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, MAX_RETRIES
 from recipeparser.models import RecipeList
 
 log = logging.getLogger(__name__)
-
-# Per-call HTTP timeout passed to generate_content (seconds).
-# Prevents a single stuck API call from hanging a worker thread indefinitely.
-HTTP_TIMEOUT_SECS = 180
-
-# Maximum number of retries on 429 Too Many Requests.
-MAX_RETRIES = 5
-
-# Initial back-off delay in seconds; doubles after each retry (exponential).
-BACKOFF_BASE_SECS = 2.0
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -47,7 +38,7 @@ def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
                     delay,
                 )
                 time.sleep(delay)
-                delay = min(delay * 2, 120)
+                delay = min(delay * 2, BACKOFF_MAX_SECS)
             else:
                 raise
 

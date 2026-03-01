@@ -94,7 +94,7 @@ def create_paprika_export(
                 "source": book_source,
                 "source_url": "",
                 "image_url": "",
-                "categories": getattr(recipe, "_categories", ["EPUB Imports"]),
+                "categories": recipe.categories,
                 "created": created,
                 "hash": hashlib.sha256(recipe_uid.encode()).hexdigest(),
                 "photo_hash": "",

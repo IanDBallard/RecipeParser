@@ -7,18 +7,9 @@ import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup
 
+from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
+
 log = logging.getLogger(__name__)
-
-# Images smaller than this are treated as decorative separators/icons and
-# are excluded from extraction and [IMAGE:] breadcrumbs.  Real recipe
-# photos in the EPUBs examined are consistently ≥ 20 KB; separators are
-# typically 2–14 KB.
-MIN_PHOTO_BYTES = 20_000
-
-# Gemini token limit guard: keep chunks under this character count.
-# gemini-2.5-flash has a large context window, but very long single chapters
-# can still cause issues or inflate latency. ~30k chars ≈ ~7-8k tokens.
-MAX_CHUNK_CHARS = 30_000
 
 
 def extract_all_images(book: epub.EpubBook, output_dir: str) -> str:

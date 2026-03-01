@@ -1,6 +1,7 @@
-"""CLI entry point — python -m recipeparser <epub> [--output DIR]"""
+"""CLI entry point — python -m recipeparser <epub> [--output DIR] [--units ...]"""
 import argparse
 import logging
+import sys
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,12 +35,14 @@ def main():
     args = parser.parse_args()
 
     from recipeparser import process_epub
+    from recipeparser.exceptions import RecipeParserError
 
-    result = process_epub(args.epub, args.output, units=args.units)
-    if result:
+    try:
+        result = process_epub(args.epub, args.output, units=args.units)
         print(f"Export written to: {result}")
-    else:
-        print("No recipes exported — check the log for details.")
+    except RecipeParserError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

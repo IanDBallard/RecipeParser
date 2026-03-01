@@ -27,7 +27,8 @@ def process_epub(epub_path: str, output_dir: str = "./output", units: str = "boo
       "book"     — preserve whatever the book uses (default)
     """
     if client is None:
-        raise EnvironmentError(
+        from recipeparser.exceptions import ConfigurationError
+        raise ConfigurationError(
             "GOOGLE_API_KEY is not set.  Add it to your .env file or environment."
         )
     from recipeparser.pipeline import process_epub as _run

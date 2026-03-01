@@ -8,6 +8,8 @@ output/
 check_*.py
 inspect_chunks.py
 chunks_report.txt
+# Legacy monolithic test file — replaced by tests/
+test_recipeparser.py
 
 # Python
 __pycache__/

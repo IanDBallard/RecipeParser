@@ -37,6 +37,15 @@ class RecipeExtraction(BaseModel):
         description="Any additional notes or headnotes from the author.",
     )
 
+    # Populated by the pipeline after extraction — not part of the LLM schema.
+    # exclude=True keeps it out of Gemini's response_schema so the model never
+    # tries to fill it in.
+    categories: List[str] = Field(
+        default_factory=lambda: ["EPUB Imports"],
+        exclude=True,
+        description="Paprika taxonomy categories assigned by the categorisation pass.",
+    )
+
 
 class RecipeList(BaseModel):
     recipes: List[RecipeExtraction] = Field(
