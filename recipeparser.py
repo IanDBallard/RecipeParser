@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import gzip
 import zipfile
@@ -56,6 +57,127 @@ class RecipeExtraction(BaseModel):
 
 class RecipeList(BaseModel):
     recipes: List[RecipeExtraction] = Field(description="A list of all distinct recipes found in the text chunk.")
+
+
+# ---------------------------------------------------------------------------
+# Paprika category taxonomy
+# ---------------------------------------------------------------------------
+
+# Flat list mirroring the user's existing Paprika category tree.
+# Sub-categories are included as standalone strings — Paprika matches them by
+# name regardless of nesting, so "Cake" and "Dessert" both work independently.
+PAPRIKA_CATEGORIES: List[str] = [
+    "Appetizers",
+    "Baking Basics",
+    "Barbeque",
+    "Beans",
+    "Bread And Buns",
+    "Breakfast",
+    "camping",
+    "Deep Fried",
+    "Dessert",
+    "Dessert/Almond",
+    "Dessert/Bars",
+    "Dessert/Cake",
+    "Dessert/Chocolate",
+    "Dessert/Cookies",
+    "Dessert/Fruit",
+    "Dessert/Gluten free",
+    "Dessert/Pie",
+    "Dessert/Pistachio",
+    "Dessert/Pudding",
+    "Dessert/Quick Bread",
+    "Dessert/Summer Fruit",
+    "Dessert/Sweets for Wedding",
+    "Dips",
+    "Jam",
+    "Mains",
+    "Mains/Beef Dishes",
+    "Mains/Braises",
+    "Mains/Chicken Dishes",
+    "Mains/Egg Dishes",
+    "Mains/Fish and Seafood",
+    "Mains/Grilled",
+    "Mains/Pasta and Noodles",
+    "Mains/Pork Dishes",
+    "Mains/Savoury Pies",
+    "Mains/Seafood Dishes",
+    "Mains/Turkey Dishes",
+    "Pantry Items",
+    "Pastries",
+    "Pizza",
+    "Preserving",
+    "Pressure Cooker",
+    "Regional Cuisine",
+    "Regional Cuisine/African",
+    "Regional Cuisine/Central European",
+    "Regional Cuisine/Chinese",
+    "Regional Cuisine/French",
+    "Regional Cuisine/Greek",
+    "Regional Cuisine/Indian",
+    "Regional Cuisine/Italian",
+    "Regional Cuisine/Japanese",
+    "Regional Cuisine/Korean",
+    "Regional Cuisine/Middle Eastern",
+    "Regional Cuisine/South And Central American",
+    "Regional Cuisine/Spain",
+    "Regional Cuisine/Thai",
+    "Regional Cuisine/Vietnamese",
+    "Salads",
+    "Sandwiches and Filled Buns",
+    "Simple Dinner",
+    "Slow Cooker",
+    "Soup",
+    "Sous Vide",
+    "Vegetables",
+]
+
+
+def categorise_recipe(recipe: "RecipeExtraction") -> List[str]:
+    """
+    Ask Gemini to assign 1–3 categories from PAPRIKA_CATEGORIES that best fit
+    this recipe.  Returns a list of matching category strings.  Falls back to
+    ["EPUB Imports"] if the API call fails or returns nothing useful.
+    """
+    category_list = "\n".join(f"- {c}" for c in PAPRIKA_CATEGORIES)
+    ingredient_sample = "\n".join(recipe.ingredients[:10])
+
+    prompt = f"""You are a recipe categorisation assistant.
+
+Given the recipe details below, select the 1 to 3 most appropriate categories
+from the provided list.  Prefer specific sub-categories (e.g. "Dessert/Cake")
+over their parent ("Dessert") when the recipe clearly fits.  Only choose
+categories from the list — do not invent new ones.
+
+Return ONLY a JSON array of strings, e.g. ["Pizza", "Baking Basics"]
+
+Available categories:
+{category_list}
+
+Recipe name: {recipe.name}
+First ingredients: {ingredient_sample}
+Notes: {recipe.notes or ""}
+"""
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={"temperature": 0},
+        )
+        text = response.text.strip()
+        # Strip any markdown code fences Gemini might wrap around the JSON
+        text = re.sub(r"^```[a-z]*\n?", "", text)
+        text = re.sub(r"\n?```$", "", text)
+        categories = json.loads(text)
+        if isinstance(categories, list) and categories:
+            # Validate every returned category is actually in our taxonomy
+            valid = [c for c in categories if c in PAPRIKA_CATEGORIES]
+            if valid:
+                return valid
+    except Exception as e:
+        log.warning("  -> Category assignment failed for '%s': %s", recipe.name, e)
+
+    return ["EPUB Imports"]
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +296,77 @@ def verify_gemini_connectivity() -> bool:
         return False
 
 
+def needs_table_normalisation(text: str) -> bool:
+    """
+    Detect multi-column baker's percentage ingredient tables that confuse the
+    LLM extractor.  These are exclusive to professional baking books and are
+    reliably identified by the presence of a baker's percentage column header.
+
+    The apostrophe in "Baker's" is sometimes mangled into a Unicode replacement
+    character (U+FFFD) during EPUB HTML stripping, so we match it loosely with
+    a regex that accepts any character in that position.
+    """
+    upper = text.upper()
+    return bool(
+        re.search(r"BAKER.S %", upper)
+        or re.search(r"BAKER.S PERCENTAGE", upper)
+    )
+
+
+def normalise_baker_table(text_chunk: str) -> str:
+    """
+    Pre-process a chunk that contains multi-column baker's percentage ingredient
+    tables by asking Gemini to reformat them into readable ingredient lines
+    before the main extraction pass runs.
+
+    Input example (as stripped HTML):
+        Water
+        350g
+        1½ cups
+        70%
+        Fine sea salt
+        15g
+        2¾ tsp
+        3.0%
+
+    Expected output:
+        Water: 350g (1½ cups) — 70%
+        Fine sea salt: 15g (2¾ tsp) — 3.0%
+
+    Returns the reformatted text, or the original text unchanged if the call fails.
+    """
+    prompt = f"""The following text is from a recipe book and contains one or more ingredient tables
+where each ingredient name, its weight, its volume measure, and its baker's percentage
+appear on separate lines rather than in columns.
+
+Reformat ONLY the ingredient table sections so that each ingredient appears on a single
+line in the format: "IngredientName: weight (volume) — baker's%"
+
+Do NOT change any recipe titles, headings, method steps, notes, or any other text.
+Do NOT add or remove any ingredients or values.
+Preserve all [IMAGE: ...] markers exactly as they appear.
+
+Text:
+{text_chunk}"""
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={"temperature": 0},
+        )
+        normalised = response.text.strip()
+        if normalised:
+            log.info("  -> Table normalisation applied (%d -> %d chars).",
+                     len(text_chunk), len(normalised))
+            return normalised
+        log.warning("  -> Table normalisation returned empty response; using original text.")
+        return text_chunk
+    except Exception as e:
+        log.warning("  -> Table normalisation failed (%s); using original text.", e)
+        return text_chunk
+
+
 def extract_recipes_with_gemini(text_chunk: str) -> Optional[RecipeList]:
     prompt = f"""
 You are a culinary data extractor. Review the following text from an EPUB recipe book.
@@ -278,15 +471,17 @@ def create_paprika_export(
                 "cook_time": recipe.cook_time or "",
                 "servings": recipe.servings or "",
                 "notes": recipe.notes or "",
-                "photo": photo_name,
-                "photo_data": photo_data,
                 "description": "",
                 "nutritional_info": "",
                 "difficulty": "",
                 "rating": 0,
                 "source": "EPUB Auto-Import",
-                "categories": ["EPUB Imports"],
+                "categories": getattr(recipe, "_categories", ["EPUB Imports"]),
             }
+
+            if photo_name and photo_data:
+                paprika_dict["photo"] = photo_name
+                paprika_dict["photo_data"] = photo_data
 
             json_str = json.dumps(paprika_dict, ensure_ascii=False)
             gzipped_content = gzip.compress(json_str.encode("utf-8"))
@@ -343,6 +538,11 @@ def process_epub(epub_path: str, output_dir: str):
             continue
 
         log.info("Analysing segment %d / %d ...", i + 1, len(chunks))
+
+        if needs_table_normalisation(chunk):
+            log.info("  -> Baker's percentage table detected — normalising before extraction...")
+            chunk = normalise_baker_table(chunk)
+
         result = extract_recipes_with_gemini(chunk)
 
         if result and result.recipes:
@@ -354,6 +554,13 @@ def process_epub(epub_path: str, output_dir: str):
     log.info("Total recipes before deduplication: %d", len(all_recipes))
     all_recipes = deduplicate_recipes(all_recipes)
     log.info("Total recipes after deduplication:  %d", len(all_recipes))
+
+    # Categorise each recipe against the Paprika taxonomy
+    log.info("Categorising %d recipe(s)...", len(all_recipes))
+    for recipe in all_recipes:
+        cats = categorise_recipe(recipe)
+        recipe._categories = cats
+        log.info("  %-40s -> %s", recipe.name[:40], cats)
 
     # Derive export filename from the EPUB filename
     epub_stem = os.path.splitext(os.path.basename(epub_path))[0]

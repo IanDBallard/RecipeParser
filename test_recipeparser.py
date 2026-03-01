@@ -8,6 +8,10 @@ Sections:
   3. deduplicate_recipes      — name-normalised dedup
   4. create_paprika_export    — bundle structure / image embedding
   5. extract_chapters_with_image_markers — [IMAGE:] breadcrumb insertion
+  6. extract_recipes_with_gemini — mocked API call handling
+  7. needs_table_normalisation  — baker's % trigger detection
+  8. normalise_baker_table      — pre-processing pass (mocked)
+  9. categorise_recipe          — Paprika taxonomy assignment (mocked)
 """
 
 import base64
@@ -23,6 +27,7 @@ import pytest
 
 # Suppress the module-level load_dotenv / genai.Client() calls so tests can
 # run without a .env file or Google credentials present.
+os.environ.setdefault("GOOGLE_API_KEY", "dummy-key-for-tests")
 with patch("google.genai.Client"), patch("dotenv.load_dotenv"):
     from recipeparser import (
         RecipeExtraction,
@@ -32,7 +37,11 @@ with patch("google.genai.Client"), patch("dotenv.load_dotenv"):
         extract_chapters_with_image_markers,
         extract_recipes_with_gemini,
         is_recipe_candidate,
+        categorise_recipe,
+        needs_table_normalisation,
+        normalise_baker_table,
         split_large_chunk,
+        PAPRIKA_CATEGORIES,
     )
 
 # ---------------------------------------------------------------------------
@@ -282,8 +291,9 @@ class TestCreatePaprikaExport:
         assert "directions" in data
 
     def test_required_paprika_keys_present(self, tmp_path):
+        """Core keys are always present; photo/photo_data only appear when an image exists."""
         required_keys = {"uid", "name", "directions", "ingredients", "prep_time",
-                         "cook_time", "servings", "notes", "photo", "photo_data",
+                         "cook_time", "servings", "notes",
                          "source", "categories", "rating"}
         recipes = [make_recipe("Tart")]
         create_paprika_export(recipes, str(tmp_path), str(tmp_path), "out.paprikarecipes")
@@ -291,6 +301,8 @@ class TestCreatePaprikaExport:
             raw = zf.read(zf.namelist()[0])
         data = json.loads(gzip.decompress(raw).decode("utf-8"))
         assert required_keys.issubset(data.keys())
+        assert "photo" not in data
+        assert "photo_data" not in data
 
     def test_uid_is_uppercase_uuid(self, tmp_path):
         import re
@@ -320,15 +332,15 @@ class TestCreatePaprikaExport:
         assert data["photo_data"] == base64.b64encode(fake_png).decode("utf-8")
 
     def test_missing_image_does_not_crash(self, tmp_path):
-        """Recipe with a photo_filename pointing to a non-existent file should still export."""
+        """Recipe whose image file is missing must still export cleanly, with no photo keys."""
         recipes = [make_recipe("Mystery Pie", photo="ghost.jpg")]
         result = create_paprika_export(recipes, str(tmp_path), str(tmp_path), "out.paprikarecipes")
         assert result is True
         with zipfile.ZipFile(tmp_path / "out.paprikarecipes") as zf:
             raw = zf.read(zf.namelist()[0])
         data = json.loads(gzip.decompress(raw).decode("utf-8"))
-        assert data["photo"] == ""
-        assert data["photo_data"] == ""
+        assert "photo" not in data
+        assert "photo_data" not in data
 
     def test_recipe_name_with_special_chars_sanitised(self, tmp_path):
         """Special characters in recipe names must not produce invalid ZIP entry names."""
@@ -559,3 +571,332 @@ class TestExtractRecipesWithGemini:
             result = extract_recipes_with_gemini("any text")
 
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# 7. needs_table_normalisation  (pure Python — no mocks needed)
+# ---------------------------------------------------------------------------
+
+class TestNeedsTableNormalisation:
+    """Tests for the baker's percentage table trigger detection."""
+
+    # --- True positives: text that should trigger normalisation ---
+
+    def test_exact_uppercase_match(self):
+        assert needs_table_normalisation("INGREDIENT\nQUANTITY\nBAKER'S %\nFlour\n500g") is True
+
+    def test_mixed_case_match(self):
+        assert needs_table_normalisation("Ingredient\nBaker's %\n100%") is True
+
+    def test_lowercase_match(self):
+        assert needs_table_normalisation("flour\n500g\nbaker's %\n100%") is True
+
+    def test_bakers_percentage_spelled_out(self):
+        assert needs_table_normalisation("Baker's Percentage\nFlour 100%") is True
+
+    def test_bakers_percentage_uppercase(self):
+        assert needs_table_normalisation("BAKER'S PERCENTAGE column") is True
+
+    def test_trigger_within_long_text(self):
+        long_text = "A" * 5000 + "\nBAKER'S %\n" + "B" * 5000
+        assert needs_table_normalisation(long_text) is True
+
+    # --- False positives: baking books without baker's percentage tables ---
+
+    def test_regular_baking_recipe_not_triggered(self):
+        """German-style baking with dual units but no baker's % table."""
+        text = (
+            "Sandy Almond Sugar Cookies\nMAKES ABOUT 50\n"
+            "14 tablespoons/200g unsalted butter\n"
+            "3/4 cup/100g confectioners sugar\n"
+            "2 cups/250g all-purpose flour\n"
+            "Preheat oven to 350F. Bake for 12 minutes."
+        )
+        assert needs_table_normalisation(text) is False
+
+    def test_classic_list_recipe_not_triggered(self):
+        """Standard American cookbook format."""
+        text = (
+            "Mulligatawny Soup\nSERVES 4\n"
+            "1/2 pound boneless lamb\n"
+            "2 tablespoons vegetable oil\n"
+            "1/2 teaspoon ground coriander\n"
+            "Simmer for 30 minutes."
+        )
+        assert needs_table_normalisation(text) is False
+
+    def test_prose_recipe_not_triggered(self):
+        """Elizabeth David-style narrative recipe."""
+        text = (
+            "PICCATE AL MARSALA\nAllow 3 or 4 little slices to each person; "
+            "beat them out flat, season with salt, pepper and lemon juice, "
+            "and dust lightly with flour. Add 2 tablespoonfuls of Marsala."
+        )
+        assert needs_table_normalisation(text) is False
+
+    def test_empty_string(self):
+        assert needs_table_normalisation("") is False
+
+    def test_text_containing_word_baker_without_percent(self):
+        """'Baker' appearing in prose should not trigger."""
+        assert needs_table_normalisation("The baker added flour to the dough.") is False
+
+    def test_mangled_apostrophe_replacement_character(self):
+        """EPUB stripping sometimes replaces the apostrophe with U+FFFD; must still trigger."""
+        assert needs_table_normalisation("INGREDIENT\nQUANTITY\nBAKER\uFFFDS %\nFlour\n500g") is True
+
+    def test_mangled_apostrophe_percentage_spelled_out(self):
+        """Mangled apostrophe variant with 'PERCENTAGE' spelled out."""
+        assert needs_table_normalisation("BAKER\uFFFDS PERCENTAGE\nFlour 100%") is True
+
+
+# ---------------------------------------------------------------------------
+# 8. normalise_baker_table  (mocked — no live API calls)
+# ---------------------------------------------------------------------------
+
+FORKISH_STYLE_CHUNK = """Saturday Pizza Dough
+
+INGREDIENT
+QUANTITY
+BAKER'S %
+Water
+350g
+1 1/2 cups
+70%
+Fine sea salt
+15g
+2 3/4 tsp
+3.0%
+Instant dried yeast
+0.3g
+1/3 of 1/4 tsp
+0.6%
+White flour, preferably 00
+500g
+Scant 4 cups
+100%
+
+1 Measure and combine the ingredients.
+2 Mix the dough by hand for 30 seconds.
+3 Knead and let rise for 2 hours.
+"""
+
+NORMALISED_CHUNK = """Saturday Pizza Dough
+
+Water: 350g (1 1/2 cups) — 70%
+Fine sea salt: 15g (2 3/4 tsp) — 3.0%
+Instant dried yeast: 0.3g (1/3 of 1/4 tsp) — 0.6%
+White flour, preferably 00: 500g (Scant 4 cups) — 100%
+
+1 Measure and combine the ingredients.
+2 Mix the dough by hand for 30 seconds.
+3 Knead and let rise for 2 hours.
+"""
+
+
+class TestNormaliseBakerTable:
+
+    def test_returns_normalised_text_on_success(self):
+        mock_response = MagicMock()
+        mock_response.text = NORMALISED_CHUNK
+
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = mock_response
+            result = normalise_baker_table(FORKISH_STYLE_CHUNK)
+
+        # strip() is applied to response.text, so compare against stripped constant
+        assert result == NORMALISED_CHUNK.strip()
+
+    def test_returns_original_on_api_exception(self):
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.side_effect = Exception("API error")
+            result = normalise_baker_table(FORKISH_STYLE_CHUNK)
+
+        assert result == FORKISH_STYLE_CHUNK
+
+    def test_returns_original_on_empty_response(self):
+        mock_response = MagicMock()
+        mock_response.text = ""
+
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = mock_response
+            result = normalise_baker_table(FORKISH_STYLE_CHUNK)
+
+        assert result == FORKISH_STYLE_CHUNK
+
+    def test_returns_original_on_whitespace_only_response(self):
+        mock_response = MagicMock()
+        mock_response.text = "   \n  "
+
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = mock_response
+            result = normalise_baker_table(FORKISH_STYLE_CHUNK)
+
+        assert result == FORKISH_STYLE_CHUNK
+
+    def test_prompt_includes_original_text(self):
+        """Verify the original chunk is passed to the API."""
+        mock_response = MagicMock()
+        mock_response.text = NORMALISED_CHUNK
+        sentinel = "UNIQUE_SENTINEL_XYZ_123"
+
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = mock_response
+            normalise_baker_table(sentinel)
+
+        call_kwargs = mock_client.models.generate_content.call_args
+        assert sentinel in call_kwargs.kwargs["contents"]
+
+    def test_temperature_zero(self):
+        """Normalisation must use temperature=0 for deterministic output."""
+        mock_response = MagicMock()
+        mock_response.text = NORMALISED_CHUNK
+
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = mock_response
+            normalise_baker_table(FORKISH_STYLE_CHUNK)
+
+        call_kwargs = mock_client.models.generate_content.call_args
+        assert call_kwargs.kwargs["config"]["temperature"] == 0
+
+    def test_trigger_then_normalise_then_extract_integration(self):
+        """
+        End-to-end mocked flow: detect table → normalise → extract.
+        Verifies the three functions work together correctly.
+        """
+        # needs_table_normalisation fires on this chunk
+        assert needs_table_normalisation(FORKISH_STYLE_CHUNK) is True
+
+        # normalise_baker_table returns cleaned text
+        norm_response = MagicMock()
+        norm_response.text = NORMALISED_CHUNK
+
+        # extract_recipes_with_gemini returns a recipe from the cleaned text
+        recipe = make_recipe("Saturday Pizza Dough")
+        extract_response = MagicMock()
+        extract_response.parsed = RecipeList(recipes=[recipe])
+
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.side_effect = [
+                norm_response,    # first call: normalise
+                extract_response, # second call: extract
+            ]
+            normalised = normalise_baker_table(FORKISH_STYLE_CHUNK)
+            result = extract_recipes_with_gemini(normalised)
+
+        assert result is not None
+        assert len(result.recipes) == 1
+        assert result.recipes[0].name == "Saturday Pizza Dough"
+
+
+# ---------------------------------------------------------------------------
+# 9. categorise_recipe  (mocked — no live API calls)
+# ---------------------------------------------------------------------------
+
+def _make_recipe_for_cat(name: str, ingredients=None, notes=None) -> RecipeExtraction:
+    return RecipeExtraction(
+        name=name,
+        ingredients=ingredients or ["flour", "water"],
+        directions=["Mix and bake."],
+        notes=notes,
+    )
+
+
+class TestCategoriseRecipe:
+    """Tests for the Paprika taxonomy category assignment."""
+
+    def _mock_response(self, categories: list) -> MagicMock:
+        resp = MagicMock()
+        resp.text = json.dumps(categories)
+        return resp
+
+    def test_valid_single_category_returned(self):
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = self._mock_response(["Pizza"])
+            result = categorise_recipe(_make_recipe_for_cat("Margherita Pizza"))
+        assert result == ["Pizza"]
+
+    def test_valid_multiple_categories_returned(self):
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = self._mock_response(
+                ["Dessert/Cake", "Dessert"]
+            )
+            result = categorise_recipe(_make_recipe_for_cat("Chocolate Cake"))
+        assert result == ["Dessert/Cake", "Dessert"]
+
+    def test_invalid_category_filtered_out(self):
+        """Categories not in PAPRIKA_CATEGORIES must be silently dropped."""
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = self._mock_response(
+                ["Pizza", "Made Up Category", "Soup"]
+            )
+            result = categorise_recipe(_make_recipe_for_cat("Pizza Soup"))
+        assert "Made Up Category" not in result
+        assert set(result) == {"Pizza", "Soup"}
+
+    def test_all_invalid_categories_falls_back(self):
+        """If every returned category is invalid, fall back to EPUB Imports."""
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = self._mock_response(
+                ["Nonsense", "Also Nonsense"]
+            )
+            result = categorise_recipe(_make_recipe_for_cat("Mystery Dish"))
+        assert result == ["EPUB Imports"]
+
+    def test_api_exception_falls_back(self):
+        """API failure must not crash — fall back to EPUB Imports."""
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.side_effect = Exception("network error")
+            result = categorise_recipe(_make_recipe_for_cat("Pasta Carbonara"))
+        assert result == ["EPUB Imports"]
+
+    def test_empty_list_response_falls_back(self):
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = self._mock_response([])
+            result = categorise_recipe(_make_recipe_for_cat("Empty Recipe"))
+        assert result == ["EPUB Imports"]
+
+    def test_markdown_fences_stripped(self):
+        """Gemini sometimes wraps JSON in ```json ... ``` — must be handled."""
+        resp = MagicMock()
+        resp.text = '```json\n["Soup"]\n```'
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = resp
+            result = categorise_recipe(_make_recipe_for_cat("Tomato Soup"))
+        assert result == ["Soup"]
+
+    def test_recipe_name_included_in_prompt(self):
+        """The recipe name must appear in the prompt sent to Gemini."""
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = self._mock_response(["Soup"])
+            categorise_recipe(_make_recipe_for_cat("Pho Bo"))
+        prompt = mock_client.models.generate_content.call_args.kwargs["contents"]
+        assert "Pho Bo" in prompt
+
+    def test_all_taxonomy_entries_in_prompt(self):
+        """Every category in PAPRIKA_CATEGORIES must appear in the prompt."""
+        with patch("recipeparser.client") as mock_client:
+            mock_client.models.generate_content.return_value = self._mock_response(["Soup"])
+            categorise_recipe(_make_recipe_for_cat("Minestrone"))
+        prompt = mock_client.models.generate_content.call_args.kwargs["contents"]
+        for cat in PAPRIKA_CATEGORIES:
+            assert cat in prompt, f"Category '{cat}' missing from prompt"
+
+    def test_categories_written_into_paprika_export(self, tmp_path):
+        """Categories assigned by categorise_recipe must appear in the exported JSON."""
+        recipe = _make_recipe_for_cat("Chicken Curry")
+        recipe._categories = ["Mains/Chicken Dishes", "Regional Cuisine/Indian"]
+        create_paprika_export([recipe], str(tmp_path), str(tmp_path), "out.paprikarecipes")
+        with zipfile.ZipFile(tmp_path / "out.paprikarecipes") as zf:
+            raw = zf.read(zf.namelist()[0])
+        data = json.loads(gzip.decompress(raw).decode("utf-8"))
+        assert data["categories"] == ["Mains/Chicken Dishes", "Regional Cuisine/Indian"]
+
+    def test_no_categories_attribute_falls_back_in_export(self, tmp_path):
+        """Recipes without _categories set must still export with the fallback."""
+        recipe = _make_recipe_for_cat("Plain Recipe")
+        create_paprika_export([recipe], str(tmp_path), str(tmp_path), "out.paprikarecipes")
+        with zipfile.ZipFile(tmp_path / "out.paprikarecipes") as zf:
+            raw = zf.read(zf.namelist()[0])
+        data = json.loads(gzip.decompress(raw).decode("utf-8"))
+        assert data["categories"] == ["EPUB Imports"]
