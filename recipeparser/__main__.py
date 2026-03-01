@@ -19,11 +19,23 @@ def main():
         default="./output",
         help="Directory to write the .paprikarecipes file (default: ./output).",
     )
+    parser.add_argument(
+        "--units",
+        choices=["metric", "us", "imperial", "book"],
+        default="book",
+        help=(
+            "Unit-of-measure preference for dual-measurement books "
+            "(e.g. '2 cups/250g flour'). "
+            "'metric' keeps gram/ml values; 'us' keeps cup/tbsp values; "
+            "'imperial' keeps oz/lb values; 'book' preserves whatever the book uses. "
+            "Default: book."
+        ),
+    )
     args = parser.parse_args()
 
     from recipeparser import process_epub
 
-    result = process_epub(args.epub, args.output)
+    result = process_epub(args.epub, args.output, units=args.units)
     if result:
         print(f"Export written to: {result}")
     else:

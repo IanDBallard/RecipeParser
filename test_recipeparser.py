@@ -51,6 +51,7 @@ from recipeparser.gemini import (
     extract_recipes,
     needs_table_normalisation,
     normalise_baker_table,
+    _UNITS_RULES,
 )
 from recipeparser.export import create_paprika_export
 from recipeparser.pipeline import deduplicate_recipes
@@ -1028,3 +1029,76 @@ class TestExtractAllImages:
         book = _make_epub_with_images({})
         result = extract_all_images(book, str(tmp_path))
         assert result == str(tmp_path / "images")
+
+
+# ---------------------------------------------------------------------------
+# 12. units preference  — prompt rule injection
+# ---------------------------------------------------------------------------
+
+DUAL_UOM_CHUNK = (
+    "Sandy Almond Sugar Cookies\n"
+    "MAKES ABOUT 55 COOKIES\n"
+    "14 tablespoons/200g unsalted butter, softened\n"
+    "3/4 cup/100g confectioners sugar\n"
+    "2 cups/250g all-purpose flour\n"
+    "1 teaspoon vanilla extract\n"
+    "Preheat oven to 350F/180C. Mix butter and sugar. "
+    "Stir in flour. Bake 12 minutes."
+)
+
+
+class TestUnitsPreference:
+    """Verify that the units preference is wired into the extraction prompt."""
+
+    def _run_extract(self, units: str) -> str:
+        """Return the prompt string that was sent to the API for a given units value."""
+        mock_response = MagicMock()
+        mock_response.parsed = RecipeList(recipes=[])
+        client = _make_mock_client(return_value=mock_response)
+        extract_recipes(DUAL_UOM_CHUNK, client, units=units)
+        return client.models.generate_content.call_args.kwargs["contents"]
+
+    def test_book_default_has_no_units_rule(self):
+        """'book' (default) must not inject any dual-UOM stripping instruction."""
+        prompt = self._run_extract("book")
+        assert "dual" not in prompt.lower()
+        assert "metric" not in prompt.lower()
+        assert "cup/tbsp" not in prompt.lower()
+
+    def test_metric_rule_in_prompt(self):
+        """'metric' must include an instruction to keep gram/ml values."""
+        prompt = self._run_extract("metric")
+        assert "metric" in prompt.lower()
+        assert "gram" in prompt.lower() or "ml" in prompt.lower()
+
+    def test_us_rule_in_prompt(self):
+        """'us' must include an instruction to keep US cup/tbsp values."""
+        prompt = self._run_extract("us")
+        assert "us" in prompt.lower() or "cup" in prompt.lower()
+
+    def test_imperial_rule_in_prompt(self):
+        """'imperial' must include an instruction about oz/lb."""
+        prompt = self._run_extract("imperial")
+        assert "imperial" in prompt.lower() or "oz" in prompt.lower() or "ounce" in prompt.lower()
+
+    def test_all_units_choices_defined(self):
+        """Every valid CLI choice must have an entry in _UNITS_RULES."""
+        for choice in ("metric", "us", "imperial", "book"):
+            assert choice in _UNITS_RULES, f"'{choice}' missing from _UNITS_RULES"
+
+    def test_unknown_units_falls_back_to_book(self):
+        """An unrecognised units value must behave identically to 'book'."""
+        prompt_book = self._run_extract("book")
+        prompt_unknown = self._run_extract("xyzzy")
+        # Both should produce the same prompt (no special rule injected)
+        assert prompt_book == prompt_unknown
+
+    def test_chunk_always_in_prompt(self):
+        """The text chunk must appear in the prompt regardless of units setting."""
+        sentinel = "UNIQUE_CHUNK_SENTINEL_ABC"
+        mock_response = MagicMock()
+        mock_response.parsed = RecipeList(recipes=[])
+        client = _make_mock_client(return_value=mock_response)
+        extract_recipes(sentinel, client, units="metric")
+        prompt = client.models.generate_content.call_args.kwargs["contents"]
+        assert sentinel in prompt

@@ -126,11 +126,53 @@ Text:
         return text_chunk
 
 
-def extract_recipes(text_chunk: str, client) -> Optional[RecipeList]:
+_UNITS_RULES = {
+    # Keep only the metric (gram/ml) measurement from dual-unit lines like
+    # "2 cups/250g flour" → "250g flour"
+    "metric": (
+        "- Many ingredient lines contain dual measurements in the format "
+        "\"US-measure/metric-weight ingredient\" (e.g. \"2 cups/250g flour\", "
+        "\"14 tablespoons/200g butter\"). "
+        "Keep ONLY the metric (gram or ml) part and discard the US volume part. "
+        "Output just \"250g flour\", \"200g butter\", etc."
+    ),
+    # Keep only the US volume/weight measurement
+    "us": (
+        "- Many ingredient lines contain dual measurements in the format "
+        "\"US-measure/metric-weight ingredient\" (e.g. \"2 cups/250g flour\", "
+        "\"14 tablespoons/200g butter\"). "
+        "Keep ONLY the US measure part and discard the metric part. "
+        "Output just \"2 cups flour\", \"14 tablespoons butter\", etc."
+    ),
+    # Keep imperial (oz/lb) where present; for dual-unit lines prefer metric
+    "imperial": (
+        "- Where ingredients are given with dual measurements "
+        "(e.g. \"2 cups/250g flour\"), keep the metric (gram/ml) part. "
+        "Where ounces or pounds appear, keep those as-is."
+    ),
+    # Default: preserve whatever the book uses, no stripping
+    "book": "",
+}
+
+
+def extract_recipes(
+    text_chunk: str,
+    client,
+    units: str = "book",
+) -> Optional[RecipeList]:
     """
     Call Gemini with the extraction prompt and return a parsed RecipeList.
     Applies retry/back-off for rate-limit errors; returns None on failure.
+
+    ``units`` controls how dual-measurement ingredient lines are handled:
+      "metric"   — keep only gram/ml values  (e.g. "250g flour")
+      "us"       — keep only US cup/tbsp values
+      "imperial" — keep only oz/lb values (falls back to metric for dual lines)
+      "book"     — preserve whatever the book uses (default)
     """
+    units_rule = _UNITS_RULES.get(units.lower(), "")
+    units_section = f"\n{units_rule}" if units_rule else ""
+
     prompt = f"""
 You are a culinary data extractor. Review the following text from an EPUB recipe book.
 Extract ALL distinct recipes found in the text.
@@ -151,7 +193,7 @@ Rules:
   If no hero image is identifiable, leave photo_filename null.
 - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
 - If a field is entirely absent from the text, leave it null.
-- Do not invent or infer values that are not present in the text.
+- Do not invent or infer values that are not present in the text.{units_section}
 
 Text chunk:
 {text_chunk}

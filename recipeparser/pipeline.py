@@ -43,6 +43,7 @@ def _process_segment(
     chunk: str,
     client,
     semaphore: threading.Semaphore,
+    units: str = "book",
 ) -> Tuple[int, List[RecipeExtraction]]:
     """
     Worker executed in a thread pool.  Acquires the semaphore before touching
@@ -57,7 +58,7 @@ def _process_segment(
             )
             chunk = gem.normalise_baker_table(chunk, client)
 
-        result = gem.extract_recipes(chunk, client)
+        result = gem.extract_recipes(chunk, client, units=units)
 
     if result and result.recipes:
         log.info("  Segment %d: %d recipe(s) found.", index, len(result.recipes))
@@ -86,7 +87,7 @@ def deduplicate_recipes(recipes: List[RecipeExtraction]) -> List[RecipeExtractio
     return unique
 
 
-def process_epub(epub_path: str, output_dir: str, client) -> Optional[str]:
+def process_epub(epub_path: str, output_dir: str, client, units: str = "book") -> Optional[str]:
     """
     Full pipeline: open EPUB → extract images + text → parallel Gemini calls
     → deduplicate → categorise → export to .paprikarecipes.
@@ -153,9 +154,10 @@ def process_epub(epub_path: str, output_dir: str, client) -> Optional[str]:
         (i, chunk) for i, chunk in enumerate(enriched) if is_recipe_candidate(chunk)
     ]
     log.info(
-        "Total segments: %d  |  Recipe candidates: %d",
+        "Total segments: %d  |  Recipe candidates: %d  |  Units preference: %s",
         len(enriched),
         len(candidate_chunks),
+        units,
     )
 
     # Shared semaphore caps total concurrent Gemini calls across both phases.
@@ -166,7 +168,7 @@ def process_epub(epub_path: str, output_dir: str, client) -> Optional[str]:
 
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_API_CALLS) as executor:
         future_to_index: Dict[Future, int] = {
-            executor.submit(_process_segment, idx, chunk, client, semaphore): idx
+            executor.submit(_process_segment, idx, chunk, client, semaphore, units): idx
             for idx, chunk in candidate_chunks
         }
 
