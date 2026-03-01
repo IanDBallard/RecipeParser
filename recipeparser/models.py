@@ -1,6 +1,6 @@
 """Pydantic models for structured Gemini output."""
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class RecipeExtraction(BaseModel):
@@ -32,6 +32,19 @@ class RecipeExtraction(BaseModel):
     directions: List[str] = Field(
         description="List of step-by-step cooking instructions."
     )
+
+    @field_validator("ingredients", "directions", mode="before")
+    @classmethod
+    def _coerce_str_to_list(cls, v):
+        """
+        Guard against Gemini returning a plain string instead of a JSON array
+        for list fields (observed with very large normalised chunks).  Split on
+        newlines so each line becomes one list item; filter blank lines.
+        """
+        if isinstance(v, str):
+            return [line for line in v.splitlines() if line.strip()]
+        return v
+
     notes: Optional[str] = Field(
         default=None,
         description="Any additional notes or headnotes from the author.",

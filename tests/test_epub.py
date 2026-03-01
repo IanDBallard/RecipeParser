@@ -228,6 +228,27 @@ class TestExtractChaptersWithImageMarkers:
         assert "[IMAGE: img1.jpg]" in chunks[0]
         assert "[IMAGE: img2.jpg]" in chunks[0]
 
+    def test_qualifying_filter_suppresses_small_image(self):
+        """Images not in qualifying_images set must be silently removed."""
+        html = (
+            '<html><body>'
+            '<img src="small_icon.jpg"/>'
+            '<img src="hero.jpg"/>'
+            '<p>Some recipe text here</p>'
+            '</body></html>'
+        )
+        book = self._make_mock_book([(ebooklib.ITEM_DOCUMENT, html)])
+        chunks = extract_chapters_with_image_markers(book, qualifying_images={"hero.jpg"})
+        assert "[IMAGE: hero.jpg]" in chunks[0]
+        assert "small_icon.jpg" not in chunks[0]
+
+    def test_qualifying_filter_none_passes_all(self):
+        """Without a qualifying set, all images get markers (backward-compat)."""
+        html = '<html><body><img src="any.jpg"/><p>text</p></body></html>'
+        book = self._make_mock_book([(ebooklib.ITEM_DOCUMENT, html)])
+        chunks = extract_chapters_with_image_markers(book, qualifying_images=None)
+        assert "[IMAGE: any.jpg]" in chunks[0]
+
 
 # ---------------------------------------------------------------------------
 # extract_all_images
@@ -284,5 +305,19 @@ class TestExtractAllImages:
 
     def test_returns_image_dir_path(self, tmp_path):
         book = _make_epub_with_images({})
-        result = extract_all_images(book, str(tmp_path))
-        assert result == str(tmp_path / "images")
+        image_dir, qualifying = extract_all_images(book, str(tmp_path))
+        assert image_dir == str(tmp_path / "images")
+
+    def test_returns_qualifying_set(self, tmp_path):
+        book = _make_epub_with_images({
+            "small.jpg": MIN_PHOTO_BYTES - 1,
+            "hero.jpg": MIN_PHOTO_BYTES,
+        })
+        _, qualifying = extract_all_images(book, str(tmp_path))
+        assert "hero.jpg" in qualifying
+        assert "small.jpg" not in qualifying
+
+    def test_qualifying_set_empty_when_no_images(self, tmp_path):
+        book = _make_epub_with_images({})
+        _, qualifying = extract_all_images(book, str(tmp_path))
+        assert qualifying == set()

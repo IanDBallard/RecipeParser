@@ -179,6 +179,28 @@ class TestCreatePaprikaExport:
         data = json.loads(gzip.decompress(raw).decode("utf-8"))
         assert data["total_time"] == "30 mins"
 
+    def test_ingredients_as_string_coerced_to_list(self, tmp_path):
+        """If Gemini returns ingredients as a plain string, split on newlines."""
+        recipe = RecipeExtraction(
+            name="String Ingredients Test",
+            ingredients="1 cup flour\n2 eggs\n1/2 tsp salt",
+            directions=["Mix.", "Bake."],
+        )
+        assert recipe.ingredients == ["1 cup flour", "2 eggs", "1/2 tsp salt"]
+
+    def test_directions_as_string_coerced_to_list(self, tmp_path):
+        """If Gemini returns directions as a plain string, split on newlines."""
+        recipe = RecipeExtraction(
+            name="String Directions Test",
+            ingredients=["1 cup flour"],
+            directions="Mix flour with water.\nKnead for 10 minutes.\nBake at 200C.",
+        )
+        assert recipe.directions == [
+            "Mix flour with water.",
+            "Knead for 10 minutes.",
+            "Bake at 200C.",
+        ]
+
     def test_total_time_empty_when_times_missing(self, tmp_path):
         recipe = RecipeExtraction(
             name="Mystery Stew",

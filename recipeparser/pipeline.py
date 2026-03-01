@@ -147,10 +147,10 @@ def process_epub(epub_path: str, output_dir: str, client, units: str = "book") -
     log.info("Book source: %s", book_source)
 
     log.info("Extracting images to disk...")
-    image_dir = extract_all_images(book, output_dir)
+    image_dir, qualifying_images = extract_all_images(book, output_dir)
 
     log.info("Extracting text with image breadcrumbs...")
-    raw_chunks = extract_chapters_with_image_markers(book)
+    raw_chunks = extract_chapters_with_image_markers(book, qualifying_images)
 
     chunks: List[str] = []
     for raw in raw_chunks:

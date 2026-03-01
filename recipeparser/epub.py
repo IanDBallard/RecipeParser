@@ -12,37 +12,47 @@ from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
 log = logging.getLogger(__name__)
 
 
-def extract_all_images(book: epub.EpubBook, output_dir: str) -> str:
+def extract_all_images(book: epub.EpubBook, output_dir: str) -> tuple:
     """
     Write qualifying image items from the EPUB to <output_dir>/images/.
     Images smaller than MIN_PHOTO_BYTES are skipped as decorative separators.
-    Returns the image directory path.
+    Returns (image_dir_path, qualifying_filenames_set).
     """
     image_dir = os.path.join(output_dir, "images")
     os.makedirs(image_dir, exist_ok=True)
 
     saved = skipped = 0
+    qualifying: set = set()
     for item in book.get_items():
         if item.get_type() == ebooklib.ITEM_IMAGE:
             content = item.get_content()
+            file_name = os.path.basename(item.file_name)
             if len(content) < MIN_PHOTO_BYTES:
                 skipped += 1
+                log.debug("Skipping small image '%s' (%d bytes).", file_name, len(content))
                 continue
-            file_name = os.path.basename(item.file_name)
             file_path = os.path.join(image_dir, file_name)
             with open(file_path, "wb") as f:
                 f.write(content)
+            qualifying.add(file_name)
             saved += 1
 
     log.info("Images: %d saved, %d skipped (< %d bytes).", saved, skipped, MIN_PHOTO_BYTES)
-    return image_dir
+    return image_dir, qualifying
 
 
-def extract_chapters_with_image_markers(book: epub.EpubBook) -> List[str]:
+def extract_chapters_with_image_markers(
+    book: epub.EpubBook,
+    qualifying_images: set = None,
+) -> List[str]:
     """
     Return one text string per EPUB document item, with <img> tags replaced
     by [IMAGE: filename] breadcrumb markers so the LLM can associate images
     with recipes without needing vision input.
+
+    If ``qualifying_images`` is provided, only images whose basename is in that
+    set get a marker inserted — this prevents the LLM from picking small
+    decorative or process-diagram images that were filtered out of the archive.
     """
     chunks = []
 
@@ -54,7 +64,10 @@ def extract_chapters_with_image_markers(book: epub.EpubBook) -> List[str]:
                 src = img.get("src", "")
                 if src:
                     filename = os.path.basename(src)
-                    img.replace_with(f"\n[IMAGE: {filename}]\n")
+                    if qualifying_images is None or filename in qualifying_images:
+                        img.replace_with(f"\n[IMAGE: {filename}]\n")
+                    else:
+                        img.decompose()
 
             text = soup.get_text(separator="\n", strip=True)
             if text.strip():
