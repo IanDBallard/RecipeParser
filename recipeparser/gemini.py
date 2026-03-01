@@ -183,6 +183,15 @@ Rules:
   mid-method (e.g. appears after "Step 2" or "Step 3" text).
   If no hero image is identifiable, leave photo_filename null.
 - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+- If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
+  "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
+  Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
+    ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
+                  "**Phase 2**", "56g whole wheat flour", "56g water"]
+    directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
+  The bold label must be its own separate list item, followed by that phase's
+  ingredients or steps as normal list items.
+  Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
 - If a field is entirely absent from the text, leave it null.
 - Do not invent or infer values that are not present in the text.{units_section}
 

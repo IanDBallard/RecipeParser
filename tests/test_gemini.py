@@ -363,3 +363,32 @@ class TestUnitsPreference:
         extract_recipes(sentinel, client, units="metric")
         prompt = client.models.generate_content.call_args.kwargs["contents"]
         assert sentinel in prompt
+
+
+class TestPhaseInstructions:
+    """Verify that multi-phase recipe handling is explicit in the prompt."""
+
+    def _get_prompt(self) -> str:
+        mock_response = MagicMock()
+        mock_response.parsed = RecipeList(recipes=[])
+        client = make_mock_client(return_value=mock_response)
+        extract_recipes("some text", client)
+        return client.models.generate_content.call_args.kwargs["contents"]
+
+    def test_phase_instruction_in_prompt(self):
+        prompt = self._get_prompt()
+        assert "phase" in prompt.lower()
+
+    def test_phase_label_bold_markdown_in_prompt(self):
+        """The prompt must instruct Gemini to use **bold** Markdown for phase headings."""
+        prompt = self._get_prompt()
+        assert "**Phase" in prompt or "**phase" in prompt.lower()
+
+    def test_do_not_merge_phases_instruction(self):
+        prompt = self._get_prompt()
+        assert "flatten" in prompt.lower() or "merge" in prompt.lower()
+
+    def test_phase_label_is_separate_list_item(self):
+        """The prompt must make clear the bold label is its own list entry."""
+        prompt = self._get_prompt()
+        assert "separate list item" in prompt.lower() or "own separate" in prompt.lower()
