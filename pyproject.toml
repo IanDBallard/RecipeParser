@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recipeparser"
+version = "0.1.0"
+description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Ian Ballard"}
+]
+dependencies = [
+    "EbookLib>=0.18",
+    "beautifulsoup4>=4.12.2",
+    "lxml>=5.3.1",
+    "pydantic>=2.11.9",
+    "google-genai>=1.38.0",
+    "python-dotenv>=1.1.1",
+    "pyyaml>=6.0.1",
+]
+
+[project.scripts]
+recipeparser = "recipeparser.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["recipeparser*"]
+
+[tool.setuptools.package-data]
+recipeparser = ["*.yaml"]

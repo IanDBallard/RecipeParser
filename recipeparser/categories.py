@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_CATEGORIES_FILE = Path(__file__).parent.parent / "categories.yaml"
+_CATEGORIES_FILE = Path(__file__).parent / "categories.yaml"
 
 
 def load_category_tree(path: Path = _CATEGORIES_FILE) -> List[tuple]:
