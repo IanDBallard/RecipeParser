@@ -8,11 +8,12 @@ class RecipeExtraction(BaseModel):
     photo_filename: Optional[str] = Field(
         default=None,
         description=(
-            "The filename from the single [IMAGE: filename.jpg] marker that is most likely "
-            "the hero/finished-dish photo for this recipe. "
-            "Prefer the image that appears just before the ingredient list or recipe title — "
-            "this is usually the plated dish. "
-            "Ignore images embedded inside the method steps — those are instructional process shots. "
+            "The filename of the hero/finished-dish photo for this recipe. "
+            "If a [HERO IMAGE: filename] marker is present, always use that filename. "
+            "Otherwise look for an [IMAGE: filename] marker that appears just before the "
+            "recipe title/ingredients, or just after the last ingredient and before the "
+            "first method step. "
+            "Ignore images embedded within numbered method steps — those are process shots. "
             "If no suitable hero image is present, leave blank."
         ),
     )

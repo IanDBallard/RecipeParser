@@ -4,6 +4,11 @@
 # Output artifacts
 output/
 
+# Diagnostic / one-off analysis scripts
+check_*.py
+inspect_chunks.py
+chunks_report.txt
+
 # Python
 __pycache__/
 *.py[cod]

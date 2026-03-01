@@ -136,11 +136,18 @@ You are a culinary data extractor. Review the following text from an EPUB recipe
 Extract ALL distinct recipes found in the text.
 
 Rules:
-- If you see [IMAGE: filename.jpg] markers, assign exactly ONE filename to photo_filename:
-  the image most likely to be the hero/finished-dish photo.
-  PREFER the image that appears immediately before the recipe title or ingredient list.
-  IGNORE images that appear inside or between numbered method steps — those are
+- If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
+  photo_filename — it is the confirmed finished-dish photo for this recipe.
+- Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
+  to photo_filename: the image most likely to be the hero/finished-dish photo.
+  The hero image can appear in any of these positions:
+    a) immediately BEFORE the recipe title or ingredient list, OR
+    b) immediately AFTER the last ingredient and BEFORE the first method step.
+  Both positions are common depending on the book's layout.
+  IGNORE images that appear embedded WITHIN the numbered method steps — those are
   instructional process shots, not the finished dish.
+  If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
+  mid-method (e.g. appears after "Step 2" or "Step 3" text).
   If no hero image is identifiable, leave photo_filename null.
 - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
 - If a field is entirely absent from the text, leave it null.
