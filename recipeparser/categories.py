@@ -15,6 +15,16 @@ log = logging.getLogger(__name__)
 _CATEGORIES_FILE = Path(__file__).parent / "categories.yaml"
 
 
+def reload_categories(path: Path = _CATEGORIES_FILE):
+    """Re-read categories.yaml and return a fresh (tree, paprika_categories) pair.
+
+    Useful when the GUI has saved edits and the next pipeline run should reflect
+    them without restarting the process.
+    """
+    tree = load_category_tree(path)
+    return tree, build_paprika_categories(tree)
+
+
 def load_category_tree(path: Path = _CATEGORIES_FILE) -> List[tuple]:
     """
     Parse categories.yaml into a list of (leaf, parent_or_None) tuples.

@@ -1,6 +1,10 @@
 # RecipeParser
 
-A production-grade Python utility that extracts recipes from EPUB cookbooks and exports them as a `.paprikarecipes` archive ready to import into [Paprika 3](https://www.paprikaapp.com/).
+A production-grade tool that extracts recipes from EPUB cookbooks and exports them as a `.paprikarecipes` archive ready to import into [Paprika 3](https://www.paprikaapp.com/).
+
+Available in two forms:
+- **Windows GUI installer** — a self-contained `RecipeParser-Setup-x.x.x.exe` that requires no Python installation
+- **Python CLI/library** — installable via `pip` for scripting and automation
 
 It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, handle diverse book layouts, assign taxonomy categories, and intelligently match hero photographs — all without brittle regex or hard-coded formatting rules.
 
@@ -11,10 +15,149 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 - **Extracts all standard recipe fields** — name, ingredients, directions, servings, prep time, cook time, and author notes
 - **Embeds hero photographs** — matches cover photos to recipes using image breadcrumbs injected into the text, with a look-ahead injection mechanism for books that place photos on standalone pages before the recipe
 - **Automatic categorisation** — assigns 1–3 Paprika taxonomy categories per recipe using the LLM, drawn from a user-configurable `categories.yaml` file
+- **Built-in category editor** — a two-panel GUI editor lets you add, rename, reorder, and delete categories without touching YAML by hand
 - **Unit-of-measure preference** — for dual-measurement books (e.g. `2 cups / 250g flour`), instructs the AI to keep only your preferred system (metric, US, or imperial)
 - **Parallel processing** — extraction and categorisation both run concurrently with a configurable concurrency cap, with automatic exponential back-off on rate limits
 - **Handles diverse EPUB structures** — prose recipes, ingredient lists, baker's percentage tables, multi-recipe chapters, and text-only historic cookbooks all work
 - **Safe and robust** — per-task timeouts, typed custom exceptions, graceful degradation (a failed segment is skipped, not fatal), and image-less recipes export cleanly without crashing Paprika
+
+---
+
+## Windows Installer (GUI)
+
+### Download and Install
+
+1. Download `RecipeParser-Setup-0.2.0.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page.
+2. Run the installer. During setup you will be prompted to enter your Google Gemini API key (get one free at [aistudio.google.com](https://aistudio.google.com/app/apikey)).
+3. The key is written to `%APPDATA%\RecipeParser\.env` and survives upgrades.
+4. A **RecipeParser** shortcut appears in the Start Menu (and optionally on the Desktop).
+
+No Python installation required. The installer bundles the complete Python runtime and all dependencies.
+
+### Using the GUI
+
+The application has two tabs:
+
+#### Parse Tab
+
+| Control | Purpose |
+|---|---|
+| EPUB File | Browse to a `.epub` file or a Calibre book folder (the `.epub` is auto-detected) |
+| Output Folder | Where the `.paprikarecipes` file will be written (default: current directory) |
+| Units | Unit-of-measure preference for dual-measurement books |
+| Google API Key | Your Gemini key — click **Save** to persist it to `%APPDATA%\RecipeParser\.env` |
+| Parse Recipes | Starts the extraction pipeline; progress streams live to the log panel |
+| Open Output Folder | Opens the output folder in Explorer after a successful run |
+
+#### Categories Tab
+
+A two-panel editor for the recipe taxonomy used during AI categorisation:
+
+- **Left panel** — top-level categories. Use ＋ / ✎ / ↑ / ↓ / ✕ to manage them.
+- **Right panel** — subcategories of the selected parent. Same controls.
+- **Save Changes** — writes edits back to the bundled `categories.yaml`. Changes take effect on the next parse run.
+- **Import YAML / Export YAML** — load a taxonomy from an external file or save your current one as a backup.
+
+### Uninstalling
+
+Use **Windows Settings → Apps → RecipeParser → Uninstall**. Program files are removed; your API key in `%APPDATA%\RecipeParser\` is left intact by default (you are offered the option to delete it).
+
+---
+
+## Python CLI Installation
+
+### Prerequisites
+
+- Python 3.9 or later
+- A [Google AI Studio](https://aistudio.google.com/) API key with the Generative Language API enabled (free tier is sufficient)
+
+### Install
+
+Clone the repository and install in editable mode. This registers both the `recipeparser` CLI command and the `recipeparser-gui` GUI launcher globally:
+
+```bash
+git clone https://github.com/IanDBallard/RecipeParser.git
+cd RecipeParser
+pip install -e .
+```
+
+### Configure
+
+Create a `.env` file in the project root (or export the variable into your shell environment):
+
+```
+GOOGLE_API_KEY=your_api_key_here
+```
+
+---
+
+## CLI Usage
+
+```bash
+recipeparser path/to/cookbook.epub
+```
+
+The `.paprikarecipes` file is written to `./output/` by default. You can also pass a Calibre book folder — the single `.epub` inside it is detected automatically.
+
+**Options:**
+
+```
+usage: recipeparser [-h] [--output DIR] [--units {metric,us,imperial,book}] epub
+
+positional arguments:
+  epub                  Path to the .epub file, or a Calibre book folder containing one
+
+options:
+  --output DIR          Directory to write the .paprikarecipes file (default: ./output)
+  --units               Unit-of-measure preference for dual-measurement books.
+                        metric   — keep gram/ml values only
+                        us       — keep cup/tbsp/oz values only
+                        imperial — keep oz/lb values only
+                        book     — preserve whatever the book uses (default)
+```
+
+**Examples:**
+
+```bash
+# Standard extraction
+recipeparser "The Woks of Life.epub"
+
+# Metric units for a dual-measurement baking book
+recipeparser "Classic German Baking.epub" --units metric
+
+# Pass a Calibre folder directly
+recipeparser "C:\Calibre Library\Ken Forkish\The Elements of Pizza (621)"
+
+# Write to a specific folder
+recipeparser "Ottolenghi Simple.epub" --output ~/Desktop/paprika_imports
+```
+
+Then in Paprika 3: **File → Import Recipes** and select the `.paprikarecipes` file.
+
+### Launch the GUI from the command line
+
+```bash
+recipeparser-gui
+```
+
+---
+
+## Python Library API
+
+```python
+from recipeparser import process_epub
+from recipeparser.exceptions import RecipeParserError
+
+try:
+    output_path = process_epub(
+        "path/to/cookbook.epub",
+        output_dir="./output",
+        units="metric",
+    )
+    print(f"Exported to: {output_path}")
+except RecipeParserError as e:
+    print(f"Failed: {e}")
+```
 
 ---
 
@@ -48,98 +191,9 @@ The temporary image directory is deleted after a successful export, and preserve
 
 ---
 
-## Installation
-
-### Prerequisites
-
-- Python 3.9 or later
-- A [Google AI Studio](https://aistudio.google.com/) API key with the Generative Language API enabled (free tier is sufficient)
-
-### Install
-
-Clone the repository and install in editable mode. This registers the `recipeparser` command globally on your system:
-
-```bash
-git clone https://github.com/IanDBallard/RecipeParser.git
-cd RecipeParser
-pip install -e .
-```
-
-### Configure
-
-Create a `.env` file in the project root (or export the variable into your shell environment):
-
-```
-GOOGLE_API_KEY=your_api_key_here
-```
-
----
-
-## Usage
-
-### Command Line
-
-```bash
-recipeparser path/to/cookbook.epub
-```
-
-The `.paprikarecipes` file is written to `./output/` by default.
-
-**Options:**
-
-```
-usage: recipeparser [-h] [--output DIR] [--units {metric,us,imperial,book}] epub
-
-positional arguments:
-  epub                  Path to the input .epub file
-
-options:
-  --output DIR          Directory to write the .paprikarecipes file
-                        (default: ./output)
-  --units               Unit-of-measure preference for dual-measurement books.
-                        metric   — keep gram/ml values only
-                        us       — keep cup/tbsp/oz values only
-                        imperial — keep oz/lb values only
-                        book     — preserve whatever the book uses (default)
-```
-
-**Examples:**
-
-```bash
-# Standard extraction
-recipeparser "The Woks of Life.epub"
-
-# Metric units for a dual-measurement baking book
-recipeparser "Classic German Baking.epub" --units metric
-
-# Write to a specific folder
-recipeparser "Ottolenghi Simple.epub" --output ~/Desktop/paprika_imports
-```
-
-Then in Paprika 3: **File → Import Recipes** and select the `.paprikarecipes` file.
-
-### As a Python Library
-
-```python
-from recipeparser import process_epub
-from recipeparser.exceptions import RecipeParserError
-
-try:
-    output_path = process_epub(
-        "path/to/cookbook.epub",
-        output_dir="./output",
-        units="metric",
-    )
-    print(f"Exported to: {output_path}")
-except RecipeParserError as e:
-    print(f"Failed: {e}")
-```
-
----
-
 ## Customising Categories
 
-The taxonomy used for categorisation lives in `recipeparser/categories.yaml`. Edit it freely — the structure is:
+The taxonomy used for categorisation lives in `recipeparser/categories.yaml`. You can edit it via the GUI's **Categories** tab or directly in the file:
 
 ```yaml
 categories:
@@ -164,6 +218,7 @@ Top-level entries and subcategories are both valid Paprika category names. The `
 recipeparser/
 ├── __init__.py        Public API — process_epub()
 ├── __main__.py        CLI entry point (argparse)
+├── gui.py             CustomTkinter GUI — parse window + category editor
 ├── config.py          All tuneable constants in one place
 ├── exceptions.py      Typed exception hierarchy
 ├── models.py          Pydantic schema for structured Gemini output
@@ -181,7 +236,27 @@ tests/
 ├── test_export.py
 ├── test_categories.py
 └── test_pipeline.py
+
+recipeparser.spec       PyInstaller build spec
+installer.iss           Inno Setup installer script
+build_installer.ps1     One-click build pipeline (PowerShell)
 ```
+
+---
+
+## Building the Windows Installer
+
+Prerequisites (one-time):
+- `pip install pyinstaller`
+- [Inno Setup 6](https://jrsoftware.org/isdl.php) installed to its default location
+
+Then from the project root in PowerShell:
+
+```powershell
+.\build_installer.ps1
+```
+
+This cleans previous artefacts, runs PyInstaller, compiles the Inno Setup script, and writes the finished installer to `output\RecipeParser-Setup-0.2.0.exe`.
 
 ---
 
@@ -191,7 +266,7 @@ tests/
 python -m pytest tests/ -v
 ```
 
-107 tests. No live API calls — all Gemini interactions are mocked.
+All Gemini interactions are mocked — no live API calls or API key required.
 
 ---
 
