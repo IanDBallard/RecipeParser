@@ -1,9 +1,9 @@
 ; Inno Setup script for RecipeParser
 ; Build: ISCC.exe installer.iss
-; Output: output\RecipeParser-Setup-0.2.0.exe
+; Output: output\RecipeParser-Setup-2.0.0.exe
 
 #define AppName      "RecipeParser"
-#define AppVersion   "0.2.0"
+#define AppVersion   "2.0.0"
 #define AppPublisher "Ian Ballard"
 #define AppURL       "https://github.com/your-repo/recipeparser"
 #define AppExeName   "RecipeParser.exe"

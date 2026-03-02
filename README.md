@@ -27,7 +27,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 
 ### Download and Install
 
-1. Download `RecipeParser-Setup-0.2.0.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page.
+1. Download `RecipeParser-Setup-2.0.0.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page.
 2. Run the installer. During setup you will be prompted to enter your Google Gemini API key (get one free at [aistudio.google.com](https://aistudio.google.com/app/apikey)).
 3. The key is written to `%APPDATA%\RecipeParser\.env` and survives upgrades.
 4. A **RecipeParser** shortcut appears in the Start Menu (and optionally on the Desktop).
@@ -57,6 +57,7 @@ A two-panel editor for the recipe taxonomy used during AI categorisation:
 - **Right panel** — subcategories of the selected parent. Same controls.
 - **Save Changes** — writes edits back to the bundled `categories.yaml`. Changes take effect on the next parse run.
 - **Import YAML / Export YAML** — load a taxonomy from an external file or save your current one as a backup.
+- **Sync from Paprika** — reads the live category hierarchy directly from your local Paprika SQLite database and loads it into the editor, replacing the current taxonomy. Useful for keeping RecipeParser in sync with categories you have already created inside Paprika.
 
 ### Uninstalling
 
@@ -102,7 +103,8 @@ The `.paprikarecipes` file is written to `./output/` by default. You can also pa
 **Options:**
 
 ```
-usage: recipeparser [-h] [--output DIR] [--units {metric,us,imperial,book}] epub
+usage: recipeparser [-h] [--output DIR] [--units {metric,us,imperial,book}]
+                    [--sync-categories] [epub]
 
 positional arguments:
   epub                  Path to the .epub file, or a Calibre book folder containing one
@@ -114,6 +116,8 @@ options:
                         us       — keep cup/tbsp/oz values only
                         imperial — keep oz/lb values only
                         book     — preserve whatever the book uses (default)
+  --sync-categories     Pull the live category hierarchy from your local Paprika database
+                        and overwrite recipeparser/categories.yaml. No EPUB required.
 ```
 
 **Examples:**
@@ -130,6 +134,9 @@ recipeparser "C:\Calibre Library\Ken Forkish\The Elements of Pizza (621)"
 
 # Write to a specific folder
 recipeparser "Ottolenghi Simple.epub" --output ~/Desktop/paprika_imports
+
+# Sync categories from your live Paprika database (no EPUB needed)
+recipeparser --sync-categories
 ```
 
 Then in Paprika 3: **File → Import Recipes** and select the `.paprikarecipes` file.
@@ -219,6 +226,7 @@ recipeparser/
 ├── __init__.py        Public API — process_epub()
 ├── __main__.py        CLI entry point (argparse)
 ├── gui.py             CustomTkinter GUI — parse window + category editor
+├── paprika_db.py      Paprika SQLite reader — category sync
 ├── config.py          All tuneable constants in one place
 ├── exceptions.py      Typed exception hierarchy
 ├── models.py          Pydantic schema for structured Gemini output
@@ -235,7 +243,9 @@ tests/
 ├── test_gemini.py
 ├── test_export.py
 ├── test_categories.py
-└── test_pipeline.py
+├── test_pipeline.py
+├── test_paprika_db.py
+└── test_cli.py
 
 recipeparser.spec       PyInstaller build spec
 installer.iss           Inno Setup installer script
@@ -256,7 +266,7 @@ Then from the project root in PowerShell:
 .\build_installer.ps1
 ```
 
-This cleans previous artefacts, runs PyInstaller, compiles the Inno Setup script, and writes the finished installer to `output\RecipeParser-Setup-0.2.0.exe`.
+This cleans previous artefacts, runs PyInstaller, compiles the Inno Setup script, and writes the finished installer to `output\RecipeParser-Setup-2.0.0.exe`.
 
 ---
 

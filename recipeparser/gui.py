@@ -127,15 +127,16 @@ class CategoryEditorFrame(ctk.CTkFrame):
         # ── Bottom toolbar ─────────────────────────────────────────────────────
         bottom = ctk.CTkFrame(self, fg_color="transparent")
         bottom.grid(row=1, column=0, columnspan=2, padx=8, pady=(0, 8), sticky="ew")
-        bottom.grid_columnconfigure(2, weight=1)
+        bottom.grid_columnconfigure(3, weight=1)
 
         ctk.CTkButton(bottom, text="Import YAML…", command=self._import_yaml).grid(row=0, column=0, padx=4)
         ctk.CTkButton(bottom, text="Export YAML…", command=self._export_yaml).grid(row=0, column=1, padx=4)
+        ctk.CTkButton(bottom, text="Sync from Paprika…", command=self._sync_from_paprika).grid(row=0, column=2, padx=4)
         self._save_btn = ctk.CTkButton(
             bottom, text="Save Changes", fg_color="#27ae60", hover_color="#1e8449",
             command=self._save
         )
-        self._save_btn.grid(row=0, column=3, padx=4)
+        self._save_btn.grid(row=0, column=4, padx=4)
 
         self.grid_rowconfigure(1, weight=0)
 
@@ -349,6 +350,48 @@ class CategoryEditorFrame(ctk.CTkFrame):
         )
         if path:
             self._save(Path(path))
+
+    def _sync_from_paprika(self):
+        from recipeparser.paprika_db import find_paprika_db, read_categories_from_db
+
+        db = find_paprika_db()
+        if not db:
+            messagebox.showwarning(
+                "Paprika Not Found",
+                "Could not locate Paprika.sqlite on this computer.\n\n"
+                "Make sure Paprika 3 is installed and has been opened at least once.",
+            )
+            return
+
+        if not messagebox.askyesno(
+            "Sync from Paprika",
+            f"Replace the current category list with the live taxonomy from:\n\n"
+            f"{db}\n\n"
+            "The editor will be marked as having unsaved changes.\n"
+            "Proceed?",
+        ):
+            return
+
+        try:
+            data, order = read_categories_from_db(db)
+        except Exception as e:
+            messagebox.showerror("Sync Failed", str(e))
+            return
+
+        if not order:
+            messagebox.showwarning("No Categories", "Paprika returned no categories.")
+            return
+
+        self._data = data
+        self._order = order
+        self._selected_parent = order[0]
+        self._dirty = True
+        self._refresh_parents()
+        messagebox.showinfo(
+            "Sync Complete",
+            f"Loaded {len(order)} top-level categories from Paprika.\n\n"
+            "Review the list, then click 'Save Changes' to persist to categories.yaml.",
+        )
 
     # ── Utility ────────────────────────────────────────────────────────────────
 

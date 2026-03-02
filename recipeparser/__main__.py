@@ -1,14 +1,24 @@
-"""CLI entry point — python -m recipeparser <epub> [--output DIR] [--units ...]"""
+"""CLI entry point — python -m recipeparser <epub> [--output DIR] [--units ...]
+
+Special flags (no epub required):
+  --sync-categories   Pull the live category taxonomy from the local Paprika
+                      database and overwrite recipeparser/categories.yaml.
+"""
 import argparse
 import logging
 import sys
 from pathlib import Path
+
+from recipeparser.paprika_db import find_paprika_db, read_categories_from_db
+from recipeparser.categories import _CATEGORIES_FILE
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
+
+log = logging.getLogger(__name__)
 
 
 def _resolve_epub(raw: str) -> str:
@@ -52,12 +62,52 @@ def _resolve_epub(raw: str) -> str:
     sys.exit(1)
 
 
+def _cmd_sync_categories() -> None:
+    """Pull the live Paprika category hierarchy and save it to categories.yaml."""
+    import yaml
+
+    db_path = find_paprika_db()
+    if db_path is None:
+        print(
+            "Error: Could not locate a Paprika SQLite database on this machine.\n"
+            "Make sure Paprika 3 has been installed and opened at least once.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    log.info("Reading categories from: %s", db_path)
+    data, order = read_categories_from_db(db_path)
+
+    if not data and not order:
+        print("Warning: No categories found in the Paprika database.", file=sys.stderr)
+        sys.exit(1)
+
+    categories_yaml = {"categories": {k: v for k, v in data.items()}}
+
+    dest: Path = _CATEGORIES_FILE
+    dest.write_text(yaml.dump(categories_yaml, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    total_sub = sum(len(v) for v in data.values())
+    print(
+        f"Synced {len(data)} top-level categories "
+        f"({total_sub} subcategories) → {dest}"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract recipes from an EPUB cookbook and export to Paprika 3."
+        description="Extract recipes from an EPUB cookbook and export to Paprika 3.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  recipeparser cookbook.epub\n"
+            "  recipeparser cookbook.epub --output ~/exports --units metric\n"
+            "  recipeparser --sync-categories\n"
+        ),
     )
     parser.add_argument(
         "epub",
+        nargs="?",
         help="Path to the .epub file, or to a Calibre book folder containing one.",
     )
     parser.add_argument(
@@ -77,7 +127,23 @@ def main():
             "Default: book."
         ),
     )
+    parser.add_argument(
+        "--sync-categories",
+        action="store_true",
+        help=(
+            "Pull the live category hierarchy from the local Paprika database "
+            "and overwrite recipeparser/categories.yaml. "
+            "No EPUB argument is needed."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.sync_categories:
+        _cmd_sync_categories()
+        return
+
+    if not args.epub:
+        parser.error("the following arguments are required: epub")
 
     epub_path = _resolve_epub(args.epub)
 

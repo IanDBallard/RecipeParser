@@ -19,6 +19,8 @@ datas += [("recipeparser/categories.yaml", "recipeparser")]
 binaries = []
 hiddenimports = [
     # Standard library / lightweight deps occasionally missed by the analyser
+    "sqlite3",
+    "recipeparser.paprika_db",
     "yaml",
     "dotenv",
     "pydantic",

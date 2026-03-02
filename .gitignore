@@ -8,8 +8,6 @@ output/
 check_*.py
 inspect_chunks.py
 chunks_report.txt
-# Legacy monolithic test file — replaced by tests/
-test_recipeparser.py
 # The canonical categories.yaml now lives inside recipeparser/
 # The root copy is kept for reference only and not tracked
 /categories.yaml
