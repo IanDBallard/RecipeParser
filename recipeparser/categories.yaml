@@ -1,77 +1,67 @@
-# Paprika category taxonomy
-#
-# Each entry is either:
-#   - A plain string (top-level category)
-#   - A mapping with a single key (the parent) whose value is a list of
-#     child (leaf) category names
-#
-# Paprika matches categories by their exact leaf name, so only the leaf
-# names are written into the exported JSON.  The parent names provide
-# context for the AI categorisation prompt.
-#
-# To customise: add, remove, or rename entries to match your Paprika library.
-
 categories:
-  - Appetizers
-  - Baking Basics
-  - Barbeque
-  - Beans
-  - Bread And Buns
-  - Breakfast
-  - camping
-  - Deep Fried
-  - Dessert:
-      - Almond
-      - Bars
-      - Cake
-      - Chocolate
-      - Cookies
-      - Fruit
-      - Gluten free
-      - Pie
-      - Pistachio
-      - Pudding
-      - Quick Bread
-      - Summer Fruit
-      - Sweets for Wedding
-  - Dips
-  - Jam
-  - Mains:
-      - Beef Dishes
-      - Braises
-      - Chicken Dishes
-      - Egg Dishes
-      - Fish and Seafood
-      - Grilled
-      - Pasta and Noodles
-      - Pork Dishes
-      - Savoury Pies
-      - Seafood Dishes
-      - Turkey Dishes
-  - Pantry Items
-  - Pastries
-  - Pizza
-  - Preserving
-  - Pressure Cooker
-  - Regional Cuisine:
-      - African
-      - Central European
-      - Chinese
-      - French
-      - Greek
-      - Indian
-      - Italian
-      - Japanese
-      - Korean
-      - Middle Eastern
-      - South And Central American
-      - Spain
-      - Thai
-      - Vietnamese
-  - Salads
-  - Sandwiches and Filled Buns
-  - Simple Dinner
-  - Slow Cooker
-  - Soup
-  - Sous Vide
-  - Vegetables
+- Breakfast
+- Beans
+- Simple Dinner
+- Dessert:
+  - Gluten free
+  - Cake
+  - Pie
+  - Pudding
+  - Cookies
+  - Bars
+  - Summer Fruit
+  - Pistachio
+  - Quick Bread
+  - Almond
+  - Chocolate
+  - Sweets for Wedding
+  - Fruit
+- Preserving
+- Baking Basics
+- Mains:
+  - Fish and Seafood
+  - Savoury Pies
+  - 'Grilled '
+  - Vegetable Dishes
+  - Pork Dishes
+  - Turkey Dishes
+  - Braises
+  - Beef Dishes
+  - Chicken Dishes
+  - Pasta and Noodles
+  - Seafood Dishes
+  - Egg Dishes
+- Deep Fried
+- Regional Cuisine:
+  - Chinese
+  - Indian
+  - Thai
+  - Italian
+  - Japanese
+  - Vietnamese
+  - Greek
+  - French
+  - Korean
+  - South And Central American
+  - Middle Eastern
+  - Spain
+  - Central European
+  - African
+- Soup
+- Salads
+- Pantry Items
+- Pastries
+- Barbeque
+- Dips
+- Vegetables
+- Bread And Buns
+- camping
+- Appetizers
+- Jam
+- Pizza
+- Sandwiches and Filled Buns
+- Slow Cooker
+- Pressure Cooker
+- Sous Vide
+- Grilled
+- EPUB Imports

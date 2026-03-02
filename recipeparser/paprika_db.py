@@ -18,11 +18,23 @@ def find_paprika_db() -> Optional[Path]:
 
     Returns the path to the most-recently-modified match, or None if not found.
     Supports Windows and macOS; returns None on other platforms.
+
+    On Windows two install variants are checked:
+      1. Desktop installer  — %LOCALAPPDATA%\\Paprika Recipe Manager 3\\Database\\
+      2. Microsoft Store    — %LOCALAPPDATA%\\Packages\\HindsightLabsLLC.*\\LocalState\\
     """
     if sys.platform == "win32":
-        base = Path.home() / "AppData" / "Local" / "Packages"
-        pattern = str(base / "HindsightLabsLLC.PaprikaRecipeManager_*" / "LocalState" / "Paprika.sqlite")
-        matches = glob.glob(pattern)
+        local = Path.home() / "AppData" / "Local"
+
+        patterns = [
+            # Desktop / EXE installer (most common)
+            str(local / "Paprika Recipe Manager 3" / "Database" / "Paprika.sqlite"),
+            # Microsoft Store / UWP package
+            str(local / "Packages" / "HindsightLabsLLC.PaprikaRecipeManager_*" / "LocalState" / "Paprika.sqlite"),
+        ]
+        matches = []
+        for pattern in patterns:
+            matches.extend(glob.glob(pattern))
 
     elif sys.platform == "darwin":
         base = Path.home() / "Library" / "Containers"
@@ -39,41 +51,82 @@ def find_paprika_db() -> Optional[Path]:
     return Path(matches[0])
 
 
-def read_categories_from_db(
-    db_path: Path,
-) -> tuple[dict[str, list[str]], list[str]]:
-    """Read the ZCATEGORY table and return the category hierarchy.
+def _detect_schema(conn: sqlite3.Connection) -> str:
+    """Return 'modern' for the desktop EXE schema or 'cordata' for the old
+    CoreData/UWP schema, based on which tables are present."""
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if "recipe_categories" in tables:
+        return "modern"
+    if "ZCATEGORY" in tables:
+        return "coredata"
+    raise sqlite3.OperationalError(
+        "Cannot find a recognised category table (recipe_categories or ZCATEGORY). "
+        "Is this a Paprika 3 database?"
+    )
 
-    Returns a tuple of:
-      data   — dict mapping each parent name to an ordered list of child names.
-               Top-level categories (no parent) map to an empty list.
-      order  — list of parent names in Z_PK ascending order (insertion order).
 
-    This maps directly onto CategoryEditorFrame._data and ._order so the GUI
-    can load the result without any further transformation.
+def _read_modern(conn: sqlite3.Connection) -> tuple[dict[str, list[str]], list[str]]:
+    """Read the desktop-installer schema: recipe_categories table.
 
-    Raises sqlite3.Error if the database cannot be opened or queried.
+    Columns used: uid (TEXT), name (TEXT), order_flag (INTEGER), parent_uid (TEXT).
     """
-    uri = f"file:{db_path}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT Z_PK, ZPARENT, ZNAME FROM ZCATEGORY ORDER BY Z_PK ASC"
-        )
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
+    rows = conn.execute(
+        "SELECT uid, name, order_flag, parent_uid FROM recipe_categories "
+        "WHERE status != 'deleted' OR status IS NULL "
+        "ORDER BY order_flag ASC"
+    ).fetchall()
 
-    # Build a lookup of pk -> (name, parent_pk)
+    # uid -> (name, parent_uid)
+    nodes: dict[str, tuple[str, Optional[str]]] = {
+        uid: (name, parent_uid)
+        for uid, name, order_flag, parent_uid in rows
+        if name
+    }
+
+    valid_uids = set(nodes.keys())
+    data: dict[str, list[str]] = {}
+    order: list[str] = []
+
+    for uid, (name, parent_uid) in nodes.items():
+        if not parent_uid or parent_uid not in valid_uids:
+            data[name] = []
+            order.append(name)
+
+    top_name_by_uid = {
+        uid: name
+        for uid, (name, parent_uid) in nodes.items()
+        if not parent_uid or parent_uid not in valid_uids
+    }
+
+    for uid, (name, parent_uid) in nodes.items():
+        if parent_uid and parent_uid in top_name_by_uid:
+            parent_name = top_name_by_uid[parent_uid]
+            if name not in data[parent_name]:
+                data[parent_name].append(name)
+
+    return data, order
+
+
+def _read_coredata(conn: sqlite3.Connection) -> tuple[dict[str, list[str]], list[str]]:
+    """Read the CoreData/UWP schema: ZCATEGORY table.
+
+    Columns used: Z_PK (INTEGER), ZPARENT (INTEGER), ZNAME (TEXT).
+    """
+    rows = conn.execute(
+        "SELECT Z_PK, ZPARENT, ZNAME FROM ZCATEGORY ORDER BY Z_PK ASC"
+    ).fetchall()
+
     nodes: dict[int, tuple[str, Optional[int]]] = {
         pk: (name, parent_pk)
         for pk, parent_pk, name in rows
-        if name  # guard against NULL names
+        if name
     }
 
-    # First pass: identify top-level entries (ZPARENT IS NULL or points to
-    # a pk that doesn't exist in the result set — handles orphaned rows)
     valid_pks = set(nodes.keys())
     data: dict[str, list[str]] = {}
     order: list[str] = []
@@ -83,7 +136,6 @@ def read_categories_from_db(
             data[name] = []
             order.append(name)
 
-    # Second pass: attach children to their parents
     top_name_by_pk = {
         pk: name
         for pk, (name, parent_pk) in nodes.items()
@@ -97,3 +149,31 @@ def read_categories_from_db(
                 data[parent_name].append(name)
 
     return data, order
+
+
+def read_categories_from_db(
+    db_path: Path,
+) -> tuple[dict[str, list[str]], list[str]]:
+    """Read the Paprika category hierarchy from a SQLite database.
+
+    Supports both the modern desktop-installer schema (recipe_categories table)
+    and the older CoreData/UWP schema (ZCATEGORY table), auto-detecting which
+    is present.
+
+    Returns a tuple of:
+      data   — dict mapping each parent name to an ordered list of child names.
+               Top-level categories (no parent) map to an empty list.
+      order  — list of parent names in display order.
+
+    Raises sqlite3.Error if the database cannot be opened or queried.
+    """
+    uri = f"file:{db_path}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    try:
+        schema = _detect_schema(conn)
+        if schema == "modern":
+            return _read_modern(conn)
+        else:
+            return _read_coredata(conn)
+    finally:
+        conn.close()

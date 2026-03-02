@@ -17,6 +17,7 @@ from typing import Optional
 import customtkinter as ctk
 import yaml
 from tkinter import filedialog, messagebox
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 from recipeparser.categories import _CATEGORIES_FILE, load_category_tree
 
@@ -27,7 +28,10 @@ ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
 
 APP_TITLE = "RecipeParser"
-APP_VERSION = "0.2.0"
+try:
+    APP_VERSION = _pkg_version("recipeparser")
+except PackageNotFoundError:
+    APP_VERSION = "dev"
 
 UNITS_OPTIONS = ["book", "metric", "us", "imperial"]
 UNITS_LABELS = {
