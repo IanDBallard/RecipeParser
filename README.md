@@ -27,7 +27,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 
 ### Download and Install
 
-1. Download `RecipeParser-Setup-2.0.0.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page.
+1. Download `RecipeParser-Setup-2.0.0.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
 2. Run the installer. During setup you will be prompted to enter your Google Gemini API key (get one free at [aistudio.google.com](https://aistudio.google.com/app/apikey)).
 3. The key is written to `%APPDATA%\RecipeParser\.env` and survives upgrades.
 4. A **RecipeParser** shortcut appears in the Start Menu (and optionally on the Desktop).
