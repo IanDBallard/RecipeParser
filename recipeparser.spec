@@ -5,6 +5,7 @@
 #
 # Output: dist\RecipeParser\RecipeParser.exe  (directory mode — fast launch)
 
+import os, importlib.util
 from PyInstaller.utils.hooks import collect_data_files, collect_all
 
 # ── Data files ──────────────────────────────────────────────────────────────
@@ -22,11 +23,29 @@ datas += _d
 ctk_binaries = _b
 hiddenimports_ctk = _h
 
+# Explicit fallback: if collect_all missed the customtkinter package directory,
+# add it directly so theme JSON files and fonts are always bundled.
+_ctk_spec = importlib.util.find_spec("customtkinter")
+if _ctk_spec and _ctk_spec.submodule_search_locations:
+    _ctk_dir = list(_ctk_spec.submodule_search_locations)[0]
+    # Only add if collect_all didn't already get it (avoid duplicates)
+    _already = any("customtkinter" in str(d[0]) for d in datas)
+    if not _already:
+        datas += [(_ctk_dir, "customtkinter")]
+
 # darkdetect — required by customtkinter at runtime for theme detection
 _d, _b, _h = collect_all("darkdetect")
 datas    += _d
 ctk_binaries += _b
 hiddenimports_ctk += _h
+
+# Explicit fallback for darkdetect
+_dd_spec = importlib.util.find_spec("darkdetect")
+if _dd_spec and _dd_spec.origin:
+    _dd_dir = os.path.dirname(_dd_spec.origin)
+    _already = any("darkdetect" in str(d[0]) for d in datas)
+    if not _already:
+        datas += [(_dd_dir, "darkdetect")]
 
 # The bundled category taxonomy
 datas += [("recipeparser/categories.yaml", "recipeparser")]

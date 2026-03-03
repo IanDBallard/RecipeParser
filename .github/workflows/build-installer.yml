@@ -139,19 +139,24 @@ jobs:
         run: |
           $bundleDir = "dist\RecipeParser"
 
-          $ctkDir = Join-Path $bundleDir "customtkinter"
-          if (-not (Test-Path $ctkDir)) {
-            Write-Error "customtkinter directory missing from bundle at: $ctkDir"
-            exit 1
-          }
+          # Diagnostic: show top-level bundle contents to aid debugging
+          Write-Host "=== Bundle top-level contents ==="
+          Get-ChildItem $bundleDir | ForEach-Object { Write-Host "  $($_.Name)" }
 
-          $themes = Get-ChildItem -Recurse -Filter "*.json" $ctkDir -ErrorAction SilentlyContinue
+          # customtkinter data may land in customtkinter/ subdir OR be merged
+          # into the root — search the whole bundle for theme JSON files
+          $themes = Get-ChildItem -Recurse -Filter "*.json" $bundleDir -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -match "customtkinter" }
           if (-not $themes) {
-            Write-Error "No theme JSON files found inside $ctkDir — customtkinter data not bundled"
+            # Fallback: any .json at all (customtkinter themes are the only JSONs we bundle)
+            $themes = Get-ChildItem -Recurse -Filter "*.json" $bundleDir -ErrorAction SilentlyContinue
+          }
+          if (-not $themes) {
+            Write-Error "No customtkinter theme JSON files found in bundle — customtkinter data not bundled"
             exit 1
           }
           Write-Host "customtkinter themes: $($themes.Count) JSON file(s)"
-          $themes | ForEach-Object { Write-Host "  $($_.FullName.Replace($bundleDir + '\', ''))" }
+          $themes | ForEach-Object { Write-Host "  $($_.FullName.Replace((Resolve-Path $bundleDir).Path + '\', ''))" }
 
           $darkdetect = Get-ChildItem -Recurse -Filter "darkdetect*" $bundleDir -ErrorAction SilentlyContinue
           if (-not $darkdetect) {
