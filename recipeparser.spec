@@ -9,15 +9,22 @@ from PyInstaller.utils.hooks import collect_data_files, collect_all
 
 # ── Data files ──────────────────────────────────────────────────────────────
 # CustomTkinter bundles fonts, images, and theme JSON files that must travel
-# with the binary.
-datas = collect_data_files("customtkinter")
+# with the binary. Use collect_all to ensure the module and its data are included.
+datas = []
+_d, _b, _h = collect_all("customtkinter")
+datas += _d
+ctk_binaries = _b
+hiddenimports_ctk = _h
 
 # The bundled category taxonomy
 datas += [("recipeparser/categories.yaml", "recipeparser")]
 
 # ── Binaries + hidden imports from packages with native extensions ───────────
-binaries = []
+binaries = ctk_binaries
 hiddenimports = [
+    # GUI — must be explicit; PlatformIO/env may not expose these to PyInstaller
+    "customtkinter",
+    "tkinter",
     # Standard library / lightweight deps occasionally missed by the analyser
     "sqlite3",
     "recipeparser.paprika_db",
@@ -46,6 +53,9 @@ hiddenimports = [
     "google.auth.transport.grpc",
     "google.oauth2",
 ]
+
+# Merge customtkinter hiddenimports
+hiddenimports += hiddenimports_ctk
 
 # grpc: native DLLs that PyInstaller's static analysis misses
 for _pkg in ["grpc", "google.api_core", "google.protobuf"]:
