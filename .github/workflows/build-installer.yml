@@ -1,14 +1,23 @@
 name: Build Windows Installer
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Pipeline overview
+#
+#   test        — unit tests on every push/PR (fast feedback, no Windows needed)
+#   build       — PyInstaller + Inno Setup on windows-latest (tags only)
+#   smoke-test  — launch the built .exe, verify --help / --version / error paths
+#   release     — create GitHub Release and attach the versioned installer
+#
 # Triggers
-#   • Push a tag like v2.1.0  →  full build + release
-#   • workflow_dispatch       →  manual run (tag required)
+#   • Any push or PR  →  test job only
+#   • Push a tag v*   →  full pipeline (test → build → smoke-test → release)
+#   • workflow_dispatch with a tag  →  full pipeline (manual re-run)
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
-    tags:
-      - 'v*'
+    branches: ['**']
+    tags:     ['v*']
+  pull_request:
   workflow_dispatch:
     inputs:
       tag:
@@ -19,11 +28,49 @@ permissions:
   contents: write   # needed to create/update releases and upload assets
 
 jobs:
-  # ───────────────────────────────────────────────────────────────────────────
-  # Job 1: build the PyInstaller bundle + Inno Setup installer
-  # ───────────────────────────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Job 1: Unit tests — runs on every push and PR for fast feedback
+  # ═══════════════════════════════════════════════════════════════════════════
+  test:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e . pytest pytest-cov
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/ -v \
+            --ignore=tests/smoke_test_exe.py \
+            --tb=short \
+            --cov=recipeparser \
+            --cov-report=term-missing
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Job 2: Build installer — only on tag pushes, requires tests to pass
+  # ═══════════════════════════════════════════════════════════════════════════
   build:
     name: Build installer
+    needs: test
+    # Only run on tag pushes or manual dispatch — not on every branch push/PR
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
 
     outputs:
@@ -31,7 +78,6 @@ jobs:
       installer_name: ${{ steps.version.outputs.installer_name }}
 
     steps:
-      # ── Checkout ────────────────────────────────────────────────────────────
       - name: Checkout source
         uses: actions/checkout@v4
         with:
@@ -45,7 +91,7 @@ jobs:
           $raw = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
           if (-not $raw) { Write-Error "Could not parse version from pyproject.toml"; exit 1 }
           $name = "RecipeParser-Setup-$raw.exe"
-          echo "version=$raw"        >> $env:GITHUB_OUTPUT
+          echo "version=$raw"         >> $env:GITHUB_OUTPUT
           echo "installer_name=$name" >> $env:GITHUB_OUTPUT
           Write-Host "Version: $raw  |  Installer: $name"
 
@@ -61,81 +107,60 @@ jobs:
           }
           Write-Host "Version check passed: $pyVer"
 
-      # ── Python setup ────────────────────────────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      # ── Install Inno Setup ──────────────────────────────────────────────────
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
-      # ── Install Python dependencies ─────────────────────────────────────────
-      # Use requirements.txt for pinned deps, then install the package itself
-      # and PyInstaller on top.  This gives reproducible builds.
+      # Use requirements.txt for pinned reproducible deps
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -e . pyinstaller
 
-      # ── Verify tkinter is available (python.org runner always has it) ───────
+      # Verify GUI libs are present before spending time on PyInstaller
       - name: Verify tkinter + customtkinter
-        run: python -c "import tkinter; import customtkinter; print('GUI deps OK')"
+        run: python -c "import tkinter; import customtkinter; import darkdetect; print('GUI deps OK')"
 
-      # ── PyInstaller ─────────────────────────────────────────────────────────
       - name: Build with PyInstaller
         run: pyinstaller recipeparser.spec --noconfirm
-
-      # ── Verify bundle was produced ──────────────────────────────────────────
-      - name: Verify PyInstaller output
-        shell: pwsh
-        run: |
-          $exe = "dist\RecipeParser\RecipeParser.exe"
-          if (-not (Test-Path $exe)) {
-            Write-Error "Expected bundle not found: $exe"
-            exit 1
-          }
-          Write-Host "Bundle OK: $exe  ($([math]::Round((Get-Item $exe).Length/1MB,1)) MB)"
 
       # ── Validate customtkinter assets are in the bundle ─────────────────────
       # customtkinter ships theme JSON files and fonts that MUST be present for
       # the GUI to start.  If collect_all("customtkinter") failed silently these
-      # files would be absent and the app would crash on launch with a FileNotFoundError.
+      # files would be absent and the app would crash on launch.
       - name: Validate customtkinter assets in bundle
         shell: pwsh
         run: |
           $bundleDir = "dist\RecipeParser"
 
-          # 1. customtkinter package directory must exist
           $ctkDir = Join-Path $bundleDir "customtkinter"
           if (-not (Test-Path $ctkDir)) {
             Write-Error "customtkinter directory missing from bundle at: $ctkDir"
             exit 1
           }
 
-          # 2. At least one theme JSON must be present
           $themes = Get-ChildItem -Recurse -Filter "*.json" $ctkDir -ErrorAction SilentlyContinue
           if (-not $themes) {
             Write-Error "No theme JSON files found inside $ctkDir — customtkinter data not bundled"
             exit 1
           }
-          Write-Host "customtkinter themes found: $($themes.Count) JSON file(s)"
+          Write-Host "customtkinter themes: $($themes.Count) JSON file(s)"
           $themes | ForEach-Object { Write-Host "  $($_.FullName.Replace($bundleDir + '\', ''))" }
 
-          # 3. darkdetect must be present (customtkinter runtime dependency)
           $darkdetect = Get-ChildItem -Recurse -Filter "darkdetect*" $bundleDir -ErrorAction SilentlyContinue
           if (-not $darkdetect) {
             Write-Error "darkdetect not found in bundle — customtkinter theme detection will fail at runtime"
             exit 1
           }
-          Write-Host "darkdetect found: $($darkdetect[0].Name)"
-
+          Write-Host "darkdetect: $($darkdetect[0].Name)"
           Write-Host "customtkinter bundle validation PASSED"
 
-      # ── Inno Setup ──────────────────────────────────────────────────────────
       - name: Build installer with Inno Setup
         shell: pwsh
         run: |
@@ -149,21 +174,26 @@ jobs:
           & $iscc installer.iss
           if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup failed"; exit 1 }
 
-      # ── Verify installer was produced ───────────────────────────────────────
       - name: Verify installer output
         shell: pwsh
         run: |
           $expected = "output\${{ steps.version.outputs.installer_name }}"
           if (-not (Test-Path $expected)) {
-            Write-Host "Files in output\:"
-            Get-ChildItem output\ | ForEach-Object { Write-Host "  $_" }
-            Write-Error "Expected installer not found: $expected"
-            exit 1
+            Write-Host "Files in output\:"; Get-ChildItem output\ | ForEach-Object { Write-Host "  $_" }
+            Write-Error "Expected installer not found: $expected"; exit 1
           }
           $sizeMB = [math]::Round((Get-Item $expected).Length / 1MB, 1)
           Write-Host "Installer OK: $expected  ($sizeMB MB)"
 
-      # ── Upload installer as workflow artifact (available even if release fails)
+      # Upload both the bundle dir and the installer as artifacts so the
+      # smoke-test job can access the .exe without re-running PyInstaller.
+      - name: Upload PyInstaller bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RecipeParser-bundle
+          path: dist/RecipeParser/
+          retention-days: 3
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -171,13 +201,56 @@ jobs:
           path: output/${{ steps.version.outputs.installer_name }}
           retention-days: 30
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Job 2: create / update the GitHub Release and attach the installer
-  # ───────────────────────────────────────────────────────────────────────────
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Job 3: Smoke test — launch the built exe and verify it works
+  # ═══════════════════════════════════════════════════════════════════════════
+  smoke-test:
+    name: Smoke test built exe
+    needs: build
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source (for smoke test script)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Download PyInstaller bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: RecipeParser-bundle
+          path: dist/RecipeParser/
+
+      - name: Set up Python (for smoke test runner only)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Run the smoke test script against the built exe.
+      # This validates that the exe:
+      #   1. Exists and is non-empty (> 20 MB)
+      #   2. --help exits 0 and prints usage
+      #   3. --version exits 0 and prints the correct version number
+      #   4. A bad epub path exits non-zero with an error message
+      - name: Run smoke tests against built exe
+        shell: pwsh
+        run: |
+          $exe     = "dist\RecipeParser\RecipeParser.exe"
+          $version = "${{ needs.build.outputs.version }}"
+          Write-Host "Testing: $exe  (expected version: $version)"
+          python tests/smoke_test_exe.py $exe $version
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Smoke tests FAILED — see output above"
+            exit 1
+          }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Job 4: Release — create GitHub Release and attach the installer
+  # ═══════════════════════════════════════════════════════════════════════════
   release:
     name: Publish release
-    needs: build
-    runs-on: ubuntu-latest   # gh CLI is pre-installed; no need for Windows here
+    needs: [build, smoke-test]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Download installer artifact
@@ -189,9 +262,9 @@ jobs:
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name:               ${{ github.event.inputs.tag || github.ref_name }}
-          name:                   ${{ needs.build.outputs.version }}
-          generate_release_notes: true
+          tag_name:                ${{ github.event.inputs.tag || github.ref_name }}
+          name:                    v${{ needs.build.outputs.version }}
+          generate_release_notes:  true
           fail_on_unmatched_files: true
           files: dist/${{ needs.build.outputs.installer_name }}
         env:

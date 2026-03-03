@@ -283,38 +283,64 @@ installer.iss           ← must have matching AppVersion (CI validates this)
 requirements.txt        ← pinned runtime deps (used by CI for reproducible builds)
 recipeparser.spec       ← PyInstaller bundle configuration
 build_installer.ps1     ← local one-click build script (PowerShell)
+tests/smoke_test_exe.py ← post-build exe smoke test (run by CI, also runnable locally)
 .github/workflows/
   build-installer.yml   ← GitHub Actions CI/CD pipeline
 ```
 
-The pipeline has two stages:
+The pipeline has four jobs:
 
 ```
-[Tag push / workflow_dispatch]
-        │
-        ▼
+Any push / PR
+      │
+      ▼
 ┌─────────────────────────────────────────────────────┐
-│  Job 1: build  (windows-latest)                     │
+│  Job 1: test  (ubuntu-latest, Python 3.11 + 3.12)  │
+│                                                     │
+│  • pip install -r requirements.txt + pytest         │
+│  • pytest tests/ --cov=recipeparser                 │
+│  • Runs on EVERY push and pull request              │
+│  • Fast feedback — no Windows runner needed         │
+└─────────────────────────────────────────────────────┘
+      │  (tag push or workflow_dispatch only)
+      ▼
+┌─────────────────────────────────────────────────────┐
+│  Job 2: build  (windows-latest)                     │
 │                                                     │
 │  1. Validate versions match (pyproject ↔ .iss)      │
 │  2. pip install -r requirements.txt                 │
 │  3. pip install -e . pyinstaller                    │
-│  4. pyinstaller recipeparser.spec --noconfirm       │
-│  5. Validate customtkinter assets in bundle         │
-│  6. ISCC.exe installer.iss                          │
-│  7. Validate installer .exe exists                  │
-│  8. Upload as workflow artifact (30-day retention)  │
+│  4. Verify tkinter + customtkinter + darkdetect     │
+│  5. pyinstaller recipeparser.spec --noconfirm       │
+│  6. Validate customtkinter assets in bundle         │
+│  7. ISCC.exe installer.iss                          │
+│  8. Validate installer .exe exists                  │
+│  9. Upload bundle + installer as artifacts          │
 └─────────────────────────────────────────────────────┘
-        │  (only if build succeeds)
-        ▼
+      │  (only if build succeeds)
+      ▼
 ┌─────────────────────────────────────────────────────┐
-│  Job 2: release  (ubuntu-latest)                    │
+│  Job 3: smoke-test  (windows-latest)                │
+│                                                     │
+│  Downloads the built bundle artifact and runs       │
+│  tests/smoke_test_exe.py against it:                │
+│  • Exe exists and is > 20 MB                        │
+│  • --help exits 0 and mentions 'epub'               │
+│  • --version exits 0 and prints correct version     │
+│  • Bad epub path exits non-zero with error message  │
+└─────────────────────────────────────────────────────┘
+      │  (only if smoke tests pass)
+      ▼
+┌─────────────────────────────────────────────────────┐
+│  Job 4: release  (ubuntu-latest)                    │
 │                                                     │
 │  1. Download installer artifact                     │
 │  2. Create/update GitHub Release with auto notes    │
-│  3. Attach versioned installer .exe                 │
+│  3. Attach RecipeParser-Setup-{version}.exe         │
 └─────────────────────────────────────────────────────┘
 ```
+
+**Key principle:** the installer is never published unless the exe has been launched and verified to work correctly. A build-introduced regression (missing module, wrong version, broken CLI) will be caught by the smoke test before any user can download it.
 
 ---
 

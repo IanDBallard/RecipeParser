@@ -96,6 +96,12 @@ def _cmd_sync_categories() -> None:
 
 
 def main():
+    from importlib.metadata import version as _pkg_version, PackageNotFoundError
+    try:
+        _version = _pkg_version("recipeparser")
+    except PackageNotFoundError:
+        _version = "unknown"
+
     parser = argparse.ArgumentParser(
         description="Extract recipes from an EPUB cookbook and export to Paprika 3.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -105,6 +111,11 @@ def main():
             "  recipeparser cookbook.epub --output ~/exports --units metric\n"
             "  recipeparser --sync-categories\n"
         ),
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_version}",
     )
     parser.add_argument(
         "epub",
