@@ -231,6 +231,20 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Inspect downloaded bundle
+        shell: pwsh
+        run: |
+          Write-Host "=== Contents of dist\RecipeParser\ ==="
+          if (Test-Path "dist\RecipeParser") {
+            Get-ChildItem -Recurse "dist\RecipeParser" | Select-Object -First 50 |
+              ForEach-Object { Write-Host "  $($_.FullName)" }
+            $totalMB = [math]::Round((Get-ChildItem -Recurse -File "dist\RecipeParser" |
+              Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+            Write-Host "Total bundle size: $totalMB MB"
+          } else {
+            Write-Host "dist\RecipeParser does not exist!"
+          }
+
       # Run the smoke test script against the built exe.
       # This validates that the exe:
       #   1. Exists and is non-empty (> 20 MB)
