@@ -269,20 +269,218 @@ build_installer.ps1     One-click build pipeline (PowerShell)
 
 ---
 
-## Building the Windows Installer
+## Build & Release Pipeline
 
-Prerequisites (one-time):
-- **Python from [python.org](https://www.python.org/downloads/)** — the build requires `tkinter` and `customtkinter`; PlatformIO/embedded Python often lacks these. Ensure "tcl/tk" is included when installing Python.
-- `pip install -e . pyinstaller`
-- [Inno Setup 6](https://jrsoftware.org/isdl.php) installed to its default location
+This section documents the complete pipeline for producing and publishing the Windows installer — both the automated GitHub Actions path and the local developer path.
 
-Then from the project root in PowerShell (using the python.org Python, not PlatformIO):
+---
+
+### Architecture Overview
+
+```
+pyproject.toml          ← single source of truth for the version number
+installer.iss           ← must have matching AppVersion (CI validates this)
+requirements.txt        ← pinned runtime deps (used by CI for reproducible builds)
+recipeparser.spec       ← PyInstaller bundle configuration
+build_installer.ps1     ← local one-click build script (PowerShell)
+.github/workflows/
+  build-installer.yml   ← GitHub Actions CI/CD pipeline
+```
+
+The pipeline has two stages:
+
+```
+[Tag push / workflow_dispatch]
+        │
+        ▼
+┌─────────────────────────────────────────────────────┐
+│  Job 1: build  (windows-latest)                     │
+│                                                     │
+│  1. Validate versions match (pyproject ↔ .iss)      │
+│  2. pip install -r requirements.txt                 │
+│  3. pip install -e . pyinstaller                    │
+│  4. pyinstaller recipeparser.spec --noconfirm       │
+│  5. Validate customtkinter assets in bundle         │
+│  6. ISCC.exe installer.iss                          │
+│  7. Validate installer .exe exists                  │
+│  8. Upload as workflow artifact (30-day retention)  │
+└─────────────────────────────────────────────────────┘
+        │  (only if build succeeds)
+        ▼
+┌─────────────────────────────────────────────────────┐
+│  Job 2: release  (ubuntu-latest)                    │
+│                                                     │
+│  1. Download installer artifact                     │
+│  2. Create/update GitHub Release with auto notes    │
+│  3. Attach versioned installer .exe                 │
+└─────────────────────────────────────────────────────┘
+```
+
+---
+
+### Releasing a New Version (Automated — Recommended)
+
+**Step 1 — Bump the version in exactly two files:**
+
+```
+pyproject.toml   →  version = "2.1.0"
+installer.iss    →  #define AppVersion "2.1.0"
+```
+
+> The CI workflow validates these match before building. If they differ it fails immediately with a clear error message.
+
+**Step 2 — Commit, tag, and push:**
+
+```bash
+git add pyproject.toml installer.iss
+git commit -m "Bump version to 2.1.0"
+git tag v2.1.0
+git push origin master --tags
+```
+
+**Step 3 — GitHub Actions takes over automatically:**
+
+- Builds the PyInstaller bundle on `windows-latest`
+- Validates customtkinter assets are present in the bundle
+- Compiles the Inno Setup installer
+- Creates a GitHub Release named `v2.1.0` with auto-generated release notes
+- Attaches `RecipeParser-Setup-2.1.0.exe` to the release
+
+The installer is also saved as a workflow artifact for 30 days — accessible from the Actions tab even if the release step fails.
+
+**Manual trigger (without a new tag):**
+
+Go to **Actions → Build Windows Installer → Run workflow** and enter the existing tag name. Useful for re-running a failed release without re-tagging.
+
+---
+
+### Dependency Management
+
+Dependencies are declared in two places with different purposes:
+
+| File | Purpose | Used by |
+|------|---------|---------|
+| `pyproject.toml` `[project.dependencies]` | Minimum version constraints for pip users | `pip install recipeparser` |
+| `requirements.txt` | Exact pinned versions for reproducible builds | CI workflow, local builds |
+
+**Both files must be kept in sync.** When adding or updating a dependency:
+
+1. Update the version constraint in `pyproject.toml`
+2. Update the pinned version in `requirements.txt`
+3. If it's a GUI dependency, verify it's also covered in `recipeparser.spec`
+
+Current pinned versions (`requirements.txt`):
+
+```
+EbookLib==0.18
+beautifulsoup4==4.12.2
+customtkinter==5.2.2
+lxml==5.3.1
+pydantic==2.11.9
+google-genai==1.38.0
+python-dotenv==1.1.1
+pyyaml==6.0.1
+```
+
+---
+
+### PyInstaller Bundle (`recipeparser.spec`)
+
+The spec uses **directory mode** (not `--onefile`) for fast launch times. The output is `dist\RecipeParser\` — a folder containing the `.exe` and all dependencies.
+
+**CustomTkinter packaging** is the most fragile part of the bundle. CustomTkinter ships theme JSON files, fonts, and image assets that PyInstaller's static analyser cannot discover automatically. The spec handles this explicitly:
+
+```python
+# collect_all captures: datas (themes/fonts), binaries, hiddenimports
+_d, _b, _h = collect_all("customtkinter")
+datas += _d
+ctk_binaries = _b
+hiddenimports_ctk = _h
+
+# darkdetect is a hard runtime dependency of customtkinter
+# (used for OS light/dark mode detection — must be bundled separately)
+_d, _b, _h = collect_all("darkdetect")
+datas    += _d
+ctk_binaries += _b
+hiddenimports_ctk += _h
+```
+
+The CI workflow validates the bundle after PyInstaller runs:
+- `dist\RecipeParser\customtkinter\` directory must exist
+- At least one `.json` theme file must be present inside it
+- `darkdetect` must be present in the bundle
+
+If any of these checks fail, the build stops before wasting time on Inno Setup.
+
+**Other packages requiring explicit collection:**
+
+| Package | Why |
+|---------|-----|
+| `lxml` | Native C extensions; static analysis misses sub-modules |
+| `grpc` | Native DLLs not found by static analysis |
+| `google.api_core`, `google.protobuf` | Protobuf native extensions |
+| `customtkinter` | Theme/font data files + hidden sub-modules |
+| `darkdetect` | Runtime dep of customtkinter, not imported directly |
+
+---
+
+### Local Build (Developer)
+
+Prerequisites (one-time setup):
+
+1. **Python from [python.org](https://www.python.org/downloads/)** — must include tcl/tk (checked by default). PlatformIO/embedded Python lacks `tkinter` and will fail the preflight check.
+2. **Inno Setup 6** — download from [jrsoftware.org/isdl.php](https://jrsoftware.org/isdl.php), install to the default location.
+3. Install Python dependencies:
+   ```powershell
+   pip install -r requirements.txt
+   pip install -e . pyinstaller
+   ```
+4. *(Optional)* **GitHub CLI** for automatic release upload:
+   ```powershell
+   winget install GitHub.cli
+   gh auth login
+   ```
+
+**Run the build:**
 
 ```powershell
 .\build_installer.ps1
 ```
 
-This cleans previous artefacts, runs PyInstaller, compiles the Inno Setup script, and writes the finished installer to `output\RecipeParser-Setup-2.0.4.exe`. A GitHub Action also builds the installer automatically when a release tag is pushed.
+The script:
+1. Checks for `tkinter`, `customtkinter`, `pyinstaller`, and `ISCC.exe` — exits with a clear error if any are missing
+2. Cleans `dist\`, `build\`, and `output\`
+3. Runs `pyinstaller recipeparser.spec`
+4. Runs `ISCC.exe installer.iss` → writes `output\RecipeParser-Setup-{version}.exe`
+5. Creates a GitHub Release and uploads the installer (skipped if GitHub CLI is not available)
+
+To build without creating a release:
+
+```powershell
+.\build_installer.ps1 -SkipRelease
+```
+
+---
+
+### Troubleshooting
+
+**`tkinter` not found / `customtkinter` not found**
+> You are using a Python that does not include the GUI libraries (e.g. PlatformIO, Conda minimal, or a system Python on some Linux distros). Install Python from [python.org](https://www.python.org/downloads/) and ensure "tcl/tk and IDLE" is checked during installation.
+
+**`No module named customtkinter` in the built `.exe`**
+> The `collect_all("customtkinter")` call in `recipeparser.spec` failed to find the package. Ensure `customtkinter` is installed in the same Python environment that runs PyInstaller: `pip install customtkinter==5.2.2`. The CI workflow has an explicit pre-build import check and a post-build asset validation step to catch this.
+
+**`FileNotFoundError` for a theme file when the `.exe` launches**
+> CustomTkinter's theme JSON files were not bundled. This means `collect_all("customtkinter")` ran but the package's data files were not found. Check that `customtkinter` is properly installed (not just importable — it must have its `assets/` directory). Run `python -c "import customtkinter; print(customtkinter.__file__)"` and verify the directory contains `assets/`.
+
+**`darkdetect` import error at runtime**
+> `darkdetect` is a hidden dependency of `customtkinter` used for OS theme detection. It is now explicitly collected in `recipeparser.spec` via `collect_all("darkdetect")`. If you see this error, ensure you are using the latest `recipeparser.spec`.
+
+**Version mismatch error in CI**
+> `pyproject.toml` and `installer.iss` have different version numbers. Update both to the same value before pushing the tag.
+
+**Installer `.exe` not found after Inno Setup**
+> The `OutputBaseFilename` in `installer.iss` is `RecipeParser-Setup-{AppVersion}`. If `AppVersion` in `installer.iss` does not match the version in `pyproject.toml`, the CI verification step will catch this. Locally, check the `output\` directory for what was actually produced.
 
 ---
 

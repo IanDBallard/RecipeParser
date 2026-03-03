@@ -9,12 +9,24 @@ from PyInstaller.utils.hooks import collect_data_files, collect_all
 
 # ── Data files ──────────────────────────────────────────────────────────────
 # CustomTkinter bundles fonts, images, and theme JSON files that must travel
-# with the binary. Use collect_all to ensure the module and its data are included.
+# with the binary.  collect_all() captures:
+#   • datas        — theme JSON, font files, image assets
+#   • binaries     — any native extensions (none currently, but future-proof)
+#   • hiddenimports — sub-modules that static analysis misses
+#
+# darkdetect is a hard runtime dependency of customtkinter (used to detect
+# the OS light/dark mode) and must be explicitly collected.
 datas = []
 _d, _b, _h = collect_all("customtkinter")
 datas += _d
 ctk_binaries = _b
 hiddenimports_ctk = _h
+
+# darkdetect — required by customtkinter at runtime for theme detection
+_d, _b, _h = collect_all("darkdetect")
+datas    += _d
+ctk_binaries += _b
+hiddenimports_ctk += _h
 
 # The bundled category taxonomy
 datas += [("recipeparser/categories.yaml", "recipeparser")]

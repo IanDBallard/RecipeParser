@@ -100,6 +100,41 @@ jobs:
           }
           Write-Host "Bundle OK: $exe  ($([math]::Round((Get-Item $exe).Length/1MB,1)) MB)"
 
+      # ── Validate customtkinter assets are in the bundle ─────────────────────
+      # customtkinter ships theme JSON files and fonts that MUST be present for
+      # the GUI to start.  If collect_all("customtkinter") failed silently these
+      # files would be absent and the app would crash on launch with a FileNotFoundError.
+      - name: Validate customtkinter assets in bundle
+        shell: pwsh
+        run: |
+          $bundleDir = "dist\RecipeParser"
+
+          # 1. customtkinter package directory must exist
+          $ctkDir = Join-Path $bundleDir "customtkinter"
+          if (-not (Test-Path $ctkDir)) {
+            Write-Error "customtkinter directory missing from bundle at: $ctkDir"
+            exit 1
+          }
+
+          # 2. At least one theme JSON must be present
+          $themes = Get-ChildItem -Recurse -Filter "*.json" $ctkDir -ErrorAction SilentlyContinue
+          if (-not $themes) {
+            Write-Error "No theme JSON files found inside $ctkDir — customtkinter data not bundled"
+            exit 1
+          }
+          Write-Host "customtkinter themes found: $($themes.Count) JSON file(s)"
+          $themes | ForEach-Object { Write-Host "  $($_.FullName.Replace($bundleDir + '\', ''))" }
+
+          # 3. darkdetect must be present (customtkinter runtime dependency)
+          $darkdetect = Get-ChildItem -Recurse -Filter "darkdetect*" $bundleDir -ErrorAction SilentlyContinue
+          if (-not $darkdetect) {
+            Write-Error "darkdetect not found in bundle — customtkinter theme detection will fail at runtime"
+            exit 1
+          }
+          Write-Host "darkdetect found: $($darkdetect[0].Name)"
+
+          Write-Host "customtkinter bundle validation PASSED"
+
       # ── Inno Setup ──────────────────────────────────────────────────────────
       - name: Build installer with Inno Setup
         shell: pwsh
