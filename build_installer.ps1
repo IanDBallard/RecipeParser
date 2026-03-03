@@ -44,6 +44,20 @@ $IsccExe = $IsccCandidates | Where-Object { Test-Path $_ } | Select-Object -Firs
 Write-Host ""
 Write-Host "=== RecipeParser installer build ===" -ForegroundColor Cyan
 
+# GUI build requires tkinter and customtkinter; PlatformIO Python typically lacks these.
+$tkCheck = python -c "import tkinter; import customtkinter; print('ok')" 2>&1
+if ($LASTEXITCODE -ne 0 -or $tkCheck -ne "ok") {
+    Write-Host ""
+    Write-Host "ERROR: Current Python lacks tkinter or customtkinter (required for GUI)." -ForegroundColor Red
+    Write-Host "PlatformIO/embedded Python often omits these. Use a full Python install:" -ForegroundColor Yellow
+    Write-Host "  1. Install Python from https://www.python.org/downloads/ (ensure 'tcl/tk' is checked)" -ForegroundColor Yellow
+    Write-Host "  2. Open a NEW terminal (so that Python is on PATH)" -ForegroundColor Yellow
+    Write-Host "  3. cd to this project and run: pip install -e . pyinstaller" -ForegroundColor Yellow
+    Write-Host "  4. Re-run this build script" -ForegroundColor Yellow
+    Write-Host ""
+    exit 1
+}
+
 if (-not (Get-Command pyinstaller -ErrorAction SilentlyContinue)) {
     Write-Error "pyinstaller not found on PATH. Run: pip install pyinstaller"
 }

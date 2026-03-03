@@ -27,7 +27,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 
 ### Download and Install
 
-1. Download `RecipeParser-Setup-2.0.2.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
+1. Download `RecipeParser-Setup-2.0.3.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
 2. Run the installer. During setup you will be prompted to enter your Google Gemini API key (get one free at [aistudio.google.com](https://aistudio.google.com/app/apikey)).
 3. The key is written to `%APPDATA%\RecipeParser\.env` and survives upgrades.
 4. A **RecipeParser** shortcut appears in the Start Menu (and optionally on the Desktop).
@@ -272,16 +272,17 @@ build_installer.ps1     One-click build pipeline (PowerShell)
 ## Building the Windows Installer
 
 Prerequisites (one-time):
-- `pip install pyinstaller`
+- **Python from [python.org](https://www.python.org/downloads/)** — the build requires `tkinter` and `customtkinter`; PlatformIO/embedded Python often lacks these. Ensure "tcl/tk" is included when installing Python.
+- `pip install -e . pyinstaller`
 - [Inno Setup 6](https://jrsoftware.org/isdl.php) installed to its default location
 
-Then from the project root in PowerShell:
+Then from the project root in PowerShell (using the python.org Python, not PlatformIO):
 
 ```powershell
 .\build_installer.ps1
 ```
 
-This cleans previous artefacts, runs PyInstaller, compiles the Inno Setup script, and writes the finished installer to `output\RecipeParser-Setup-2.0.2.exe`.
+This cleans previous artefacts, runs PyInstaller, compiles the Inno Setup script, and writes the finished installer to `output\RecipeParser-Setup-2.0.3.exe`.
 
 ---
 
