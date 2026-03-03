@@ -20,6 +20,7 @@ from tkinter import filedialog, messagebox
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 from recipeparser.categories import _CATEGORIES_FILE, load_category_tree
+from recipeparser.paths import get_default_output_dir, get_env_file
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Theme
@@ -446,20 +447,8 @@ class _InputDialog(ctk.CTkToplevel):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _get_env_file() -> Path:
-    """Return the .env path appropriate for the current context.
-
-    Installed build: %APPDATA%\\RecipeParser\\.env  (survives upgrades)
-    Dev fallback:    <project root>\\.env            (existing behaviour)
-    """
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        candidate = Path(appdata) / "RecipeParser" / ".env"
-        dev_env = Path(__file__).parent.parent / ".env"
-        # Use APPDATA location if it already exists, or if there is no local .env
-        if candidate.exists() or not dev_env.exists():
-            candidate.parent.mkdir(parents=True, exist_ok=True)
-            return candidate
-    return Path(__file__).parent.parent / ".env"
+    """Return the .env path (always user-writable app data dir)."""
+    return get_env_file()
 
 
 class _ApiKeyFrame(ctk.CTkFrame):
@@ -542,7 +531,7 @@ class ParseFrame(ctk.CTkFrame):
         ctk.CTkButton(inputs, text="Browse…", width=90, command=self._browse_epub).grid(row=0, column=2)
 
         ctk.CTkLabel(inputs, text="Output Folder", width=90, anchor="w").grid(row=1, column=0, sticky="w", pady=4)
-        self._output_var = ctk.StringVar(value=str(Path.cwd() / "output"))
+        self._output_var = ctk.StringVar(value=str(get_default_output_dir()))
         ctk.CTkEntry(inputs, textvariable=self._output_var).grid(row=1, column=1, sticky="ew", padx=(0, 8))
         ctk.CTkButton(inputs, text="Browse…", width=90, command=self._browse_output).grid(row=1, column=2)
 

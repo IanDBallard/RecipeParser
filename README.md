@@ -27,7 +27,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 
 ### Download and Install
 
-1. Download `RecipeParser-Setup-2.0.0.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
+1. Download `RecipeParser-Setup-2.0.1.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
 2. Run the installer. During setup you will be prompted to enter your Google Gemini API key (get one free at [aistudio.google.com](https://aistudio.google.com/app/apikey)).
 3. The key is written to `%APPDATA%\RecipeParser\.env` and survives upgrades.
 4. A **RecipeParser** shortcut appears in the Start Menu (and optionally on the Desktop).
@@ -43,7 +43,7 @@ The application has two tabs:
 | Control | Purpose |
 |---|---|
 | EPUB File | Browse to a `.epub` file or a Calibre book folder (the `.epub` is auto-detected) |
-| Output Folder | Where the `.paprikarecipes` file will be written (default: current directory) |
+| Output Folder | Where the `.paprikarecipes` file will be written (default: `Documents\RecipeParser`) |
 | Units | Unit-of-measure preference for dual-measurement books |
 | Google API Key | Your Gemini key — click **Save** to persist it to `%APPDATA%\RecipeParser\.env` |
 | Parse Recipes | Starts the extraction pipeline; progress streams live to the log panel |
@@ -55,7 +55,7 @@ A two-panel editor for the recipe taxonomy used during AI categorisation:
 
 - **Left panel** — top-level categories. Use ＋ / ✎ / ↑ / ↓ / ✕ to manage them.
 - **Right panel** — subcategories of the selected parent. Same controls.
-- **Save Changes** — writes edits back to the bundled `categories.yaml`. Changes take effect on the next parse run.
+- **Save Changes** — writes edits to `%APPDATA%\RecipeParser\categories.yaml` (user-writable, survives upgrades). Changes take effect on the next parse run.
 - **Import YAML / Export YAML** — load a taxonomy from an external file or save your current one as a backup.
 - **Sync from Paprika** — reads the live category hierarchy directly from your local Paprika SQLite database and loads it into the editor, replacing the current taxonomy. Useful for keeping RecipeParser in sync with categories you have already created inside Paprika.
 
@@ -98,7 +98,7 @@ GOOGLE_API_KEY=your_api_key_here
 recipeparser path/to/cookbook.epub
 ```
 
-The `.paprikarecipes` file is written to `./output/` by default. You can also pass a Calibre book folder — the single `.epub` inside it is detected automatically.
+The `.paprikarecipes` file is written to `Documents\RecipeParser` by default (or `%APPDATA%\RecipeParser\Exports` if Documents is unavailable). You can also pass a Calibre book folder — the single `.epub` inside it is detected automatically.
 
 **Options:**
 
@@ -110,14 +110,14 @@ positional arguments:
   epub                  Path to the .epub file, or a Calibre book folder containing one
 
 options:
-  --output DIR          Directory to write the .paprikarecipes file (default: ./output)
+  --output DIR          Directory to write the .paprikarecipes file
   --units               Unit-of-measure preference for dual-measurement books.
                         metric   — keep gram/ml values only
                         us       — keep cup/tbsp/oz values only
                         imperial — keep oz/lb values only
                         book     — preserve whatever the book uses (default)
   --sync-categories     Pull the live category hierarchy from your local Paprika database
-                        and overwrite recipeparser/categories.yaml. No EPUB required.
+                        and save to the user categories file. No EPUB required.
 ```
 
 **Examples:**
@@ -198,9 +198,23 @@ The temporary image directory is deleted after a successful export, and preserve
 
 ---
 
+## User Data Locations
+
+All user-writable files live in platform-appropriate directories to avoid permission issues when the app is installed in system-protected locations (e.g. Program Files):
+
+| File | Location (Windows) | Purpose |
+|------|--------------------|---------|
+| `.env` | `%APPDATA%\RecipeParser\.env` | Google API key (CLI and GUI both read/write here) |
+| `categories.yaml` | `%APPDATA%\RecipeParser\categories.yaml` | Recipe taxonomy; on first run, created with a minimal default (EPUB Imports) |
+| Output (default) | `%USERPROFILE%\Documents\RecipeParser` | Where `.paprikarecipes` exports are written by default |
+
+For Python CLI development, a `.env` file in the project root is also loaded and can override the app data value.
+
+---
+
 ## Customising Categories
 
-The taxonomy used for categorisation lives in `recipeparser/categories.yaml`. You can edit it via the GUI's **Categories** tab or directly in the file:
+The taxonomy used for categorisation is stored in the user data directory (see above). You can edit it via the GUI's **Categories** tab or directly in the file:
 
 ```yaml
 categories:
@@ -233,6 +247,7 @@ recipeparser/
 ├── epub.py            EPUB parsing, image extraction, chunking, candidate filtering
 ├── gemini.py          All Gemini API calls — extraction, normalisation, retry logic
 ├── categories.py      YAML taxonomy loader and LLM categorisation
+├── paths.py           User-writable paths (app data, categories, output)
 ├── pipeline.py        Orchestration — parallel execution, hero injection, dedup, export
 ├── export.py          Paprika 3 archive bundler
 └── categories.yaml    Default recipe taxonomy
@@ -266,7 +281,7 @@ Then from the project root in PowerShell:
 .\build_installer.ps1
 ```
 
-This cleans previous artefacts, runs PyInstaller, compiles the Inno Setup script, and writes the finished installer to `output\RecipeParser-Setup-2.0.0.exe`.
+This cleans previous artefacts, runs PyInstaller, compiles the Inno Setup script, and writes the finished installer to `output\RecipeParser-Setup-2.0.1.exe`.
 
 ---
 

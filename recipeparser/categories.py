@@ -7,12 +7,17 @@ from typing import List, TYPE_CHECKING
 
 import yaml
 
+from recipeparser.paths import get_categories_file
+
 if TYPE_CHECKING:
     from recipeparser.models import RecipeExtraction
 
 log = logging.getLogger(__name__)
 
-_CATEGORIES_FILE = Path(__file__).parent / "categories.yaml"
+# User-editable path (writable). Initialised with a minimal default on first run.
+_CATEGORIES_FILE = get_categories_file()
+
+_DEFAULT_CATEGORIES = {"categories": ["EPUB Imports"]}
 
 
 def reload_categories(path: Path = _CATEGORIES_FILE):
@@ -23,6 +28,27 @@ def reload_categories(path: Path = _CATEGORIES_FILE):
     """
     tree = load_category_tree(path)
     return tree, build_paprika_categories(tree)
+
+
+def _ensure_user_categories_exist(path: Path) -> None:
+    """If the default user categories file is missing, create a minimal default."""
+    if path != get_categories_file():
+        return  # custom path (e.g. import, tests) — do not touch
+    if path.exists():
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                _DEFAULT_CATEGORIES,
+                f,
+                allow_unicode=True,
+                default_flow_style=False,
+                sort_keys=False,
+            )
+        log.info("Initialized categories with default: %s", path)
+    except OSError as e:
+        log.warning("Could not create categories file at %s: %s", path, e)
 
 
 def load_category_tree(path: Path = _CATEGORIES_FILE) -> List[tuple]:
@@ -37,10 +63,12 @@ def load_category_tree(path: Path = _CATEGORIES_FILE) -> List[tuple]:
               - Child1
               - Child2
 
+    On first run, creates a minimal default (EPUB Imports) at the user path if missing.
     Falls back to an empty list and logs a warning if the file is missing or
     malformed, so the script still runs (categories will fall back to
     "EPUB Imports").
     """
+    _ensure_user_categories_exist(path)
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)

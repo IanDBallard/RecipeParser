@@ -11,6 +11,7 @@ from pathlib import Path
 
 from recipeparser.paprika_db import find_paprika_db, read_categories_from_db
 from recipeparser.categories import _CATEGORIES_FILE
+from recipeparser.paths import get_default_output_dir
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,8 +113,8 @@ def main():
     )
     parser.add_argument(
         "--output",
-        default="./output",
-        help="Directory to write the .paprikarecipes file (default: ./output).",
+        default=str(get_default_output_dir()),
+        help="Directory to write the .paprikarecipes file.",
     )
     parser.add_argument(
         "--units",
@@ -132,8 +133,7 @@ def main():
         action="store_true",
         help=(
             "Pull the live category hierarchy from the local Paprika database "
-            "and overwrite recipeparser/categories.yaml. "
-            "No EPUB argument is needed."
+            "and save to the user categories file. No EPUB argument is needed."
         ),
     )
     args = parser.parse_args()

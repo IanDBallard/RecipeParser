@@ -11,8 +11,9 @@ from recipeparser.categories import (
     categorise_recipe,
 )
 
-# Load the real taxonomy once for tests that need PAPRIKA_CATEGORIES.
-_CATEGORY_TREE = load_category_tree()
+# Load the bundled taxonomy for categorise tests (full tree needed for validation).
+from recipeparser.paths import get_bundled_categories_file
+_CATEGORY_TREE = load_category_tree(get_bundled_categories_file())
 PAPRIKA_CATEGORIES = build_paprika_categories(_CATEGORY_TREE)
 
 
@@ -85,9 +86,8 @@ class TestLoadCategoryTree:
             assert cat in tree_leaves
 
     def test_real_categories_yaml_loads_correctly(self):
-        """The actual categories.yaml in the project must parse without errors."""
-        from recipeparser.categories import _CATEGORIES_FILE
-        tree = load_category_tree(_CATEGORIES_FILE)
+        """The bundled categories.yaml in the project must parse without errors."""
+        tree = load_category_tree(get_bundled_categories_file())
         assert len(tree) > 0, "categories.yaml loaded but was empty"
         leaves = {leaf for leaf, _ in tree}
         assert "Soup" in leaves
