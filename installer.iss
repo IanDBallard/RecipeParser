@@ -5,7 +5,7 @@
 #define AppName      "RecipeParser"
 #define AppVersion   "2.0.4"
 #define AppPublisher "Ian Ballard"
-#define AppURL       "https://github.com/your-repo/recipeparser"
+#define AppURL       "https://github.com/IanDBallard/RecipeParser"
 #define AppExeName   "RecipeParser.exe"
 
 [Setup]

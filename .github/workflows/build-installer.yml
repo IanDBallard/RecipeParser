@@ -1,5 +1,10 @@
 name: Build Windows Installer
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Triggers
+#   • Push a tag like v2.1.0  →  full build + release
+#   • workflow_dispatch       →  manual run (tag required)
+# ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
     tags:
@@ -7,54 +12,152 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g. v2.0.4)'
+        description: 'Release tag (e.g. v2.1.0) — must already exist in the repo'
         required: true
 
 permissions:
-  contents: write
+  contents: write   # needed to create/update releases and upload assets
 
 jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 1: build the PyInstaller bundle + Inno Setup installer
+  # ───────────────────────────────────────────────────────────────────────────
   build:
+    name: Build installer
     runs-on: windows-latest
+
+    outputs:
+      version:        ${{ steps.version.outputs.version }}
+      installer_name: ${{ steps.version.outputs.installer_name }}
+
     steps:
-      - uses: actions/checkout@v4
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - name: Set up Python
+      # ── Resolve version from pyproject.toml (single source of truth) ───────
+      - name: Extract version
+        id: version
+        shell: pwsh
+        run: |
+          $raw = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
+          if (-not $raw) { Write-Error "Could not parse version from pyproject.toml"; exit 1 }
+          $name = "RecipeParser-Setup-$raw.exe"
+          echo "version=$raw"        >> $env:GITHUB_OUTPUT
+          echo "installer_name=$name" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $raw  |  Installer: $name"
+
+      # ── Validate installer.iss version matches pyproject.toml ───────────────
+      - name: Validate installer.iss version
+        shell: pwsh
+        run: |
+          $pyVer  = "${{ steps.version.outputs.version }}"
+          $issVer = (Select-String -Path installer.iss -Pattern '^#define AppVersion\s+"(.+)"').Matches[0].Groups[1].Value
+          if ($issVer -ne $pyVer) {
+            Write-Error "Version mismatch: pyproject.toml=$pyVer  installer.iss=$issVer`nUpdate installer.iss AppVersion before tagging."
+            exit 1
+          }
+          Write-Host "Version check passed: $pyVer"
+
+      # ── Python setup ────────────────────────────────────────────────────────
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
+      # ── Install Inno Setup ──────────────────────────────────────────────────
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
-      - name: Install dependencies
+      # ── Install Python dependencies ─────────────────────────────────────────
+      # Use requirements.txt for pinned deps, then install the package itself
+      # and PyInstaller on top.  This gives reproducible builds.
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install -r requirements.txt
           pip install -e . pyinstaller
 
+      # ── Verify tkinter is available (python.org runner always has it) ───────
+      - name: Verify tkinter + customtkinter
+        run: python -c "import tkinter; import customtkinter; print('GUI deps OK')"
+
+      # ── PyInstaller ─────────────────────────────────────────────────────────
       - name: Build with PyInstaller
-        run: pyinstaller recipeparser.spec -y
+        run: pyinstaller recipeparser.spec --noconfirm
 
-      - name: Build installer
+      # ── Verify bundle was produced ──────────────────────────────────────────
+      - name: Verify PyInstaller output
+        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force output
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe" }
+          $exe = "dist\RecipeParser\RecipeParser.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Error "Expected bundle not found: $exe"
+            exit 1
+          }
+          Write-Host "Bundle OK: $exe  ($([math]::Round((Get-Item $exe).Length/1MB,1)) MB)"
+
+      # ── Inno Setup ──────────────────────────────────────────────────────────
+      - name: Build installer with Inno Setup
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force output | Out-Null
+          $iscc = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { Write-Error "ISCC.exe not found"; exit 1 }
+          Write-Host "Using ISCC: $iscc"
           & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { Write-Error "Inno Setup failed"; exit 1 }
 
-      - name: Prepare release asset
+      # ── Verify installer was produced ───────────────────────────────────────
+      - name: Verify installer output
+        shell: pwsh
         run: |
-          $exe = Get-ChildItem output/*.exe | Select-Object -First 1
-          if (-not $exe) { Write-Error "No .exe found in output"; exit 1 }
-          Copy-Item $exe.FullName -Destination "RecipeParser-Setup.exe"
+          $expected = "output\${{ steps.version.outputs.installer_name }}"
+          if (-not (Test-Path $expected)) {
+            Write-Host "Files in output\:"
+            Get-ChildItem output\ | ForEach-Object { Write-Host "  $_" }
+            Write-Error "Expected installer not found: $expected"
+            exit 1
+          }
+          $sizeMB = [math]::Round((Get-Item $expected).Length / 1MB, 1)
+          Write-Host "Installer OK: $expected  ($sizeMB MB)"
 
-      - name: Upload to Release
+      # ── Upload installer as workflow artifact (available even if release fails)
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.installer_name }}
+          path: output/${{ steps.version.outputs.installer_name }}
+          retention-days: 30
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job 2: create / update the GitHub Release and attach the installer
+  # ───────────────────────────────────────────────────────────────────────────
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest   # gh CLI is pre-installed; no need for Windows here
+
+    steps:
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.installer_name }}
+          path: dist/
+
+      - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: RecipeParser-Setup.exe
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name:               ${{ github.event.inputs.tag || github.ref_name }}
+          name:                   ${{ needs.build.outputs.version }}
+          generate_release_notes: true
           fail_on_unmatched_files: true
+          files: dist/${{ needs.build.outputs.installer_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
