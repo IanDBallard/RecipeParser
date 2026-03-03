@@ -44,10 +44,17 @@ jobs:
           if (-not (Test-Path $iscc)) { $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe" }
           & $iscc installer.iss
 
+      - name: Prepare release asset
+        run: |
+          $exe = Get-ChildItem output/*.exe | Select-Object -First 1
+          if (-not $exe) { Write-Error "No .exe found in output"; exit 1 }
+          Copy-Item $exe.FullName -Destination "RecipeParser-Setup.exe"
+
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: output/*.exe
+          files: RecipeParser-Setup.exe
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
