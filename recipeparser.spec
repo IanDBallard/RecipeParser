@@ -6,7 +6,7 @@
 # Output: dist\RecipeParser\RecipeParser.exe  (directory mode — fast launch)
 
 import os, importlib.util
-from PyInstaller.utils.hooks import collect_data_files, collect_all
+from PyInstaller.utils.hooks import collect_data_files, collect_all, copy_metadata
 
 # ── Data files ──────────────────────────────────────────────────────────────
 # CustomTkinter bundles fonts, images, and theme JSON files that must travel
@@ -49,6 +49,10 @@ if _dd_spec and _dd_spec.origin:
 
 # The bundled category taxonomy
 datas += [("recipeparser/categories.yaml", "recipeparser")]
+
+# Package metadata — required for importlib.metadata.version("recipeparser")
+# to work inside the frozen exe (used by --version flag and GUI about dialog).
+datas += copy_metadata("recipeparser")
 
 # ── Binaries + hidden imports from packages with native extensions ───────────
 binaries = ctk_binaries

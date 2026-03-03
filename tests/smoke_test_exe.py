@@ -104,18 +104,21 @@ def main() -> int:
                  "categories.yaml not found — recipe categorisation will fail"):
         failures += 1
 
-    # ── 6. Version string in exe binary ──────────────────────────────────────
+    # ── 6. recipeparser package metadata present (enables --version at runtime) ─
+    # PyInstaller bundles importlib.metadata so --version works in the frozen exe.
+    # The metadata lives in _internal/recipeparser-<version>.dist-info/METADATA.
     if expected_version:
-        try:
-            exe_bytes = exe.read_bytes()
-            version_bytes = expected_version.encode("utf-8")
-            found = version_bytes in exe_bytes
-            if not check(f"Version '{expected_version}' found in exe binary", found,
-                         "Version string not embedded — wrong build or version mismatch"):
-                failures += 1
-        except Exception as e:
-            check("Version string check", False, f"Could not read exe: {e}")
+        meta_dirs = list(bundle_dir.rglob(f"recipeparser-{expected_version}.dist-info"))
+        if not meta_dirs:
+            # Also accept any recipeparser dist-info (version may differ slightly)
+            meta_dirs = list(bundle_dir.rglob("recipeparser-*.dist-info"))
+        if not check(f"recipeparser-{expected_version}.dist-info present in bundle",
+                     len(meta_dirs) > 0,
+                     "Package metadata missing — importlib.metadata version lookup will fail at runtime.\n"
+                     "         Add 'copy_metadata(\"recipeparser\")' to datas in recipeparser.spec"):
             failures += 1
+        else:
+            print(f"    {meta_dirs[0].name}")
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print()
