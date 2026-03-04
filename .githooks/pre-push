@@ -1,0 +1,30 @@
+#!/bin/sh
+# When pushing a tag refs/tags/v* (e.g. v2.0.6), check that the tagged commit
+# has pyproject.toml and installer.iss both set to that version.
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+while read local_ref local_sha1 remote_ref remote_sha1; do
+  case "$local_ref" in
+    refs/tags/v*)
+      tag_ver="${local_ref#refs/tags/v}"
+      commit=$(git rev-parse "$local_sha1^{commit}" 2>/dev/null || git rev-parse "$local_sha1")
+      py_ver=$(git show "$commit:pyproject.toml" 2>/dev/null | sed -n 's/^version = "\(.*\)"$/\1/p')
+      iss_ver=$(git show "$commit:installer.iss" 2>/dev/null | sed -n 's/^#define AppVersion[[:space:]]*"\(.*\)"$/\1/p')
+      if [ -z "$tag_ver" ] || [ -z "$py_ver" ] || [ -z "$iss_ver" ]; then
+        echo "pre-push: could not parse versions (tag=$tag_ver py=$py_ver iss=$iss_ver)" >&2
+        exit 1
+      fi
+      if [ "$tag_ver" != "$py_ver" ] || [ "$tag_ver" != "$iss_ver" ]; then
+        echo "pre-push: version mismatch for tag v$tag_ver" >&2
+        echo "  pyproject.toml version = \"$py_ver\"" >&2
+        echo "  installer.iss AppVersion = \"$iss_ver\"" >&2
+        echo "  Update both to $tag_ver before pushing tag v$tag_ver." >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+exit 0
