@@ -94,6 +94,12 @@ Create a `.env` file in the project root (or export the variable into your shell
 GOOGLE_API_KEY=your_api_key_here
 ```
 
+**Git hooks (optional):** If you push release tags (`v*`), enable the version-check hook so that `pyproject.toml` and `installer.iss` must match the tag (see [.githooks/README.md](.githooks/README.md)):
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ---
 
 ## CLI Usage
