@@ -345,6 +345,9 @@ class ReconStatus(Enum): SKIPPED; PENDING; DONE
   - If outline is missing or unhelpful, send **first few pages** to the model: “This is the contents page. List recipe titles and page numbers.”
 - **AI**: One Gemini call to normalize and parse: “Given this TOC/outline, return a list of recipe titles and, when available, page numbers or section identifiers.” Output: `list[(title, page_or_section | None)]`. This keeps “spotting” the TOC simple (structure first, AI to parse when needed). Then validate that at least **MIN_TOC_RECIPE_RATIO** of entries look like recipe names (not just section headers), via a second AI call or the same response; if below threshold, do not use TOC (see §5.2).
 
+**Recipe-only filter (implemented)**  
+We **always** run one AI classification call on the raw TOC (programmatic nav/outline or AI-parsed fallback) to identify which entries are recipe titles vs section/front matter (e.g. Cover, Introduction, "How to Make Dough"). The pipeline uses only the **filtered** list (recipe entries only) for recon—and for any TOC-driven chunking when enabled. So recon counts and "missing" lists refer to recipes only, not supporting material. On classification failure we keep the full list so recon still runs.
+
 ### 7.3 Chunk separation using TOC
 
 - **Input**: Full ordered text (or `raw_chunks` with a way to map back to positions) and `toc_entries`.
@@ -353,7 +356,7 @@ class ReconStatus(Enum): SKIPPED; PENDING; DONE
 
 ### 7.4 Recon
 
-- After extraction we have: `toc_entries` (expected) and `extracted_recipe_names` (from Gemini).
+- After extraction we have: `toc_entries` (expected) and `extracted_recipe_names` (from Gemini). The `toc_entries` used here are **recipe-only**: the pipeline runs one AI classification on the raw TOC to drop section headers and front matter (see §7.2), so recon counts and "missing" lists refer only to recipe titles.
 - **Matching**: Normalize titles (lowercase, strip punctuation) and match TOC titles to extracted names (exact or fuzzy). Build:
   - `matched`: in both
   - `missing`: in TOC but not in extracted
@@ -443,6 +446,6 @@ class ReconStatus(Enum): SKIPPED; PENDING; DONE
 - **PDF**: Second loader, same contract as EPUB; page-based chunks (and optionally block-ordered text); images extracted and marked per page.
 - **GUI/CLI**: Single file type (EPUB or PDF); backend chooses loader by extension.
 - **TOC**: Extract recipe list from structure (nav/outline) + one AI parse; use for chunk boundaries and for recon. Same logic for EPUB and PDF; fallback to current chunking when TOC is missing or fails.
-- **Recon**: TOC list vs extracted names; report missing (and optionally extra) recipes. Runs only when TOC was used for chunking (§5.4).
+- **Recon**: When TOC is present, compare TOC vs extracted recipe names and report: TOC count, extracted count, matched, missing (in TOC but not extracted), and extra (extracted but not in TOC). The TOC used for recon is **recipe-only**: we always run one AI classification on the raw TOC so section headers and front matter (Cover, Introduction, etc.) are excluded; recon counts and “missing” lists refer only to recipe titles. Runs when `toc_entries` is non-empty (§5.4).
 - **PDF pre-flight**: Assess PDF before full load (§3.4); programmatic checks (text layer, page count, password); optional AI/hybrid for “likely cookbook”.
 - **No FSM**; clear linear pipeline with optional TOC and recon steps. **State enum class** (§5.9) is required: stage, chunking path, recon status (and pre-flight outcome for PDF) are maintained and set at each step for logging, GUI, and tests.

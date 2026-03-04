@@ -361,6 +361,8 @@ def process_epub(
     log.info("Total recipes after deduplication:  %d", len(all_recipes))
 
     recon_toc = recon_extracted = recon_matched = recon_missing = recon_extra = 0
+    recon_missing_list: List[str] = []
+    recon_extra_list: List[str] = []
 
     # --- Recon (when TOC was extracted) ------------------------------------------
     if toc_entries and pipeline_state.recon_status == ReconStatus.PENDING:
@@ -372,15 +374,17 @@ def process_epub(
         recon_matched = len(matched)
         recon_missing = len(missing)
         recon_extra = len(extra)
+        recon_missing_list = missing
+        recon_extra_list = extra
         pipeline_state.recon_status = ReconStatus.DONE
         log.info(
             "Recon: TOC %d  |  Extracted %d  |  Matched %d  |  Missing %d  |  Extra %d",
             len(toc_entries), len(extracted_names), len(matched), len(missing), len(extra),
         )
         if missing:
-            log.info("  Missing from extraction: %s", missing[:15])
+            log.info("  Missing from extraction: %s", missing)
         if extra:
-            log.info("  Extra (not in TOC): %s", extra[:10])
+            log.info("  Extra (not in TOC): %s", extra)
 
     # --- Parallel categorisation -------------------------------------------------
     log.info("Categorising %d recipe(s) in parallel...", len(all_recipes))
@@ -454,6 +458,10 @@ def process_epub(
             "Recon:   TOC %d | Extracted %d | Matched %d | Missing %d | Extra %d",
             recon_toc, recon_extracted, recon_matched, recon_missing, recon_extra,
         )
+        if recon_missing_list:
+            log.info("  Missing from extraction: %s", recon_missing_list)
+        if recon_extra_list:
+            log.info("  Extra (not in TOC): %s", recon_extra_list)
     log.info(
         "Export:  %d recipes → %s",
         len(all_recipes), export_path,

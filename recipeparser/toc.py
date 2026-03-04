@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _flatten_epub_toc(toc_items: list, result: Optional[List[Tuple[str, Optional[str]]]] = None) -> List[Tuple[str, Optional[str]]]:
-    """Recursively flatten ebooklib toc into [(title, href), ...]."""
+    """Recursively flatten ebooklib toc into [(title, href), ...] (all nodes)."""
     if result is None:
         result = []
     for item in toc_items:
@@ -41,6 +41,29 @@ def _flatten_epub_toc(toc_items: list, result: Optional[List[Tuple[str, Optional
                 result.append((str(title).strip(), str(href).strip() if href else None))
             if children:
                 _flatten_epub_toc(children, result)
+        elif hasattr(item, "title") and hasattr(item, "href"):
+            result.append((str(item.title).strip(), str(item.href).strip() if item.href else None))
+    return result
+
+
+def _flatten_epub_toc_leaves_only(toc_items: list, result: Optional[List[Tuple[str, Optional[str]]]] = None) -> List[Tuple[str, Optional[str]]]:
+    """
+    Flatten ebooklib toc to leaf entries only [(title, href), ...].
+    Use for recon so section/chapter headers (e.g. "Part One", "Contents")
+    are not counted — only bottom-level TOC items, which are usually recipes.
+    """
+    if result is None:
+        result = []
+    for item in toc_items:
+        if isinstance(item, tuple):
+            section, children = item
+            title = getattr(section, "title", None) or getattr(section, "label", None)
+            href = getattr(section, "href", None)
+            if children:
+                _flatten_epub_toc_leaves_only(children, result)
+            else:
+                if title:
+                    result.append((str(title).strip(), str(href).strip() if href else None))
         elif hasattr(item, "title") and hasattr(item, "href"):
             result.append((str(item.title).strip(), str(item.href).strip() if item.href else None))
     return result
@@ -60,16 +83,35 @@ def extract_toc_epub(epub_path: str, raw_chunks: List[str], client) -> List[Tupl
         book = epub.read_epub(epub_path)
     except Exception as e:
         log.warning("Could not open EPUB for TOC extraction: %s", e)
-        return _parse_toc_from_text_fallback(raw_chunks[:2], client)
+        fallback = _parse_toc_from_text_fallback(raw_chunks[:2], client)
+        if fallback:
+            return filter_toc_to_recipe_entries(fallback, client)
+        return []
 
-    raw = _flatten_epub_toc(book.toc) if book.toc else []
+    raw = _flatten_epub_toc_leaves_only(book.toc) if book.toc else []
+    used_leaves_only = True
+    if len(raw) < MIN_TOC_ENTRIES and book.toc:
+        raw = _flatten_epub_toc(book.toc)
+        used_leaves_only = False
     entries = [(t, None) for t, _ in raw if t]
     if len(entries) >= MIN_TOC_ENTRIES:
-        log.info("EPUB TOC: %d entries from nav/NCX.", len(entries))
-        return entries
+        if used_leaves_only:
+            log.info("EPUB TOC: %d entries from nav/NCX (leaf entries only).", len(entries))
+        else:
+            log.info("EPUB TOC: %d entries from nav/NCX (all levels).", len(entries))
+        filtered = filter_toc_to_recipe_entries(entries, client)
+        if len(filtered) != len(entries):
+            log.info("EPUB TOC: %d → %d recipe entries (AI filter).", len(entries), len(filtered))
+        return filtered
 
     log.info("EPUB TOC: nav/NCX empty or shallow (%d entries) — using AI on first chunks.", len(entries))
-    return _parse_toc_from_text_fallback(raw_chunks[:2], client)
+    fallback = _parse_toc_from_text_fallback(raw_chunks[:2], client)
+    if fallback:
+        filtered = filter_toc_to_recipe_entries(fallback, client)
+        if len(filtered) != len(fallback):
+            log.info("EPUB TOC: AI fallback %d → %d recipe entries (AI filter).", len(fallback), len(filtered))
+        return filtered
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -97,13 +139,22 @@ def extract_toc_pdf(pdf_path: str, raw_chunks: List[str], client) -> List[Tuple[
     raw = [(item[1].strip(), int(item[2]) if len(item) > 2 else None) for item in toc if item[1].strip()]
     if len(raw) >= MIN_TOC_ENTRIES:
         log.info("PDF TOC: %d entries from outline.", len(raw))
-        return raw
+        filtered = filter_toc_to_recipe_entries(raw, client)
+        if len(filtered) != len(raw):
+            log.info("PDF TOC: %d → %d recipe entries (AI filter).", len(raw), len(filtered))
+        return filtered
 
     log.info(
         "PDF TOC: outline empty or shallow (%d entries) — using AI on first %d pages.",
         len(raw), TOC_PDF_FRONT_MATTER_PAGES,
     )
-    return _parse_toc_from_text_fallback(raw_chunks[:TOC_PDF_FRONT_MATTER_PAGES], client)
+    fallback = _parse_toc_from_text_fallback(raw_chunks[:TOC_PDF_FRONT_MATTER_PAGES], client)
+    if fallback:
+        filtered = filter_toc_to_recipe_entries(fallback, client)
+        if len(filtered) != len(fallback):
+            log.info("PDF TOC: AI fallback %d → %d recipe entries (AI filter).", len(fallback), len(filtered))
+        return filtered
+    return []
 
 
 def _parse_toc_from_text_fallback(
@@ -147,20 +198,19 @@ Include only substantive entries (skip "Contents", "Index", etc. if they are sta
 
 
 # ---------------------------------------------------------------------------
-# Recipe-name ratio check
+# Recipe-name classification and filter
 # ---------------------------------------------------------------------------
 
-def check_recipe_name_ratio(
+def _classify_toc_recipe_indices(
     entries: List[Tuple[str, Optional[int]]],
     client,
-) -> float:
+) -> Optional[List[int]]:
     """
     Use AI to classify which TOC entries are recipe titles vs section headers.
-    Returns fraction (0.0–1.0) of entries classified as recipe names.
+    Returns 0-based indices of recipe entries, or None on failure.
     """
     if not entries:
-        return 0.0
-
+        return None
     titles = [e[0] for e in entries]
     prompt = """Given this list of table-of-contents entries from a cookbook, identify which ones are
 specific recipe or dish names (e.g. "Chocolate Chip Cookies", "Beef Stew", "Roast Chicken")
@@ -187,11 +237,42 @@ specific dish/recipe names."""
         )
         parsed = response.parsed
         if parsed and parsed.recipe_indices is not None:
-            valid = [i for i in parsed.recipe_indices if 0 <= i < len(entries)]
-            return len(valid) / len(entries) if entries else 0.0
+            return [i for i in parsed.recipe_indices if 0 <= i < len(entries)]
     except Exception as e:
         log.warning("Recipe-name classification failed: %s", e)
-    return 0.0
+    return None
+
+
+def filter_toc_to_recipe_entries(
+    entries: List[Tuple[str, Optional[int]]],
+    client,
+) -> List[Tuple[str, Optional[int]]]:
+    """
+    Filter TOC to entries classified as recipe titles (not section headers).
+    Uses one AI call. On failure returns entries unchanged so recon still runs.
+    """
+    if not entries:
+        return []
+    indices = _classify_toc_recipe_indices(entries, client)
+    if indices is None:
+        return entries
+    return [entries[i] for i in sorted(indices)]
+
+
+def check_recipe_name_ratio(
+    entries: List[Tuple[str, Optional[int]]],
+    client,
+) -> float:
+    """
+    Use AI to classify which TOC entries are recipe titles vs section headers.
+    Returns fraction (0.0–1.0) of entries classified as recipe names.
+    """
+    if not entries:
+        return 0.0
+    indices = _classify_toc_recipe_indices(entries, client)
+    if indices is None:
+        return 0.0
+    return len(indices) / len(entries)
 
 
 # ---------------------------------------------------------------------------

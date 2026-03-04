@@ -28,7 +28,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 
 ### Download and Install
 
-1. Download `RecipeParser-Setup-2.1.0.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
+1. Download `RecipeParser-Setup-2.1.1.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
 2. Run the installer. During setup you will be prompted to enter your Google Gemini API key (get one free at [aistudio.google.com](https://aistudio.google.com/app/apikey)).
 3. The key is written to `%APPDATA%\RecipeParser\.env` and survives upgrades.
 4. A **RecipeParser** shortcut appears in the Start Menu (and optionally on the Desktop).
@@ -374,8 +374,8 @@ Any push / PR
 **Step 1 — Bump the version in exactly two files:**
 
 ```
-pyproject.toml   →  version = "2.1.0"
-installer.iss    →  #define AppVersion "2.1.0"
+pyproject.toml   →  version = "2.1.1"
+installer.iss    →  #define AppVersion "2.1.1"
 ```
 
 > The CI workflow validates these match before building. If they differ it fails immediately with a clear error message.
@@ -384,8 +384,8 @@ installer.iss    →  #define AppVersion "2.1.0"
 
 ```bash
 git add pyproject.toml installer.iss
-git commit -m "Bump version to 2.1.0"
-git tag v2.1.0
+git commit -m "Bump version to 2.1.1"
+git tag v2.1.1
 git push origin master --tags
 ```
 
@@ -394,8 +394,8 @@ git push origin master --tags
 - Builds the PyInstaller bundle on `windows-latest`
 - Validates customtkinter assets are present in the bundle
 - Compiles the Inno Setup installer
-- Creates a GitHub Release named `v2.1.0` with auto-generated release notes
-- Attaches `RecipeParser-Setup-2.1.0.exe` to the release
+- Creates a GitHub Release named `v2.1.1` with auto-generated release notes
+- Attaches `RecipeParser-Setup-2.1.1.exe` to the release
 
 The installer is also saved as a workflow artifact for 30 days — accessible from the Actions tab even if the release step fails.
 

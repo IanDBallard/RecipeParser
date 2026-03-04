@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recipeparser.toc import extract_toc_epub, extract_toc_pdf, run_recon, segment_by_toc
+from recipeparser.toc import extract_toc_epub, extract_toc_pdf, run_recon, segment_by_toc, filter_toc_to_recipe_entries
 
 
 # ---------------------------------------------------------------------------
@@ -13,14 +13,15 @@ from recipeparser.toc import extract_toc_epub, extract_toc_pdf, run_recon, segme
 
 class TestExtractTocEpub:
     def test_epub_programmatic_toc_returns_entries(self, tmp_path):
-        """When book has nav/NCX TOC with enough entries, returns them without AI."""
+        """When book has nav/NCX TOC with enough entries, returns them after AI filter."""
         epub_path = tmp_path / "book.epub"
         epub_path.write_bytes(b"PK\x03\x04")
         section1 = MagicMock(title="Chicken Soup", href="ch1.xhtml")
         section2 = MagicMock(title="Beef Stew", href="ch2.xhtml")
         mock_toc = [(section1, []), (section2, [])]
 
-        with patch("ebooklib.epub.read_epub") as mock_read:
+        with patch("ebooklib.epub.read_epub") as mock_read, \
+             patch("recipeparser.toc.filter_toc_to_recipe_entries", side_effect=lambda entries, _: entries):
             mock_book = MagicMock()
             mock_book.toc = mock_toc
             mock_read.return_value = mock_book
@@ -38,12 +39,71 @@ class TestExtractTocEpub:
         mock_book.toc = []
 
         with patch("ebooklib.epub.read_epub", return_value=mock_book), \
-             patch("recipeparser.toc._parse_toc_from_text_fallback") as mock_fallback:
+             patch("recipeparser.toc._parse_toc_from_text_fallback") as mock_fallback, \
+             patch("recipeparser.toc.filter_toc_to_recipe_entries", side_effect=lambda entries, _: entries):
             mock_fallback.return_value = [("Recipe A", 1), ("Recipe B", 2)]
             result = extract_toc_epub(str(epub_path), ["chunk1", "chunk2"], MagicMock())
 
         mock_fallback.assert_called_once()
         assert result == [("Recipe A", 1), ("Recipe B", 2)]
+
+    def test_epub_nested_toc_leaves_only_vs_all_levels(self, tmp_path):
+        """Nested TOC: leaves-only returns only bottom-level entries; all-levels includes sections."""
+        from recipeparser.toc import _flatten_epub_toc, _flatten_epub_toc_leaves_only
+
+        part = MagicMock(title="Part One: The Dough", href="part1.xhtml")
+        ch1 = MagicMock(title="Egg Pastas", href="ch1.xhtml")
+        r1 = MagicMock(title="Egg Dough", href="r1.xhtml")
+        r2 = MagicMock(title="Ravioli", href="r2.xhtml")
+        ch2 = MagicMock(title="Extruded", href="ch2.xhtml")
+        r3 = MagicMock(title="Spaghetti", href="r3.xhtml")
+        mock_toc = [
+            (part, [
+                (ch1, [(r1, []), (r2, [])]),
+                (ch2, [(r3, [])]),
+            ]),
+        ]
+
+        all_entries = _flatten_epub_toc(mock_toc)
+        leaf_entries = _flatten_epub_toc_leaves_only(mock_toc)
+
+        assert len(all_entries) == 6
+        assert len(leaf_entries) == 3
+        assert [t for t, _ in leaf_entries] == ["Egg Dough", "Ravioli", "Spaghetti"]
+        assert [t for t, _ in all_entries] == [
+            "Part One: The Dough", "Egg Pastas", "Egg Dough", "Ravioli", "Extruded", "Spaghetti",
+        ]
+
+
+# ---------------------------------------------------------------------------
+# filter_toc_to_recipe_entries
+# ---------------------------------------------------------------------------
+
+
+class TestFilterTocToRecipeEntries:
+    def test_filters_to_recipe_indices_only(self):
+        """AI filter returns only entries at indices classified as recipe titles."""
+        entries = [
+            ("Chicken Soup", 1),
+            ("Introduction", None),
+            ("Beef Stew", 5),
+        ]
+        with patch("recipeparser.toc._classify_toc_recipe_indices", return_value=[0, 2]):
+            result = filter_toc_to_recipe_entries(entries, MagicMock())
+        assert result == [("Chicken Soup", 1), ("Beef Stew", 5)]
+
+    def test_returns_entries_unchanged_on_classification_failure(self):
+        """On API failure, return full list so recon still runs."""
+        entries = [("Recipe A", 1), ("Recipe B", 2)]
+        with patch("recipeparser.toc._classify_toc_recipe_indices", return_value=None):
+            result = filter_toc_to_recipe_entries(entries, MagicMock())
+        assert result == entries
+
+    def test_empty_entries_returns_empty(self):
+        with patch("recipeparser.toc._classify_toc_recipe_indices") as mock_classify:
+            result = filter_toc_to_recipe_entries([], MagicMock())
+        assert result == []
+        mock_classify.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -53,12 +113,13 @@ class TestExtractTocEpub:
 
 class TestExtractTocPdf:
     def test_pdf_programmatic_toc_returns_entries(self, tmp_path):
-        """When PDF has outline with enough entries, returns them without AI."""
+        """When PDF has outline with enough entries, returns them after AI filter."""
         pdf_path = tmp_path / "book.pdf"
         pdf_path.write_bytes(b"%PDF-1.4")  # minimal PDF header
         mock_toc = [[1, "Chicken Soup", 10], [1, "Beef Stew", 20]]
 
-        with patch("fitz.open") as mock_open:
+        with patch("fitz.open") as mock_open, \
+             patch("recipeparser.toc.filter_toc_to_recipe_entries", side_effect=lambda entries, _: entries):
             mock_doc = MagicMock()
             mock_doc.get_toc.return_value = mock_toc
             mock_doc.__enter__ = MagicMock(return_value=mock_doc)
