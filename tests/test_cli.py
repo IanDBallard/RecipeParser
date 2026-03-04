@@ -148,3 +148,77 @@ class TestSyncCategoriesCommand:
             with pytest.raises(SystemExit) as exc_info:
                 main()
         assert exc_info.value.code != 0
+
+
+# ---------------------------------------------------------------------------
+# --concurrency and --rpm CLI args
+# ---------------------------------------------------------------------------
+
+class TestConcurrencyRpmArgs:
+
+    def test_concurrency_1_accepted(self, tmp_path):
+        epub = tmp_path / "cookbook.epub"
+        epub.write_bytes(b"PK")
+        with patch("recipeparser.process_epub") as mock_process, \
+             patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "1"]):
+            from recipeparser.__main__ import main
+            main()
+        mock_process.assert_called_once()
+        assert mock_process.call_args.kwargs["concurrency"] == 1
+
+    def test_concurrency_10_accepted(self, tmp_path):
+        epub = tmp_path / "cookbook.epub"
+        epub.write_bytes(b"PK")
+        with patch("recipeparser.process_epub") as mock_process, \
+             patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "10"]):
+            from recipeparser.__main__ import main
+            main()
+        assert mock_process.call_args.kwargs["concurrency"] == 10
+
+    def test_concurrency_0_rejected(self, tmp_path, capsys):
+        epub = tmp_path / "cookbook.epub"
+        epub.write_bytes(b"PK")
+        with patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "0"]):
+            from recipeparser.__main__ import main
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "concurrency" in err.lower() or "1" in err
+
+    def test_concurrency_11_rejected(self, tmp_path, capsys):
+        epub = tmp_path / "cookbook.epub"
+        epub.write_bytes(b"PK")
+        with patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "11"]):
+            from recipeparser.__main__ import main
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "concurrency" in err.lower() or "10" in err
+
+    def test_rpm_passed_to_process_epub(self, tmp_path):
+        epub = tmp_path / "cookbook.epub"
+        epub.write_bytes(b"PK")
+        with patch("recipeparser.process_epub") as mock_process, \
+             patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("sys.argv", ["recipeparser", str(epub), "--rpm", "15"]):
+            from recipeparser.__main__ import main
+            main()
+        mock_process.assert_called_once()
+        assert mock_process.call_args.kwargs["rpm"] == 15
+
+    def test_concurrency_and_rpm_both_passed(self, tmp_path):
+        epub = tmp_path / "cookbook.epub"
+        epub.write_bytes(b"PK")
+        with patch("recipeparser.process_epub") as mock_process, \
+             patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "5", "--rpm", "30"]):
+            from recipeparser.__main__ import main
+            main()
+        assert mock_process.call_args.kwargs["concurrency"] == 5
+        assert mock_process.call_args.kwargs["rpm"] == 30

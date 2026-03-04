@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -21,8 +22,10 @@ from ebooklib import epub
 from recipeparser import categories as cat_module
 from recipeparser import gemini as gem
 from recipeparser.config import (
+    FREE_TIER_DELAY_SECS,
     HERO_INJECT_MAX_STUB_CHARS,
     MAX_CONCURRENT_API_CALLS,
+    MAX_CONCURRENT_CAP,
     SEGMENT_TIMEOUT_SECS,
 )
 from recipeparser.epub import (
@@ -43,19 +46,43 @@ from recipeparser.models import RecipeExtraction
 log = logging.getLogger(__name__)
 
 
+class _RPMRateLimiter:
+    """Thread-safe limiter: at most `rpm` request starts per 60-second window."""
+
+    def __init__(self, rpm: int) -> None:
+        self._rpm = rpm
+        self._lock = threading.Lock()
+        self._starts: List[float] = []
+
+    def wait_then_record_start(self) -> None:
+        while True:
+            now = time.monotonic()
+            with self._lock:
+                cutoff = now - 60.0
+                self._starts = [t for t in self._starts if t > cutoff]
+                if len(self._starts) < self._rpm:
+                    self._starts.append(now)
+                    return
+                sleep_until = min(self._starts) + 60.0 - now
+            delay = max(0.0, sleep_until)
+            if delay > 0:
+                time.sleep(delay)
+
+
 @dataclass
 class PipelineContext:
     """
     Bundles all shared state and dependencies for worker threads.
-
-    Adding a new dependency (e.g. verbose flag, config object) means updating
-    this dataclass rather than every function signature in the call chain.
     """
     client: object
     semaphore: threading.Semaphore
     units: str
     category_tree: list
     paprika_cats: list
+    # Fixed delay between request starts when rpm is not set and concurrency is 1.
+    min_interval_secs: Optional[float] = None
+    # When set, workers call this before each API call to enforce requests-per-minute.
+    rate_limiter: Optional[_RPMRateLimiter] = None
 
 
 def _process_segment(
@@ -64,12 +91,14 @@ def _process_segment(
     ctx: PipelineContext,
 ) -> Tuple[int, List[RecipeExtraction]]:
     """
-    Worker executed in a thread pool.  Acquires the semaphore before touching
-    the Gemini API so concurrent in-flight calls stay within the cap.
-
-    Returns (original_index, recipes) so the caller can restore chapter order.
+    Worker executed in a thread pool.  Acquires the semaphore, then enforces
+    RPM (if set) or min_interval before calling the API.
     """
     with ctx.semaphore:
+        if ctx.rate_limiter:
+            ctx.rate_limiter.wait_then_record_start()
+        elif ctx.min_interval_secs:
+            time.sleep(ctx.min_interval_secs)
         if gem.needs_table_normalisation(chunk):
             log.info(
                 "  Segment %d: Baker's %% table detected — normalising...", index
@@ -91,6 +120,10 @@ def _categorise_one(
     ctx: PipelineContext,
 ) -> Tuple[RecipeExtraction, List[str]]:
     with ctx.semaphore:
+        if ctx.rate_limiter:
+            ctx.rate_limiter.wait_then_record_start()
+        elif ctx.min_interval_secs:
+            time.sleep(ctx.min_interval_secs)
         cats = cat_module.categorise_recipe(
             recipe, ctx.category_tree, ctx.paprika_cats, ctx.client
         )
@@ -116,18 +149,32 @@ def deduplicate_recipes(recipes: List[RecipeExtraction]) -> List[RecipeExtractio
     return unique
 
 
-def process_epub(epub_path: str, output_dir: str, client, units: str = "book") -> str:
+def process_epub(
+    epub_path: str,
+    output_dir: str,
+    client,
+    units: str = "book",
+    concurrency: Optional[int] = None,
+    rpm: Optional[int] = None,
+) -> str:
     """
     Full pipeline: open EPUB → extract images + text → parallel Gemini calls
     → deduplicate → categorise → export to .paprikarecipes.
 
-    Returns the path to the exported archive on success.
-
-    Raises:
-        GeminiConnectionError  — API key invalid or Generative Language API disabled.
-        EpubExtractionError    — EPUB file cannot be opened or parsed.
-        ExportError            — No recipes extracted, or archive write failed.
+    concurrency: max in-flight API calls (default from config), capped at 10.
+    rpm: optional requests-per-minute limit; when set, constrains how many
+    requests can start in any 60s window (e.g. rpm=10 and concurrency=10
+    with all finishing in 10s → sleep 50s before next batch).
     """
+    cap = concurrency if concurrency is not None else MAX_CONCURRENT_API_CALLS
+    cap = min(cap, MAX_CONCURRENT_CAP)
+    if rpm is not None and rpm > 0:
+        rate_limiter: Optional[_RPMRateLimiter] = _RPMRateLimiter(rpm)
+        min_interval = None
+    else:
+        rate_limiter = None
+        min_interval = FREE_TIER_DELAY_SECS if cap == 1 else None
+
     os.makedirs(output_dir, exist_ok=True)
 
     log.info("Verifying Gemini API connectivity...")
@@ -185,22 +232,28 @@ def process_epub(epub_path: str, output_dir: str, client, units: str = "book") -
         len(candidate_chunks),
         units,
     )
+    if rpm is not None and rpm > 0:
+        log.info("Rate limit: %d requests/minute (concurrency cap: %d).", rpm, cap)
+    else:
+        log.info("Concurrency cap: %d (no RPM limit).", cap)
 
     # Build the shared context object once — passed into every worker.
     category_tree = cat_module.load_category_tree()
     paprika_cats = cat_module.build_paprika_categories(category_tree)
     ctx = PipelineContext(
         client=client,
-        semaphore=threading.Semaphore(MAX_CONCURRENT_API_CALLS),
+        semaphore=threading.Semaphore(cap),
         units=units,
         category_tree=category_tree,
         paprika_cats=paprika_cats,
+        min_interval_secs=min_interval,
+        rate_limiter=rate_limiter,
     )
 
     # --- Parallel extraction -----------------------------------------------------
     results: Dict[int, List[RecipeExtraction]] = {}
 
-    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_API_CALLS) as executor:
+    with ThreadPoolExecutor(max_workers=cap) as executor:
         future_to_index: Dict[Future, int] = {
             executor.submit(_process_segment, idx, chunk, ctx): idx
             for idx, chunk in candidate_chunks
@@ -208,7 +261,7 @@ def process_epub(epub_path: str, output_dir: str, client, units: str = "book") -
         log.info(
             "Submitted %d segment(s) to thread pool (concurrency cap: %d).",
             len(future_to_index),
-            MAX_CONCURRENT_API_CALLS,
+            cap,
         )
         for future in as_completed(future_to_index):
             seg_idx = future_to_index[future]
@@ -237,7 +290,7 @@ def process_epub(epub_path: str, output_dir: str, client, units: str = "book") -
     # --- Parallel categorisation -------------------------------------------------
     log.info("Categorising %d recipe(s) in parallel...", len(all_recipes))
 
-    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_API_CALLS) as cat_executor:
+    with ThreadPoolExecutor(max_workers=cap) as cat_executor:
         cat_futures: Dict[Future, RecipeExtraction] = {
             cat_executor.submit(_categorise_one, recipe, ctx): recipe
             for recipe in all_recipes

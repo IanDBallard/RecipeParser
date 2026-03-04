@@ -46,6 +46,8 @@ The application has two tabs:
 | Output Folder | Where the `.paprikarecipes` file will be written (default: `Documents\RecipeParser`) |
 | Units | Unit-of-measure preference for dual-measurement books |
 | Google API Key | Your Gemini key — click **Save** to persist it to `%APPDATA%\RecipeParser\.env` |
+| **Free tier** | Check to limit to 5 requests/min (default on). Uncheck to use the Concurrency setting. |
+| **Concurrency** | Max in-flight API calls (1–10, default 1). Enabled when Free tier is unchecked. |
 | Parse Recipes | Starts the extraction pipeline; progress streams live to the log panel |
 | Open Output Folder | Opens the output folder in Explorer after a successful run |
 
@@ -71,6 +73,8 @@ Use **Windows Settings → Apps → RecipeParser → Uninstall**. Program files 
 
 - Python 3.9 or later
 - A [Google AI Studio](https://aistudio.google.com/) API key with the Generative Language API enabled (free tier is sufficient)
+
+**Gemini free tier:** The free tier allows **5 requests per minute** per model. Use **`--rpm 5`** (or the GUI’s “Free tier” checkbox) to cap request starts per minute; concurrency is capped at **10**. When **`--rpm`** is set, it is the constraining factor: e.g. `--rpm 10 --concurrency 10` with all 10 calls finishing in 10 seconds will sleep 50 seconds before the next batch.
 
 ### Install
 
@@ -104,7 +108,7 @@ The `.paprikarecipes` file is written to `Documents\RecipeParser` by default (or
 
 ```
 usage: recipeparser [-h] [--output DIR] [--units {metric,us,imperial,book}]
-                    [--sync-categories] [epub]
+                    [--sync-categories] [--concurrency N] [--rpm N] [epub]
 
 positional arguments:
   epub                  Path to the .epub file, or a Calibre book folder containing one
@@ -118,6 +122,10 @@ options:
                         book     — preserve whatever the book uses (default)
   --sync-categories     Pull the live category hierarchy from your local Paprika database
                         and save to the user categories file. No EPUB required.
+  --concurrency N       Max in-flight API calls (1–10, default 1). When --rpm is set,
+                        RPM is the constraining factor.
+  --rpm N               Requests per minute limit. When set, no more than N requests
+                        start in any 60s window. Omit for no RPM cap.
 ```
 
 **Examples:**
@@ -137,6 +145,9 @@ recipeparser "Ottolenghi Simple.epub" --output ~/Desktop/paprika_imports
 
 # Sync categories from your live Paprika database (no EPUB needed)
 recipeparser --sync-categories
+
+# Paid tier: higher concurrency and optional RPM cap
+recipeparser "Big Cookbook.epub" --concurrency 10 --rpm 60
 ```
 
 Then in Paprika 3: **File → Import Recipes** and select the `.paprikarecipes` file.
@@ -271,7 +282,9 @@ build_installer.ps1     One-click build pipeline (PowerShell)
 
 ## Build & Release Pipeline
 
-This section documents the complete pipeline for producing and publishing the Windows installer — both the automated GitHub Actions path and the local developer path.
+**GitHub Actions is the source of truth for releases.** The workflow builds on a fixed environment (Python 3.11, pinned deps) so the installer is consistent across all contributors, regardless of local Python version. To publish a release: bump the version, commit, tag, and push — CI does the rest.
+
+The local `build_installer.ps1` script is for development and testing only. It does not create releases.
 
 ---
 
@@ -282,7 +295,7 @@ pyproject.toml          ← single source of truth for the version number
 installer.iss           ← must have matching AppVersion (CI validates this)
 requirements.txt        ← pinned runtime deps (used by CI for reproducible builds)
 recipeparser.spec       ← PyInstaller bundle configuration
-build_installer.ps1     ← local one-click build script (PowerShell)
+build_installer.ps1     ← local build-only script (dev/testing; no release)
 tests/smoke_test_exe.py ← post-build exe smoke test (run by CI, also runnable locally)
 .github/workflows/
   build-installer.yml   ← GitHub Actions CI/CD pipeline
@@ -450,7 +463,9 @@ If any of these checks fail, the build stops before wasting time on Inno Setup.
 
 ---
 
-### Local Build (Developer)
+### Local Build (Developer — build only, no release)
+
+For quick iteration when testing PyInstaller or Inno Setup changes. The output is suitable for local testing only — **it does not publish a release**.
 
 Prerequisites (one-time setup):
 
@@ -461,11 +476,6 @@ Prerequisites (one-time setup):
    pip install -r requirements.txt
    pip install -e . pyinstaller
    ```
-4. *(Optional)* **GitHub CLI** for automatic release upload:
-   ```powershell
-   winget install GitHub.cli
-   gh auth login
-   ```
 
 **Run the build:**
 
@@ -473,18 +483,7 @@ Prerequisites (one-time setup):
 .\build_installer.ps1
 ```
 
-The script:
-1. Checks for `tkinter`, `customtkinter`, `pyinstaller`, and `ISCC.exe` — exits with a clear error if any are missing
-2. Cleans `dist\`, `build\`, and `output\`
-3. Runs `pyinstaller recipeparser.spec`
-4. Runs `ISCC.exe installer.iss` → writes `output\RecipeParser-Setup-{version}.exe`
-5. Creates a GitHub Release and uploads the installer (skipped if GitHub CLI is not available)
-
-To build without creating a release:
-
-```powershell
-.\build_installer.ps1 -SkipRelease
-```
+The script cleans `dist\`, `build\`, and `output\`, runs PyInstaller, then compiles the installer with Inno Setup. Output: `output\RecipeParser-Setup-{version}.exe`. No release is created — for that, push a version tag and let GitHub Actions run.
 
 ---
 

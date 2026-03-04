@@ -42,6 +42,18 @@ UNITS_LABELS = {
     "imperial": "Imperial (oz / lb)",
 }
 
+
+def _parse_run_config(free_tier: bool, concurrency_str: str) -> tuple[Optional[int], int]:
+    """
+    Compute (rpm_val, concurrency_val) for the pipeline from Parse frame state.
+    Free tier → rpm=5, concurrency=1; otherwise no RPM cap and concurrency clamped 1–10.
+    """
+    if free_tier:
+        return (5, 1)
+    concurrency_val = min(10, max(1, int(concurrency_str)))
+    return (None, concurrency_val)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Logging handler that feeds a queue consumed by the GUI log panel
 # ──────────────────────────────────────────────────────────────────────────────
@@ -548,6 +560,27 @@ class ParseFrame(ctk.CTkFrame):
         self._label_to_unit = {v: k for k, v in UNITS_LABELS.items()}
         units_menu.set(UNITS_LABELS["book"])
 
+        ctk.CTkLabel(inputs, text="API rate limit", width=90, anchor="w").grid(row=3, column=0, sticky="w", pady=4)
+        self._free_tier_var = ctk.BooleanVar(value=True)
+        free_tier_cb = ctk.CTkCheckBox(
+            inputs, text="Free tier (5 req/min)", variable=self._free_tier_var,
+            command=self._on_free_tier_change,
+        )
+        free_tier_cb.grid(row=3, column=1, sticky="w")
+
+        ctk.CTkLabel(inputs, text="Concurrency", width=90, anchor="w").grid(row=4, column=0, sticky="w", pady=4)
+        self._concurrency_var = ctk.StringVar(value="1")
+        self._concurrency_spin = ctk.CTkOptionMenu(
+            inputs, variable=self._concurrency_var,
+            values=[str(i) for i in range(1, 11)],
+            width=80,
+        )
+        self._concurrency_spin.grid(row=4, column=1, sticky="w")
+        self._concurrency_spin.configure(state="disabled")
+        ctk.CTkLabel(inputs, text="(max in-flight)", font=ctk.CTkFont(size=11), text_color=("gray50", "gray50")).grid(
+            row=4, column=2, sticky="w", padx=(4, 0)
+        )
+
         # ── Log panel ──────────────────────────────────────────────────────────
         ctk.CTkLabel(self, text="Progress", font=ctk.CTkFont(weight="bold"), anchor="w").grid(
             row=3, column=0, sticky="w", padx=16, pady=(8, 2)
@@ -587,6 +620,13 @@ class ParseFrame(ctk.CTkFrame):
 
     def _on_units_change(self, label: str):
         self._units_var.set(self._label_to_unit[label])
+
+    def _on_free_tier_change(self):
+        if self._free_tier_var.get():
+            self._concurrency_var.set("1")
+            self._concurrency_spin.configure(state="disabled")
+        else:
+            self._concurrency_spin.configure(state="normal")
 
     def _browse_epub(self):
         path = filedialog.askopenfilename(
@@ -649,6 +689,9 @@ class ParseFrame(ctk.CTkFrame):
         root_log.setLevel(logging.INFO)
 
         units = self._label_to_unit.get(self._units_var.get(), self._units_var.get())
+        rpm_val, concurrency_val = _parse_run_config(
+            self._free_tier_var.get(), self._concurrency_var.get()
+        )
 
         def _run():
             result_path = None
@@ -657,7 +700,10 @@ class ParseFrame(ctk.CTkFrame):
                 from google import genai
                 from recipeparser.pipeline import process_epub as _pipeline
                 client = genai.Client(api_key=api_key)
-                result_path = _pipeline(epub_path, output, client, units=units)
+                result_path = _pipeline(
+                    epub_path, output, client,
+                    units=units, concurrency=concurrency_val, rpm=rpm_val,
+                )
             except Exception as exc:
                 self._log_queue.put(f"ERROR: {exc}")
             finally:

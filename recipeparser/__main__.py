@@ -147,6 +147,26 @@ def main():
             "and save to the user categories file. No EPUB argument is needed."
         ),
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Max in-flight Gemini API calls (1–10, default 1). "
+            "When --rpm is set, RPM is the constraining factor."
+        ),
+    )
+    parser.add_argument(
+        "--rpm",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Requests per minute limit. When set, no more than N requests start "
+            "in any 60s window. Omit for no RPM cap."
+        ),
+    )
     args = parser.parse_args()
 
     if args.sync_categories:
@@ -156,13 +176,26 @@ def main():
     if not args.epub:
         parser.error("the following arguments are required: epub")
 
+    from recipeparser.config import MAX_CONCURRENT_CAP
+    concurrency = args.concurrency
+    if concurrency is not None and (concurrency < 1 or concurrency > MAX_CONCURRENT_CAP):
+        parser.error(
+            f"--concurrency must be between 1 and {MAX_CONCURRENT_CAP} (got {concurrency})"
+        )
+
     epub_path = _resolve_epub(args.epub)
 
     from recipeparser import process_epub
     from recipeparser.exceptions import RecipeParserError
 
     try:
-        result = process_epub(epub_path, args.output, units=args.units)
+        result = process_epub(
+            epub_path,
+            args.output,
+            units=args.units,
+            concurrency=args.concurrency,
+            rpm=args.rpm,
+        )
         print(f"Export written to: {result}")
     except RecipeParserError as e:
         print(f"Error: {e}", file=sys.stderr)

@@ -25,14 +25,14 @@ def process_epub(
     epub_path: str,
     output_dir: str | None = None,
     units: str = "book",
+    concurrency: int | None = None,
+    rpm: int | None = None,
 ):
     """Convenience wrapper that uses the module-level Gemini client.
 
-    ``units`` controls how dual-measurement ingredient lines are handled:
-      "metric"   — keep only gram/ml values
-      "us"       — keep only US cup/tbsp values
-      "imperial" — keep only oz/lb values
-      "book"     — preserve whatever the book uses (default)
+    ``units``: "metric" | "us" | "imperial" | "book" (default).
+    ``concurrency``: max in-flight API calls (1–10, default 1).
+    ``rpm``: optional requests-per-minute limit; when set, constrains starts per 60s window.
     """
     if client is None:
         from recipeparser.exceptions import ConfigurationError
@@ -43,4 +43,7 @@ def process_epub(
 
     if output_dir is None:
         output_dir = str(get_default_output_dir())
-    return _run(epub_path, output_dir, client, units=units)
+    return _run(
+        epub_path, output_dir, client,
+        units=units, concurrency=concurrency, rpm=rpm,
+    )

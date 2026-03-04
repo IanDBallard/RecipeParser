@@ -41,9 +41,18 @@ BACKOFF_MAX_SECS: float = 120.0
 # Pipeline concurrency
 # ---------------------------------------------------------------------------
 
-# Maximum Gemini API calls in-flight at once.
-# Gemini free-tier: ~5; increase for paid tiers via --concurrency CLI flag.
-MAX_CONCURRENT_API_CALLS: int = 5
+# Maximum Gemini API calls in-flight at once (default when not overridden by CLI/GUI).
+# Gemini free tier = 5 requests per minute; use 1 and spacing (below) to stay under.
+MAX_CONCURRENT_API_CALLS: int = 1
+
+# Hard cap on concurrency (--concurrency and GUI are clamped to this).
+# Google docs cite rate limits (RPM) rather than a concurrency number; 10 is a
+# conservative per-key ceiling to stay within typical RPM.
+MAX_CONCURRENT_CAP: int = 10
+
+# When rpm is not set and concurrency is 1, wait this long between requests
+# to stay under free-tier 5 requests/minute.
+FREE_TIER_DELAY_SECS: float = 12.0
 
 # Wall-clock seconds to wait for a single segment/categorisation future.
 SEGMENT_TIMEOUT_SECS: int = 300
