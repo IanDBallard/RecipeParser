@@ -4,6 +4,7 @@ Central configuration constants for the recipeparser package.
 All tuneable values live here so that CLI arguments, environment variable
 overrides, or future config-file loading only need to touch one place.
 """
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # EPUB / chunking
@@ -56,3 +57,32 @@ FREE_TIER_DELAY_SECS: float = 12.0
 
 # Wall-clock seconds to wait for a single segment/categorisation future.
 SEGMENT_TIMEOUT_SECS: int = 300
+
+# ---------------------------------------------------------------------------
+# TOC extraction and chunking (Phase 2)
+# ---------------------------------------------------------------------------
+
+# Fewer than this = treat as no TOC, fall back to raw chunks.
+MIN_TOC_ENTRIES: int = 2
+
+# Fraction of TOC entries that must be classified as recipe names (not section headers).
+# Below this = fall back to raw chunking.
+MIN_TOC_RECIPE_RATIO: float = 0.5
+
+# Fraction of TOC titles that must be found in text to use TOC-driven chunking.
+# Below this = fall back to raw chunks.
+MIN_TOC_MATCH_RATIO: float = 0.3
+
+# Number of front-matter pages to scan for AI TOC parsing when PDF outline is empty.
+# Many cookbooks place the TOC on pages 5-8; scanning 10 pages covers typical layouts.
+TOC_PDF_FRONT_MATTER_PAGES: int = 10
+
+# ---------------------------------------------------------------------------
+# PDF pre-flight (Phase 1)
+# ---------------------------------------------------------------------------
+
+# Below this average chars per page (over first N pages), PDF is treated as no text layer / scan.
+PDF_PREFLIGHT_MIN_CHARS_PER_PAGE: int = 100
+PDF_PREFLIGHT_SAMPLE_PAGES: int = 5
+PDF_PREFLIGHT_MIN_PAGES: int = 1  # Reject if 0 pages; warn if below this (e.g. pamphlet).
+PDF_PREFLIGHT_MAX_PAGES: Optional[int] = 2000  # Optional cap to avoid runaway cost; None = no cap.

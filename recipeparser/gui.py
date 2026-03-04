@@ -537,7 +537,7 @@ class ParseFrame(ctk.CTkFrame):
         inputs.grid(row=2, column=0, sticky="ew", **pad)
         inputs.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(inputs, text="EPUB File", width=90, anchor="w").grid(row=0, column=0, sticky="w", pady=4)
+        ctk.CTkLabel(inputs, text="Cookbook (EPUB or PDF)", width=90, anchor="w").grid(row=0, column=0, sticky="w", pady=4)
         self._epub_var = ctk.StringVar()
         ctk.CTkEntry(inputs, textvariable=self._epub_var).grid(row=0, column=1, sticky="ew", padx=(0, 8))
         ctk.CTkButton(inputs, text="Browse…", width=90, command=self._browse_epub).grid(row=0, column=2)
@@ -630,8 +630,8 @@ class ParseFrame(ctk.CTkFrame):
 
     def _browse_epub(self):
         path = filedialog.askopenfilename(
-            title="Select EPUB file or Calibre folder",
-            filetypes=[("EPUB files", "*.epub"), ("All files", "*.*")],
+            title="Select cookbook (EPUB or PDF)",
+            filetypes=[("EPUB/PDF", "*.epub;*.pdf"), ("All files", "*.*")],
         )
         if path:
             self._epub_var.set(path)
@@ -658,18 +658,18 @@ class ParseFrame(ctk.CTkFrame):
         api_key = self._api_frame.get_key()
 
         if not epub_raw:
-            messagebox.showwarning("Missing Input", "Please select an EPUB file.")
+            messagebox.showwarning("Missing Input", "Please select a cookbook file (EPUB or PDF).")
             return
         if not api_key:
             messagebox.showwarning("API Key", "Please enter your Google API key.")
             return
 
-        # Resolve EPUB path (same logic as CLI)
-        from recipeparser.__main__ import _resolve_epub
+        # Resolve path (same logic as CLI)
+        from recipeparser.__main__ import _resolve_book
         try:
-            epub_path = _resolve_epub(epub_raw)
+            book_path = _resolve_book(epub_raw)
         except SystemExit:
-            messagebox.showerror("Invalid path", f"Could not find an EPUB at:\n{epub_raw}")
+            messagebox.showerror("Invalid path", f"Could not find an EPUB or PDF at:\n{epub_raw}")
             return
 
         Path(output).mkdir(parents=True, exist_ok=True)
@@ -701,7 +701,7 @@ class ParseFrame(ctk.CTkFrame):
                 from recipeparser.pipeline import process_epub as _pipeline
                 client = genai.Client(api_key=api_key)
                 result_path = _pipeline(
-                    epub_path, output, client,
+                    book_path, output, client,
                     units=units, concurrency=concurrency_val, rpm=rpm_val,
                 )
             except Exception as exc:

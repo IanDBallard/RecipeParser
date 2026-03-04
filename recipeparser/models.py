@@ -64,3 +64,29 @@ class RecipeList(BaseModel):
     recipes: List[RecipeExtraction] = Field(
         description="A list of all distinct recipes found in the text chunk."
     )
+
+
+class TocEntry(BaseModel):
+    """Single TOC entry: recipe title and optional page/section reference."""
+
+    title: str = Field(description="The recipe or section title.")
+    page: Optional[int] = Field(
+        default=None,
+        description="Page number (1-based) if known; null otherwise.",
+    )
+
+
+class TocList(BaseModel):
+    """Parsed table of contents from a cookbook."""
+
+    entries: List[TocEntry] = Field(
+        description="Ordered list of TOC entries (recipe titles and optional page numbers)."
+    )
+
+
+class TocRecipeClassification(BaseModel):
+    """Result of classifying which TOC entries are recipe titles vs section headers."""
+
+    recipe_indices: List[int] = Field(
+        description="0-based indices of TOC entries that are specific recipe/dish names, not section headers."
+    )

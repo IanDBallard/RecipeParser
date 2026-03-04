@@ -1,10 +1,11 @@
 """
-recipeparser — extract recipes from EPUB cookbooks and export to Paprika 3.
+recipeparser — extract recipes from EPUB or PDF cookbooks and export to Paprika 3.
 
 Public API
 ----------
     from recipeparser import process_epub
     process_epub("path/to/book.epub", "./output")
+    process_epub("path/to/cookbook.pdf", "./output")
 """
 import os
 
@@ -30,7 +31,7 @@ def process_epub(
 ):
     """Convenience wrapper that uses the module-level Gemini client.
 
-    ``units``: "metric" | "us" | "imperial" | "book" (default).
+    Accepts path to an EPUB or PDF cookbook. ``units``: "metric" | "us" | "imperial" | "book" (default).
     ``concurrency``: max in-flight API calls (1–10, default 1).
     ``rpm``: optional requests-per-minute limit; when set, constrains starts per 60s window.
     """

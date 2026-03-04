@@ -1,6 +1,6 @@
 # RecipeParser
 
-A production-grade tool that extracts recipes from EPUB cookbooks and exports them as a `.paprikarecipes` archive ready to import into [Paprika 3](https://www.paprikaapp.com/).
+A production-grade tool that extracts recipes from **EPUB or PDF** cookbooks and exports them as a `.paprikarecipes` archive ready to import into [Paprika 3](https://www.paprikaapp.com/).
 
 Available in two forms:
 - **Windows GUI installer** — a self-contained `RecipeParser-Setup-x.x.x.exe` that requires no Python installation
@@ -18,7 +18,8 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 - **Built-in category editor** — a two-panel GUI editor lets you add, rename, reorder, and delete categories without touching YAML by hand
 - **Unit-of-measure preference** — for dual-measurement books (e.g. `2 cups / 250g flour`), instructs the AI to keep only your preferred system (metric, US, or imperial)
 - **Parallel processing** — extraction and categorisation both run concurrently with a configurable concurrency cap, with automatic exponential back-off on rate limits
-- **Handles diverse EPUB structures** — prose recipes, ingredient lists, baker's percentage tables, multi-recipe chapters, and text-only historic cookbooks all work
+- **Handles diverse EPUB and PDF structures** — prose recipes, ingredient lists, baker's percentage tables, multi-recipe chapters, and text-only historic cookbooks all work; PDFs are supported with pre-flight checks and page-based extraction
+- **TOC-based reconciliation** — extracts table of contents (EPUB nav/NCX or PDF outline) when present, compares it to extracted recipes, and logs any missed or extra recipes; extraction always uses page/document chunking for best results
 - **Safe and robust** — per-task timeouts, typed custom exceptions, graceful degradation (a failed segment is skipped, not fatal), and image-less recipes export cleanly without crashing Paprika
 
 ---
@@ -42,7 +43,7 @@ The application has two tabs:
 
 | Control | Purpose |
 |---|---|
-| EPUB File | Browse to a `.epub` file or a Calibre book folder (the `.epub` is auto-detected) |
+| Cookbook (EPUB or PDF) | Browse to an `.epub` or `.pdf` file, or a folder containing one |
 | Output Folder | Where the `.paprikarecipes` file will be written (default: `Documents\RecipeParser`) |
 | Units | Unit-of-measure preference for dual-measurement books |
 | Google API Key | Your Gemini key — click **Save** to persist it to `%APPDATA%\RecipeParser\.env` |
@@ -106,9 +107,11 @@ git config core.hooksPath .githooks
 
 ```bash
 recipeparser path/to/cookbook.epub
+# or
+recipeparser path/to/cookbook.pdf
 ```
 
-The `.paprikarecipes` file is written to `Documents\RecipeParser` by default (or `%APPDATA%\RecipeParser\Exports` if Documents is unavailable). You can also pass a Calibre book folder — the single `.epub` inside it is detected automatically.
+The `.paprikarecipes` file is written to `Documents\RecipeParser` by default (or `%APPDATA%\RecipeParser\Exports` if Documents is unavailable). You can pass a path to an `.epub` or `.pdf` file, or a directory containing exactly one `.epub` or one `.pdf` (e.g. a Calibre book folder).
 
 **Options:**
 
@@ -117,7 +120,7 @@ usage: recipeparser [-h] [--output DIR] [--units {metric,us,imperial,book}]
                     [--sync-categories] [--concurrency N] [--rpm N] [epub]
 
 positional arguments:
-  epub                  Path to the .epub file, or a Calibre book folder containing one
+  epub                  Path to an .epub or .pdf cookbook, or a directory containing one
 
 options:
   --output DIR          Directory to write the .paprikarecipes file

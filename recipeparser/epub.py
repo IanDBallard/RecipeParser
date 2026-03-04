@@ -1,7 +1,7 @@
 """EPUB reading, image extraction, and text chunking — no AI dependency."""
 import logging
 import os
-from typing import List
+from typing import List, Tuple
 
 import ebooklib
 from ebooklib import epub
@@ -10,6 +10,24 @@ from bs4 import BeautifulSoup
 from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
 
 log = logging.getLogger(__name__)
+
+
+def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, set, List[str]]:
+    """
+    Load an EPUB and return the standard book-loader tuple.
+
+    Returns:
+        (book_source, image_dir, qualifying_images, raw_chunks)
+    """
+    from recipeparser.exceptions import EpubExtractionError
+    try:
+        book = epub.read_epub(epub_path)
+    except Exception as e:
+        raise EpubExtractionError(f"Failed to open EPUB '{epub_path}': {e}") from e
+    book_source = get_book_source(book)
+    image_dir, qualifying_images = extract_all_images(book, output_dir)
+    raw_chunks = extract_chapters_with_image_markers(book, qualifying_images)
+    return book_source, image_dir, qualifying_images, raw_chunks
 
 
 def extract_all_images(book: epub.EpubBook, output_dir: str) -> tuple:

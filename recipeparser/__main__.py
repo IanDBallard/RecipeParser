@@ -22,18 +22,17 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def _resolve_epub(raw: str) -> str:
+def _resolve_book(raw: str) -> str:
     """
-    Accept either a direct path to an .epub file or a Calibre book folder
-    (which contains exactly one .epub file).  Returns the resolved .epub path
-    as a string, or raises SystemExit with a clear message if nothing is found.
+    Accept a path to an .epub or .pdf file, or a directory containing
+    exactly one .epub or exactly one .pdf. Returns the resolved file path.
     """
     p = Path(raw)
 
     if p.is_file():
-        if p.suffix.lower() != ".epub":
+        if p.suffix.lower() not in (".epub", ".pdf"):
             print(
-                f"Error: '{p}' is not an .epub file.",
+                f"Error: '{p}' is not an EPUB or PDF file.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -41,26 +40,31 @@ def _resolve_epub(raw: str) -> str:
 
     if p.is_dir():
         epubs = list(p.glob("*.epub"))
-        if len(epubs) == 1:
-            logging.getLogger(__name__).info(
-                "Directory provided — using '%s'.", epubs[0].name
-            )
+        pdfs = list(p.glob("*.pdf"))
+        if len(epubs) == 1 and len(pdfs) == 0:
+            log.info("Directory provided — using '%s'.", epubs[0].name)
             return str(epubs[0])
-        if len(epubs) == 0:
+        if len(pdfs) == 1 and len(epubs) == 0:
+            log.info("Directory provided — using '%s'.", pdfs[0].name)
+            return str(pdfs[0])
+        if len(epubs) > 1 or len(pdfs) > 1 or (len(epubs) == 1 and len(pdfs) == 1):
             print(
-                f"Error: No .epub file found in directory '{p}'.",
+                "Error: Specify one file (directory has multiple .epub/.pdf).",
                 file=sys.stderr,
             )
-        else:
-            names = ", ".join(e.name for e in epubs)
-            print(
-                f"Error: Multiple .epub files found in '{p}' — please specify one:\n  {names}",
-                file=sys.stderr,
-            )
+            sys.exit(1)
+        print(
+            f"Error: No .epub or .pdf file found in directory '{p}'.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print(f"Error: Path not found: '{p}'", file=sys.stderr)
     sys.exit(1)
+
+
+# Backward compatibility for callers (e.g. tests) that use the old name
+_resolve_epub = _resolve_book
 
 
 def _cmd_sync_categories() -> None:
@@ -120,7 +124,7 @@ def main():
     parser.add_argument(
         "epub",
         nargs="?",
-        help="Path to the .epub file, or to a Calibre book folder containing one.",
+        help="Path to an .epub or .pdf cookbook, or a directory containing one.",
     )
     parser.add_argument(
         "--output",
@@ -174,7 +178,7 @@ def main():
         return
 
     if not args.epub:
-        parser.error("the following arguments are required: epub")
+        parser.error("the following arguments are required: epub (path to .epub or .pdf)")
 
     from recipeparser.config import MAX_CONCURRENT_CAP
     concurrency = args.concurrency
@@ -183,14 +187,14 @@ def main():
             f"--concurrency must be between 1 and {MAX_CONCURRENT_CAP} (got {concurrency})"
         )
 
-    epub_path = _resolve_epub(args.epub)
+    book_path = _resolve_book(args.epub)
 
     from recipeparser import process_epub
     from recipeparser.exceptions import RecipeParserError
 
     try:
         result = process_epub(
-            epub_path,
+            book_path,
             args.output,
             units=args.units,
             concurrency=args.concurrency,

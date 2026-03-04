@@ -1,5 +1,5 @@
 """
-Top-level orchestration: open EPUB → extract → categorise → export.
+Top-level orchestration: open book (EPUB or PDF) → extract → categorise → export.
 
 Segment extraction and categorisation both run in parallel using a
 ThreadPoolExecutor capped by a semaphore so we never exceed Gemini's
@@ -15,9 +15,8 @@ import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from enum import Enum
 from typing import Dict, List, Optional, Tuple
-
-from ebooklib import epub
 
 from recipeparser import categories as cat_module
 from recipeparser import gemini as gem
@@ -26,24 +25,63 @@ from recipeparser.config import (
     HERO_INJECT_MAX_STUB_CHARS,
     MAX_CONCURRENT_API_CALLS,
     MAX_CONCURRENT_CAP,
+    MIN_TOC_ENTRIES,
     SEGMENT_TIMEOUT_SECS,
 )
-from recipeparser.epub import (
-    extract_all_images,
-    extract_chapters_with_image_markers,
-    get_book_source,
-    is_recipe_candidate,
-    split_large_chunk,
-)
+from recipeparser.epub import is_recipe_candidate, load_epub, split_large_chunk
+from recipeparser.pdf import load_pdf
 from recipeparser.exceptions import (
     EpubExtractionError,
     ExportError,
     GeminiConnectionError,
+    PdfExtractionError,
 )
 from recipeparser.export import create_paprika_export
 from recipeparser.models import RecipeExtraction
+from recipeparser.toc import extract_toc_epub, extract_toc_pdf, run_recon
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# State enum class (design §5.9): current pipeline state for logging and GUI
+# ---------------------------------------------------------------------------
+
+class Stage(Enum):
+    LOAD = "load"
+    PREFLIGHT = "preflight"
+    TOC_EXTRACT = "toc_extract"
+    CHUNK_TOC = "chunk_toc"
+    CHUNK_RAW = "chunk_raw"
+    EXTRACT = "extract"
+    RECON = "recon"
+    EXPORT = "export"
+
+
+class ChunkingPath(Enum):
+    TOC_DRIVEN = "toc_driven"
+    RAW_CHUNKS = "raw_chunks"
+
+
+class ReconStatus(Enum):
+    SKIPPED = "skipped"
+    PENDING = "pending"
+    DONE = "done"
+
+
+class PreflightOutcome(Enum):
+    PASS = "pass"
+    FAIL = "fail"
+    WARN = "warn"
+
+
+@dataclass
+class PipelineState:
+    """Current state variables; set at each pipeline step."""
+    stage: Stage = Stage.LOAD
+    chunking_path: Optional[ChunkingPath] = None
+    recon_status: ReconStatus = ReconStatus.SKIPPED
+    preflight_outcome: Optional[PreflightOutcome] = None
 
 
 class _RPMRateLimiter:
@@ -184,20 +222,53 @@ def process_epub(
             "Generative Language API and retry."
         )
 
-    log.info("Opening EPUB: %s", epub_path)
-    try:
-        book = epub.read_epub(epub_path)
-    except Exception as e:
-        raise EpubExtractionError(f"Failed to open EPUB '{epub_path}': {e}") from e
+    pipeline_state = PipelineState()
+    book_path = epub_path  # param name kept for backward compatibility
+    ext = os.path.splitext(book_path)[1].lower()
 
-    book_source = get_book_source(book)
+    pipeline_state.stage = Stage.LOAD
+    log.info("Opening book: %s", book_path)
+    try:
+        if ext == ".epub":
+            book_source, image_dir, qualifying_images, raw_chunks = load_epub(book_path, output_dir)
+            pipeline_state.chunking_path = ChunkingPath.RAW_CHUNKS
+            pipeline_state.recon_status = ReconStatus.SKIPPED
+        elif ext == ".pdf":
+            pipeline_state.stage = Stage.PREFLIGHT
+            book_source, image_dir, qualifying_images, raw_chunks = load_pdf(book_path, output_dir)
+            pipeline_state.preflight_outcome = PreflightOutcome.PASS
+            pipeline_state.chunking_path = ChunkingPath.RAW_CHUNKS
+            pipeline_state.recon_status = ReconStatus.SKIPPED
+        else:
+            raise EpubExtractionError(
+                f"Unsupported format: '{ext}'. Use .epub or .pdf."
+            )
+    except (EpubExtractionError, PdfExtractionError):
+        raise
+    except Exception as e:
+        if ext == ".pdf":
+            raise PdfExtractionError(f"Failed to load PDF '{book_path}': {e}") from e
+        raise EpubExtractionError(f"Failed to load EPUB '{book_path}': {e}") from e
+
     log.info("Book source: %s", book_source)
 
-    log.info("Extracting images to disk...")
-    image_dir, qualifying_images = extract_all_images(book, output_dir)
+    # --- TOC extraction (for recon only; chunking stays page/document-based) ----
+    toc_entries: List[Tuple[str, Optional[int]]] = []
+    pipeline_state.stage = Stage.TOC_EXTRACT
 
-    log.info("Extracting text with image breadcrumbs...")
-    raw_chunks = extract_chapters_with_image_markers(book, qualifying_images)
+    if ext == ".epub":
+        toc_entries = extract_toc_epub(book_path, raw_chunks, client)
+    else:
+        toc_entries = extract_toc_pdf(book_path, raw_chunks, client)
+
+    if len(toc_entries) >= MIN_TOC_ENTRIES:
+        pipeline_state.recon_status = ReconStatus.PENDING
+        log.info("TOC extracted: %d entries (for recon; using raw chunking).", len(toc_entries))
+    else:
+        pipeline_state.recon_status = ReconStatus.SKIPPED
+
+    pipeline_state.stage = Stage.CHUNK_RAW
+    pipeline_state.chunking_path = ChunkingPath.RAW_CHUNKS
 
     chunks: List[str] = []
     for raw in raw_chunks:
@@ -226,6 +297,7 @@ def process_epub(
     candidate_chunks = [
         (i, chunk) for i, chunk in enumerate(enriched) if is_recipe_candidate(chunk)
     ]
+    pipeline_state.stage = Stage.EXTRACT
     log.info(
         "Total segments: %d  |  Recipe candidates: %d  |  Units preference: %s",
         len(enriched),
@@ -283,9 +355,32 @@ def process_epub(
     for idx in sorted(results):
         all_recipes.extend(results[idx])
 
-    log.info("Total recipes before deduplication: %d", len(all_recipes))
+    num_before_dedup = len(all_recipes)
+    log.info("Total recipes before deduplication: %d", num_before_dedup)
     all_recipes = deduplicate_recipes(all_recipes)
     log.info("Total recipes after deduplication:  %d", len(all_recipes))
+
+    recon_toc = recon_extracted = recon_matched = recon_missing = recon_extra = 0
+
+    # --- Recon (when TOC was extracted) ------------------------------------------
+    if toc_entries and pipeline_state.recon_status == ReconStatus.PENDING:
+        pipeline_state.stage = Stage.RECON
+        extracted_names = [r.name for r in all_recipes]
+        matched, missing, extra = run_recon(toc_entries, extracted_names)
+        recon_toc = len(toc_entries)
+        recon_extracted = len(extracted_names)
+        recon_matched = len(matched)
+        recon_missing = len(missing)
+        recon_extra = len(extra)
+        pipeline_state.recon_status = ReconStatus.DONE
+        log.info(
+            "Recon: TOC %d  |  Extracted %d  |  Matched %d  |  Missing %d  |  Extra %d",
+            len(toc_entries), len(extracted_names), len(matched), len(missing), len(extra),
+        )
+        if missing:
+            log.info("  Missing from extraction: %s", missing[:15])
+        if extra:
+            log.info("  Extra (not in TOC): %s", extra[:10])
 
     # --- Parallel categorisation -------------------------------------------------
     log.info("Categorising %d recipe(s) in parallel...", len(all_recipes))
@@ -321,8 +416,9 @@ def process_epub(
             log.info("  ... and %d more.", len(missing) - 10)
 
     # --- Export ------------------------------------------------------------------
-    epub_stem = os.path.splitext(os.path.basename(epub_path))[0]
-    export_filename = f"{epub_stem}.paprikarecipes"
+    pipeline_state.stage = Stage.EXPORT
+    book_stem = os.path.splitext(os.path.basename(book_path))[0]
+    export_filename = f"{book_stem}.paprikarecipes"
 
     success = create_paprika_export(
         all_recipes, output_dir, image_dir, export_filename, book_source
@@ -338,8 +434,29 @@ def process_epub(
             image_dir,
         )
         raise ExportError(
-            f"No recipes were exported from '{epub_path}'. "
+            f"No recipes were exported from '{book_path}'. "
             "Check the log for extraction details."
         )
 
-    return os.path.join(output_dir, export_filename)
+    export_path = os.path.join(output_dir, export_filename)
+
+    # --- Run summary -------------------------------------------------------------
+    fmt = ext.upper().lstrip(".")
+    toc_line = f"{len(toc_entries)} entries" if toc_entries else "none"
+    log.info("")
+    log.info("--- Run summary ---")
+    log.info("Load:    %s (%s)", book_source, fmt)
+    log.info("TOC:     %s", toc_line)
+    log.info("Chunk:   %d segments, %d recipe candidates", len(enriched), len(candidate_chunks))
+    log.info("Extract: %d recipes → %d after deduplication", num_before_dedup, len(all_recipes))
+    if recon_toc:
+        log.info(
+            "Recon:   TOC %d | Extracted %d | Matched %d | Missing %d | Extra %d",
+            recon_toc, recon_extracted, recon_matched, recon_missing, recon_extra,
+        )
+    log.info(
+        "Export:  %d recipes → %s",
+        len(all_recipes), export_path,
+    )
+
+    return export_path

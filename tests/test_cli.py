@@ -34,11 +34,16 @@ class TestResolveEpub:
         with pytest.raises(SystemExit):
             _resolve_epub(str(tmp_path))
 
-    def test_non_epub_file_exits(self, tmp_path):
-        f = tmp_path / "cookbook.pdf"
-        f.write_bytes(b"%PDF")
+    def test_non_epub_pdf_file_exits(self, tmp_path):
+        f = tmp_path / "cookbook.txt"
+        f.write_text("hello")
         with pytest.raises(SystemExit):
             _resolve_epub(str(f))
+
+    def test_direct_pdf_file_returned(self, tmp_path):
+        pdf = tmp_path / "cookbook.pdf"
+        pdf.write_bytes(b"%PDF")
+        assert _resolve_epub(str(pdf)) == str(pdf)
 
     def test_nonexistent_path_exits(self, tmp_path):
         with pytest.raises(SystemExit):

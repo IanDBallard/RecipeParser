@@ -22,5 +22,9 @@ class EpubExtractionError(RecipeParserError):
     """Raised when the EPUB file cannot be opened or parsed."""
 
 
+class PdfExtractionError(RecipeParserError):
+    """Raised when the PDF cannot be opened, parsed, or fails pre-flight (e.g. no text layer, password-protected)."""
+
+
 class ExportError(RecipeParserError):
     """Raised when the Paprika export bundle cannot be written."""

@@ -134,12 +134,9 @@ class TestProcessEpubConfig:
         """process_epub(concurrency=20) uses Semaphore(MAX_CONCURRENT_CAP) for the pipeline cap."""
         epub_path = tmp_path / "tiny.epub"
         epub_path.write_bytes(b"PK\x03\x04")  # minimal zip
-        with patch("recipeparser.pipeline.epub.read_epub") as mock_read_epub:
-            mock_book = MagicMock()
-            mock_read_epub.return_value = mock_book
-            with patch("recipeparser.pipeline.extract_all_images", return_value=(tmp_path, [])), \
-                 patch("recipeparser.pipeline.extract_chapters_with_image_markers", return_value=[]), \
-                 patch("recipeparser.pipeline.gem.verify_connectivity", return_value=True), \
+        with patch("recipeparser.pipeline.load_epub") as mock_load_epub:
+            mock_load_epub.return_value = ("Book", str(tmp_path), set(), [])
+            with patch("recipeparser.pipeline.gem.verify_connectivity", return_value=True), \
                  patch("recipeparser.pipeline.threading.Semaphore") as mock_sem:
                 with patch("recipeparser.pipeline.create_paprika_export", return_value=str(tmp_path / "out.paprikarecipes")):
                     process_epub(
@@ -151,15 +148,12 @@ class TestProcessEpubConfig:
             assert any(c[0][0] == MAX_CONCURRENT_CAP for c in calls), f"Expected a Semaphore({MAX_CONCURRENT_CAP}) call, got {calls}"
 
     def test_rpm_creates_rate_limiter(self, tmp_path):
-        """When rpm is set, a rate limiter is created and passed in context (no EPUB segments, so no workers run)."""
+        """When rpm is set, a rate limiter is created and passed in context (no segments, so no workers run)."""
         epub_path = tmp_path / "tiny.epub"
         epub_path.write_bytes(b"PK\x03\x04")
-        with patch("recipeparser.pipeline.epub.read_epub") as mock_read_epub:
-            mock_book = MagicMock()
-            mock_read_epub.return_value = mock_book
-            with patch("recipeparser.pipeline.extract_all_images", return_value=(tmp_path, [])), \
-                 patch("recipeparser.pipeline.extract_chapters_with_image_markers", return_value=[]), \
-                 patch("recipeparser.pipeline.gem.verify_connectivity", return_value=True), \
+        with patch("recipeparser.pipeline.load_epub") as mock_load_epub:
+            mock_load_epub.return_value = ("Book", str(tmp_path), set(), [])
+            with patch("recipeparser.pipeline.gem.verify_connectivity", return_value=True), \
                  patch("recipeparser.pipeline._RPMRateLimiter") as mock_rpm_class:
                 with patch("recipeparser.pipeline.create_paprika_export", return_value=str(tmp_path / "out.paprikarecipes")):
                     process_epub(
@@ -167,3 +161,77 @@ class TestProcessEpubConfig:
                         concurrency=2, rpm=10,
                     )
                 mock_rpm_class.assert_called_once_with(10)
+
+    def test_toc_extracted_for_recon_raw_chunking_always_used(self, tmp_path):
+        """TOC is extracted when available; raw chunking is always used; recon runs when TOC exists."""
+        epub_path = tmp_path / "tiny.epub"
+        epub_path.write_bytes(b"PK\x03\x04")
+        raw_chunks = [
+            "Chicken Soup\nIngredients: 1 cup broth, 2 tbsp butter\nDirections: heat",
+            "Beef Stew\nIngredients: 500g beef, 1 tsp salt\nDirections: simmer",
+        ]
+        toc_entries = [("Chicken Soup", 1), ("Beef Stew", 2)]
+
+        with (
+            patch("recipeparser.pipeline.load_epub") as mock_load,
+            patch("recipeparser.pipeline.extract_toc_epub") as mock_extract,
+            patch("recipeparser.pipeline.run_recon") as mock_recon,
+            patch("recipeparser.pipeline.gem.verify_connectivity", return_value=True),
+            patch("recipeparser.pipeline.gem.extract_recipes") as mock_ext,
+            patch("recipeparser.pipeline.create_paprika_export", return_value=True),
+        ):
+            mock_load.return_value = ("Book", str(tmp_path), set(), raw_chunks)
+            mock_extract.return_value = toc_entries
+            mock_ext.return_value = MagicMock(
+                recipes=[make_recipe("Chicken Soup"), make_recipe("Beef Stew")]
+            )
+            mock_recon.return_value = (["Chicken Soup", "Beef Stew"], [], [])
+            process_epub(str(epub_path), str(tmp_path), MagicMock(), concurrency=2)
+
+        mock_extract.assert_called_once()
+        mock_recon.assert_called_once()
+        call_args = mock_recon.call_args[0]
+        assert call_args[0] == toc_entries
+        assert call_args[1] == ["Chicken Soup", "Beef Stew"]
+
+    def test_empty_toc_skips_recon(self, tmp_path):
+        """When TOC extraction returns fewer than MIN_TOC_ENTRIES, recon is skipped."""
+        epub_path = tmp_path / "tiny.epub"
+        epub_path.write_bytes(b"PK\x03\x04")
+        raw_chunks = ["Intro\nChicken Soup\nIngredients..."]
+        toc_entries = [("Chicken Soup", 1)]  # 1 entry < MIN_TOC_ENTRIES (2)
+
+        with (
+            patch("recipeparser.pipeline.load_epub") as mock_load,
+            patch("recipeparser.pipeline.extract_toc_epub") as mock_extract,
+            patch("recipeparser.pipeline.run_recon") as mock_recon,
+            patch("recipeparser.pipeline.gem.verify_connectivity", return_value=True),
+            patch("recipeparser.pipeline.gem.extract_recipes") as mock_ext,
+            patch("recipeparser.pipeline.create_paprika_export", return_value=True),
+        ):
+            mock_load.return_value = ("Book", str(tmp_path), set(), raw_chunks)
+            mock_extract.return_value = toc_entries  # only 1 entry
+            mock_ext.return_value = MagicMock(recipes=[make_recipe("Chicken Soup")])
+            process_epub(str(epub_path), str(tmp_path), MagicMock(), concurrency=2)
+
+        mock_recon.assert_not_called()
+
+    def test_no_toc_skips_recon(self, tmp_path):
+        """When TOC extraction returns empty list, recon is skipped."""
+        epub_path = tmp_path / "tiny.epub"
+        epub_path.write_bytes(b"PK\x03\x04")
+
+        with (
+            patch("recipeparser.pipeline.load_epub") as mock_load,
+            patch("recipeparser.pipeline.extract_toc_epub") as mock_extract,
+            patch("recipeparser.pipeline.run_recon") as mock_recon,
+            patch("recipeparser.pipeline.gem.verify_connectivity", return_value=True),
+            patch("recipeparser.pipeline.gem.extract_recipes") as mock_ext,
+            patch("recipeparser.pipeline.create_paprika_export", return_value=True),
+        ):
+            mock_load.return_value = ("Book", str(tmp_path), set(), ["chunk"])
+            mock_extract.return_value = []
+            mock_ext.return_value = MagicMock(recipes=[make_recipe("Recipe")])
+            process_epub(str(epub_path), str(tmp_path), MagicMock(), concurrency=2)
+
+        mock_recon.assert_not_called()
