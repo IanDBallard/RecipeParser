@@ -28,7 +28,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 
 ### Download and Install
 
-1. Download `RecipeParser-Setup-2.0.4.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
+1. Download `RecipeParser-Setup-2.1.0.exe` from the [Releases](https://github.com/IanDBallard/RecipeParser/releases) page (or build it yourself — see [Building the Windows Installer](#building-the-windows-installer) below).
 2. Run the installer. During setup you will be prompted to enter your Google Gemini API key (get one free at [aistudio.google.com](https://aistudio.google.com/app/apikey)).
 3. The key is written to `%APPDATA%\RecipeParser\.env` and survives upgrades.
 4. A **RecipeParser** shortcut appears in the Start Menu (and optionally on the Desktop).
@@ -265,6 +265,8 @@ recipeparser/
 ├── exceptions.py      Typed exception hierarchy
 ├── models.py          Pydantic schema for structured Gemini output
 ├── epub.py            EPUB parsing, image extraction, chunking, candidate filtering
+├── pdf.py             PDF loading, pre-flight, page-based extraction
+├── toc.py             TOC extraction (EPUB/PDF) and recon
 ├── gemini.py          All Gemini API calls — extraction, normalisation, retry logic
 ├── categories.py      YAML taxonomy loader and LLM categorisation
 ├── paths.py           User-writable paths (app data, categories, output)
@@ -280,6 +282,7 @@ tests/
 ├── test_categories.py
 ├── test_pipeline.py
 ├── test_paprika_db.py
+├── test_toc.py
 └── test_cli.py
 
 recipeparser.spec       PyInstaller build spec
@@ -428,6 +431,7 @@ pydantic==2.11.9
 google-genai==1.38.0
 python-dotenv==1.1.1
 pyyaml==6.0.1
+pymupdf>=1.24.0
 ```
 
 ---
@@ -542,5 +546,5 @@ The `[HERO IMAGE:]` look-ahead mechanism specifically addresses books where the 
 ## Known Limitations
 
 - **Baker's percentage tables** in very long chapters (> ~76,000 characters after normalisation) may still fail to extract fully. This is a planned improvement.
-- **Scanned / image-only EPUBs** contain no machine-readable text and cannot be processed.
-- **DRM-protected EPUBs** cannot be opened by ebooklib. You must hold a legitimate copy in a DRM-free format (e.g. via your own Calibre library).
+- **Scanned / image-only EPUBs and PDFs** contain no machine-readable text and cannot be processed. PDFs without a text layer fail pre-flight.
+- **DRM-protected EPUBs** and **password-protected PDFs** cannot be opened. You must hold a legitimate copy in a DRM-free format (e.g. via your own Calibre library).

@@ -4,6 +4,9 @@
 # Output artifacts
 output/
 
+# Logs
+*.log
+
 # Diagnostic / one-off analysis scripts
 check_*.py
 inspect_chunks.py
