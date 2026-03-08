@@ -164,7 +164,7 @@ class TestConcurrencyRpmArgs:
     def test_concurrency_1_accepted(self, tmp_path):
         epub = tmp_path / "cookbook.epub"
         epub.write_bytes(b"PK")
-        with patch("recipeparser.process_epub") as mock_process, \
+        with patch("recipeparser.__main__.process_epub") as mock_process, \
              patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
              patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "1"]):
             from recipeparser.__main__ import main
@@ -175,7 +175,7 @@ class TestConcurrencyRpmArgs:
     def test_concurrency_10_accepted(self, tmp_path):
         epub = tmp_path / "cookbook.epub"
         epub.write_bytes(b"PK")
-        with patch("recipeparser.process_epub") as mock_process, \
+        with patch("recipeparser.__main__.process_epub") as mock_process, \
              patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
              patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "10"]):
             from recipeparser.__main__ import main
@@ -209,7 +209,7 @@ class TestConcurrencyRpmArgs:
     def test_rpm_passed_to_process_epub(self, tmp_path):
         epub = tmp_path / "cookbook.epub"
         epub.write_bytes(b"PK")
-        with patch("recipeparser.process_epub") as mock_process, \
+        with patch("recipeparser.__main__.process_epub") as mock_process, \
              patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
              patch("sys.argv", ["recipeparser", str(epub), "--rpm", "15"]):
             from recipeparser.__main__ import main
@@ -220,10 +220,198 @@ class TestConcurrencyRpmArgs:
     def test_concurrency_and_rpm_both_passed(self, tmp_path):
         epub = tmp_path / "cookbook.epub"
         epub.write_bytes(b"PK")
-        with patch("recipeparser.process_epub") as mock_process, \
+        with patch("recipeparser.__main__.process_epub") as mock_process, \
              patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
              patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "5", "--rpm", "30"]):
             from recipeparser.__main__ import main
             main()
         assert mock_process.call_args.kwargs["concurrency"] == 5
         assert mock_process.call_args.kwargs["rpm"] == 30
+
+
+# ---------------------------------------------------------------------------
+# --merge CLI flag (Phase 3a)
+# ---------------------------------------------------------------------------
+
+def _make_minimal_paprika(path) -> "Path":
+    """Write a minimal valid .paprikarecipes archive for merge tests."""
+    import gzip, json, zipfile
+    from pathlib import Path as _Path
+    path = _Path(path)
+    recipe = {"name": "Test Recipe", "ingredients": "flour", "directions": "mix"}
+    gz = gzip.compress(json.dumps(recipe).encode("utf-8"))
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("Test Recipe.paprikarecipe", gz)
+    return path
+
+
+class TestMergeCommand:
+
+    def test_merge_two_archives_calls_merge_exports(self, tmp_path):
+        a = _make_minimal_paprika(tmp_path / "a.paprikarecipes")
+        b = _make_minimal_paprika(tmp_path / "b.paprikarecipes")
+        merged = tmp_path / "merged_20260101_120000.paprikarecipes"
+
+        with patch("recipeparser.__main__._cmd_merge") as mock_merge, \
+             patch("sys.argv", ["recipeparser", "--merge", str(a), str(b),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            main()
+        mock_merge.assert_called_once_with([str(a), str(b)], str(tmp_path))
+
+    def test_merge_missing_file_exits_nonzero(self, tmp_path, capsys):
+        a = _make_minimal_paprika(tmp_path / "a.paprikarecipes")
+        ghost = tmp_path / "ghost.paprikarecipes"
+
+        with patch("sys.argv", ["recipeparser", "--merge", str(a), str(ghost),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code != 0
+        assert "not found" in capsys.readouterr().err
+
+    def test_merge_single_archive_succeeds(self, tmp_path):
+        a = _make_minimal_paprika(tmp_path / "a.paprikarecipes")
+
+        with patch("recipeparser.__main__._cmd_merge") as mock_merge, \
+             patch("sys.argv", ["recipeparser", "--merge", str(a),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            main()
+        mock_merge.assert_called_once()
+
+    def test_merge_prints_output_path(self, tmp_path, capsys):
+        a = _make_minimal_paprika(tmp_path / "a.paprikarecipes")
+        b = _make_minimal_paprika(tmp_path / "b.paprikarecipes")
+
+        with patch("recipeparser.export.merge_exports") as mock_merge_fn:
+            expected_out = tmp_path / "merged_20260101_120000.paprikarecipes"
+            mock_merge_fn.return_value = expected_out
+            with patch("sys.argv", ["recipeparser", "--merge", str(a), str(b),
+                                    "--output", str(tmp_path)]):
+                from recipeparser.__main__ import main
+                main()
+
+        captured = capsys.readouterr()
+        assert str(expected_out) in captured.out
+
+
+# ---------------------------------------------------------------------------
+# --recategorize CLI flag (Phase 3d)
+# ---------------------------------------------------------------------------
+
+class TestRecategorizeCommand:
+
+    def test_recategorize_calls_cmd_recategorize(self, tmp_path):
+        archive = _make_minimal_paprika(tmp_path / "cookbook.paprikarecipes")
+
+        with patch("recipeparser.__main__._cmd_recategorize") as mock_recategorize, \
+             patch("sys.argv", ["recipeparser", "--recategorize", str(archive),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            main()
+        mock_recategorize.assert_called_once_with(str(archive), str(tmp_path))
+
+    def test_recategorize_exits_when_no_api_key(self, tmp_path, capsys, monkeypatch):
+        archive = _make_minimal_paprika(tmp_path / "cookbook.paprikarecipes")
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+        with patch("recipeparser.__main__.get_env_file") as mock_env_file:
+            # Return a path that doesn't exist so no key is loaded from .env
+            mock_env_file.return_value = tmp_path / ".env_missing"
+            with patch("sys.argv", ["recipeparser", "--recategorize", str(archive),
+                                    "--output", str(tmp_path)]):
+                from recipeparser.__main__ import main
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+        assert exc_info.value.code != 0
+        assert "GOOGLE_API_KEY" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# --folder CLI flag (Phase 3a)
+# ---------------------------------------------------------------------------
+
+class TestFolderCommand:
+
+    def test_folder_processes_all_epubs(self, tmp_path):
+        (tmp_path / "a.epub").write_bytes(b"PK")
+        (tmp_path / "b.epub").write_bytes(b"PK")
+
+        import os
+        os.environ["GOOGLE_API_KEY"] = "dummy-key"
+        with patch("recipeparser.__main__.process_epub", return_value=str(tmp_path / "out.paprikarecipes")) as mock_process, \
+             patch("google.genai.Client"), \
+             patch("sys.argv", ["recipeparser", "--folder", str(tmp_path),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            main()
+
+        assert mock_process.call_count == 2
+
+    def test_folder_nonexistent_dir_exits(self, tmp_path, capsys):
+        ghost_dir = tmp_path / "ghost_folder"
+        with patch("sys.argv", ["recipeparser", "--folder", str(ghost_dir),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code != 0
+        assert "not a directory" in capsys.readouterr().err.lower()
+
+    def test_folder_empty_dir_exits(self, tmp_path, capsys):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        with patch("sys.argv", ["recipeparser", "--folder", str(empty),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code != 0
+        err = capsys.readouterr().err
+        assert "No .epub" in err or "No" in err
+
+    def test_folder_includes_pdfs(self, tmp_path):
+        (tmp_path / "a.epub").write_bytes(b"PK")
+        (tmp_path / "b.pdf").write_bytes(b"%PDF")
+
+        import os
+        os.environ["GOOGLE_API_KEY"] = "dummy-key"
+        with patch("recipeparser.__main__.process_epub", return_value=str(tmp_path / "out.paprikarecipes")) as mock_process, \
+             patch("google.genai.Client"), \
+             patch("sys.argv", ["recipeparser", "--folder", str(tmp_path),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            main()
+
+        assert mock_process.call_count == 2
+
+    def test_folder_partial_failure_exits_nonzero(self, tmp_path, capsys):
+        """If one book fails, the command exits non-zero after processing all."""
+        from recipeparser.exceptions import EpubExtractionError
+        (tmp_path / "good.epub").write_bytes(b"PK")
+        (tmp_path / "bad.epub").write_bytes(b"PK")
+
+        call_count = 0
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if "bad" in args[0]:
+                raise EpubExtractionError("bad book")
+            return str(tmp_path / "out.paprikarecipes")
+
+        import os
+        os.environ["GOOGLE_API_KEY"] = "dummy-key"
+        with patch("recipeparser.__main__.process_epub", side_effect=side_effect), \
+             patch("google.genai.Client"), \
+             patch("sys.argv", ["recipeparser", "--folder", str(tmp_path),
+                                "--output", str(tmp_path)]):
+            from recipeparser.__main__ import main
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code != 0
+        # Both books were attempted
+        assert call_count == 2

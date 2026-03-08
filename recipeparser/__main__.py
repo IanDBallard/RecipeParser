@@ -11,7 +11,8 @@ from pathlib import Path
 
 from recipeparser.paprika_db import find_paprika_db, read_categories_from_db
 from recipeparser.categories import _CATEGORIES_FILE
-from recipeparser.paths import get_default_output_dir
+from recipeparser.paths import get_default_output_dir, get_env_file
+from recipeparser import process_epub
 
 logging.basicConfig(
     level=logging.INFO,
@@ -99,6 +100,64 @@ def _cmd_sync_categories() -> None:
     )
 
 
+def _cmd_merge(paths: list, output_dir: str) -> None:
+    """Merge multiple .paprikarecipes archives into one."""
+    from pathlib import Path as _Path
+    from recipeparser.export import merge_exports
+    from recipeparser.exceptions import RecipeParserError
+
+    resolved = [_Path(p) for p in paths]
+    missing = [str(p) for p in resolved if not p.exists()]
+    if missing:
+        print(f"Error: file(s) not found: {', '.join(missing)}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        out = merge_exports(resolved, _Path(output_dir))
+        print(f"Merged export written to: {out}")
+    except RecipeParserError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _cmd_recategorize(paprika_path: str, output_dir: str) -> None:
+    """Re-run categorisation on an existing .paprikarecipes archive."""
+    import os
+    from pathlib import Path as _Path
+    from recipeparser.recategorize import recategorize
+    from recipeparser.exceptions import RecipeParserError
+
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        # Try loading from .env
+        env_file = get_env_file()
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("GOOGLE_API_KEY="):
+                    api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    os.environ["GOOGLE_API_KEY"] = api_key
+                    break
+
+    if not api_key:
+        print(
+            "Error: GOOGLE_API_KEY not set. Set the environment variable or save it via the GUI.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        out = recategorize(_Path(paprika_path), client, _Path(output_dir))
+        print(f"Recategorized export written to: {out}")
+    except RecipeParserError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     from importlib.metadata import version as _pkg_version, PackageNotFoundError
     try:
@@ -113,6 +172,9 @@ def main():
             "examples:\n"
             "  recipeparser cookbook.epub\n"
             "  recipeparser cookbook.epub --output ~/exports --units metric\n"
+            "  recipeparser --folder /path/to/cookbooks --output ~/exports\n"
+            "  recipeparser --merge a.paprikarecipes b.paprikarecipes --output ~/exports\n"
+            "  recipeparser --recategorize cookbook.paprikarecipes\n"
             "  recipeparser --sync-categories\n"
         ),
     )
@@ -171,14 +233,117 @@ def main():
             "in any 60s window. Omit for no RPM cap."
         ),
     )
+    # ── Phase 3a: folder processing ───────────────────────────────────────────
+    parser.add_argument(
+        "--folder",
+        metavar="DIR",
+        help=(
+            "Process all .epub and .pdf files found in DIR sequentially. "
+            "Each book is exported to --output as a separate .paprikarecipes file."
+        ),
+    )
+    # ── Phase 3a: merge exports ───────────────────────────────────────────────
+    parser.add_argument(
+        "--merge",
+        nargs="+",
+        metavar="FILE",
+        help=(
+            "Merge two or more .paprikarecipes archives into a single "
+            "merged_<timestamp>.paprikarecipes file in --output. "
+            "Duplicates (by normalised name) are removed."
+        ),
+    )
+    # ── Phase 3d: recategorize ────────────────────────────────────────────────
+    parser.add_argument(
+        "--recategorize",
+        metavar="FILE",
+        help=(
+            "Re-run Gemini categorisation on every recipe in FILE "
+            "(.paprikarecipes) and write <stem>_recategorized.paprikarecipes "
+            "to --output."
+        ),
+    )
     args = parser.parse_args()
 
+    # ── Exclusive-mode dispatch ───────────────────────────────────────────────
     if args.sync_categories:
         _cmd_sync_categories()
         return
 
+    if args.merge:
+        _cmd_merge(args.merge, args.output)
+        return
+
+    if args.recategorize:
+        _cmd_recategorize(args.recategorize, args.output)
+        return
+
+    if args.folder:
+        folder = Path(args.folder)
+        if not folder.is_dir():
+            print(f"Error: --folder path is not a directory: '{folder}'", file=sys.stderr)
+            sys.exit(1)
+        books = sorted(folder.glob("*.epub")) + sorted(folder.glob("*.pdf"))
+        if not books:
+            print(f"Error: No .epub or .pdf files found in '{folder}'.", file=sys.stderr)
+            sys.exit(1)
+
+        from recipeparser.exceptions import RecipeParserError
+        import os
+
+        api_key = os.environ.get("GOOGLE_API_KEY", "")
+        if not api_key:
+            env_file = get_env_file()
+            if env_file.exists():
+                for line in env_file.read_text().splitlines():
+                    if line.startswith("GOOGLE_API_KEY="):
+                        api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                        os.environ["GOOGLE_API_KEY"] = api_key
+                        break
+        if not api_key:
+            print("Error: GOOGLE_API_KEY not set.", file=sys.stderr)
+            sys.exit(1)
+
+        from google import genai
+        client = genai.Client(api_key=api_key)
+
+        from recipeparser.config import MAX_CONCURRENT_CAP
+        concurrency = args.concurrency
+        if concurrency is not None and (concurrency < 1 or concurrency > MAX_CONCURRENT_CAP):
+            parser.error(
+                f"--concurrency must be between 1 and {MAX_CONCURRENT_CAP} (got {concurrency})"
+            )
+
+        errors = []
+        for book in books:
+            log.info("Processing: %s", book.name)
+            try:
+                result = process_epub(
+                    str(book),
+                    args.output,
+                    client,
+                    units=args.units,
+                    concurrency=args.concurrency,
+                    rpm=args.rpm,
+                )
+                print(f"  ✓ {book.name} → {result}")
+            except RecipeParserError as e:
+                log.error("  ✗ %s: %s", book.name, e)
+                errors.append((book.name, str(e)))
+
+        if errors:
+            print(f"\n{len(errors)} book(s) failed:", file=sys.stderr)
+            for name, msg in errors:
+                print(f"  {name}: {msg}", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    # ── Single-file mode (original behaviour) ─────────────────────────────────
     if not args.epub:
-        parser.error("the following arguments are required: epub (path to .epub or .pdf)")
+        parser.error(
+            "the following arguments are required: epub (path to .epub or .pdf), "
+            "or use --folder / --merge / --recategorize / --sync-categories"
+        )
 
     from recipeparser.config import MAX_CONCURRENT_CAP
     concurrency = args.concurrency
@@ -189,7 +354,6 @@ def main():
 
     book_path = _resolve_book(args.epub)
 
-    from recipeparser import process_epub
     from recipeparser.exceptions import RecipeParserError
 
     try:

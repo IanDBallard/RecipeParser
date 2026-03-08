@@ -86,3 +86,16 @@ PDF_PREFLIGHT_MIN_CHARS_PER_PAGE: int = 100
 PDF_PREFLIGHT_SAMPLE_PAGES: int = 5
 PDF_PREFLIGHT_MIN_PAGES: int = 1  # Reject if 0 pages; warn if below this (e.g. pamphlet).
 PDF_PREFLIGHT_MAX_PAGES: Optional[int] = 2000  # Optional cap to avoid runaway cost; None = no cap.
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Pipeline control and rate-limit auto-pause
+# ---------------------------------------------------------------------------
+
+# Number of consecutive HTTP 429 responses before the pipeline auto-pauses.
+RATE_LIMIT_PAUSE_THRESHOLD: int = 3
+
+# Seconds to wait before auto-resuming after a rate-limit pause (default 12 h).
+RATE_LIMIT_AUTO_RESUME_SECS: int = 43_200
+
+# Subdirectory name (relative to output_dir) where checkpoint JSON files are stored.
+CHECKPOINT_SUBDIR: str = ".recipeparser_checkpoints"

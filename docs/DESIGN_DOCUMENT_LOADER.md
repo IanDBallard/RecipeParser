@@ -298,13 +298,11 @@ flowchart LR
 
 We now have several decision points: PDF pre-flight (pass / fail / warn), TOC extraction (attempt → success vs fallback), recipe-name ratio, segment-match ratio, chunking path (TOC vs raw), and whether to run recon. The question is whether to model this as an **explicit FSM** (state enum + transition table) instead of a linear sequence of conditionals.
 
-**Conclusion: still not required, but a *stage* enum is recommended for clarity and logging.**
+**Conclusion: A lightweight FSM is now implemented for pipeline control (pause/resume/cancel); the extraction pipeline itself remains a linear sequence with a stage enum.**
 
-- **Flow remains acyclic**: We never loop back (e.g. "retry TOC" or "go back to load"). We only branch forward: try TOC → use it or fall back to raw; then extract → recon if TOC was used. There are no event-driven transitions (user pause/resume, retries). So the control flow is "structured if/else over stages," not "react to events and transition between states."
-- **An FSM becomes useful when**: (1) We add **retries** (e.g. on failure transition back to Load or TOCAttempt). (2) We add **pause/resume** or user-driven transitions. (3) The number of states and transitions grows enough that a transition table is easier to maintain than nested conditionals. (4) We want **audit logging** where every transition is explicit ("entered state X because Y").
-- **Recommendation**:
-  - **Now**: Keep the pipeline as a **linear sequence of steps** with clear conditionals (as in §7.2–7.5). **Maintain a state enum class** that reflects all relevant state variables (stage, chunking path, recon status, pre-flight outcome); see §7.9. Set it at each step; use for logging and GUI progress. No transition table—just assign the state as we go.
-  - **Later**: If we add retries, pause/resume, or many more branches, introduce a real FSM (state enum + `transition(event)` or explicit next-state table) so the allowed paths are first-class and easy to reason about.
+- **Extraction pipeline (acyclic)**: The load → TOC → chunk → extract → recon → export flow never loops back. It uses a stage enum (`PipelineState`) for logging and GUI progress, but no transition table. This remains unchanged.
+- **Pipeline control (event-driven)**: With the addition of pause/resume/cancel (§16), we now have genuine event-driven state transitions that benefit from an explicit FSM. A `PipelineController` class with a `_TRANSITIONS` table manages the `PipelineStatus` enum (IDLE, RUNNING, PAUSING, PAUSED, RESUMING, CANCELLING). Invalid transitions are logged and rejected.
+- **Why FSM for control but not extraction**: The extraction flow is acyclic (no loops, no user events mid-flow). The control layer is event-driven (user can pause at any point, auto-pause can trigger from rate limits). These are different problems; the FSM lives only in `PipelineController`.
 
 ### 7.9 State enum class (required)
 
@@ -391,11 +389,17 @@ We **always** run one AI classification call on the raw TOC (programmatic nav/ou
 | **Phase 1** | Loader abstraction; `load_epub`; `load_pdf` with PDF pre-flight; page-based chunks and images. CLI/GUI accept .epub and .pdf. Pipeline dispatches by extension. | **Done** |
 | **Phase 2** | TOC extraction (EPUB nav/NCX leaves-only + fallback, PDF outline + AI fallback); **recipe-only AI filter**; recon (TOC vs extracted; full missing/extra in log and run summary). Chunking remains **raw** (no TOC-driven segmentation). | **Done** |
 | **Phase 2b** | If needed: block-based PDF text extraction (sort by position) for messy layouts. | Optional |
+| **Phase 3a** | Multi-file processing: sequential folder processing, merge exports utility. | Planned |
+| **Phase 3b** | Pipeline control: pause/resume/cancel with checkpoint persistence and resume-on-restart. | Planned |
+| **Phase 3c** | Auto-pause on rate limits with configurable auto-resume delay. | Planned |
+| **Phase 3d** | Recategorize tab: re-run categorization on existing `.paprikarecipes` exports. | Planned |
 | **Future** | Optional TOC-driven chunking (use `segment_by_toc` when TOC match ratio is sufficient). | Not implemented |
 
 ---
 
 ## 11. Files to add or change
+
+### 11.1 Current layout (Phase 1 & 2)
 
 Reflects **current** layout. Key modules:
 
@@ -406,15 +410,29 @@ Reflects **current** layout. Key modules:
 - **recipeparser/exceptions.py**: `PdfExtractionError`, etc.
 - **recipeparser/__main__.py**, **gui.py**: Accept .epub and .pdf; version from importlib.metadata.
 - **recipeparser/__init__.py**: `process_epub(book_path, ...)` accepts EPUB or PDF.
-- **config.py**: MIN_TOC_ENTRIES, MIN_TOC_RECIPE_RATIO, MIN_TOC_MATCH_RATIO, TOC_PDF_FRONT_MATTER_PAGES, PDF_PREFLIGHT_*, etc.
+- **recipeparser/config.py**: MIN_TOC_ENTRIES, MIN_TOC_RECIPE_RATIO, MIN_TOC_MATCH_RATIO, TOC_PDF_FRONT_MATTER_PAGES, PDF_PREFLIGHT_*, etc.
+
+### 11.2 Phase 3 planned additions
+
+| File | Change | Phase |
+|------|--------|-------|
+| **recipeparser/pipeline.py** | Add `PipelineController` class with FSM (`_TRANSITIONS` table, `PipelineStatus` enum, `transition(event)` method); checkpoint save/load; auto-pause on rate-limit detection. | 3b, 3c |
+| **recipeparser/gui.py** | Add folder/multi-file input mode; "Merge Exports" button; Pause/Resume/Cancel buttons wired to `PipelineController`; Recategorize tab. | 3a, 3b, 3d |
+| **recipeparser/export.py** | Add `merge_exports(paths) -> Path` utility: load multiple `.paprikarecipes` files, concatenate, deduplicate by normalized name, write merged output. | 3a |
+| **recipeparser/recategorize.py** *(new)* | `recategorize(paprika_path) -> Path`: load `.paprikarecipes`, call `categorise_recipe()` for each entry, rebuild export as `<original>_recategorized.paprikarecipes`. | 3d |
+| **recipeparser/config.py** | Add `RATE_LIMIT_PAUSE_THRESHOLD` (default 3 consecutive 429s), `RATE_LIMIT_AUTO_RESUME_SECS` (default 43200 = 12 h), `CHECKPOINT_DIR` (temp dir). | 3b, 3c |
+| **recipeparser/exceptions.py** | Add `RateLimitPauseError`, `CheckpointError` if needed. | 3b, 3c |
+| **recipeparser/__main__.py** | CLI flags for folder input (`--folder`), merge (`--merge`), recategorize (`--recategorize`). | 3a, 3d |
 
 ---
 
 ## 12. Out of scope / future
 
 - **FSM controller**: Re-evaluated in §7.8. Not required for current acyclic, conditional flow; a **stage enum** for logging/progress is recommended. Adopt a full FSM if we add retries, pause/resume, or event-driven transitions.
-- Pause/resume or retry states: could be designed later and might then benefit from a state machine.
-- Semantic “recipe” detection in PDF (e.g. heading detection) for chunking when TOC is absent: possible follow-up.
+- **Selective recategorization**: Re-running categorization on a subset of recipes. Phase 3d covers full recategorization only; selective is a future option.
+- **Semantic recipe detection in PDF** (e.g. heading detection) for chunking when TOC is absent: possible follow-up.
+- **Optional TOC-driven chunking**: segment_by_toc is implemented but not used. Could be enabled in future (see section 7.5).
+- **Block-based PDF text extraction** (Phase 2b): Optional improvement for complex layouts; not yet implemented.
 
 ---
 
@@ -443,7 +461,7 @@ The pipeline is implemented as described above:
 | **Configurable behaviour** | Yes | Constants table (§7.7); config location to be set in code. |
 | **Error handling** | Yes | Pre-flight outcomes (§4.3.2); exceptions named (§3.2, §4.2, §11); hard fail vs warn vs soft fail. |
 | **Backward compatibility** | Yes | process_epub name and EPUB behaviour preserved; PDF additive. |
-| **Phased delivery** | Yes | Phase 1 (PDF + pre-flight), Phase 2 (TOC + recon), Phase 2b (block-based) in §10. |
+| **Phased delivery** | Yes | Phase 1 (PDF + pre-flight), Phase 2 (TOC + recon), Phase 2b (block-based), Phase 3a-3d (multi-file, pause/resume, rate-limit, recategorize) in §10. |
 | **Documentation** | Yes | Design doc; README update in §11; docstrings for API. |
 
 **Recommendation**: The implementation matches this design. Use this doc as the reference for TOC/recon behaviour and pipeline state.
@@ -457,4 +475,186 @@ The pipeline is implemented as described above:
 - **TOC**: Extract from structure (EPUB nav/NCX **leaf-only** with all-levels fallback, PDF outline, AI fallback); **always** filter to recipe-only via one AI call. Used **only for recon**; chunking is always raw.
 - **Recon**: When TOC is present (≥ MIN_TOC_ENTRIES), compare recipe-only TOC vs extracted names; report TOC count, extracted, matched, missing, extra. **Full** missing and extra lists are logged and repeated in the **run summary** at end of run. The TOC used for recon is **recipe-only**: we always run one AI classification on the raw TOC so section headers and front matter (Cover, Introduction, etc.) are excluded; recon counts and “missing” lists refer only to recipe titles. Runs when `toc_entries` is non-empty (§7.4).
 - **PDF pre-flight**: Assess PDF before full load (§4.3); programmatic checks (text layer, page count, password); optional AI/hybrid for “likely cookbook”.
-- **No FSM**; linear pipeline with optional TOC/recon. **State enum** (stage, chunking path, recon status, pre-flight outcome) is maintained for logging and GUI.
+- **Pipeline control FSM** (): lightweight FSM for pause/resume/cancel events (see section 16). Extraction pipeline remains linear with a stage enum for logging and GUI.
+
+---
+
+## 15. Multi-file Processing (Phase 3a)
+
+### 15.1 Overview
+
+Allow the user to select a folder containing multiple EPUB and/or PDF files and process them sequentially. Each file runs through the full pipeline independently. A separate **Merge Exports** action combines the resulting `.paprikarecipes` files into one.
+
+### 15.2 Folder processing
+
+- **Input**: A folder path (GUI folder picker or CLI `--folder <dir>`).
+- **Discovery**: Scan for `*.epub` and `*.pdf` files. Sort alphabetically. Skip hidden files and non-book files.
+- **Processing**: Run `process_epub()` on each file in order. Each produces its own `.paprikarecipes` output in the output directory.
+- **Progress**: GUI shows current file index and name (e.g. "Processing 2 of 5: MyBook.epub").
+- **Error handling**: If one file fails (hard error), log the error, skip to the next file, and continue. Report a summary at the end: N succeeded, M failed (with filenames).
+
+### 15.3 Merge Exports
+
+- **Trigger**: Separate "Merge Exports" button in GUI (or `--merge` CLI flag). Not automatic after folder processing.
+- **Input**: User selects two or more `.paprikarecipes` files (multi-select file dialog).
+- **Algorithm** (`merge_exports(paths) -> Path` in `export.py`):
+  1. Load each `.paprikarecipes` file (unzip, parse JSON entries).
+  2. Concatenate all recipe entries.
+  3. Deduplicate by normalized name (lowercase, strip punctuation). Keep first occurrence.
+  4. Write merged output as `merged_<timestamp>.paprikarecipes` in the output directory.
+- **Output**: Single `.paprikarecipes` file with all unique recipes.
+
+### 15.4 GUI changes
+
+- Add "Select Folder" button alongside existing "Select File" button on the Parse tab.
+- Show file list or progress bar for multi-file runs.
+- Add "Merge Exports" button (enabled when output directory contains 2+ `.paprikarecipes` files, or always enabled to allow manual selection).
+
+---
+
+## 16. Pipeline Control: Pause / Resume / Cancel (Phase 3b)
+
+### 16.1 Overview
+
+Allow the user to pause, resume, or cancel a running pipeline. Pause checkpoints progress to disk so the run can be resumed after restart. Cancel discards all in-progress work (with a confirmation prompt).
+
+### 16.2 PipelineController FSM
+
+A `PipelineController` class in `pipeline.py` manages control state using a lightweight FSM.
+
+**States** (`PipelineStatus` enum):
+
+| State | Meaning |
+|-------|---------|
+| `IDLE` | No run in progress. |
+| `RUNNING` | Pipeline is actively processing. |
+| `PAUSING` | Pause requested; waiting for in-flight API call to complete. |
+| `PAUSED` | Fully paused; checkpoint written to disk. |
+| `RESUMING` | Resume requested; loading checkpoint and restarting. |
+| `CANCELLING` | Cancel requested; cleaning up. |
+
+**Transition table** (`_TRANSITIONS` dict):
+
+| Event | From | To |
+|-------|------|----|
+| `start` | IDLE | RUNNING |
+| `pause` | RUNNING | PAUSING |
+| `paused` | PAUSING | PAUSED |
+| `resume` | PAUSED | RESUMING |
+| `running` | RESUMING | RUNNING |
+| `cancel` | RUNNING, PAUSING, PAUSED | CANCELLING |
+| `done` | RUNNING | IDLE |
+| `error` | RUNNING, PAUSING, RESUMING | IDLE |
+
+Invalid transitions are logged and rejected (no state change).
+
+**`transition(event)` method**: Looks up `(current_status, event)` in `_TRANSITIONS`; if valid, updates `self.status` and logs the transition; if invalid, logs a warning and returns `False`.
+
+### 16.3 Checkpoint format
+
+Checkpoint file: `<output_dir>/.recipeparser_checkpoint_<book_hash>.json`
+
+```json
+{
+  "version": 1,
+  "book_path": "/path/to/book.epub",
+  "book_hash": "sha256:...",
+  "stage": "EXTRACT",
+  "completed_segments": [0, 1, 2, 3],
+  "extracted_recipes": [],
+  "toc_entries": [],
+  "timestamp": "2026-03-08T14:00:00Z"
+}
+```
+
+- Written when status transitions to `PAUSED`.
+- Deleted on successful completion or cancel.
+- On startup, if a checkpoint exists for the selected file, offer to resume.
+
+### 16.4 Pause behaviour
+
+- Pause is **cooperative**: the pipeline checks `controller.status` between segments (after each Gemini call). It does not interrupt an in-flight API call.
+- When pause is detected: finish current segment, write checkpoint, transition `PAUSING -> PAUSED`.
+- GUI shows "Paused" status and enables Resume/Cancel buttons.
+
+### 16.5 Cancel behaviour
+
+- Warn user: "Cancel will discard all progress for this file. Continue?"
+- On confirm: transition to `CANCELLING`, stop processing, delete checkpoint, transition to `IDLE`.
+- Partial output files are deleted or left empty (not written).
+
+### 16.6 GUI changes
+
+- Add Pause, Resume, Cancel buttons to the Parse tab (enabled/disabled based on `PipelineStatus`).
+- Status label reflects FSM state (e.g. "Paused — click Resume to continue").
+- On startup: if checkpoint found for selected file, show "Resume previous run?" prompt.
+
+---
+
+## 17. Auto-pause on Rate Limit Errors (Phase 3c)
+
+### 17.1 Overview
+
+When the Gemini API returns repeated 429 (rate limit) errors, automatically pause the pipeline and optionally auto-resume after a configurable delay (default 12 hours).
+
+### 17.2 Detection
+
+- Track consecutive 429 responses in `PipelineController` (counter reset on any non-429 response).
+- When consecutive 429 count reaches `RATE_LIMIT_PAUSE_THRESHOLD` (default 3), trigger auto-pause:
+  - Call `controller.transition("pause")` programmatically (same as user pause).
+  - Write checkpoint.
+  - Log: "Rate limit threshold reached. Auto-pausing for {delay}h. Will auto-resume at {time}."
+
+### 17.3 Auto-resume
+
+- After transitioning to `PAUSED` due to rate limit, start a background timer for `RATE_LIMIT_AUTO_RESUME_SECS` (default 43200 = 12 hours).
+- When timer fires: call `controller.transition("resume")` and restart pipeline from checkpoint.
+- GUI shows countdown: "Auto-resuming in 11h 42m" with a "Resume Now" button to skip the wait.
+- User can also manually cancel during the wait.
+
+### 17.4 Configuration
+
+New constants in `config.py`:
+
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `RATE_LIMIT_PAUSE_THRESHOLD` | 3 | Consecutive 429s before auto-pause. |
+| `RATE_LIMIT_AUTO_RESUME_SECS` | 43200 | Seconds to wait before auto-resume (12 h). |
+
+Both are user-configurable (GUI settings or config file).
+
+---
+
+## 18. Recategorize Tab (Phase 3d)
+
+### 18.1 Overview
+
+A new **Recategorize** tab in the GUI allows the user to load an existing `.paprikarecipes` file and re-run categorization on all recipes, producing a new file with updated categories.
+
+### 18.2 Pipeline
+
+`recategorize(paprika_path: Path) -> Path` in `recipeparser/recategorize.py`:
+
+1. Load `.paprikarecipes` (unzip, parse JSON entries).
+2. For each recipe entry, call `categorise_recipe(recipe)` to assign a new category.
+3. Rebuild the export with updated categories.
+4. Write output as `<original_stem>_recategorized.paprikarecipes` in the same directory as the input.
+5. Return the output path.
+
+### 18.3 Scope
+
+- **Full recategorization only**: all recipes are recategorized. Selective (subset) recategorization is out of scope for Phase 3d.
+- **No re-extraction**: recipe text and metadata are taken as-is from the input file; only the `categories` field is updated.
+- **Idempotent**: running recategorize twice produces the same result (categories are deterministic given the same model and prompt).
+
+### 18.4 GUI changes
+
+- New "Recategorize" tab alongside "Parse" and "Categories" tabs.
+- File picker for `.paprikarecipes` input.
+- "Recategorize" button triggers `recategorize()` in a background thread.
+- Progress bar and status label (e.g. "Recategorizing 12 of 45 recipes...").
+- On completion: show output path and "Open in Finder/Explorer" button.
+
+### 18.5 CLI
+
+`--recategorize <path>` flag in `__main__.py`: runs `recategorize(path)` and prints the output path.

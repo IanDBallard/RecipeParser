@@ -37,3 +37,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Windows reserved device name accidentally created in repo root
+/nul
