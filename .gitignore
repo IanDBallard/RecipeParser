@@ -7,6 +7,9 @@ output/
 # Logs
 *.log
 
+# Accidental output (e.g. redirected list repr)
+\[*
+
 # Diagnostic / one-off analysis scripts
 check_*.py
 inspect_chunks.py
