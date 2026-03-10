@@ -58,7 +58,7 @@ def test_refine_recipe_for_cayenne_success():
     
     assert result == expected_refined
     args, kwargs = mock_client.models.generate_content.call_args
-    assert kwargs["model"] == "gemini-2.0-flash"
+    assert kwargs["model"] == "gemini-2.5-flash"
     assert kwargs["config"]["response_schema"] == CayenneRefinement
     assert "Raw Recipe Text" in kwargs["contents"]
 
