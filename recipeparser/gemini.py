@@ -260,7 +260,7 @@ RAW RECIPE:
     try:
         response = _call_with_retry(
             client,
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
