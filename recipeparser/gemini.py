@@ -2,10 +2,10 @@
 import logging
 import re
 import time
-from typing import Optional
+from typing import Optional, List
 
 from recipeparser.config import BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, MAX_RETRIES
-from recipeparser.models import RecipeList
+from recipeparser.models import RecipeList, CayenneRefinement
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
         except Exception as exc:
             if _is_rate_limit_error(exc) and attempt <= MAX_RETRIES:
                 log.warning(
-                    "Rate-limit hit (attempt %d/%d) — waiting %.0fs before retry.",
+                    "Rate-limit hit (attempt %d/%d) — waiting %ds before retry.",
                     attempt,
                     MAX_RETRIES,
                     delay,
@@ -60,6 +60,19 @@ def verify_connectivity(client) -> bool:
     except Exception as e:
         log.error("Gemini connectivity check FAILED: %s", e)
         return False
+
+
+def get_embeddings(text: str, client) -> List[float]:
+    """Generates a 1536-dimension embedding for the given text."""
+    try:
+        response = client.models.embed_content(
+            model="text-embedding-004",
+            contents=text
+        )
+        return response.embeddings[0].values
+    except Exception as e:
+        log.error("Embedding generation failed: %s", e)
+        return [0.0] * 1536
 
 
 def needs_table_normalisation(text: str) -> bool:
@@ -213,4 +226,49 @@ Text chunk:
         return response.parsed
     except Exception as e:
         log.error("Gemini extraction failed: %s", e)
+        return None
+
+
+def refine_recipe_for_cayenne(
+    raw_recipe: object,
+    client,
+    uom_system: str = "US",
+    measure_preference: str = "Volume"
+) -> Optional[CayenneRefinement]:
+    """Post-processing pass to convert raw text recipe into high-fidelity Cayenne data."""
+    prompt = f"""
+You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
+
+RULES:
+1. STRUCTURED INGREDIENTS:
+   - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
+   - Extract numeric "amount", "unit" (null if unitless), and "name".
+   - "fallback_string" is the original full line.
+   - CONVERSION: If preference is "Weight" and source is "Volume", provide "converted_amount" and "converted_unit" (e.g. 1 cup -> 120g). Set "is_ai_converted" to true.
+
+2. TOKENIZED DIRECTIONS:
+   - Rewrite directions using Fat Tokens: {{{{ingredient_id|original_text}}}}
+   - Example: "Mix the flour" -> "Mix the {{{{ing_01|flour}}}}"
+
+CONTEXT:
+UOM System: {uom_system}
+Measure Preference: {measure_preference}
+
+RAW RECIPE:
+{raw_recipe}
+"""
+    try:
+        response = _call_with_retry(
+            client,
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": CayenneRefinement,
+                "temperature": 0.1,
+            },
+        )
+        return response.parsed
+    except Exception as e:
+        log.error("Cayenne refinement failed: %s", e)
         return None

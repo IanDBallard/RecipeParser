@@ -90,3 +90,46 @@ class TocRecipeClassification(BaseModel):
     recipe_indices: List[int] = Field(
         description="0-based indices of TOC entries that are specific recipe/dish names, not section headers."
     )
+
+
+# --- Cayenne Specific Models ---
+
+class StructuredIngredient(BaseModel):
+    id: str = Field(description="Unique ID for cross-linking, e.g., \"ing_01\"")
+    amount: float = Field(description="Numeric quantity, e.g., 1.5. 0 if none.")
+    unit: Optional[str] = Field(default=None, description="Unit of measure, e.g., \"cups\".")
+    name: str = Field(description="Core name, e.g., \"flour\".")
+    fallback_string: str = Field(description="Full original string, e.g., \"1 1/2 cups flour\".")
+    converted_amount: Optional[float] = Field(default=None, description="Converted amount (e.g. Volume -> Weight)")
+    converted_unit: Optional[str] = Field(default=None, description="Converted unit, e.g., \"g\"")
+    is_ai_converted: bool = Field(default=False, description="True if AI calculated the conversion.")
+
+
+class TokenizedDirection(BaseModel):
+    step: int = Field(description="1-based step number.")
+    text: str = Field(description="Direction text with Fat Tokens {{id|fallback}}.")
+
+
+class CayenneRefinement(BaseModel):
+    """Internal refinement pass output."""
+    title: str
+    base_servings: Optional[int]
+    structured_ingredients: List[StructuredIngredient]
+    tokenized_directions: List[TokenizedDirection]
+
+
+class CayenneRecipe(BaseModel):
+    """Canonical recipe shape for Project Cayenne."""
+    title: str
+    prep_time: Optional[str] = None
+    cook_time: Optional[str] = None
+    base_servings: Optional[int] = None
+    source_url: Optional[str] = None
+    categories: List[str] = Field(default_factory=lambda: ["Uncategorized"])
+    structured_ingredients: List[StructuredIngredient]
+    tokenized_directions: List[TokenizedDirection]
+
+
+class IngestResponse(CayenneRecipe):
+    """Final envelope for the /ingest endpoint."""
+    embedding: List[float]
