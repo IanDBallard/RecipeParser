@@ -21,7 +21,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 - **Parallel processing** — extraction and categorisation both run concurrently with a configurable concurrency cap, with automatic exponential back-off on rate limits
 - **Handles diverse EPUB and PDF structures** — prose recipes, ingredient lists, baker's percentage tables, multi-recipe chapters, and text-only historic cookbooks all work; PDFs are supported with pre-flight checks and page-based extraction
 - **TOC-based reconciliation** — extracts table of contents (EPUB nav/NCX or PDF outline) when present, compares it to extracted recipes, and logs any missed or extra recipes; extraction always uses page/document chunking for best results
-- **Recipe Refinement (Cayenne)** — converts raw recipes into structured JSON with normalized ingredients and "Fat Token" directions, including 768-dimension vector embeddings using `text-embedding-004`
+- **Recipe Refinement (Cayenne)** — converts raw recipes into structured JSON with normalized ingredients and "Fat Token" directions, including 1536-dimension vector embeddings using `text-embedding-004`
 - **Safe and robust** — per-task timeouts, typed custom exceptions, graceful degradation (a failed segment is skipped, not fatal), and image-less recipes export cleanly without crashing Paprika
 
 ---
@@ -173,7 +173,7 @@ recipeparser-gui
 
 ## Cayenne Ingestion API
 
-The project includes a FastAPI server for high-fidelity recipe extraction and vector search indexing.
+The project includes a FastAPI server for high-fidelity recipe extraction and vector search indexing, used by the [Project Cayenne](https://github.com/iandballard/cayenne) mobile app.
 
 ### Starting the Server
 
@@ -181,24 +181,76 @@ The project includes a FastAPI server for high-fidelity recipe extraction and ve
 uvicorn recipeparser.api:app --host 0.0.0.0 --port 8000
 ```
 
+**Required environment variables:**
+
+| Variable | Description |
+|---|---|
+| `GOOGLE_API_KEY` | Google AI Studio key for Gemini API calls |
+| `SUPABASE_JWT_SECRET` | JWT secret from Supabase dashboard → Project Settings → API → JWT Secret |
+
+### Authentication
+
+All API endpoints require a valid Supabase JWT in the `Authorization` header:
+
+```
+Authorization: Bearer <supabase_access_token>
+```
+
+The server verifies the token using HS256 with the `SUPABASE_JWT_SECRET`. Requests without a valid token receive HTTP 401.
+
 ### Endpoints
 
 #### `POST /ingest`
-Accepts raw text or a cookbook URL and returns a refined `CayenneRecipe` object with embeddings.
+
+Accepts raw recipe text and returns a refined `CayenneRecipe` object with a vector embedding.
+
+> **Note:** URL ingestion is not yet implemented. The `url` field is accepted but returns HTTP 400. Only `text` ingestion is currently supported.
 
 **Request Body:**
 ```json
 {
   "text": "1 cup flour, 2 eggs. Mix and bake at 350F for 20 mins.",
-  "source_url": "https://example.com/pancake-recipe",
-  "uom_preference": "us"
+  "uom_system": "US",
+  "measure_preference": "Volume"
 }
 ```
 
-**Response Highlights:**
-- `structured_ingredients`: List of objects with `amount`, `unit`, `name`, and `id`.
-- `tokenized_directions`: Steps with embedded ingredient IDs (Fat Tokens).
-- `embedding`: 768-float vector from `text-embedding-004`.
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `text` | string | required | Raw recipe text to ingest |
+| `url` | string | null | URL to scrape (not yet implemented) |
+| `uom_system` | string | `"US"` | `"US"`, `"Metric"`, or `"Imperial"` |
+| `measure_preference` | string | `"Volume"` | `"Volume"` or `"Weight"` |
+
+**Response** (`IngestResponse`):
+- `structured_ingredients`: List of objects with `id`, `amount`, `unit`, `name`, `fallback_string`, `converted_amount`, `converted_unit`, `is_ai_converted`.
+- `tokenized_directions`: Steps with embedded Fat Token references (`{{ing_01|fallback text}}`).
+- `embedding`: 1536-float vector from `text-embedding-004`.
+
+**3-step pipeline:**
+1. **Extraction** — `extract_recipe_from_text()` → raw `RecipeList` via Gemini 2.5 Flash
+2. **Refinement** — `refine_recipe_for_cayenne()` → `CayenneRefinement` with Fat Tokens + unit conversions
+3. **Vectorisation** — `get_embeddings()` → 1536-dimension embedding from `text-embedding-004`
+
+#### `POST /embed`
+
+Stand-alone endpoint to vectorize a search query string for semantic search.
+
+**Request Body:**
+```json
+{
+  "text": "citrus and refreshing"
+}
+```
+
+**Response:**
+```json
+{
+  "embedding": [0.123, -0.456, ...]
+}
+```
+
+Returns a 1536-float vector. Used by the Cayenne mobile app's `useHybridSearch` hook.
 
 ---
 
@@ -305,6 +357,7 @@ recipeparser/
 ├── paths.py           User-writable paths (app data, categories, output)
 ├── pipeline.py        Orchestration — parallel execution, hero injection, dedup, export
 ├── export.py          Paprika 3 archive bundler
+├── api.py             FastAPI server — /ingest and /embed endpoints (Cayenne Ingestion API)
 └── categories.yaml    Default recipe taxonomy
 
 tests/
@@ -341,12 +394,13 @@ installer.iss           ← must have matching AppVersion (CI validates this)
 requirements.txt        ← pinned runtime deps (used by CI for reproducible builds)
 recipeparser.spec       ← PyInstaller bundle configuration
 build_installer.ps1     ← local build-only script (dev/testing; no release)
-tests/smoke_test_exe.py ← post-build exe smoke test (run by CI, also runnable locally)
+tests/smoke_test_exe.py   ← post-build exe smoke test (run by CI, also runnable locally)
+tests/smoke_test_docker.py ← post-build Docker image smoke test (run by CI on tag, also runnable locally)
 .github/workflows/
   build-installer.yml   ← GitHub Actions CI/CD pipeline
 ```
 
-The pipeline has four jobs:
+The pipeline has five jobs:
 
 ```
 Any push / PR
@@ -361,24 +415,22 @@ Any push / PR
 │  • Fast feedback — no Windows runner needed         │
 └─────────────────────────────────────────────────────┘
       │  (tag push or workflow_dispatch only)
-      ▼
+      ├─────────────────────────────────────────────────┐
+      ▼                                                 ▼
+┌─────────────────────────────┐  ┌─────────────────────────────────────┐
+│  Job 2: build               │  │  Job 3a: smoke-test-docker           │
+│  (windows-latest)           │  │  (ubuntu-latest)                     │
+│                             │  │                                     │
+│  1. Validate versions       │  │  • python tests/smoke_test_docker.py │
+│  2. pip install deps        │  │  • Validates Dockerfile builds       │
+│  3. pyinstaller + Inno Setup│  │  • Runs in parallel with build       │
+│  4. Upload artifacts        │  │                                     │
+└─────────────────────────────┘  └─────────────────────────────────────┘
+      │                                          │
+      │  (only if build succeeds)        │
+      ▼                                  │
 ┌─────────────────────────────────────────────────────┐
-│  Job 2: build  (windows-latest)                     │
-│                                                     │
-│  1. Validate versions match (pyproject ↔ .iss)      │
-│  2. pip install -r requirements.txt                 │
-│  3. pip install -e . pyinstaller                    │
-│  4. Verify tkinter + customtkinter + darkdetect     │
-│  5. pyinstaller recipeparser.spec --noconfirm       │
-│  6. Validate customtkinter assets in bundle         │
-│  7. ISCC.exe installer.iss                          │
-│  8. Validate installer .exe exists                  │
-│  9. Upload bundle + installer as artifacts          │
-└─────────────────────────────────────────────────────┘
-      │  (only if build succeeds)
-      ▼
-┌─────────────────────────────────────────────────────┐
-│  Job 3: smoke-test  (windows-latest)                │
+│  Job 3b: smoke-test  (windows-latest)               │
 │                                                     │
 │  Downloads the built bundle artifact and runs       │
 │  tests/smoke_test_exe.py against it:                │
@@ -387,7 +439,8 @@ Any push / PR
 │  • --version exits 0 and prints correct version     │
 │  • Bad epub path exits non-zero with error message  │
 └─────────────────────────────────────────────────────┘
-      │  (only if smoke tests pass)
+      │  (only if exe smoke test passes)
+      │  (release also requires smoke-test-docker to pass)
       ▼
 ┌─────────────────────────────────────────────────────┐
 │  Job 4: release  (ubuntu-latest)                    │
@@ -461,10 +514,14 @@ beautifulsoup4==4.12.2
 customtkinter==5.2.2
 lxml==5.3.1
 pydantic==2.11.9
-google-genai==1.38.0
+google-genai>=1.60.0
 python-dotenv==1.1.1
 pyyaml==6.0.1
 pymupdf>=1.24.0
+fastapi>=0.115.0
+uvicorn>=0.30.0
+httpx>=0.27.0
+PyJWT>=2.8.0
 ```
 
 ---
@@ -557,8 +614,16 @@ The script cleans `dist\`, `build\`, and `output\`, runs PyInstaller, then compi
 
 ## Running Tests
 
+**Regression tests (pytest):**
 ```bash
 python -m pytest tests/ -v
+```
+Excludes `smoke_test_exe.py` and `smoke_test_docker.py` (run by CI separately).
+
+**Smoke tests (standalone, optional):**
+```bash
+python tests/smoke_test_docker.py   # Validate Docker image builds
+python tests/smoke_test_exe.py dist\RecipeParser\RecipeParser.exe 2.2.0  # After PyInstaller build
 ```
 
 All Gemini interactions are mocked — no live API calls or API key required.

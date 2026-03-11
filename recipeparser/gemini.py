@@ -159,6 +159,46 @@ _UNITS_RULES = {
 }
 
 
+def extract_recipe_from_text(
+    text: str,
+    client,
+) -> Optional[RecipeList]:
+    """
+    Extract a single recipe from plain text (e.g. from a Paprika import or
+    pasted recipe).  Uses a simpler, more direct prompt than extract_recipes
+    which is tuned for EPUB/PDF book chunks.
+    """
+    prompt = f"""
+You are a culinary data extractor. The following text is a recipe. Extract it.
+
+Rules:
+- Extract the recipe title, servings, prep time, cook time, ingredients, and directions.
+- Ingredients: one item per list entry. Convert unicode fractions (½, ¼, ¾) to plain text (1/2, 1/4, 3/4).
+- Directions: one step per list entry.
+- If a field is absent from the text, leave it null.
+- Do not invent or infer values not present in the text.
+- photo_filename: always null (no images in plain text).
+
+Text:
+{text}
+"""
+    try:
+        response = _call_with_retry(
+            client,
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": RecipeList,
+                "temperature": 0.1,
+            },
+        )
+        return response.parsed
+    except Exception as e:
+        log.error("Gemini plain-text extraction failed: %s", e)
+        return None
+
+
 def extract_recipes(
     text_chunk: str,
     client,

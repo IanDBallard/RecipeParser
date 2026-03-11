@@ -437,3 +437,26 @@ def test_ingest_source_url_is_none_when_not_provided():
          patch(MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING):
         resp = client.post("/ingest", json={"text": "Some recipe text"})
     assert resp.json()["source_url"] is None
+
+# ---------------------------------------------------------------------------
+# 12. Embed endpoint
+# ---------------------------------------------------------------------------
+
+def test_embed_happy_path():
+    with patch(MOCK_TARGETS["client"]), \
+         patch(MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING):
+        resp = client.post("/embed", json={"text": "search query"})
+    assert resp.status_code == 200
+    assert resp.json()["embedding"] == FAKE_EMBEDDING
+
+
+def test_embed_missing_text_returns_422():
+    resp = client.post("/embed", json={})
+    assert resp.status_code == 422
+
+
+def test_embed_error_returns_500():
+    with patch(MOCK_TARGETS["client"]), \
+         patch(MOCK_TARGETS["embed"], side_effect=Exception("API failure")):
+        resp = client.post("/embed", json={"text": "query"})
+    assert resp.status_code == 500

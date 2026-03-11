@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field
 from typing import Optional, List
 import os
+import jwt  # PyJWT
 from dotenv import load_dotenv
 
 from recipeparser.models import CayenneRecipe, IngestResponse
@@ -10,12 +12,60 @@ load_dotenv()
 
 app = FastAPI(title='Cayenne Ingestion API')
 
+# ---------------------------------------------------------------------------
+# Auth — Supabase JWT verification
+# ---------------------------------------------------------------------------
+_bearer = HTTPBearer()
+
+
+def _verify_supabase_jwt(
+    credentials: HTTPAuthorizationCredentials = Security(_bearer),
+) -> dict:
+    """
+    Dependency that validates a Supabase-issued JWT.
+
+    Supabase signs JWTs with the project's JWT secret (HS256).
+    Set SUPABASE_JWT_SECRET in the server environment (from Supabase dashboard
+    → Project Settings → API → JWT Secret).
+
+    Returns the decoded payload (contains sub = user UUID, etc.).
+    Raises HTTP 401 on any validation failure.
+    """
+    jwt_secret = os.getenv('SUPABASE_JWT_SECRET')
+    if not jwt_secret:
+        raise HTTPException(
+            status_code=500,
+            detail='Server misconfiguration: SUPABASE_JWT_SECRET not set.',
+        )
+
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(
+            token,
+            jwt_secret,
+            algorithms=['HS256'],
+            audience='authenticated',  # Supabase sets aud = "authenticated"
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail='Token has expired.')
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail=f'Invalid token: {exc}')
+
 
 class IngestRequest(BaseModel):
     url: Optional[str] = None
     text: Optional[str] = None
     uom_system: Optional[str] = 'US'
     measure_preference: Optional[str] = 'Volume'
+
+
+class EmbedRequest(BaseModel):
+    text: str = Field(..., description="The query string to vectorize for semantic search.")
+
+
+class EmbedResponse(BaseModel):
+    embedding: List[float]
 
 
 def _get_client():
@@ -29,8 +79,11 @@ def _get_client():
 
 
 @app.post('/ingest', response_model=IngestResponse)
-async def ingest_recipe(request: IngestRequest):
-    from recipeparser.gemini import extract_recipes, refine_recipe_for_cayenne, get_embeddings
+async def ingest_recipe(
+    request: IngestRequest,
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    from recipeparser.gemini import extract_recipe_from_text, refine_recipe_for_cayenne, get_embeddings
 
     source_text = request.text
     if not source_text or not source_text.strip():
@@ -46,8 +99,8 @@ async def ingest_recipe(request: IngestRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
     try:
-        # Step 1: Raw Extraction
-        recipe_list = extract_recipes(source_text, client)
+        # Step 1: Raw Extraction (use plain-text prompt for text input)
+        recipe_list = extract_recipe_from_text(source_text, client)
         if not recipe_list or not recipe_list.recipes:
             raise HTTPException(status_code=422, detail='No recipes found in source.')
 
@@ -87,6 +140,22 @@ async def ingest_recipe(request: IngestRequest):
         )
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/embed', response_model=EmbedResponse)
+async def embed_query(
+    request: EmbedRequest,
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """Stand-alone endpoint to vectorize a search query."""
+    from recipeparser.gemini import get_embeddings
+    
+    try:
+        client = _get_client()
+        embedding = get_embeddings(request.text, client)
+        return EmbedResponse(embedding=embedding)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
