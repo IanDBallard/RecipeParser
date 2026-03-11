@@ -2,9 +2,10 @@
 
 A production-grade tool that extracts recipes from **EPUB or PDF** cookbooks and exports them as a `.paprikarecipes` archive ready to import into [Paprika 3](https://www.paprikaapp.com/).
 
-Available in two forms:
+Available in three forms:
 - **Windows GUI installer** — a self-contained `RecipeParser-Setup-x.x.x.exe` that requires no Python installation
 - **Python CLI/library** — installable via `pip` for scripting and automation
+- **Cayenne Ingestion API** — a FastAPI-powered endpoint for recipe refinement and vector embedding
 
 It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, handle diverse book layouts, assign taxonomy categories, and intelligently match hero photographs — all without brittle regex or hard-coded formatting rules.
 
@@ -20,6 +21,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 - **Parallel processing** — extraction and categorisation both run concurrently with a configurable concurrency cap, with automatic exponential back-off on rate limits
 - **Handles diverse EPUB and PDF structures** — prose recipes, ingredient lists, baker's percentage tables, multi-recipe chapters, and text-only historic cookbooks all work; PDFs are supported with pre-flight checks and page-based extraction
 - **TOC-based reconciliation** — extracts table of contents (EPUB nav/NCX or PDF outline) when present, compares it to extracted recipes, and logs any missed or extra recipes; extraction always uses page/document chunking for best results
+- **Recipe Refinement (Cayenne)** — converts raw recipes into structured JSON with normalized ingredients and "Fat Token" directions, including 768-dimension vector embeddings using `text-embedding-004`
 - **Safe and robust** — per-task timeouts, typed custom exceptions, graceful degradation (a failed segment is skipped, not fatal), and image-less recipes export cleanly without crashing Paprika
 
 ---
@@ -166,6 +168,37 @@ Then in Paprika 3: **File → Import Recipes** and select the `.paprikarecipes` 
 ```bash
 recipeparser-gui
 ```
+
+---
+
+## Cayenne Ingestion API
+
+The project includes a FastAPI server for high-fidelity recipe extraction and vector search indexing.
+
+### Starting the Server
+
+```bash
+uvicorn recipeparser.api:app --host 0.0.0.0 --port 8000
+```
+
+### Endpoints
+
+#### `POST /ingest`
+Accepts raw text or a cookbook URL and returns a refined `CayenneRecipe` object with embeddings.
+
+**Request Body:**
+```json
+{
+  "text": "1 cup flour, 2 eggs. Mix and bake at 350F for 20 mins.",
+  "source_url": "https://example.com/pancake-recipe",
+  "uom_preference": "us"
+}
+```
+
+**Response Highlights:**
+- `structured_ingredients`: List of objects with `amount`, `unit`, `name`, and `id`.
+- `tokenized_directions`: Steps with embedded ingredient IDs (Fat Tokens).
+- `embedding`: 768-float vector from `text-embedding-004`.
 
 ---
 

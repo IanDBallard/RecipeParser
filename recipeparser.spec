@@ -62,6 +62,7 @@ hiddenimports = [
     "tkinter",
     # Standard library / lightweight deps occasionally missed by the analyser
     "sqlite3",
+    "recipeparser",
     "recipeparser.paprika_db",
     "yaml",
     "dotenv",

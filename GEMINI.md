@@ -5,12 +5,13 @@ This project is a production-grade tool designed to extract recipes from EPUB an
 ## Project Overview
 
 -   **Domain:** Cookbook digitization and recipe management.
--   **Core Tech:** Python 3.9+, Gemini API (via `google-genai`), Pydantic (data validation), EbookLib/BeautifulSoup (EPUB), PyMuPDF (PDF), CustomTkinter (GUI).
+-   **Core Tech:** Python 3.9+, Gemini API (via `google-genai`), Pydantic (data validation), EbookLib/BeautifulSoup (EPUB), PyMuPDF (PDF), CustomTkinter (GUI), FastAPI/Uvicorn (API).
 -   **Key Features:**
     -   AI-driven extraction of recipe fields (ingredients, directions, etc.).
     -   "Hero image" detection and breadcrumb injection for accurate photo matching.
     -   Automatic categorization using a configurable taxonomy or sync from a local Paprika DB.
     -   Parallel processing with built-in rate limiting (RPM/concurrency caps).
+    -   **Cayenne Ingestion API:** High-fidelity refinement and vector embedding for Project Cayenne.
     -   Windows GUI installer and cross-platform Python CLI.
 
 ## Building and Running
@@ -28,6 +29,7 @@ This project is a production-grade tool designed to extract recipes from EPUB an
 ### Running the Application
 -   **CLI:** `recipeparser path/to/cookbook.epub`
 -   **GUI:** `recipeparser-gui`
+-   **API:** `uvicorn recipeparser.api:app`
 
 ### Testing
 -   **Run all tests:** `python -m pytest tests/`
@@ -43,8 +45,9 @@ This project is a production-grade tool designed to extract recipes from EPUB an
 The project follows a modular pipeline pattern:
 
 -   `recipeparser/pipeline.py`: Central orchestrator (LOAD -> EXTRACT -> RECON -> EXPORT).
--   `recipeparser/gemini.py`: API interaction, retry logic, and specialized normalization (e.g., Baker's percentage tables).
--   `recipeparser/models.py`: Pydantic schemas defining the contract between AI output and internal data.
+-   `recipeparser/gemini.py`: API interaction, retry logic, and specialized normalization.
+-   `recipeparser/api.py`: FastAPI implementation for the `/ingest` endpoint.
+-   `recipeparser/models.py`: Pydantic schemas for standard and Cayenne-refined recipes.
 -   `recipeparser/epub.py` & `recipeparser/pdf.py`: Format-specific extraction and image handling.
 -   `recipeparser/export.py`: Handles ZIP/GZIP bundling for the `.paprikarecipes` format.
 -   `recipeparser/paprika_db.py`: Reads categories from the local Paprika SQLite database.

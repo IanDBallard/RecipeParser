@@ -106,13 +106,18 @@ def main() -> int:
 
     # ── 6. recipeparser package metadata present (enables --version at runtime) ─
     # PyInstaller bundles importlib.metadata so --version works in the frozen exe.
-    # The metadata lives in _internal/recipeparser-<version>.dist-info/METADATA.
+    # The metadata lives in _internal/recipeparser-<version>.dist-info/METADATA
+    # OR in _internal/recipeparser.egg-info/PKG-INFO for editable installs.
     if expected_version:
         meta_dirs = list(bundle_dir.rglob(f"recipeparser-{expected_version}.dist-info"))
         if not meta_dirs:
-            # Also accept any recipeparser dist-info (version may differ slightly)
+            # Also accept any recipeparser dist-info
             meta_dirs = list(bundle_dir.rglob("recipeparser-*.dist-info"))
-        if not check(f"recipeparser-{expected_version}.dist-info present in bundle",
+        if not meta_dirs:
+            # Fallback for editable installs: check for egg-info
+            meta_dirs = list(bundle_dir.rglob("recipeparser.egg-info"))
+            
+        if not check(f"recipeparser metadata present in bundle",
                      len(meta_dirs) > 0,
                      "Package metadata missing — importlib.metadata version lookup will fail at runtime.\n"
                      "         Add 'copy_metadata(\"recipeparser\")' to datas in recipeparser.spec"):
