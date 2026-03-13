@@ -163,3 +163,29 @@ def get_book_source(book: epub.EpubBook) -> str:
     if title and author:
         return f"{title} \u2014 {author}"
     return title or "EPUB Auto-Import"
+
+
+def extract_text_from_epub(epub_path: str) -> str:
+    """
+    Stateless text extraction from an EPUB.
+    - Extracts all document chapters.
+    - Filters to recipe-candidate chapters using is_recipe_candidate().
+    - Returns a single concatenated string.
+    """
+    from recipeparser.exceptions import EpubExtractionError
+    try:
+        book = epub.read_epub(epub_path)
+    except Exception as e:
+        raise EpubExtractionError(f"Failed to open EPUB: {e}")
+
+    chapters = extract_chapters_with_image_markers(book, qualifying_images=None)
+    if not chapters:
+        return ""
+
+    # Filter to recipe-candidate chapters to reduce token count
+    recipe_chapters = [c for c in chapters if is_recipe_candidate(c)]
+    if not recipe_chapters:
+        # Fall back to all chapters if heuristic filters everything out
+        recipe_chapters = chapters
+
+    return "\n\n".join(recipe_chapters)

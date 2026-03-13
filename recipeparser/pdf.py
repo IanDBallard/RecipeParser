@@ -129,3 +129,44 @@ def _extract_page_images(
             f.write(image_bytes)
         filenames.append(filename)
     return filenames
+
+
+def extract_text_from_pdf(pdf_path: str, client=None) -> str:
+    """
+    Stateless text extraction from a PDF.
+    - Handles pre-flight (password, etc.)
+    - Detects scanned PDFs and falls back to Gemini Vision OCR if client is provided.
+    - Returns a single concatenated string of all page text.
+    """
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as e:
+        raise PdfExtractionError(f"Failed to open PDF: {e}")
+
+    try:
+        if doc.page_count == 0:
+            raise PdfExtractionError("PDF has no pages.")
+        if doc.is_encrypted:
+            raise PdfExtractionError("PDF is password-protected.")
+
+        # Pre-flight: detect scanned vs. text PDF.
+        sample_pages = min(PDF_PREFLIGHT_SAMPLE_PAGES, doc.page_count)
+        total_chars = sum(len(doc[i].get_text()) for i in range(sample_pages))
+        avg_chars = total_chars / sample_pages if sample_pages else 0
+
+        if avg_chars < PDF_PREFLIGHT_MIN_CHARS_PER_PAGE:
+            # Scanned PDF fallback
+            if client is None:
+                raise PdfExtractionError(
+                    f"Scanned PDF detected (avg {avg_chars:.0f} chars/page) but no "
+                    "Gemini client provided for Vision OCR fallback."
+                )
+            log.info("Scanned PDF detected — falling back to Gemini Vision OCR.")
+            from recipeparser.gemini import extract_text_via_vision
+            return extract_text_via_vision(doc, client)
+        else:
+            # Text-based PDF
+            pages_text = [doc[i].get_text() for i in range(doc.page_count)]
+            return "\n\n".join(p for p in pages_text if p.strip())
+    finally:
+        doc.close()

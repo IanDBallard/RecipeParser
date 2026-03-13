@@ -392,3 +392,206 @@ class TestPhaseInstructions:
         """The prompt must make clear the bold label is its own list entry."""
         prompt = self._get_prompt()
         assert "separate list item" in prompt.lower() or "own separate" in prompt.lower()
+
+
+# ---------------------------------------------------------------------------
+# extract_text_via_vision  (mocked — no live API calls, no real PDF needed)
+# ---------------------------------------------------------------------------
+
+class TestExtractTextViaVision:
+    """
+    Unit tests for gemini.extract_text_via_vision().
+
+    Strategy: mock the fitz.Document object so no real PDF file is needed,
+    and mock the Gemini client so no real API calls are made.
+    """
+
+    def _make_doc(self, page_count: int = 1, pixmap_bytes: bytes = b"PNG_BYTES"):
+        """Return a minimal mock fitz.Document with `page_count` pages."""
+        doc = MagicMock()
+        doc.page_count = page_count
+
+        # Each page returns a pixmap whose tobytes() returns pixmap_bytes
+        pixmap = MagicMock()
+        pixmap.tobytes.return_value = pixmap_bytes
+        page = MagicMock()
+        page.get_pixmap.return_value = pixmap
+        doc.__getitem__ = MagicMock(return_value=page)
+
+        return doc
+
+    def _make_vision_client(self, page_texts):
+        """
+        Return a mock Gemini client whose generate_content returns successive
+        page transcripts from `page_texts` (one per call).
+        """
+        responses = []
+        for text in page_texts:
+            r = MagicMock()
+            r.text = text
+            responses.append(r)
+        client = MagicMock()
+        client.models.generate_content.side_effect = responses
+        return client
+
+    # ------------------------------------------------------------------
+    # Happy path
+    # ------------------------------------------------------------------
+
+    def test_single_page_returns_text(self):
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=1)
+        client = self._make_vision_client(["Chocolate Cake\n1 cup flour\nMix and bake."])
+
+        result = extract_text_via_vision(doc, client)
+
+        assert "Chocolate Cake" in result
+        assert "1 cup flour" in result
+
+    def test_multi_page_concatenated_with_double_newline(self):
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=3)
+        client = self._make_vision_client(["Page 1 text", "Page 2 text", "Page 3 text"])
+
+        result = extract_text_via_vision(doc, client)
+
+        assert result == "Page 1 text\n\nPage 2 text\n\nPage 3 text"
+
+    def test_gemini_called_once_per_page(self):
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=4)
+        client = self._make_vision_client(["text"] * 4)
+
+        extract_text_via_vision(doc, client)
+
+        assert client.models.generate_content.call_count == 4
+
+    def test_pixmap_rendered_at_2x_scale(self):
+        """Verify get_pixmap is called with a 2× Matrix (144 DPI)."""
+        import fitz
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=1)
+        client = self._make_vision_client(["some text"])
+
+        extract_text_via_vision(doc, client)
+
+        page = doc[0]
+        call_kwargs = page.get_pixmap.call_args
+        matrix = call_kwargs.kwargs.get("matrix") or call_kwargs.args[0]
+        # fitz.Matrix(2, 2) has .a == 2.0 and .d == 2.0
+        assert matrix.a == pytest.approx(2.0)
+        assert matrix.d == pytest.approx(2.0)
+
+    def test_image_sent_as_png_mime_type(self):
+        """
+        Verify the Gemini call includes a Part with mime_type='image/png'.
+
+        Strategy: inspect the ``contents`` list passed to generate_content.
+        The first element must be a Part whose inline_data.mime_type is 'image/png'.
+        We use a real (non-mocked) fitz document so the pixmap path runs normally,
+        and a mock client so no real API call is made.
+        """
+        from recipeparser.gemini import extract_text_via_vision
+        from google.genai import types as genai_types
+
+        doc = self._make_doc(page_count=1, pixmap_bytes=b"\x89PNG_FAKE_DATA")
+        client = self._make_vision_client(["recipe text"])
+
+        extract_text_via_vision(doc, client)
+
+        call_args = client.models.generate_content.call_args
+        contents = call_args.kwargs.get("contents") or call_args.args[0]
+        # contents is [Part, prompt_string]
+        assert isinstance(contents, list) and len(contents) >= 1
+        part = contents[0]
+        # Part.from_bytes sets inline_data.mime_type
+        assert part.inline_data.mime_type == "image/png"
+
+    def test_ocr_prompt_instructs_transcription(self):
+        """Verify the prompt sent to Gemini mentions OCR / transcription."""
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=1)
+        client = self._make_vision_client(["text"])
+
+        extract_text_via_vision(doc, client)
+
+        call_args = client.models.generate_content.call_args
+        contents = call_args.kwargs.get("contents") or call_args.args[0]
+        # contents is a list: [Part, prompt_string]
+        prompt_str = contents[1] if isinstance(contents, list) else str(contents)
+        assert "transcribe" in prompt_str.lower() or "ocr" in prompt_str.lower()
+
+    def test_temperature_zero_for_ocr(self):
+        """OCR should use temperature=0 for deterministic output."""
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=1)
+        client = self._make_vision_client(["text"])
+
+        extract_text_via_vision(doc, client)
+
+        call_kwargs = client.models.generate_content.call_args.kwargs
+        assert call_kwargs["config"]["temperature"] == 0
+
+    # ------------------------------------------------------------------
+    # Partial failure — some pages succeed, some fail
+    # ------------------------------------------------------------------
+
+    def test_failed_page_skipped_others_returned(self):
+        """If one page raises, the others should still be returned."""
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=3)
+
+        r1 = MagicMock()
+        r1.text = "Page 1 text"
+        r3 = MagicMock()
+        r3.text = "Page 3 text"
+        client = MagicMock()
+        client.models.generate_content.side_effect = [r1, Exception("API error"), r3]
+
+        result = extract_text_via_vision(doc, client)
+
+        assert "Page 1 text" in result
+        assert "Page 3 text" in result
+
+    def test_empty_response_page_skipped(self):
+        """Pages where Gemini returns empty string are silently skipped."""
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=2)
+        client = self._make_vision_client(["", "Real recipe text"])
+
+        result = extract_text_via_vision(doc, client)
+
+        assert result == "Real recipe text"
+
+    def test_whitespace_only_response_page_skipped(self):
+        """Pages where Gemini returns only whitespace are silently skipped."""
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=2)
+        client = self._make_vision_client(["   \n  ", "Actual content"])
+
+        result = extract_text_via_vision(doc, client)
+
+        assert result == "Actual content"
+
+    # ------------------------------------------------------------------
+    # Total failure — all pages fail
+    # ------------------------------------------------------------------
+
+    def test_all_pages_fail_raises_runtime_error(self):
+        """If every page fails, RuntimeError is raised (not a silent empty string)."""
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=2)
+        client = MagicMock()
+        client.models.generate_content.side_effect = Exception("Vision API down")
+
+        with pytest.raises(RuntimeError, match="no text for any page"):
+            extract_text_via_vision(doc, client)
+
+    def test_all_pages_empty_raises_runtime_error(self):
+        """If every page returns empty text, RuntimeError is raised."""
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=3)
+        client = self._make_vision_client(["", "", ""])
+
+        with pytest.raises(RuntimeError, match="no text for any page"):
+            extract_text_via_vision(doc, client)

@@ -5,6 +5,7 @@ from recipeparser.gemini import get_embeddings, refine_recipe_for_cayenne
 from recipeparser.models import CayenneRefinement, StructuredIngredient, TokenizedDirection
 
 def test_get_embeddings_success():
+    from google.genai import types as genai_types
     mock_client = MagicMock()
     mock_response = MagicMock()
     mock_values = [0.1] * 1536
@@ -12,21 +13,21 @@ def test_get_embeddings_success():
     mock_client.models.embed_content.return_value = mock_response
 
     result = get_embeddings("test text", mock_client)
-    
-    assert result == mock_values
-    mock_client.models.embed_content.assert_called_once_with(
-        model="text-embedding-004",
-        contents="test text"
-    )
 
-def test_get_embeddings_failure_returns_zeros():
+    assert result == mock_values
+    call_kwargs = mock_client.models.embed_content.call_args.kwargs
+    assert call_kwargs["model"] == "models/gemini-embedding-001"
+    assert call_kwargs["contents"] == "test text"
+    assert call_kwargs["config"].output_dimensionality == 1536
+
+
+def test_get_embeddings_failure_raises():
+    """get_embeddings raises on API failure — callers (the endpoint) handle the 500."""
     mock_client = MagicMock()
     mock_client.models.embed_content.side_effect = Exception("API Error")
 
-    result = get_embeddings("test text", mock_client)
-    
-    assert len(result) == 1536
-    assert all(v == 0.0 for v in result)
+    with pytest.raises(Exception, match="API Error"):
+        get_embeddings("test text", mock_client)
 
 def test_refine_recipe_for_cayenne_success():
     mock_client = MagicMock()

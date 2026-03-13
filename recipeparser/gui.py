@@ -512,9 +512,10 @@ class ParseFrame(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         self._log_queue: queue.Queue = queue.Queue()
         self._running = False
+        self._controller: Optional["PipelineController"] = None
 
         self._build_ui()
-        self._poll_log()
+        self._poll_status()
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -601,20 +602,32 @@ class ParseFrame(ctk.CTkFrame):
         # ── Action buttons ─────────────────────────────────────────────────────
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.grid(row=7, column=0, sticky="ew", padx=16, pady=(0, 12))
-        btn_row.grid_columnconfigure(1, weight=1)
+        btn_row.grid_columnconfigure(3, weight=1)
 
         self._parse_btn = ctk.CTkButton(
-            btn_row, text="Parse Recipes", width=160,
+            btn_row, text="Parse Recipes", width=140,
             fg_color="#27ae60", hover_color="#1e8449",
             command=self._start_parse,
         )
         self._parse_btn.grid(row=0, column=0, padx=(0, 8))
 
+        self._pause_btn = ctk.CTkButton(
+            btn_row, text="Pause", width=90,
+            command=self._toggle_pause, state="disabled",
+        )
+        self._pause_btn.grid(row=0, column=1, padx=(0, 8))
+
+        self._cancel_btn = ctk.CTkButton(
+            btn_row, text="Cancel", width=90, fg_color="#c0392b", hover_color="#922b21",
+            command=self._cancel_parse, state="disabled",
+        )
+        self._cancel_btn.grid(row=0, column=2)
+
         self._open_btn = ctk.CTkButton(
-            btn_row, text="Open Output Folder", width=160,
+            btn_row, text="Open Folder", width=120,
             command=self._open_output, state="disabled",
         )
-        self._open_btn.grid(row=0, column=2)
+        self._open_btn.grid(row=0, column=4)
 
     # ── Event handlers ─────────────────────────────────────────────────────────
 
@@ -650,6 +663,20 @@ class ParseFrame(ctk.CTkFrame):
         else:
             subprocess.run(["xdg-open", folder])
 
+    def _toggle_pause(self):
+        if not self._controller:
+            return
+        from recipeparser.pipeline import PipelineStatus
+        status = self._controller.status
+        if status in (PipelineStatus.RUNNING, PipelineStatus.PAUSING):
+            self._controller.request_pause()
+        elif status in (PipelineStatus.PAUSED, PipelineStatus.RESUMING):
+            self._controller.request_resume()
+
+    def _cancel_parse(self):
+        if self._controller and messagebox.askyesno("Cancel", "Stop parsing and discard current progress?"):
+            self._controller.request_cancel()
+
     # ── Parse pipeline ─────────────────────────────────────────────────────────
 
     def _start_parse(self):
@@ -674,10 +701,15 @@ class ParseFrame(ctk.CTkFrame):
 
         Path(output).mkdir(parents=True, exist_ok=True)
 
+        from recipeparser.pipeline import PipelineController
+        self._controller = PipelineController(output_dir=output)
+
         self._log_clear()
         self._progress.set(0)
         self._status_var.set("Starting…")
         self._parse_btn.configure(state="disabled")
+        self._pause_btn.configure(state="normal", text="Pause")
+        self._cancel_btn.configure(state="normal")
         self._open_btn.configure(state="disabled")
         self._running = True
 
@@ -703,6 +735,7 @@ class ParseFrame(ctk.CTkFrame):
                 result_path = _pipeline(
                     book_path, output, client,
                     units=units, concurrency=concurrency_val, rpm=rpm_val,
+                    controller=self._controller,
                 )
             except Exception as exc:
                 self._log_queue.put(f"ERROR: {exc}")
@@ -715,13 +748,21 @@ class ParseFrame(ctk.CTkFrame):
     def _on_parse_done(self, result_path: Optional[str]):
         self._running = False
         self._parse_btn.configure(state="normal")
-        self._progress.set(1)
-        if result_path:
+        self._pause_btn.configure(state="disabled", text="Pause")
+        self._cancel_btn.configure(state="disabled")
+        self._progress.set(1 if result_path else 0)
+        
+        from recipeparser.pipeline import PipelineStatus
+        if self._controller and self._controller.status == PipelineStatus.CANCELLING:
+            self._status_var.set("Cancelled.")
+        elif result_path:
             name = Path(result_path).name
             self._status_var.set(f"Done — {name}")
             self._open_btn.configure(state="normal")
         else:
             self._status_var.set("Finished with errors — check log.")
+        
+        self._controller = None
 
     # ── Log helpers ────────────────────────────────────────────────────────────
 
@@ -736,19 +777,42 @@ class ParseFrame(ctk.CTkFrame):
         self._log_box.see("end")
         self._log_box.configure(state="disabled")
 
-    def _poll_log(self):
-        """Drain the log queue and update the text widget; reschedule every 100 ms."""
+    def _poll_status(self):
+        """Drain the log queue and sync UI with PipelineController status."""
         try:
             while True:
                 msg = self._log_queue.get_nowait()
                 self._log_append(msg)
-                # cheap progress animation while running
-                if self._running:
-                    current = self._progress.get()
-                    self._progress.set(min(current + 0.005, 0.95))
         except queue.Empty:
             pass
-        self.after(100, self._poll_log)
+
+        if self._running and self._controller:
+            from recipeparser.pipeline import PipelineStatus
+            status = self._controller.status
+            
+            # Sync Pause button text
+            if status in (PipelineStatus.PAUSED, PipelineStatus.RESUMING):
+                self._pause_btn.configure(text="Resume")
+            else:
+                self._pause_btn.configure(text="Pause")
+            
+            # Update status label based on state
+            if status == PipelineStatus.PAUSING:
+                self._status_var.set("Pausing (waiting for active threads)…")
+            elif status == PipelineStatus.PAUSED:
+                self._status_var.set("Paused.")
+            elif status == PipelineStatus.RESUMING:
+                self._status_var.set("Resuming…")
+            elif status == PipelineStatus.CANCELLING:
+                self._status_var.set("Cancelling…")
+            elif status == PipelineStatus.RUNNING:
+                # Update progress bar animation
+                current = self._progress.get()
+                self._progress.set(min(current + 0.005, 0.95))
+                if "Starting" in self._status_var.get() or "Resuming" in self._status_var.get():
+                     self._status_var.set("Processing recipes…")
+
+        self.after(100, self._poll_status)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

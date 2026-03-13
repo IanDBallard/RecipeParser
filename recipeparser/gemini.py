@@ -64,15 +64,17 @@ def verify_connectivity(client) -> bool:
 
 def get_embeddings(text: str, client) -> List[float]:
     """Generates a 1536-dimension embedding for the given text."""
+    from google.genai import types as genai_types
     try:
         response = client.models.embed_content(
-            model="text-embedding-004",
-            contents=text
+            model="models/gemini-embedding-001",
+            contents=text,
+            config=genai_types.EmbedContentConfig(output_dimensionality=1536),
         )
         return response.embeddings[0].values
     except Exception as e:
         log.error("Embedding generation failed: %s", e)
-        return [0.0] * 1536
+        raise  # Don't silently return zeros — surface the real error
 
 
 def needs_table_normalisation(text: str) -> bool:
@@ -267,6 +269,74 @@ Text chunk:
     except Exception as e:
         log.error("Gemini extraction failed: %s", e)
         return None
+
+
+def extract_text_via_vision(doc, client) -> str:
+    """
+    OCR fallback for scanned PDFs that contain no extractable text.
+
+    Renders each page to a PNG pixmap via PyMuPDF and sends the images to
+    Gemini's vision input.  Returns the concatenated plain-text transcript
+    of all pages, separated by double newlines.
+
+    Args:
+        doc:    An open ``fitz.Document`` (PyMuPDF).  Must NOT be closed
+                before this function returns.
+        client: An initialised ``google.genai.Client`` instance.
+
+    Returns:
+        A non-empty string of extracted text, or raises ``RuntimeError`` if
+        Gemini returns nothing useful for every page.
+    """
+    import fitz  # PyMuPDF — already a dependency; imported here to keep gemini.py PDF-agnostic
+    from google.genai import types as genai_types
+
+    VISION_PROMPT = (
+        "You are an OCR assistant. The image is a page from a recipe document. "
+        "Transcribe ALL text exactly as it appears — including the recipe title, "
+        "ingredient quantities and names, and every numbered direction step. "
+        "Preserve line breaks between sections. "
+        "Do NOT add commentary, summaries, or any text not present in the image."
+    )
+
+    page_texts: List[str] = []
+    for page_num in range(doc.page_count):
+        page = doc[page_num]
+        # Render at 2× scale (144 DPI) for legibility — good balance of quality vs. token cost.
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        image_bytes = pixmap.tobytes("png")
+
+        try:
+            response = _call_with_retry(
+                client,
+                model="gemini-2.5-flash",
+                contents=[
+                    genai_types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                    VISION_PROMPT,
+                ],
+                config={"temperature": 0},
+            )
+            page_text = (response.text or "").strip()
+            if page_text:
+                page_texts.append(page_text)
+                log.info(
+                    "Vision OCR page %d/%d: extracted %d chars.",
+                    page_num + 1,
+                    doc.page_count,
+                    len(page_text),
+                )
+            else:
+                log.warning("Vision OCR page %d/%d: empty response.", page_num + 1, doc.page_count)
+        except Exception as exc:
+            log.warning("Vision OCR page %d/%d failed: %s", page_num + 1, doc.page_count, exc)
+
+    if not page_texts:
+        raise RuntimeError(
+            "Gemini Vision returned no text for any page in the scanned PDF. "
+            "The document may contain non-recipe imagery or be unreadable."
+        )
+
+    return "\n\n".join(page_texts)
 
 
 def refine_recipe_for_cayenne(

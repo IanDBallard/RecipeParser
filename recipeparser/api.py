@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends, Security, UploadFile, File, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -6,7 +6,9 @@ import os
 import jwt  # PyJWT
 from dotenv import load_dotenv
 
-from recipeparser.models import CayenneRecipe, IngestResponse
+from recipeparser.models import IngestResponse
+from recipeparser.utils import temp_file_from_upload, html_to_text
+from recipeparser.pipeline import run_cayenne_pipeline
 
 load_dotenv()
 
@@ -15,22 +17,19 @@ app = FastAPI(title='Cayenne Ingestion API')
 # ---------------------------------------------------------------------------
 # Auth — Supabase JWT verification
 # ---------------------------------------------------------------------------
-_bearer = HTTPBearer()
+_DISABLE_AUTH = os.getenv('DISABLE_AUTH', '0') == '1'
+_bearer = HTTPBearer(auto_error=not _DISABLE_AUTH)
 
 
 def _verify_supabase_jwt(
-    credentials: HTTPAuthorizationCredentials = Security(_bearer),
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(_bearer),
 ) -> dict:
-    """
-    Dependency that validates a Supabase-issued JWT.
+    if _DISABLE_AUTH:
+        return {'sub': 'local-e2e-test-user', 'aud': 'authenticated'}
 
-    Supabase signs JWTs with the project's JWT secret (HS256).
-    Set SUPABASE_JWT_SECRET in the server environment (from Supabase dashboard
-    → Project Settings → API → JWT Secret).
+    if credentials is None:
+        raise HTTPException(status_code=403, detail='Not authenticated.')
 
-    Returns the decoded payload (contains sub = user UUID, etc.).
-    Raises HTTP 401 on any validation failure.
-    """
     jwt_secret = os.getenv('SUPABASE_JWT_SECRET')
     if not jwt_secret:
         raise HTTPException(
@@ -44,7 +43,7 @@ def _verify_supabase_jwt(
             token,
             jwt_secret,
             algorithms=['HS256'],
-            audience='authenticated',  # Supabase sets aud = "authenticated"
+            audience='authenticated',
         )
         return payload
     except jwt.ExpiredSignatureError:
@@ -53,9 +52,19 @@ def _verify_supabase_jwt(
         raise HTTPException(status_code=401, detail=f'Invalid token: {exc}')
 
 
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
 class IngestRequest(BaseModel):
-    url: Optional[str] = None
     text: Optional[str] = None
+    url: Optional[str] = None
+    uom_system: Optional[str] = 'US'
+    measure_preference: Optional[str] = 'Volume'
+
+
+class IngestUrlRequest(BaseModel):
+    url: str
     uom_system: Optional[str] = 'US'
     measure_preference: Optional[str] = 'Volume'
 
@@ -68,9 +77,12 @@ class EmbedResponse(BaseModel):
     embedding: List[float]
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 def _get_client():
-    """Lazily initialise the Gemini client so tests can import the module
-    without a real API key present at import time."""
+    """Lazily initialise the Gemini client."""
     from google import genai
     api_key = os.getenv('GOOGLE_API_KEY')
     if not api_key:
@@ -78,69 +90,159 @@ def _get_client():
     return genai.Client(api_key=api_key)
 
 
+def _safe_run_pipeline(source_text: str, client, **kwargs) -> IngestResponse:
+    """Wrapper to catch pipeline errors and map to FastAPI exceptions."""
+    try:
+        return run_cayenne_pipeline(source_text, client, **kwargs)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected pipeline error: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
 @app.post('/ingest', response_model=IngestResponse)
 async def ingest_recipe(
     request: IngestRequest,
     _user: dict = Depends(_verify_supabase_jwt),
 ):
-    from recipeparser.gemini import extract_recipe_from_text, refine_recipe_for_cayenne, get_embeddings
-
+    """Ingest a recipe from plain text."""
     source_text = request.text
     if not source_text or not source_text.strip():
-        # TODO: Add Jina scraper here for URL ingestion
         raise HTTPException(
             status_code=400,
-            detail='Only text ingestion is supported currently. URL ingestion coming soon.'
+            detail='Only text ingestion is supported on this endpoint. For URL ingestion use POST /ingest/url.',
         )
 
     try:
         client = _get_client()
+        return _safe_run_pipeline(
+            source_text=source_text,
+            client=client,
+            uom_system=request.uom_system or 'US',
+            measure_preference=request.measure_preference or 'Volume',
+            source_url=request.url or None,
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.post('/ingest/url', response_model=IngestResponse)
+async def ingest_url(
+    request: IngestUrlRequest,
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """Fetch a recipe page via Jina, extract text, and run the pipeline."""
+    import httpx
+    from recipeparser.epub import is_recipe_candidate
+
+    url = (request.url or '').strip()
+    if not url:
+        raise HTTPException(status_code=400, detail='url field is required.')
+
+    jina_url = f'https://r.jina.ai/{url}'
+    headers = {'Accept': 'text/html'}
+    jina_api_key = os.getenv('JINA_API_KEY')
+    if jina_api_key:
+        headers['Authorization'] = f'Bearer {jina_api_key}'
+
     try:
-        # Step 1: Raw Extraction (use plain-text prompt for text input)
-        recipe_list = extract_recipe_from_text(source_text, client)
-        if not recipe_list or not recipe_list.recipes:
-            raise HTTPException(status_code=422, detail='No recipes found in source.')
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(jina_url, headers=headers, follow_redirects=True)
+            response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f'Failed to fetch URL: {exc}')
 
-        raw_recipe = recipe_list.recipes[0]
+    source_text = html_to_text(response.text)
+    if not source_text.strip():
+        raise HTTPException(status_code=422, detail='No text could be extracted from the URL.')
 
-        # Step 2: Cayenne Refinement (Fat Tokens + unit conversions)
-        refined = refine_recipe_for_cayenne(
-            raw_recipe,
-            client,
+    if not is_recipe_candidate(source_text):
+        raise HTTPException(status_code=422, detail='URL does not appear to contain a recipe.')
+
+    try:
+        client = _get_client()
+        return _safe_run_pipeline(
+            source_text=source_text,
+            client=client,
             uom_system=request.uom_system or 'US',
             measure_preference=request.measure_preference or 'Volume',
+            source_url=url,
         )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        if not refined:
-            raise HTTPException(status_code=500, detail='Refinement pass failed.')
 
-        # Step 3: Vectorisation
-        ing_names = ', '.join([i.name for i in refined.structured_ingredients])
-        embedding_input = f'{refined.title}\n\n{ing_names}'
-        embedding = get_embeddings(embedding_input, client)
+@app.post('/ingest/pdf', response_model=IngestResponse)
+async def ingest_pdf(
+    file: UploadFile = File(...),
+    uom_system: str = Form('US'),
+    measure_preference: str = Form('Volume'),
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """Ingest a recipe from an uploaded PDF."""
+    from recipeparser.pdf import extract_text_from_pdf
 
-        # Reassemble into canonical CayenneRecipe
-        cayenne_recipe = CayenneRecipe(
-            title=refined.title,
-            prep_time=raw_recipe.prep_time,
-            cook_time=raw_recipe.cook_time,
-            base_servings=refined.base_servings or 4,
-            source_url=request.url,
-            categories=['Uncategorized'],
-            structured_ingredients=refined.structured_ingredients,
-            tokenized_directions=refined.tokenized_directions,
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail='File must be a PDF.')
+
+    try:
+        client = _get_client()
+        with temp_file_from_upload(file) as tmp_path:
+            try:
+                source_text = extract_text_from_pdf(tmp_path, client=client)
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=str(e))
+
+        if not source_text.strip():
+            raise HTTPException(status_code=422, detail='No text could be extracted from the PDF.')
+
+        return _safe_run_pipeline(
+            source_text=source_text,
+            client=client,
+            uom_system=uom_system,
+            measure_preference=measure_preference,
         )
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        return IngestResponse(
-            **cayenne_recipe.model_dump(),
-            embedding=embedding,
+
+@app.post('/ingest/epub', response_model=IngestResponse)
+async def ingest_epub(
+    file: UploadFile = File(...),
+    uom_system: str = Form('US'),
+    measure_preference: str = Form('Volume'),
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """Ingest a recipe from an uploaded EPUB."""
+    from recipeparser.epub import extract_text_from_epub
+
+    if not file.filename.lower().endswith('.epub'):
+        raise HTTPException(status_code=400, detail='File must be an EPUB.')
+
+    try:
+        client = _get_client()
+        with temp_file_from_upload(file) as tmp_path:
+            try:
+                source_text = extract_text_from_epub(tmp_path)
+            except Exception as e:
+                raise HTTPException(status_code=422, detail=str(e))
+
+        if not source_text.strip():
+            raise HTTPException(status_code=422, detail='No text could be extracted from the EPUB.')
+
+        return _safe_run_pipeline(
+            source_text=source_text,
+            client=client,
+            uom_system=uom_system,
+            measure_preference=measure_preference,
         )
-    except HTTPException:
-        raise
-    except Exception as e:
+    except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -151,11 +253,12 @@ async def embed_query(
 ):
     """Stand-alone endpoint to vectorize a search query."""
     from recipeparser.gemini import get_embeddings
-    
     try:
         client = _get_client()
         embedding = get_embeddings(request.text, client)
         return EmbedResponse(embedding=embedding)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

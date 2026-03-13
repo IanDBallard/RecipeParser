@@ -131,6 +131,7 @@ class PipelineContext:
     min_interval_secs: Optional[float] = None
     # When set, workers call this before each API call to enforce requests-per-minute.
     rate_limiter: Optional[_RPMRateLimiter] = None
+    controller: Optional["PipelineController"] = None
 
 
 def _process_segment(
@@ -142,18 +143,32 @@ def _process_segment(
     Worker executed in a thread pool.  Acquires the semaphore, then enforces
     RPM (if set) or min_interval before calling the API.
     """
+    if ctx.controller and not ctx.controller.check_pause_point():
+        raise PipelineTransitionError("Pipeline cancelled")
+
     with ctx.semaphore:
         if ctx.rate_limiter:
             ctx.rate_limiter.wait_then_record_start()
         elif ctx.min_interval_secs:
             time.sleep(ctx.min_interval_secs)
-        if gem.needs_table_normalisation(chunk):
-            log.info(
-                "  Segment %d: Baker's %% table detected — normalising...", index
-            )
-            chunk = gem.normalise_baker_table(chunk, ctx.client)
+            
+        try:
+            if gem.needs_table_normalisation(chunk):
+                log.info(
+                    "  Segment %d: Baker's %% table detected — normalising...", index
+                )
+                chunk = gem.normalise_baker_table(chunk, ctx.client)
 
-        result = gem.extract_recipes(chunk, ctx.client, units=ctx.units)
+            result = gem.extract_recipes(chunk, ctx.client, units=ctx.units)
+            if ctx.controller:
+                ctx.controller.reset_429_counter()
+        except Exception as exc:
+            if ctx.controller and gem._is_rate_limit_error(exc):
+                try:
+                    ctx.controller.record_429()
+                except RateLimitPauseError:
+                    ctx.controller.trigger_rate_limit_pause()
+            raise
 
     if result and result.recipes:
         log.info("  Segment %d: %d recipe(s) found.", index, len(result.recipes))
@@ -167,6 +182,9 @@ def _categorise_one(
     recipe: RecipeExtraction,
     ctx: PipelineContext,
 ) -> Tuple[RecipeExtraction, List[str]]:
+    if ctx.controller and not ctx.controller.check_pause_point():
+        raise PipelineTransitionError("Pipeline cancelled")
+
     with ctx.semaphore:
         if ctx.rate_limiter:
             ctx.rate_limiter.wait_then_record_start()
@@ -204,6 +222,7 @@ def process_epub(
     units: str = "book",
     concurrency: Optional[int] = None,
     rpm: Optional[int] = None,
+    controller: Optional["PipelineController"] = None,
 ) -> str:
     """
     Full pipeline: open EPUB → extract images + text → parallel Gemini calls
@@ -224,6 +243,9 @@ def process_epub(
         min_interval = FREE_TIER_DELAY_SECS if cap == 1 else None
 
     os.makedirs(output_dir, exist_ok=True)
+
+    if controller:
+        controller.transition("start")
 
     log.info("Verifying Gemini API connectivity...")
     if not gem.verify_connectivity(client):
@@ -330,15 +352,31 @@ def process_epub(
         paprika_cats=paprika_cats,
         min_interval_secs=min_interval,
         rate_limiter=rate_limiter,
+        controller=controller,
     )
 
-    # --- Parallel extraction -----------------------------------------------------
+    # --- Checkpoint Loading ------------------------------------------------------
     results: Dict[int, List[RecipeExtraction]] = {}
+    completed_segments = set()
+    
+    if controller:
+        cp = controller.load_checkpoint(book_path)
+        if cp and cp.get("stage") == Stage.EXTRACT.value:
+            completed_segments = set(cp.get("completed_segments", []))
+            for item in cp.get("extracted_recipes", []):
+                idx = item.get("segment")
+                recs = [RecipeExtraction(**r) for r in item.get("recipes", [])]
+                if idx is not None:
+                    results[idx] = recs
+            log.info("Resumed from checkpoint: %d segments already completed.", len(completed_segments))
 
+    # --- Parallel extraction -----------------------------------------------------
+    tasks_to_run = [(idx, chunk) for idx, chunk in candidate_chunks if idx not in completed_segments]
+    
     with ThreadPoolExecutor(max_workers=cap) as executor:
         future_to_index: Dict[Future, int] = {
             executor.submit(_process_segment, idx, chunk, ctx): idx
-            for idx, chunk in candidate_chunks
+            for idx, chunk in tasks_to_run
         }
         log.info(
             "Submitted %d segment(s) to thread pool (concurrency cap: %d).",
@@ -356,9 +394,62 @@ def process_epub(
                     seg_idx, SEGMENT_TIMEOUT_SECS,
                 )
                 results[seg_idx] = []
+            except PipelineTransitionError:
+                log.warning("Pipeline cancelled during segment %d.", seg_idx)
+                continue
             except Exception as exc:
                 log.error("Segment %d raised an error: %s — skipping.", seg_idx, exc)
                 results[seg_idx] = []
+
+            # Record completion and save checkpoint regardless of success/fail
+            completed_segments.add(seg_idx)
+            if controller:
+                # Cooperative pause point between segments (in the orchestrator
+                # thread) so that a pause request is honoured even when the
+                # worker thread is blocked inside a long API call.
+                #
+                # We check for both PAUSING and PAUSED because the worker's own
+                # check_pause_point() may have already transitioned PAUSING→PAUSED
+                # before we get here.  In that case we must still wait on
+                # _resume_event so the worker (which is blocked inside
+                # check_pause_point) can be unblocked by request_resume().
+                with controller._lock:
+                    orch_status = controller.status
+                if orch_status == PipelineStatus.PAUSING:
+                    controller.transition("paused")
+                    log.info("PipelineController: pipeline paused (orchestrator) — waiting for resume or cancel.")
+                    controller._resume_event.wait()
+                    with controller._lock:
+                        post_status = controller.status
+                    if post_status == PipelineStatus.CANCELLING:
+                        break
+                    controller.transition("running")
+                elif orch_status == PipelineStatus.PAUSED:
+                    # Worker already transitioned to PAUSED via check_pause_point();
+                    # just wait here until request_resume() sets the event.
+                    log.info("PipelineController: orchestrator waiting while worker is paused.")
+                    controller._resume_event.wait()
+                    with controller._lock:
+                        post_status = controller.status
+                    if post_status == PipelineStatus.CANCELLING:
+                        break
+                    # Worker's check_pause_point() will call transition("running")
+                    # when it unblocks — no need to do it here.
+
+                controller.save_checkpoint(
+                    book_path=book_path,
+                    stage=Stage.EXTRACT.value,
+                    completed_segments=list(completed_segments),
+                    extracted_recipes=[
+                        {"segment": k, "recipes": [r.model_dump() for r in v]}
+                        for k, v in results.items()
+                    ],
+                    toc_entries=[t.model_dump() if hasattr(t, 'model_dump') else t for t in toc_entries] if toc_entries else [],
+                )
+
+    if controller and controller.status == PipelineStatus.CANCELLING:
+        log.info("Pipeline cancelled by user. Exiting early.")
+        return ""
 
     # Reassemble in chapter order
     all_recipes: List[RecipeExtraction] = []
@@ -413,9 +504,16 @@ def process_epub(
             except TimeoutError:
                 log.warning("  Categorisation timed out for '%s' — using fallback.", r.name)
                 r.categories = ["EPUB Imports"]
+            except PipelineTransitionError:
+                log.warning("Pipeline cancelled during categorisation.")
+                break
             except Exception as exc:
                 log.error("  Categorisation error for '%s': %s — using fallback.", r.name, exc)
                 r.categories = ["EPUB Imports"]
+
+    if controller and controller.status == PipelineStatus.CANCELLING:
+        log.info("Pipeline cancelled by user during categorisation. Exiting early.")
+        return "" 
 
     # --- Photo assignment summary ------------------------------------------------
     with_photo = sum(1 for r in all_recipes if r.photo_filename)
@@ -442,6 +540,9 @@ def process_epub(
         log.info("Cleaning up temporary image directory...")
         shutil.rmtree(image_dir)
         log.info("Cleanup complete.")
+        
+    if success and controller:
+        controller.delete_checkpoint(book_path)
     elif not success:
         log.warning(
             "Export failed or empty — keeping image directory for inspection: %s",
@@ -477,7 +578,67 @@ def process_epub(
         len(all_recipes), export_path,
     )
 
+    if controller:
+        controller.transition("done")
+
     return export_path
+
+
+def run_cayenne_pipeline(
+    source_text: str,
+    client,
+    uom_system: str = "US",
+    measure_preference: str = "Volume",
+    source_url: Optional[str] = None,
+) -> "IngestResponse":
+    """
+    Stateless high-fidelity pipeline for Project Cayenne:
+    1. Extract raw recipe(s) from text.
+    2. Refine the first recipe found into Cayenne format (Fat Tokens + UOM).
+    3. Generate 1536-dim vector embedding of 'title + ingredient names'.
+
+    Returns an IngestResponse (defined in models.py).
+    Raises RuntimeError or ValueError on pipeline failure.
+    """
+    from recipeparser.models import CayenneRecipe, IngestResponse
+    from recipeparser.gemini import (
+        extract_recipe_from_text,
+        refine_recipe_for_cayenne,
+        get_embeddings,
+    )
+
+    recipe_list = extract_recipe_from_text(source_text, client)
+    if not recipe_list or not recipe_list.recipes:
+        raise ValueError("No recipes found in source text.")
+
+    raw_recipe = recipe_list.recipes[0]
+
+    refined = refine_recipe_for_cayenne(
+        raw_recipe,
+        client,
+        uom_system=uom_system,
+        measure_preference=measure_preference,
+    )
+    if not refined:
+        raise RuntimeError("Refinement pass failed.")
+
+    # Vectorize for semantic search: title + ingredient names
+    ing_names = ", ".join([i.name for i in refined.structured_ingredients])
+    embedding_input = f"{refined.title}\n\n{ing_names}"
+    embedding = get_embeddings(embedding_input, client)
+
+    cayenne_recipe = CayenneRecipe(
+        title=refined.title,
+        prep_time=raw_recipe.prep_time,
+        cook_time=raw_recipe.cook_time,
+        base_servings=refined.base_servings or 4,
+        source_url=source_url,
+        categories=["Uncategorized"],
+        structured_ingredients=refined.structured_ingredients,
+        tokenized_directions=refined.tokenized_directions,
+    )
+
+    return IngestResponse(**cayenne_recipe.model_dump(), embedding=embedding)
 
 
 # ---------------------------------------------------------------------------
