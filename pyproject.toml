@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recipeparser"
-version = "3.0.1"
+version = "3.0.2"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
 requires-python = ">=3.9"
