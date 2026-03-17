@@ -134,3 +134,16 @@ class CayenneRecipe(BaseModel):
 class IngestResponse(CayenneRecipe):
     """Final envelope for the /ingest endpoint."""
     embedding: List[float]
+
+
+class JobResponse(BaseModel):
+    """
+    Response returned by all /ingest* endpoints.
+
+    ARCHITECTURAL INVARIANT:
+      The API writes the recipe directly to Supabase and returns only this
+      lightweight acknowledgment. The client app NEVER receives recipe JSON
+      in an HTTP response. Recipes reach the client via PowerSync sync.
+    """
+    job_id: str   # UUID — correlates with the ingestion_jobs row
+    recipe_id: str  # UUID — the row written to the Supabase `recipes` table

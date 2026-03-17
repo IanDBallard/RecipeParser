@@ -88,10 +88,16 @@ def extract_toc_epub(epub_path: str, raw_chunks: List[str], client) -> List[Tupl
             return filter_toc_to_recipe_entries(fallback, client)
         return []
 
-    raw = _flatten_epub_toc_leaves_only(book.toc) if book.toc else []
+    # ebooklib may return a bare Link (not a list) for single-chapter EPUBs.
+    # Normalise to a list so the flatten helpers can always iterate safely.
+    toc_raw = book.toc
+    if toc_raw and not isinstance(toc_raw, (list, tuple)):
+        toc_raw = [toc_raw]
+
+    raw = _flatten_epub_toc_leaves_only(toc_raw) if toc_raw else []
     used_leaves_only = True
-    if len(raw) < MIN_TOC_ENTRIES and book.toc:
-        raw = _flatten_epub_toc(book.toc)
+    if len(raw) < MIN_TOC_ENTRIES and toc_raw:
+        raw = _flatten_epub_toc(toc_raw)
         used_leaves_only = False
     entries = [(t, None) for t, _ in raw if t]
     if len(entries) >= MIN_TOC_ENTRIES:

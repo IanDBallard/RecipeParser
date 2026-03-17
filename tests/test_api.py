@@ -2,15 +2,15 @@
 
 Coverage:
   1. Input validation (missing/empty/URL-only)
-  2. Happy path — full pipeline success, response schema validation
+  2. Happy path � full pipeline success, response schema validation
   3. Pipeline error branches (no recipes, refinement failure, embedding failure)
-  4. Missing API key → 500
-  5. Unexpected exception → 500
+  4. Missing API key ? 500
+  5. Unexpected exception ? 500
   6. UOM / measure_preference passthrough to refine_recipe_for_cayenne
   7. Fat Token format preserved in tokenized_directions
   8. AI-converted ingredient fields surfaced correctly
   9. prep_time / cook_time sourced from raw recipe
-  10. base_servings fallback (None → 4)
+  10. base_servings fallback (None ? 4)
 """
 import os
 import pytest
@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 # Must be set BEFORE importing api.py so that HTTPBearer is created with
 # auto_error=False (DISABLE_AUTH=1 path).  Without this, FastAPI's bearer
 # scheme rejects requests with no Authorization header at the middleware
-# layer — before dependency_overrides can intercept them — producing 403/401
+# layer � before dependency_overrides can intercept them � producing 403/401
 # instead of the expected status codes.
 os.environ.setdefault("GOOGLE_API_KEY", "dummy-key-for-tests")
 os.environ["DISABLE_AUTH"] = "1"
@@ -132,7 +132,7 @@ def test_ingest_whitespace_text_rejected():
 
 
 # ---------------------------------------------------------------------------
-# 2. Happy path — full pipeline success
+# 2. Happy path � full pipeline success
 # ---------------------------------------------------------------------------
 
 def test_ingest_happy_path_returns_200():
@@ -246,7 +246,7 @@ def test_ingest_embedding_raises_returns_500():
 
 
 # ---------------------------------------------------------------------------
-# 4. Missing API key → 500
+# 4. Missing API key ? 500
 # ---------------------------------------------------------------------------
 
 def test_ingest_missing_api_key_returns_500():
@@ -257,7 +257,7 @@ def test_ingest_missing_api_key_returns_500():
 
 
 # ---------------------------------------------------------------------------
-# 5. Unexpected exception → 500
+# 5. Unexpected exception ? 500
 # ---------------------------------------------------------------------------
 
 def test_ingest_unexpected_exception_returns_500():
@@ -399,7 +399,7 @@ def test_ingest_times_none_when_raw_has_none():
 
 
 # ---------------------------------------------------------------------------
-# 10. base_servings fallback (None → 4)
+# 10. base_servings fallback (None ? 4)
 # ---------------------------------------------------------------------------
 
 def test_ingest_base_servings_fallback_to_4():
@@ -477,7 +477,7 @@ def test_embed_error_returns_500():
 
 
 # ---------------------------------------------------------------------------
-# 13. /ingest/pdf — text-based PDF (normal path)
+# 13. /ingest/pdf � text-based PDF (normal path)
 # ---------------------------------------------------------------------------
 
 def _make_pdf_bytes(text_per_page: list[str]) -> bytes:
@@ -591,7 +591,7 @@ class TestIngestPdfTextBased:
         assert "No recipes found" in resp.json()["detail"]
 
     def test_source_url_is_none_for_pdf(self):
-        """PDF uploads never have a source_url — it should always be null."""
+        """PDF uploads never have a source_url � it should always be null."""
         raw = _make_raw_recipe()
         refined = _make_refined()
         pdf_bytes = _make_pdf_bytes([self._TEXT_PDF_CONTENT])
@@ -604,24 +604,24 @@ class TestIngestPdfTextBased:
 
 
 # ---------------------------------------------------------------------------
-# 14. /ingest/pdf — scanned PDF (Gemini Vision OCR fallback)
+# 14. /ingest/pdf � scanned PDF (Gemini Vision OCR fallback)
 # ---------------------------------------------------------------------------
 
 def _make_image_only_pdf() -> bytes:
     """
     Build a PDF whose pages contain no text layer (simulates a scanned document).
-    We insert a tiny white rectangle as the page content — no text at all.
+    We insert a tiny white rectangle as the page content � no text at all.
     """
     import fitz
     doc = fitz.open()
     page = doc.new_page(width=595, height=842)  # A4
-    # Draw a white rectangle — no text inserted
+    # Draw a white rectangle � no text inserted
     page.draw_rect(fitz.Rect(0, 0, 595, 842), color=(1, 1, 1), fill=(1, 1, 1))
     return doc.tobytes()
 
 
 class TestIngestPdfScannedVisionFallback:
-    """Tests for the scanned PDF → Gemini Vision OCR fallback path."""
+    """Tests for the scanned PDF ? Gemini Vision OCR fallback path."""
 
     def test_scanned_pdf_triggers_vision_fallback(self):
         """
@@ -691,7 +691,7 @@ class TestIngestPdfScannedVisionFallback:
         assert "no text" in resp.json()["detail"].lower()
 
     def test_scanned_pdf_vision_no_recipes_returns_422(self):
-        """Vision OCR succeeds but Gemini finds no recipe in the transcript → 422."""
+        """Vision OCR succeeds but Gemini finds no recipe in the transcript ? 422."""
         pdf_bytes = _make_image_only_pdf()
         with patch(MOCK_TARGETS["client"]), \
              patch("recipeparser.gemini.extract_text_via_vision",
@@ -714,7 +714,7 @@ class TestIngestPdfScannedVisionFallback:
 
 
 # ---------------------------------------------------------------------------
-# 15. _extract_image_url_from_markdown — unit tests (no HTTP, no Gemini)
+# 15. _extract_image_url_from_markdown � unit tests (no HTTP, no Gemini)
 # ---------------------------------------------------------------------------
 
 from recipeparser.api import _extract_image_url_from_markdown
@@ -775,7 +775,7 @@ class TestExtractImageUrlFromMarkdown:
         assert _extract_image_url_from_markdown('') is None
 
     def test_returns_none_for_relative_image_path(self):
-        """Relative paths (no http/https) must not be returned — they are unusable."""
+        """Relative paths (no http/https) must not be returned � they are unusable."""
         md = '![alt](/images/local.jpg)'
         assert _extract_image_url_from_markdown(md) is None
 
@@ -786,12 +786,27 @@ class TestExtractImageUrlFromMarkdown:
 
     # --- URL cleaning ---
 
-    def test_trailing_paren_stripped_from_og_image(self):
-        """og:image regex can accidentally capture a trailing ')' — must be stripped."""
-        md = 'og:image: https://example.com/photo.jpg)'
+    def test_trailing_paren_stripped_from_og_image_when_double(self):
+        """When Jina captures an extra ')' (e.g. meta in parens), remove only one trailing ')'.
+
+        We do NOT use rstrip(')') � that would corrupt URLs containing parentheses,
+        e.g. https://example.com/path(name) would become .../path(name .
+        """
+        md = 'og:image: https://example.com/photo.jpg))'
         result = _extract_image_url_from_markdown(md)
-        assert result is not None
-        assert not result.endswith(')')
+        assert result == 'https://example.com/photo.jpg)'
+
+    def test_url_with_parens_preserved(self):
+        """Legitimate URL ending with ')' must not be stripped (e.g. Wikipedia, link in parens)."""
+        md = 'og:image: https://example.com/wiki/Recipe_(disambiguation)'
+        result = _extract_image_url_from_markdown(md)
+        assert result == 'https://example.com/wiki/Recipe_(disambiguation)'
+
+    def test_url_with_parens_plus_extraneous_paren(self):
+        """URL has ')' in path and Jina adds one extra ')' � remove only the extraneous one."""
+        md = 'og:image: https://example.com/path(name))'
+        result = _extract_image_url_from_markdown(md)
+        assert result == 'https://example.com/path(name)'
 
     def test_https_url_preserved(self):
         md = '![](https://cdn.example.com/path/to/image.png)'
@@ -834,7 +849,7 @@ class TestExtractImageUrlFromMarkdown:
 
 
 # ---------------------------------------------------------------------------
-# 16-27. /ingest/url endpoint � image extraction + upload pipeline
+# 16-27. /ingest/url endpoint � image extraction + upload pipeline
 # (Appended from test_ingest_url.py)
 # ---------------------------------------------------------------------------
 RECIPE_MARKDOWN_WITH_OG = (
@@ -960,7 +975,7 @@ URL_MOCK_TARGETS = {
     "httpx_sync": "httpx.Client",
 }
 
-# placeholder — tests filled in below
+# placeholder � tests filled in below
 
 
 # ---------------------------------------------------------------------------
@@ -983,11 +998,11 @@ def _pipeline_patches(raw, refined):
 
 
 # ---------------------------------------------------------------------------
-# 16. Happy path — og:image found → downloaded → uploaded → image_url set
+# 16. Happy path � og:image found ? downloaded ? uploaded ? image_url set
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlOgImage:
-    """og:image in Jina markdown → image uploaded → image_url in response."""
+    """og:image in Jina markdown ? image uploaded ? image_url in response."""
 
     def _run(self, extra_env=None):
         raw = _make_raw_recipe()
@@ -1058,11 +1073,11 @@ class TestIngestUrlOgImage:
 
 
 # ---------------------------------------------------------------------------
-# 17. Happy path — Markdown image found → downloaded → uploaded → image_url set
+# 17. Happy path � Markdown image found ? downloaded ? uploaded ? image_url set
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlMarkdownImage:
-    """Markdown image tag in Jina output → image uploaded → image_url in response."""
+    """Markdown image tag in Jina output ? image uploaded ? image_url in response."""
 
     def _run(self):
         raw = _make_raw_recipe()
@@ -1114,11 +1129,11 @@ class TestIngestUrlMarkdownImage:
 
 
 # ---------------------------------------------------------------------------
-# 18. No image in markdown → image_url is None, pipeline still succeeds
+# 18. No image in markdown ? image_url is None, pipeline still succeeds
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlNoImage:
-    """No image in Jina markdown → image_url is None, recipe still returned."""
+    """No image in Jina markdown ? image_url is None, recipe still returned."""
 
     def _run(self):
         raw = _make_raw_recipe()
@@ -1149,11 +1164,11 @@ class TestIngestUrlNoImage:
 
 
 # ---------------------------------------------------------------------------
-# 19. Image download fails → image_url is None, pipeline still succeeds
+# 19. Image download fails ? image_url is None, pipeline still succeeds
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlImageDownloadFails:
-    """httpx raises during image download → non-fatal, image_url is None."""
+    """httpx raises during image download ? non-fatal, image_url is None."""
 
     def _run(self):
         raw = _make_raw_recipe()
@@ -1196,11 +1211,11 @@ class TestIngestUrlImageDownloadFails:
 
 
 # ---------------------------------------------------------------------------
-# 20. Supabase upload fails → image_url is None, pipeline still succeeds
+# 20. Supabase upload fails ? image_url is None, pipeline still succeeds
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlSupabaseUploadFails:
-    """Supabase Storage POST raises → non-fatal, image_url is None."""
+    """Supabase Storage POST raises ? non-fatal, image_url is None."""
 
     def _run(self):
         raw = _make_raw_recipe()
@@ -1250,7 +1265,7 @@ class TestIngestUrlSupabaseUploadFails:
 
 
 # ---------------------------------------------------------------------------
-# 21. Missing SUPABASE_URL / SUPABASE_SERVICE_KEY → upload skipped, image_url None
+# 21. Missing SUPABASE_URL / SUPABASE_SERVICE_KEY ? upload skipped, image_url None
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlMissingSupabaseEnv:
@@ -1299,7 +1314,7 @@ class TestIngestUrlMissingSupabaseEnv:
 
 
 # ---------------------------------------------------------------------------
-# 22. Jina fetch fails → 422
+# 22. Jina fetch fails ? 422
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlJinaFails:
@@ -1336,7 +1351,7 @@ class TestIngestUrlJinaFails:
 
 
 # ---------------------------------------------------------------------------
-# 23. URL not a recipe → 422
+# 23. URL not a recipe ? 422
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlNotARecipe:
@@ -1458,7 +1473,7 @@ class TestIngestUrlSourceUrl:
 
 
 # ---------------------------------------------------------------------------
-# 26. Missing url field → 400
+# 26. Missing url field ? 400
 # ---------------------------------------------------------------------------
 
 class TestIngestUrlMissingField:

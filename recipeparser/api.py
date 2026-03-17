@@ -9,9 +9,10 @@ import uuid
 import jwt  # PyJWT
 from dotenv import load_dotenv
 
-from recipeparser.models import IngestResponse
+from recipeparser.models import IngestResponse, JobResponse
 from recipeparser.utils import temp_file_from_upload, html_to_text
 from recipeparser.pipeline import run_cayenne_pipeline
+from recipeparser.supabase_writer import write_recipe_to_supabase
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +31,13 @@ def _verify_supabase_jwt(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(_bearer),
 ) -> dict:
     if _DISABLE_AUTH:
-        return {'sub': 'local-e2e-test-user', 'aud': 'authenticated'}
+        test_user_id = os.getenv('TEST_USER_ID')
+        if not test_user_id:
+            raise HTTPException(
+                status_code=500,
+                detail='DISABLE_AUTH=1 requires TEST_USER_ID env var to be set.',
+            )
+        return {'sub': test_user_id, 'aud': 'authenticated'}
 
     if credentials is None:
         raise HTTPException(status_code=403, detail='Not authenticated.')
@@ -134,7 +141,13 @@ def _extract_image_url_from_markdown(markdown: str) -> Optional[str]:
     """
     og_match = _OG_IMAGE_RE.search(markdown)
     if og_match:
-        return og_match.group(1).strip().rstrip(')')
+        url = og_match.group(1).strip()
+        # Remove at most one trailing ')' when Jina markdown has an extra one
+        # (e.g. meta was in parens). Do not use rstrip(')') — that would corrupt
+        # legitimate URLs containing parentheses, e.g. Wikipedia .../path(name).
+        if url.endswith('))'):
+            url = url[:-1]
+        return url
 
     md_match = _MD_IMAGE_RE.search(markdown)
     if md_match:
@@ -217,12 +230,18 @@ def _upload_image_to_storage(
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.post('/ingest', response_model=IngestResponse)
+@app.post('/ingest', response_model=JobResponse, status_code=202)
 async def ingest_recipe(
     request: IngestRequest,
     _user: dict = Depends(_verify_supabase_jwt),
 ):
-    """Ingest a recipe from plain text."""
+    """
+    Ingest a recipe from plain text.
+
+    ARCHITECTURAL INVARIANT: The API writes the recipe directly to Supabase and
+    returns only a lightweight { job_id, recipe_id } acknowledgment (202).
+    The client app NEVER receives recipe JSON. Recipes reach the client via PowerSync.
+    """
     source_text = request.text
     if not source_text or not source_text.strip():
         raise HTTPException(
@@ -230,25 +249,38 @@ async def ingest_recipe(
             detail='Only text ingestion is supported on this endpoint. For URL ingestion use POST /ingest/url.',
         )
 
+    user_id = _user.get('sub', 'unknown')
+    job_id = str(uuid.uuid4())
+
     try:
         client = _get_client()
-        return _safe_run_pipeline(
+        result = _safe_run_pipeline(
             source_text=source_text,
             client=client,
             uom_system=request.uom_system or 'US',
             measure_preference=request.measure_preference or 'Volume',
             source_url=request.url or None,
         )
+        recipe_id = write_recipe_to_supabase(result, user_id=user_id)
+        return JobResponse(job_id=job_id, recipe_id=recipe_id)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post('/ingest/url', response_model=IngestResponse)
+@app.post('/ingest/url', response_model=JobResponse, status_code=202)
 async def ingest_url(
     request: IngestUrlRequest,
     _user: dict = Depends(_verify_supabase_jwt),
 ):
-    """Fetch a recipe page via Jina, extract text, and run the pipeline."""
+    """
+    Fetch a recipe page via Jina, extract text, and run the pipeline.
+
+    ARCHITECTURAL INVARIANT: The API writes the recipe directly to Supabase and
+    returns only a lightweight { job_id, recipe_id } acknowledgment (202).
+    The client app NEVER receives recipe JSON. Recipes reach the client via PowerSync.
+    """
     import httpx
     from recipeparser.epub import is_recipe_candidate
 
@@ -277,10 +309,12 @@ async def ingest_url(
     if not is_recipe_candidate(source_text):
         raise HTTPException(status_code=422, detail='URL does not appear to contain a recipe.')
 
-    # Extract hero image URL from Jina's markdown before running the pipeline.
-    # Upload is best-effort — failure does not abort ingestion.
+    # Pre-generate the recipe_id so the image can be stored under the correct path
+    # before the pipeline runs. The same ID is used for the Supabase row.
     user_id = _user.get('sub', 'unknown')
+    job_id = str(uuid.uuid4())
     recipe_id = str(uuid.uuid4())
+
     candidate_image_url = _extract_image_url_from_markdown(raw_markdown)
     image_url: Optional[str] = None
     if candidate_image_url:
@@ -288,7 +322,7 @@ async def ingest_url(
 
     try:
         client = _get_client()
-        return _safe_run_pipeline(
+        result = _safe_run_pipeline(
             source_text=source_text,
             client=client,
             uom_system=request.uom_system or 'US',
@@ -296,22 +330,35 @@ async def ingest_url(
             source_url=url,
             image_url=image_url,
         )
+        write_recipe_to_supabase(result, user_id=user_id, recipe_id=recipe_id)
+        return JobResponse(job_id=job_id, recipe_id=recipe_id)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post('/ingest/pdf', response_model=IngestResponse)
+@app.post('/ingest/pdf', response_model=JobResponse, status_code=202)
 async def ingest_pdf(
     file: UploadFile = File(...),
     uom_system: str = Form('US'),
     measure_preference: str = Form('Volume'),
     _user: dict = Depends(_verify_supabase_jwt),
 ):
-    """Ingest a recipe from an uploaded PDF."""
+    """
+    Ingest a recipe from an uploaded PDF.
+
+    ARCHITECTURAL INVARIANT: The API writes the recipe directly to Supabase and
+    returns only a lightweight { job_id, recipe_id } acknowledgment (202).
+    The client app NEVER receives recipe JSON. Recipes reach the client via PowerSync.
+    """
     from recipeparser.pdf import extract_text_from_pdf
 
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail='File must be a PDF.')
+
+    user_id = _user.get('sub', 'unknown')
+    job_id = str(uuid.uuid4())
 
     try:
         client = _get_client()
@@ -324,28 +371,41 @@ async def ingest_pdf(
         if not source_text.strip():
             raise HTTPException(status_code=422, detail='No text could be extracted from the PDF.')
 
-        return _safe_run_pipeline(
+        result = _safe_run_pipeline(
             source_text=source_text,
             client=client,
             uom_system=uom_system,
             measure_preference=measure_preference,
         )
+        recipe_id = write_recipe_to_supabase(result, user_id=user_id)
+        return JobResponse(job_id=job_id, recipe_id=recipe_id)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post('/ingest/epub', response_model=IngestResponse)
+@app.post('/ingest/epub', response_model=JobResponse, status_code=202)
 async def ingest_epub(
     file: UploadFile = File(...),
     uom_system: str = Form('US'),
     measure_preference: str = Form('Volume'),
     _user: dict = Depends(_verify_supabase_jwt),
 ):
-    """Ingest a recipe from an uploaded EPUB."""
+    """
+    Ingest a recipe from an uploaded EPUB.
+
+    ARCHITECTURAL INVARIANT: The API writes the recipe directly to Supabase and
+    returns only a lightweight { job_id, recipe_id } acknowledgment (202).
+    The client app NEVER receives recipe JSON. Recipes reach the client via PowerSync.
+    """
     from recipeparser.epub import extract_text_from_epub
 
     if not file.filename.lower().endswith('.epub'):
         raise HTTPException(status_code=400, detail='File must be an EPUB.')
+
+    user_id = _user.get('sub', 'unknown')
+    job_id = str(uuid.uuid4())
 
     try:
         client = _get_client()
@@ -358,12 +418,16 @@ async def ingest_epub(
         if not source_text.strip():
             raise HTTPException(status_code=422, detail='No text could be extracted from the EPUB.')
 
-        return _safe_run_pipeline(
+        result = _safe_run_pipeline(
             source_text=source_text,
             client=client,
             uom_system=uom_system,
             measure_preference=measure_preference,
         )
+        recipe_id = write_recipe_to_supabase(result, user_id=user_id)
+        return JobResponse(job_id=job_id, recipe_id=recipe_id)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
