@@ -145,9 +145,9 @@ If you change the embedding dimension, you must also run a database migration to
 # recipeparser/core/providers/factory.py
 def create_embedding_provider(name: str, api_key: str) -> EmbeddingProvider:
     match name.lower():
-        case "openai":
-            from .openai_embed import OpenAIEmbeddingProvider
-            return OpenAIEmbeddingProvider(api_key=api_key)
+        case "gemini":
+            from .gemini import GeminiEmbeddingProvider
+            return GeminiEmbeddingProvider(api_key=api_key)
         case "cohere":
             from .cohere_embed import CohereEmbeddingProvider
             return CohereEmbeddingProvider(api_key=api_key)
@@ -260,7 +260,7 @@ class MockEmbeddingProvider(EmbeddingProvider):
 ### CLI
 
 ```bash
-recipeparser cookbook.epub --provider gemini --embedding-provider openai
+recipeparser cookbook.epub --provider gemini --embedding-provider gemini
 recipeparser cookbook.epub --provider mock   --embedding-provider mock   # tests / offline
 ```
 
@@ -268,7 +268,7 @@ recipeparser cookbook.epub --provider mock   --embedding-provider mock   # tests
 
 ```
 LLM_PROVIDER=gemini
-EMBEDDING_PROVIDER=openai
+EMBEDDING_PROVIDER=gemini   # default — reuses GOOGLE_API_KEY, no second key needed
 ```
 
 The API adapter reads these at startup and instantiates providers once (singleton per worker process).

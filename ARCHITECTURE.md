@@ -25,8 +25,7 @@ recipeparser/
 │   └── providers/
 │       ├── base.py                # LLMProvider + EmbeddingProvider ABCs
 │       ├── factory.py             # create_provider() / create_embedding_provider()
-│       ├── gemini.py              # GeminiProvider (extraction, refinement, categorization)
-│       ├── openai_embed.py        # OpenAIEmbeddingProvider (text-embedding-3-small, 1536d)
+│       ├── gemini.py              # GeminiProvider (extraction, refinement, categorization) + GeminiEmbeddingProvider (gemini-embedding-001)
 │       ├── openai.py              # OpenAIProvider (GPT-4o extraction — future)
 │       ├── anthropic.py           # AnthropicProvider (Claude — future)
 │       └── mock.py                # MockProvider + MockEmbeddingProvider (tests)
@@ -167,7 +166,7 @@ IDLE → LOADING → CHUNKING → EXTRACTING → CATEGORIZING → REFINING → E
 | `EXTRACTING` | Gemini is extracting raw recipes from chunks. |
 | `CATEGORIZING` | Gemini is assigning taxonomy categories to each recipe. |
 | `REFINING` | Gemini is converting raw recipes to Fat Token / Cayenne format. |
-| `EMBEDDING` | OpenAI is generating 1536-dim vectors for each recipe. |
+| `EMBEDDING` | Gemini `gemini-embedding-001` is generating 1536-dim vectors for each recipe. |
 | `DONE` | All recipes extracted, refined, and embedded successfully. |
 | `ERROR` | Unrecoverable failure. `error_message` is set. |
 
@@ -325,16 +324,16 @@ class EmbeddingProvider(ABC):
         ...
 ```
 
-### Selected Model: OpenAI `text-embedding-3-small`
+### Selected Model: Gemini `gemini-embedding-001`
 
 | Property | Value |
 |----------|-------|
-| Model | `text-embedding-3-small` |
-| Provider | OpenAI |
-| Output dimensions | **1536** |
+| Model | `gemini-embedding-001` |
+| Provider | Google Gemini (same SDK as LLM provider) |
+| Output dimensions | **1536** (via `output_dimensionality=1536`) |
 | Schema match | ✅ `vector(1536)` in Supabase + `sqlite-vec` |
-| Cost | ~$0.02 / 1M tokens |
-| Rationale | Matches existing schema with no migration; provider-agnostic; industry standard for semantic search at this scale |
+| Cost | Included in Gemini API quota — no second API key required |
+| Rationale | Already shipped in v3.0.2; reuses the existing Gemini client; eliminates the OpenAI SDK dependency and a second API key |
 
 ### Embedding Input
 
@@ -352,12 +351,13 @@ This produces a semantically rich vector that captures both the dish identity an
 # core/providers/factory.py
 def create_embedding_provider(name: str, api_key: str) -> EmbeddingProvider:
     """
-    name: "openai" | "mock"
+    name: "gemini" | "mock"
+    Default: "gemini" — reuses the same API key as the LLM provider.
     """
     match name.lower():
-        case "openai":
-            from .openai_embed import OpenAIEmbeddingProvider
-            return OpenAIEmbeddingProvider(api_key=api_key)
+        case "gemini":
+            from .gemini import GeminiEmbeddingProvider
+            return GeminiEmbeddingProvider(api_key=api_key)
         case "mock":
             from .mock import MockEmbeddingProvider
             return MockEmbeddingProvider()
@@ -370,12 +370,11 @@ def create_embedding_provider(name: str, api_key: str) -> EmbeddingProvider:
 ```
 # .env
 LLM_PROVIDER=gemini
-LLM_API_KEY=AIza...              # Gemini API key (or OpenAI key if provider=openai)
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=sk-...            # Required when EMBEDDING_PROVIDER=openai
+GOOGLE_API_KEY=AIza...           # Single key — used for both LLM and embedding
+EMBEDDING_PROVIDER=gemini        # Default; reuses GOOGLE_API_KEY
 ```
 
-The CLI and GUI read these from `.env`. The API adapter reads them from environment variables set at deploy time (Docker / Cloud Run).
+The CLI and GUI read these from `.env`. The API adapter reads them from environment variables set at deploy time (Docker / Cloud Run). No second API key is required.
 
 ## 7. Input Readers
 

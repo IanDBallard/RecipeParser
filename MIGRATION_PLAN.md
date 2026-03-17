@@ -14,12 +14,12 @@ Before cutover, the following must be true:
 
 - [ ] All new module unit tests pass (`pytest recipeparser/tests/ -v`)
 - [ ] `MockProvider` + `MockEmbeddingProvider` produce deterministic output for all test fixtures
-- [ ] `OPENAI_API_KEY` is provisioned and `text-embedding-3-small` connectivity verified
+- [ ] `GOOGLE_API_KEY` is set and `gemini-embedding-001` connectivity verified (no second key needed)
 - [ ] Supabase `ingestion_jobs` table created (Section 3)
 - [ ] Supabase Storage `recipe-images` bucket created with RLS policy (Section 3)
 - [ ] PowerSync sync rules updated for `ingestion_jobs` (Section 4)
 - [ ] Cayenne app local SQLite migration `006_ingestion_jobs.sql` applied (Section 4)
-- [ ] `.env` updated with `EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` (Section 5)
+- [ ] `.env` updated with `EMBEDDING_PROVIDER=gemini` (Section 5)
 
 ---
 
@@ -64,7 +64,7 @@ create policy "user_images" on storage.objects
 
 ### 3c. Schema Verification: `vector(1536)`
 
-The existing `recipes.embedding` column is declared as `vector(1536)`. The new `OpenAIEmbeddingProvider` returns exactly 1536 dimensions. **No schema migration required.**
+The existing `recipes.embedding` column is declared as `vector(1536)`. `GeminiEmbeddingProvider` uses `output_dimensionality=1536`, matching exactly. **No schema migration required.**
 
 Verify with:
 ```sql
@@ -194,8 +194,7 @@ recipeparser/core/fsm.py
 recipeparser/core/providers/__init__.py
 recipeparser/core/providers/base.py
 recipeparser/core/providers/factory.py
-recipeparser/core/providers/gemini.py
-recipeparser/core/providers/openai_embed.py
+recipeparser/core/providers/gemini.py        # GeminiProvider + GeminiEmbeddingProvider
 recipeparser/core/providers/openai.py        (stub — future)
 recipeparser/core/providers/anthropic.py     (stub — future)
 recipeparser/core/providers/mock.py
@@ -237,21 +236,19 @@ main()
 ```toml
 [project.dependencies]
 # Existing: google-genai, fastapi, uvicorn, pydantic, ebooklib, pypdf2, pyyaml, ...
-openai = ">=1.0"          # text-embedding-3-small
 supabase = ">=2.0"        # SupabaseCategorySource + image upload
+# NOTE: openai package NOT required — embedding uses gemini-embedding-001 via existing google-genai SDK
 ```
 
 ### 5f. `.env` Updated
 
 ```
-# Existing
+# Existing (unchanged)
 GOOGLE_API_KEY=AIza...
 
 # New
 LLM_PROVIDER=gemini
-LLM_API_KEY=AIza...           # alias for GOOGLE_API_KEY (both accepted)
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=sk-...
+EMBEDDING_PROVIDER=gemini     # reuses GOOGLE_API_KEY — no second API key needed
 
 # For CLI/GUI image upload + category source
 SUPABASE_URL=https://your-project.supabase.co
