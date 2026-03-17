@@ -56,6 +56,12 @@ jobs:
           pip install -e . pytest pytest-cov
 
       - name: Run unit tests
+        env:
+          # Required so the /ingest/url tests can call the FastAPI TestClient
+          # without a real JWT.  NEVER set this in production deployments.
+          DISABLE_AUTH: '1'
+          # Dummy value — tests never hit real Supabase; prevents KeyError in auth middleware
+          SUPABASE_JWT_SECRET: 'ci-dummy-secret-not-used-in-production'
         run: |
           python -m pytest tests/ -v \
             --ignore=tests/smoke_test_exe.py \

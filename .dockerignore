@@ -1,3 +1,7 @@
+# Secrets — never bake credentials into the image; inject via env vars at runtime
+.env
+.env.*
+
 # Python artifacts
 __pycache__/
 *.py[cod]
