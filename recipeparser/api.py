@@ -2,13 +2,18 @@ from fastapi import FastAPI, HTTPException, Depends, Security, UploadFile, File,
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Optional, List
+import logging
 import os
+import re
+import uuid
 import jwt  # PyJWT
 from dotenv import load_dotenv
 
 from recipeparser.models import IngestResponse
 from recipeparser.utils import temp_file_from_upload, html_to_text
 from recipeparser.pipeline import run_cayenne_pipeline
+
+log = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -103,6 +108,112 @@ def _safe_run_pipeline(source_text: str, client, **kwargs) -> IngestResponse:
 
 
 # ---------------------------------------------------------------------------
+# Image helpers
+# ---------------------------------------------------------------------------
+
+# Matches the first Markdown image tag: ![alt](url) — used to find og:image
+# equivalents in Jina's markdown output.
+_MD_IMAGE_RE = re.compile(r'!\[[^\]]*\]\((https?://[^)]+)\)')
+
+# Matches an explicit og:image or twitter:image meta line that Jina sometimes
+# surfaces as plain text in its markdown output.
+_OG_IMAGE_RE = re.compile(
+    r'(?:og:image|twitter:image)["\s:]+\s*(https?://\S+)', re.IGNORECASE
+)
+
+
+def _extract_image_url_from_markdown(markdown: str) -> Optional[str]:
+    """
+    Attempt to find a hero image URL from Jina's markdown output.
+
+    Priority:
+    1. og:image / twitter:image meta line (most reliable)
+    2. First Markdown image tag in the document
+
+    Returns the URL string, or None if no image is found.
+    """
+    og_match = _OG_IMAGE_RE.search(markdown)
+    if og_match:
+        return og_match.group(1).strip().rstrip(')')
+
+    md_match = _MD_IMAGE_RE.search(markdown)
+    if md_match:
+        return md_match.group(1).strip()
+
+    return None
+
+
+def _upload_image_to_storage(
+    image_url: str,
+    user_id: str,
+    recipe_id: str,
+) -> Optional[str]:
+    """
+    Download an image from ``image_url`` and upload it to the Supabase
+    ``recipe-images`` bucket.
+
+    Returns the public Supabase Storage URL, or None if the upload fails
+    (non-fatal — the recipe is still saved without a photo).
+
+    Requires env vars:
+      SUPABASE_URL          — e.g. https://<ref>.supabase.co
+      SUPABASE_SERVICE_KEY  — service-role key (never the anon key)
+    """
+    import httpx
+
+    supabase_url = os.getenv('SUPABASE_URL', '').rstrip('/')
+    service_key = os.getenv('SUPABASE_SERVICE_KEY', '')
+
+    if not supabase_url or not service_key:
+        log.warning(
+            'Image upload skipped: SUPABASE_URL or SUPABASE_SERVICE_KEY not set.'
+        )
+        return None
+
+    # --- Download the source image ---
+    try:
+        with httpx.Client(timeout=15.0, follow_redirects=True) as http:
+            resp = http.get(image_url)
+            resp.raise_for_status()
+            image_bytes = resp.content
+            content_type = resp.headers.get('content-type', 'image/jpeg').split(';')[0].strip()
+    except Exception as exc:
+        log.warning('Image download failed (%s): %s', image_url, exc)
+        return None
+
+    # Derive a file extension from content-type (default .jpg)
+    _EXT_MAP = {
+        'image/jpeg': '.jpg',
+        'image/png': '.png',
+        'image/webp': '.webp',
+        'image/gif': '.gif',
+    }
+    ext = _EXT_MAP.get(content_type, '.jpg')
+    storage_path = f'{user_id}/{recipe_id}{ext}'
+
+    # --- Upload to Supabase Storage ---
+    upload_url = f'{supabase_url}/storage/v1/object/recipe-images/{storage_path}'
+    headers = {
+        'Authorization': f'Bearer {service_key}',
+        'Content-Type': content_type,
+        'x-upsert': 'true',  # overwrite if re-ingesting the same recipe
+    }
+    try:
+        with httpx.Client(timeout=30.0) as http:
+            up_resp = http.post(upload_url, content=image_bytes, headers=headers)
+            up_resp.raise_for_status()
+    except Exception as exc:
+        log.warning('Image upload to Supabase Storage failed: %s', exc)
+        return None
+
+    public_url = (
+        f'{supabase_url}/storage/v1/object/public/recipe-images/{storage_path}'
+    )
+    log.info('Image uploaded → %s', public_url)
+    return public_url
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -152,18 +263,28 @@ async def ingest_url(
         headers['Authorization'] = f'Bearer {jina_api_key}'
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(jina_url, headers=headers, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            response = await http_client.get(jina_url, headers=headers, follow_redirects=True)
             response.raise_for_status()
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f'Failed to fetch URL: {exc}')
 
-    source_text = html_to_text(response.text)
+    raw_markdown = response.text
+    source_text = html_to_text(raw_markdown)
     if not source_text.strip():
         raise HTTPException(status_code=422, detail='No text could be extracted from the URL.')
 
     if not is_recipe_candidate(source_text):
         raise HTTPException(status_code=422, detail='URL does not appear to contain a recipe.')
+
+    # Extract hero image URL from Jina's markdown before running the pipeline.
+    # Upload is best-effort — failure does not abort ingestion.
+    user_id = _user.get('sub', 'unknown')
+    recipe_id = str(uuid.uuid4())
+    candidate_image_url = _extract_image_url_from_markdown(raw_markdown)
+    image_url: Optional[str] = None
+    if candidate_image_url:
+        image_url = _upload_image_to_storage(candidate_image_url, user_id, recipe_id)
 
     try:
         client = _get_client()
@@ -173,6 +294,7 @@ async def ingest_url(
             uom_system=request.uom_system or 'US',
             measure_preference=request.measure_preference or 'Volume',
             source_url=url,
+            image_url=image_url,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -590,12 +590,18 @@ def run_cayenne_pipeline(
     uom_system: str = "US",
     measure_preference: str = "Volume",
     source_url: Optional[str] = None,
+    image_url: Optional[str] = None,
 ) -> "IngestResponse":
     """
     Stateless high-fidelity pipeline for Project Cayenne:
     1. Extract raw recipe(s) from text.
     2. Refine the first recipe found into Cayenne format (Fat Tokens + UOM).
     3. Generate 1536-dim vector embedding of 'title + ingredient names'.
+
+    ``image_url`` is an optional Supabase Storage public URL for the recipe's
+    hero image.  The caller is responsible for uploading the image and
+    constructing the URL before calling this function.  When None, the recipe
+    row will have no photo.
 
     Returns an IngestResponse (defined in models.py).
     Raises RuntimeError or ValueError on pipeline failure.
@@ -633,6 +639,7 @@ def run_cayenne_pipeline(
         cook_time=raw_recipe.cook_time,
         base_servings=refined.base_servings or 4,
         source_url=source_url,
+        image_url=image_url,
         categories=["Uncategorized"],
         structured_ingredients=refined.structured_ingredients,
         tokenized_directions=refined.tokenized_directions,

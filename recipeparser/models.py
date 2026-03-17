@@ -125,6 +125,7 @@ class CayenneRecipe(BaseModel):
     cook_time: Optional[str] = None
     base_servings: Optional[int] = None
     source_url: Optional[str] = None
+    image_url: Optional[str] = None  # Supabase Storage public URL; None when no photo available
     categories: List[str] = Field(default_factory=lambda: ["Uncategorized"])
     structured_ingredients: List[StructuredIngredient]
     tokenized_directions: List[TokenizedDirection]
