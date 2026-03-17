@@ -14,7 +14,7 @@ Coverage:
 """
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 # Must be set BEFORE importing api.py so that HTTPBearer is created with
@@ -711,3 +711,827 @@ class TestIngestPdfScannedVisionFallback:
             resp = _upload_pdf(pdf_bytes)
         assert resp.status_code == 500
         assert "GOOGLE_API_KEY" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# 15. _extract_image_url_from_markdown — unit tests (no HTTP, no Gemini)
+# ---------------------------------------------------------------------------
+
+from recipeparser.api import _extract_image_url_from_markdown
+
+
+class TestExtractImageUrlFromMarkdown:
+    """Pure-unit tests for the og:image / Markdown image URL extractor."""
+
+    # --- og:image / twitter:image priority ---
+
+    def test_og_image_colon_syntax(self):
+        md = 'og:image: https://example.com/photo.jpg\nSome other content'
+        assert _extract_image_url_from_markdown(md) == 'https://example.com/photo.jpg'
+
+    def test_og_image_with_surrounding_whitespace(self):
+        """og:image with extra spaces around the colon and URL."""
+        md = 'og:image:   https://cdn.example.com/hero.png  \nMore content'
+        result = _extract_image_url_from_markdown(md)
+        assert result is not None
+        assert 'hero.png' in result
+
+    def test_twitter_image_colon_syntax(self):
+        md = 'twitter:image: https://example.com/twitter-card.jpg'
+        assert _extract_image_url_from_markdown(md) == 'https://example.com/twitter-card.jpg'
+
+    def test_og_image_takes_priority_over_markdown_image(self):
+        md = (
+            '![alt text](https://example.com/inline.jpg)\n'
+            'og:image: https://example.com/og-hero.jpg\n'
+        )
+        result = _extract_image_url_from_markdown(md)
+        assert result == 'https://example.com/og-hero.jpg'
+
+    # --- Markdown image fallback ---
+
+    def test_markdown_image_returned_when_no_og(self):
+        md = 'Some intro text\n![Recipe photo](https://example.com/cake.jpg)\nMore text'
+        assert _extract_image_url_from_markdown(md) == 'https://example.com/cake.jpg'
+
+    def test_first_markdown_image_returned_when_multiple(self):
+        md = (
+            '![First](https://example.com/first.jpg)\n'
+            '![Second](https://example.com/second.jpg)\n'
+        )
+        assert _extract_image_url_from_markdown(md) == 'https://example.com/first.jpg'
+
+    def test_markdown_image_with_empty_alt(self):
+        md = '![](https://example.com/no-alt.webp)'
+        assert _extract_image_url_from_markdown(md) == 'https://example.com/no-alt.webp'
+
+    # --- No image found ---
+
+    def test_returns_none_when_no_image(self):
+        md = 'Just plain text with no images at all.'
+        assert _extract_image_url_from_markdown(md) is None
+
+    def test_returns_none_for_empty_string(self):
+        assert _extract_image_url_from_markdown('') is None
+
+    def test_returns_none_for_relative_image_path(self):
+        """Relative paths (no http/https) must not be returned — they are unusable."""
+        md = '![alt](/images/local.jpg)'
+        assert _extract_image_url_from_markdown(md) is None
+
+    def test_returns_none_for_data_uri(self):
+        """data: URIs are not valid remote image URLs."""
+        md = '![alt](data:image/png;base64,abc123)'
+        assert _extract_image_url_from_markdown(md) is None
+
+    # --- URL cleaning ---
+
+    def test_trailing_paren_stripped_from_og_image(self):
+        """og:image regex can accidentally capture a trailing ')' — must be stripped."""
+        md = 'og:image: https://example.com/photo.jpg)'
+        result = _extract_image_url_from_markdown(md)
+        assert result is not None
+        assert not result.endswith(')')
+
+    def test_https_url_preserved(self):
+        md = '![](https://cdn.example.com/path/to/image.png)'
+        result = _extract_image_url_from_markdown(md)
+        assert result == 'https://cdn.example.com/path/to/image.png'
+
+    def test_http_url_accepted(self):
+        """http:// URLs are valid (some CDNs still use plain HTTP)."""
+        md = '![](http://example.com/image.jpg)'
+        result = _extract_image_url_from_markdown(md)
+        assert result == 'http://example.com/image.jpg'
+
+    # --- Real-world Jina markdown patterns ---
+
+    def test_jina_style_og_image_block(self):
+        """Simulate the kind of meta block Jina surfaces in its markdown output."""
+        md = (
+            'Title: Chocolate Lava Cake\n'
+            'og:image: https://www.seriouseats.com/thmb/abc123/hero.jpg\n'
+            'description: A rich, gooey chocolate dessert.\n'
+            '\n'
+            '## Ingredients\n'
+            '- 4 oz dark chocolate\n'
+        )
+        result = _extract_image_url_from_markdown(md)
+        assert result == 'https://www.seriouseats.com/thmb/abc123/hero.jpg'
+
+    def test_jina_style_inline_image_in_recipe_body(self):
+        """Simulate a Jina page where the hero image appears inline in the article."""
+        md = (
+            '# Chocolate Lava Cake\n'
+            '\n'
+            '![Chocolate Lava Cake](https://www.seriouseats.com/thmb/abc123/hero.jpg)\n'
+            '\n'
+            '## Ingredients\n'
+            '- 4 oz dark chocolate\n'
+        )
+        result = _extract_image_url_from_markdown(md)
+        assert result == 'https://www.seriouseats.com/thmb/abc123/hero.jpg'
+
+
+# ---------------------------------------------------------------------------
+# 16-27. /ingest/url endpoint � image extraction + upload pipeline
+# (Appended from test_ingest_url.py)
+# ---------------------------------------------------------------------------
+RECIPE_MARKDOWN_WITH_OG = (
+    "Title: Chocolate Cake\n"
+    "og:image: https://example.com/cake.jpg\n"
+    "\n"
+    "# Chocolate Cake\n"
+    "## Ingredients\n"
+    "- 1 cup flour\n"
+    "- 2 eggs\n"
+    "## Directions\n"
+    "Mix and bake at 350F for 30 minutes.\n"
+)
+
+RECIPE_MARKDOWN_WITH_MD_IMAGE = (
+    "# Chocolate Cake\n"
+    "\n"
+    "![Chocolate Cake](https://example.com/cake-inline.jpg)\n"
+    "\n"
+    "## Ingredients\n"
+    "- 1 cup flour\n"
+    "- 2 eggs\n"
+    "## Directions\n"
+    "Mix and bake at 350F for 30 minutes.\n"
+)
+
+RECIPE_MARKDOWN_NO_IMAGE = (
+    "# Chocolate Cake\n"
+    "## Ingredients\n"
+    "- 1 cup flour\n"
+    "- 2 eggs\n"
+    "## Directions\n"
+    "Mix and bake at 350F for 30 minutes.\n"
+)
+
+NOT_A_RECIPE_MARKDOWN = (
+    "# Welcome to Our Blog\n"
+    "This is a general interest article about cooking history.\n"
+    "No ingredients or directions here.\n"
+)
+
+
+def _make_raw_recipe(**kwargs):
+    defaults = dict(
+        name="Chocolate Cake",
+        ingredients=["1 cup flour", "2 eggs"],
+        directions=["Mix well.", "Bake 30 mins."],
+        prep_time="10 mins",
+        cook_time="30 mins",
+        servings="4",
+    )
+    defaults.update(kwargs)
+    return RecipeExtraction(**defaults)
+
+
+def _make_refined(**kwargs):
+    defaults = dict(
+        title="Chocolate Cake",
+        base_servings=4,
+        structured_ingredients=[
+            StructuredIngredient(
+                id="ing_01",
+                amount=1.0,
+                unit="cup",
+                name="flour",
+                fallback_string="1 cup flour",
+                converted_amount=None,
+                converted_unit=None,
+                is_ai_converted=False,
+            ),
+        ],
+        tokenized_directions=[
+            TokenizedDirection(step=1, text="Mix {{ing_01|1 cup flour}} well."),
+        ],
+    )
+    defaults.update(kwargs)
+    return CayenneRefinement(**defaults)
+
+
+def _make_jina_response(markdown: str, status_code: int = 200):
+    """Build a mock httpx Response for the Jina fetch."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = status_code
+    mock_resp.text = markdown
+    mock_resp.raise_for_status = MagicMock()
+    if status_code >= 400:
+        mock_resp.raise_for_status.side_effect = Exception(f"HTTP {status_code}")
+    return mock_resp
+
+
+def _make_image_download_response(content: bytes = b"fake-image-bytes",
+                                  content_type: str = "image/jpeg",
+                                  status_code: int = 200):
+    """Build a mock httpx Response for the image download."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = status_code
+    mock_resp.content = content
+    mock_resp.headers = {"content-type": content_type}
+    mock_resp.raise_for_status = MagicMock()
+    if status_code >= 400:
+        mock_resp.raise_for_status.side_effect = Exception(f"HTTP {status_code}")
+    return mock_resp
+
+
+def _make_supabase_upload_response(status_code: int = 200):
+    """Build a mock httpx Response for the Supabase Storage upload."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = status_code
+    mock_resp.raise_for_status = MagicMock()
+    if status_code >= 400:
+        mock_resp.raise_for_status.side_effect = Exception(f"HTTP {status_code}")
+    return mock_resp
+
+
+URL_MOCK_TARGETS = {
+    "extract": "recipeparser.gemini.extract_recipe_from_text",
+    "refine": "recipeparser.gemini.refine_recipe_for_cayenne",
+    "embed": "recipeparser.gemini.get_embeddings",
+    "gemini_client": "recipeparser.api._get_client",
+    "is_recipe": "recipeparser.epub.is_recipe_candidate",
+    "html_to_text": "recipeparser.api.html_to_text",
+    "httpx_async": "httpx.AsyncClient",
+    "httpx_sync": "httpx.Client",
+}
+
+# placeholder — tests filled in below
+
+
+# ---------------------------------------------------------------------------
+# Helper: build a fully-mocked /ingest/url call
+# ---------------------------------------------------------------------------
+
+def _post_ingest_url(url: str = "https://example.com/recipe", **body_kwargs):
+    """POST to /ingest/url with the given URL."""
+    return client.post("/ingest/url", json={"url": url, **body_kwargs})
+
+
+def _pipeline_patches(raw, refined):
+    """Return a list of (target, kwargs) for the standard pipeline mocks."""
+    return [
+        (URL_MOCK_TARGETS["extract"], dict(return_value=RecipeList(recipes=[raw]))),
+        (URL_MOCK_TARGETS["refine"],  dict(return_value=refined)),
+        (URL_MOCK_TARGETS["embed"],   dict(return_value=FAKE_EMBEDDING)),
+        (URL_MOCK_TARGETS["gemini_client"], {}),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# 16. Happy path — og:image found → downloaded → uploaded → image_url set
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlOgImage:
+    """og:image in Jina markdown → image uploaded → image_url in response."""
+
+    def _run(self, extra_env=None):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_WITH_OG)
+        img_dl_resp = _make_image_download_response()
+        sb_up_resp = _make_supabase_upload_response()
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        sync_ctx_dl = MagicMock()
+        sync_ctx_dl.__enter__ = MagicMock(return_value=MagicMock(
+            get=MagicMock(return_value=img_dl_resp)
+        ))
+        sync_ctx_dl.__exit__ = MagicMock(return_value=False)
+
+        sync_ctx_up = MagicMock()
+        sync_ctx_up.__enter__ = MagicMock(return_value=MagicMock(
+            post=MagicMock(return_value=sb_up_resp)
+        ))
+        sync_ctx_up.__exit__ = MagicMock(return_value=False)
+
+        env_patch = {
+            "SUPABASE_URL": "https://proj.supabase.co",
+            "SUPABASE_SERVICE_KEY": "service-key-abc",
+        }
+        if extra_env:
+            env_patch.update(extra_env)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch("httpx.Client", side_effect=[sync_ctx_dl, sync_ctx_up]), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]), \
+             patch.dict("os.environ", env_patch):
+            return _post_ingest_url()
+
+    def test_returns_200(self):
+        resp = self._run()
+        assert resp.status_code == 200
+
+    def test_image_url_is_set(self):
+        resp = self._run()
+        data = resp.json()
+        assert "image_url" in data
+        assert data["image_url"] is not None
+        assert "supabase.co" in data["image_url"]
+
+    def test_image_url_contains_recipe_images_bucket(self):
+        resp = self._run()
+        assert "recipe-images" in resp.json()["image_url"]
+
+    def test_response_schema_complete(self):
+        resp = self._run()
+        data = resp.json()
+        for key in ("title", "prep_time", "cook_time", "base_servings",
+                    "source_url", "categories", "structured_ingredients",
+                    "tokenized_directions", "embedding", "image_url"):
+            assert key in data, f"Missing key: {key}"
+
+
+# ---------------------------------------------------------------------------
+# 17. Happy path — Markdown image found → downloaded → uploaded → image_url set
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlMarkdownImage:
+    """Markdown image tag in Jina output → image uploaded → image_url in response."""
+
+    def _run(self):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_WITH_MD_IMAGE)
+        img_dl_resp = _make_image_download_response()
+        sb_up_resp = _make_supabase_upload_response()
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        sync_ctx_dl = MagicMock()
+        sync_ctx_dl.__enter__ = MagicMock(return_value=MagicMock(
+            get=MagicMock(return_value=img_dl_resp)
+        ))
+        sync_ctx_dl.__exit__ = MagicMock(return_value=False)
+
+        sync_ctx_up = MagicMock()
+        sync_ctx_up.__enter__ = MagicMock(return_value=MagicMock(
+            post=MagicMock(return_value=sb_up_resp)
+        ))
+        sync_ctx_up.__exit__ = MagicMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch("httpx.Client", side_effect=[sync_ctx_dl, sync_ctx_up]), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]), \
+             patch.dict("os.environ", {
+                 "SUPABASE_URL": "https://proj.supabase.co",
+                 "SUPABASE_SERVICE_KEY": "service-key-abc",
+             }):
+            return _post_ingest_url()
+
+    def test_returns_200(self):
+        assert self._run().status_code == 200
+
+    def test_image_url_is_set(self):
+        data = self._run().json()
+        assert data.get("image_url") is not None
+        assert "supabase.co" in data["image_url"]
+
+
+# ---------------------------------------------------------------------------
+# 18. No image in markdown → image_url is None, pipeline still succeeds
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlNoImage:
+    """No image in Jina markdown → image_url is None, recipe still returned."""
+
+    def _run(self):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_NO_IMAGE)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            return _post_ingest_url()
+
+    def test_returns_200(self):
+        assert self._run().status_code == 200
+
+    def test_image_url_is_none(self):
+        assert self._run().json().get("image_url") is None
+
+
+# ---------------------------------------------------------------------------
+# 19. Image download fails → image_url is None, pipeline still succeeds
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlImageDownloadFails:
+    """httpx raises during image download → non-fatal, image_url is None."""
+
+    def _run(self):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_WITH_OG)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        # Sync httpx.Client raises on image download
+        sync_ctx_dl = MagicMock()
+        sync_ctx_dl.__enter__ = MagicMock(return_value=MagicMock(
+            get=MagicMock(side_effect=Exception("Connection refused"))
+        ))
+        sync_ctx_dl.__exit__ = MagicMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch("httpx.Client", return_value=sync_ctx_dl), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]), \
+             patch.dict("os.environ", {
+                 "SUPABASE_URL": "https://proj.supabase.co",
+                 "SUPABASE_SERVICE_KEY": "service-key-abc",
+             }):
+            return _post_ingest_url()
+
+    def test_returns_200(self):
+        assert self._run().status_code == 200
+
+    def test_image_url_is_none(self):
+        assert self._run().json().get("image_url") is None
+
+
+# ---------------------------------------------------------------------------
+# 20. Supabase upload fails → image_url is None, pipeline still succeeds
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlSupabaseUploadFails:
+    """Supabase Storage POST raises → non-fatal, image_url is None."""
+
+    def _run(self):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_WITH_OG)
+        img_dl_resp = _make_image_download_response()
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        sync_ctx_dl = MagicMock()
+        sync_ctx_dl.__enter__ = MagicMock(return_value=MagicMock(
+            get=MagicMock(return_value=img_dl_resp)
+        ))
+        sync_ctx_dl.__exit__ = MagicMock(return_value=False)
+
+        # Second httpx.Client (upload) raises
+        sync_ctx_up = MagicMock()
+        sync_ctx_up.__enter__ = MagicMock(return_value=MagicMock(
+            post=MagicMock(side_effect=Exception("Supabase 503"))
+        ))
+        sync_ctx_up.__exit__ = MagicMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch("httpx.Client", side_effect=[sync_ctx_dl, sync_ctx_up]), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]), \
+             patch.dict("os.environ", {
+                 "SUPABASE_URL": "https://proj.supabase.co",
+                 "SUPABASE_SERVICE_KEY": "service-key-abc",
+             }):
+            return _post_ingest_url()
+
+    def test_returns_200(self):
+        assert self._run().status_code == 200
+
+    def test_image_url_is_none(self):
+        assert self._run().json().get("image_url") is None
+
+
+# ---------------------------------------------------------------------------
+# 21. Missing SUPABASE_URL / SUPABASE_SERVICE_KEY → upload skipped, image_url None
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlMissingSupabaseEnv:
+    """When Supabase env vars are absent, upload is skipped silently."""
+
+    def _run_with_env(self, env_overrides: dict):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_WITH_OG)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]), \
+             patch.dict("os.environ", env_overrides, clear=False):
+            # Remove the keys if they exist
+            for key in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY"):
+                os.environ.pop(key, None)
+            return _post_ingest_url()
+
+    def test_missing_supabase_url_returns_200(self):
+        resp = self._run_with_env({})
+        assert resp.status_code == 200
+
+    def test_missing_supabase_url_image_url_is_none(self):
+        resp = self._run_with_env({})
+        assert resp.json().get("image_url") is None
+
+    def test_missing_service_key_returns_200(self):
+        resp = self._run_with_env({"SUPABASE_URL": "https://proj.supabase.co"})
+        assert resp.status_code == 200
+
+    def test_missing_service_key_image_url_is_none(self):
+        resp = self._run_with_env({"SUPABASE_URL": "https://proj.supabase.co"})
+        assert resp.json().get("image_url") is None
+
+
+# ---------------------------------------------------------------------------
+# 22. Jina fetch fails → 422
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlJinaFails:
+    """If the Jina HTTP fetch raises, the endpoint returns 422."""
+
+    def test_jina_connection_error_returns_422(self):
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(side_effect=Exception("Connection refused"))
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            resp = _post_ingest_url()
+
+        assert resp.status_code == 422
+        assert "Failed to fetch URL" in resp.json()["detail"]
+
+    def test_jina_http_error_returns_422(self):
+        jina_resp = _make_jina_response("", status_code=503)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            resp = _post_ingest_url()
+
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# 23. URL not a recipe → 422
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlNotARecipe:
+    """If is_recipe_candidate returns False, the endpoint returns 422."""
+
+    def test_non_recipe_url_returns_422(self):
+        jina_resp = _make_jina_response(NOT_A_RECIPE_MARKDOWN)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=False), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value=NOT_A_RECIPE_MARKDOWN), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            resp = _post_ingest_url()
+
+        assert resp.status_code == 422
+        assert "recipe" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# 24. UOM passthrough to pipeline
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlUomPassthrough:
+    """uom_system and measure_preference are forwarded to refine_recipe_for_cayenne."""
+
+    def test_metric_weight_passthrough(self):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+        mock_refine = MagicMock(return_value=refined)
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_NO_IMAGE)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], mock_refine), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            _post_ingest_url(uom_system="Metric", measure_preference="Weight")
+
+        mock_refine.assert_called_once()
+        _, kwargs = mock_refine.call_args
+        assert kwargs.get("uom_system") == "Metric"
+        assert kwargs.get("measure_preference") == "Weight"
+
+    def test_default_uom_is_us_volume(self):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+        mock_refine = MagicMock(return_value=refined)
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_NO_IMAGE)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], mock_refine), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            _post_ingest_url()
+
+        _, kwargs = mock_refine.call_args
+        assert kwargs.get("uom_system") == "US"
+        assert kwargs.get("measure_preference") == "Volume"
+
+
+# ---------------------------------------------------------------------------
+# 25. source_url echoed in response
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlSourceUrl:
+    """The submitted URL is echoed back as source_url in the response."""
+
+    def _run(self, url: str):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_NO_IMAGE)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            return _post_ingest_url(url=url)
+
+    def test_source_url_echoed(self):
+        url = "https://www.seriouseats.com/chocolate-cake"
+        resp = self._run(url)
+        assert resp.status_code == 200
+        assert resp.json()["source_url"] == url
+
+
+# ---------------------------------------------------------------------------
+# 26. Missing url field → 400
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlMissingField:
+    """Sending an empty or missing url field returns 400."""
+
+    def test_empty_url_returns_400(self):
+        resp = client.post("/ingest/url", json={"url": ""})
+        assert resp.status_code == 400
+        assert "url" in resp.json()["detail"].lower()
+
+    def test_missing_url_field_returns_422(self):
+        # Pydantic will reject a missing required field with 422
+        resp = client.post("/ingest/url", json={})
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# 27. Full response schema validated (all keys present)
+# ---------------------------------------------------------------------------
+
+class TestIngestUrlResponseSchema:
+    """The /ingest/url response includes all required IngestResponse fields."""
+
+    def test_all_required_keys_present(self):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_NO_IMAGE)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            resp = _post_ingest_url()
+
+        assert resp.status_code == 200
+        data = resp.json()
+        required_keys = (
+            "title", "prep_time", "cook_time", "base_servings",
+            "source_url", "categories", "structured_ingredients",
+            "tokenized_directions", "embedding", "image_url",
+        )
+        for key in required_keys:
+            assert key in data, f"Missing key in response: {key}"
+
+    def test_embedding_length_is_1536(self):
+        raw = _make_raw_recipe()
+        refined = _make_refined()
+
+        jina_resp = _make_jina_response(RECIPE_MARKDOWN_NO_IMAGE)
+
+        async_ctx = MagicMock()
+        async_ctx.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=jina_resp)
+        ))
+        async_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=async_ctx), \
+             patch(URL_MOCK_TARGETS["is_recipe"], return_value=True), \
+             patch(URL_MOCK_TARGETS["html_to_text"], return_value="Chocolate Cake 1 cup flour Mix and bake."), \
+             patch(URL_MOCK_TARGETS["extract"], return_value=RecipeList(recipes=[raw])), \
+             patch(URL_MOCK_TARGETS["refine"], return_value=refined), \
+             patch(URL_MOCK_TARGETS["embed"], return_value=FAKE_EMBEDDING), \
+             patch(URL_MOCK_TARGETS["gemini_client"]):
+            resp = _post_ingest_url()
+
+        assert len(resp.json()["embedding"]) == 1536
