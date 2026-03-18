@@ -246,13 +246,15 @@ def _upload_image_to_storage(
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.post('/ingest', response_model=JobResponse, status_code=202)
-async def ingest_recipe(
+async def _ingest_text_handler(
     request: IngestRequest,
-    _user: dict = Depends(_verify_supabase_jwt),
-):
+    _user: dict,
+) -> JobResponse:
     """
-    Ingest a recipe from plain text.
+    Shared implementation for POST /ingest/text (and its legacy alias POST /ingest).
+
+    Ingests a recipe from plain text. The pipeline runs extract → refine → embed
+    via Gemini, then writes the result directly to Supabase.
 
     ARCHITECTURAL INVARIANT: The API writes the recipe directly to Supabase and
     returns only a lightweight { job_id, recipe_id } acknowledgment (202).
@@ -262,7 +264,7 @@ async def ingest_recipe(
     if not source_text or not source_text.strip():
         raise HTTPException(
             status_code=400,
-            detail='Only text ingestion is supported on this endpoint. For URL ingestion use POST /ingest/url.',
+            detail='text field is required and must not be empty. For URL ingestion use POST /ingest/url.',
         )
 
     user_id = _user.get('sub', 'unknown')
@@ -287,6 +289,38 @@ async def ingest_recipe(
         raise
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/ingest/text', response_model=JobResponse, status_code=202)
+async def ingest_text(
+    request: IngestRequest,
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """
+    Ingest a recipe from plain text.
+
+    Follows the same ``/ingest/<media-type>`` naming convention as the other
+    ingestion endpoints (``/ingest/url``, ``/ingest/pdf``, ``/ingest/epub``,
+    ``/ingest/paprika``).
+
+    ARCHITECTURAL INVARIANT: The API writes the recipe directly to Supabase and
+    returns only a lightweight { job_id, recipe_id } acknowledgment (202).
+    The client app NEVER receives recipe JSON. Recipes reach the client via PowerSync.
+    """
+    return await _ingest_text_handler(request, _user)
+
+
+@app.post('/ingest', response_model=JobResponse, status_code=202)
+async def ingest_recipe(
+    request: IngestRequest,
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """
+    Legacy alias for POST /ingest/text — kept for backward compatibility.
+
+    Prefer POST /ingest/text for new integrations.
+    """
+    return await _ingest_text_handler(request, _user)
 
 
 @app.post('/ingest/url', response_model=JobResponse, status_code=202)
