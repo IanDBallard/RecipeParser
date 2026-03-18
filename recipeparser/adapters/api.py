@@ -464,6 +464,190 @@ async def ingest_epub(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class PaprikaIngestResponse(BaseModel):
+    """Summary of a .paprikarecipes batch import."""
+    job_ids: List[str]
+    recipe_ids: List[str]
+    success_count: int
+    failure_count: int
+    errors: List[str]
+
+
+@app.post('/ingest/paprika', response_model=PaprikaIngestResponse, status_code=202)
+async def ingest_paprika(
+    file: UploadFile = File(...),
+    uom_system: str = Form('US'),
+    measure_preference: str = Form('Volume'),
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """
+    Ingest a .paprikarecipes archive (Paprika 3 export format).
+
+    Handles both Cayenne-flavored archives (containing ``_cayenne_meta``) and
+    legacy Paprika archives in a single endpoint:
+
+    - **Flow B — Cayenne Instant Restore**: If a recipe entry contains
+      ``_cayenne_meta``, the pre-structured ``CayenneRecipe`` JSON and
+      1536-dim embedding are extracted directly and written to Supabase.
+      Gemini is NOT called — zero AI cost.
+
+    - **Flow A — Legacy Paprika**: If ``_cayenne_meta`` is absent, the recipe
+      fields are flattened to plain text and run through the full Cayenne
+      pipeline (extract → refine → embed via Gemini).
+
+    ARCHITECTURAL INVARIANT: The API is the sole writer to Supabase.
+    The client app NEVER writes ingested recipes directly. Recipes reach
+    the client via PowerSync sync.
+
+    Returns a summary of all recipes processed (success + failure counts).
+    """
+    import json as _json
+    from recipeparser.io.readers.paprika import PaprikaReader
+
+    if not (file.filename or '').lower().endswith('.paprikarecipes'):
+        raise HTTPException(
+            status_code=400,
+            detail='File must be a .paprikarecipes archive.',
+        )
+
+    user_id = _user.get('sub', 'unknown')
+
+    try:
+        client = _get_client()
+        user_axes, category_ids = _fetch_user_axes_and_ids(user_id)
+
+        with temp_file_from_upload(file) as tmp_path:
+            reader = PaprikaReader()
+            try:
+                entries = reader.read_entries(tmp_path)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f'Failed to parse .paprikarecipes archive: {exc}',
+                )
+
+        if not entries:
+            raise HTTPException(
+                status_code=422,
+                detail='Archive is empty or contains no .paprikarecipe entries.',
+            )
+
+        job_ids: List[str] = []
+        recipe_ids: List[str] = []
+        errors: List[str] = []
+
+        for entry in entries:
+            recipe_name = entry.get('name') or 'Untitled'
+            job_id = str(uuid.uuid4())
+
+            try:
+                cayenne_meta = entry.get('_cayenne_meta')
+
+                if cayenne_meta:
+                    # ── Flow B: Cayenne Instant Restore ──────────────────────
+                    # The _cayenne_meta blob contains the full CayenneRecipe JSON
+                    # plus the 1536-dim embedding. Bypass Gemini entirely.
+                    if isinstance(cayenne_meta, str):
+                        cayenne_meta = _json.loads(cayenne_meta)
+
+                    embedding: List[float] = cayenne_meta.get('embedding', [])
+                    if not isinstance(embedding, list) or len(embedding) != 1536:
+                        raise ValueError(
+                            f'_cayenne_meta.embedding is invalid '
+                            f'(got {type(embedding).__name__} len={len(embedding) if isinstance(embedding, list) else "n/a"}). '
+                            f'Falling back to Flow A.'
+                        )
+
+                    # Build an IngestResponse from the pre-structured data so
+                    # write_recipe_to_supabase() can accept it unchanged.
+                    from recipeparser.models import (
+                        CayenneRecipe as _CayenneRecipe,
+                        StructuredIngredient as _SI,
+                        TokenizedDirection as _TD,
+                    )
+                    structured_ingredients = [
+                        _SI(**ing) for ing in cayenne_meta.get('structured_ingredients', [])
+                    ]
+                    tokenized_directions = [
+                        _TD(**d) for d in cayenne_meta.get('tokenized_directions', [])
+                    ]
+                    restore_recipe = IngestResponse(
+                        title=entry.get('name') or cayenne_meta.get('title', 'Untitled'),
+                        prep_time=entry.get('prep_time') or cayenne_meta.get('prep_time'),
+                        cook_time=entry.get('cook_time') or cayenne_meta.get('cook_time'),
+                        base_servings=float(entry.get('servings') or cayenne_meta.get('base_servings') or 0) or None,
+                        source_url=entry.get('source_url') or cayenne_meta.get('source_url'),
+                        image_url=cayenne_meta.get('image_url'),
+                        categories=cayenne_meta.get('categories', []),
+                        structured_ingredients=structured_ingredients,
+                        tokenized_directions=tokenized_directions,
+                        embedding=embedding,
+                    )
+                    recipe_id = write_recipe_to_supabase(
+                        restore_recipe,
+                        user_id=user_id,
+                        category_ids=category_ids,
+                    )
+                    log.info(
+                        'Flow B (Instant Restore): recipe "%s" written to Supabase id=%s',
+                        recipe_name, recipe_id,
+                    )
+
+                else:
+                    # ── Flow A: Legacy Paprika — full Gemini pipeline ─────────
+                    parts: List[str] = []
+                    if entry.get('name'):        parts.append(f"Recipe: {entry['name']}")
+                    if entry.get('prep_time'):   parts.append(f"Prep Time: {entry['prep_time']}")
+                    if entry.get('cook_time'):   parts.append(f"Cook Time: {entry['cook_time']}")
+                    if entry.get('servings'):    parts.append(f"Servings: {entry['servings']}")
+                    if entry.get('description'): parts.append(f"\nDescription:\n{entry['description']}")
+                    if entry.get('ingredients'): parts.append(f"\nIngredients:\n{entry['ingredients']}")
+                    if entry.get('directions'):  parts.append(f"\nDirections:\n{entry['directions']}")
+                    if entry.get('notes'):       parts.append(f"\nNotes:\n{entry['notes']}")
+                    if entry.get('source_url'):  parts.append(f"\nSource: {entry['source_url']}")
+                    plain_text = '\n'.join(parts)
+
+                    if not plain_text.strip():
+                        raise ValueError(f'Recipe "{recipe_name}" has no extractable text.')
+
+                    result = _safe_run_pipeline(
+                        source_text=plain_text,
+                        client=client,
+                        uom_system=uom_system,
+                        measure_preference=measure_preference,
+                        source_url=entry.get('source_url'),
+                        user_axes=user_axes,
+                    )
+                    recipe_id = write_recipe_to_supabase(
+                        result, user_id=user_id, category_ids=category_ids
+                    )
+                    log.info(
+                        'Flow A (Legacy Paprika): recipe "%s" written to Supabase id=%s',
+                        recipe_name, recipe_id,
+                    )
+
+                job_ids.append(job_id)
+                recipe_ids.append(recipe_id)
+
+            except Exception as exc:
+                err_msg = f'"{recipe_name}": {exc}'
+                log.warning('paprika ingest error — %s', err_msg)
+                errors.append(err_msg)
+
+        return PaprikaIngestResponse(
+            job_ids=job_ids,
+            recipe_ids=recipe_ids,
+            success_count=len(recipe_ids),
+            failure_count=len(errors),
+            errors=errors,
+        )
+
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post('/embed', response_model=EmbedResponse)
 async def embed_query(
     request: EmbedRequest,
