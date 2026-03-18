@@ -5,6 +5,91 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [5.0.0] — 2026-03-17
+
+### 💥 Breaking Changes
+
+- **Layered architecture refactor** — the monolithic `recipeparser/` flat layout has been replaced with a clean three-layer structure. Any code importing directly from old module paths must be updated:
+  - `recipeparser.gemini` → `recipeparser.core.engine` (orchestration) / `recipeparser.core.providers` (LLM/embedding ABCs)
+  - `recipeparser.pipeline` → `recipeparser.core.fsm` (FSM) + `recipeparser.core.engine` (pure logic)
+  - `recipeparser.supabase_writer` → `recipeparser.io.writers.supabase`
+  - Category sources: `recipeparser.io.category_sources.{yaml_source,paprika_db,supabase_source}`
+- **`POST /ingest` replaced by `POST /jobs`** — the API now uses a fire-and-forget job pattern. The endpoint returns `202 Accepted` with `{ "job_id": "uuid" }` immediately; the completed recipe is written directly to Supabase by the worker. Callers must poll `GET /jobs/{job_id}` for status.
+- **`categories` field removed from `CayenneRecipe`** — category assignment is now handled by the multipolar grid system and written to the `recipe_categories` junction table in Supabase. The flat `List[str]` field is no longer returned in the API response.
+
+### ✨ New Features
+
+#### Multipolar Grid Categorization
+- Recipes are now categorized against a **user-defined set of axes** (e.g., "Cuisine", "Protein", "Meal Type"), each with its own list of valid tags.
+- The LLM receives a **dynamically generated Pydantic schema** (via `create_model()`) that enforces the exact tag vocabulary per axis — hallucinated tags are structurally impossible.
+- **Zero-tag mandate**: the LLM returns `[]` for any axis that doesn't apply to the recipe; a post-validation pass strips any tags that slipped through.
+- **0–2 tags per axis** — recipes are never over-categorized; the constraint is enforced both in the prompt and in the response schema.
+- Categorization is merged into the existing **refinement pass** (Fat Tokens + UOM + Categories in a single Gemini call), eliminating a separate API round-trip.
+- Results are written to the `recipe_categories` junction table in Supabase, partitioned by `user_id` for PowerSync compatibility.
+
+#### `CategorySource` ABC (Pluggable Taxonomy)
+- New abstract base class `recipeparser.io.category_sources.base.CategorySource` with a single `load() -> MultipolarGrid` method.
+- Three built-in implementations:
+  - `YamlCategorySource` — loads axes + tags from a local `categories.yaml` file (default for CLI/GUI)
+  - `PaprikaDbCategorySource` — reads live taxonomy from Paprika 3's SQLite database
+  - `SupabaseCategorySource` — fetches the authenticated user's category tree from Supabase (used by the API adapter)
+- The engine accepts any `CategorySource` implementation — new sources can be added without touching core logic.
+
+#### Layered Architecture (`recipeparser/core/` + `recipeparser/io/`)
+- **`recipeparser/core/engine.py`** — pure `RecipeEngine` orchestrator with zero I/O; accepts reader, writer, and category source as injected dependencies.
+- **`recipeparser/core/fsm.py`** — `ExtractionFSM` state machine (externalized, observable); fires callbacks on every state transition for adapter-level progress reporting.
+- **`recipeparser/core/providers/`** — `LLMProvider` and `EmbeddingProvider` ABCs with a `GeminiProvider` implementation; swappable without touching the engine.
+- **`recipeparser/io/readers/`** — `EpubReader`, `PdfReader`, `UrlReader`, `PaprikaReader` (source adapters).
+- **`recipeparser/io/writers/`** — `SupabaseWriter`, `CayenneZipWriter`, `PaprikaZipWriter` (output adapters).
+- **`recipeparser/adapters/`** — thin CLI, GUI, and API wrappers that wire readers/writers/sources to the engine.
+
+#### Fire-and-Forget Job API (`recipeparser/adapters/api.py`)
+- `POST /jobs` — accepts `{ url?, text?, uom_system?, measure_preference? }`, enqueues a background worker, returns `202 { "job_id": "uuid" }` immediately.
+- `GET /jobs/{job_id}` — returns current job status: `pending | running | done | error`, FSM stage, `progress_pct`, `recipe_count`, and `error_message`.
+- Job state is written to the `ingestion_jobs` table in Supabase; PowerSync syncs it to the mobile app in real time — zero polling from the client.
+- `.env` is excluded from the Docker image (`.dockerignore` updated); `DISABLE_AUTH=1` environment variable added for CI test jobs.
+
+#### Live End-to-End Test Suites
+- Three standalone live E2E scripts (excluded from standard `pytest` run; require a running Docker server):
+  - `tests/live_api_test.py` — exercises `POST /jobs` + `GET /jobs/{id}` against a live container
+  - `tests/live_cli_test.py` — runs the CLI adapter end-to-end with a real Gemini API call
+  - `tests/live_gui_test.py` — drives the GUI adapter headlessly through a full parse run
+- `pyproject.toml` updated: `python_files = ["test_*.py"]` ensures `live_*` scripts are never picked up by the standard test runner.
+
+### 🔧 Improvements
+
+- **`toc.py` bare `Link` crash fixed** — `toc.py` now handles EPUB `Link` nodes that have no `title` attribute without raising `AttributeError`.
+- **Docker `.env` exclusion** — `.dockerignore` updated to prevent `.env` from being baked into the image; secrets are injected at runtime via environment variables.
+- **`DISABLE_AUTH` CI flag** — GitHub Actions CI test job sets `DISABLE_AUTH=1` so the containerised API accepts unauthenticated requests during automated testing without requiring a live Supabase JWT secret.
+
+### 🧪 Testing
+
+- **384 tests, 0 failures** (up from 356 in v3.0.0)
+- New test coverage:
+  - Multipolar grid schema generation and zero-tag validation
+  - `CategorySource` ABC implementations (YAML, Paprika DB, Supabase)
+  - Fire-and-forget job API (`POST /jobs`, `GET /jobs/{id}`, background worker lifecycle)
+  - `RecipeEngine` with injected mock dependencies (pure unit tests, zero I/O)
+  - `ExtractionFSM` state transition invariants
+- **10/10 live E2E tests passing** against a running Docker container (API, CLI, GUI adapters)
+
+### 📦 Architecture Summary
+
+```
+recipeparser/
+├── core/
+│   ├── engine.py          ← RecipeEngine orchestrator (pure — no I/O)
+│   ├── fsm.py             ← ExtractionFSM state machine
+│   └── providers/         ← LLMProvider + EmbeddingProvider ABCs + GeminiProvider
+├── io/
+│   ├── readers/           ← EpubReader, PdfReader, UrlReader, PaprikaReader
+│   ├── writers/           ← SupabaseWriter, CayenneZipWriter, PaprikaZipWriter
+│   └── category_sources/  ← CategorySource ABC + YAML / PaprikaDB / Supabase impls
+└── adapters/              ← CLI, GUI, API thin wrappers
+```
+
+---
+
 ## [3.0.0] — 2026-03-12
 
 ### ✨ New Features
