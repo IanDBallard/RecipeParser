@@ -1,5 +1,5 @@
 """Pydantic models for structured Gemini output."""
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -116,6 +116,14 @@ class CayenneRefinement(BaseModel):
     base_servings: Optional[int]
     structured_ingredients: List[StructuredIngredient]
     tokenized_directions: List[TokenizedDirection]
+    grid_categories: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Multipolar categorization result. Keys are axis names (e.g. 'Cuisine'), "
+            "values are lists of 0-2 matching tags from that axis. "
+            "Return [] for any axis that does not apply — never hallucinate tags."
+        ),
+    )
 
 
 class CayenneRecipe(BaseModel):
@@ -126,7 +134,20 @@ class CayenneRecipe(BaseModel):
     base_servings: Optional[int] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None  # Supabase Storage public URL; None when no photo available
-    categories: List[str] = Field(default_factory=lambda: ["Uncategorized"])
+    categories: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Flat list of category names for Paprika compatibility. "
+            "Derived by flattening grid_categories values. Empty when no axes defined."
+        ),
+    )
+    grid_categories: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Multipolar categorization result. Keys are axis names, "
+            "values are lists of matching tags. Empty dict when no axes defined."
+        ),
+    )
     structured_ingredients: List[StructuredIngredient]
     tokenized_directions: List[TokenizedDirection]
 

@@ -38,3 +38,10 @@ include = ["recipeparser*"]
 
 [tool.setuptools.package-data]
 recipeparser = ["*.yaml"]
+
+[tool.pytest.ini_options]
+# live_*_test.py files are standalone scripts that require a running server.
+# They are NOT pytest suites — exclude them from the standard test run.
+# collect_ignore is handled in conftest.py (the correct location for this setting).
+testpaths = ["tests"]
+python_files = ["test_*.py"]

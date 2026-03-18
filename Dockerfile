@@ -12,4 +12,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["python", "-m", "recipeparser.api"]
+CMD ["uvicorn", "recipeparser.adapters.api:app", "--host", "0.0.0.0", "--port", "8000"]

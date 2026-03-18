@@ -2,7 +2,9 @@
 import logging
 import re
 import time
-from typing import Optional, List
+from typing import Dict, List, Optional
+
+from pydantic import create_model, Field
 
 from recipeparser.config import BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, MAX_RETRIES
 from recipeparser.models import RecipeList, CayenneRefinement
@@ -339,13 +341,108 @@ def extract_text_via_vision(doc, client) -> str:
     return "\n\n".join(page_texts)
 
 
+def _build_dynamic_grid_schema(user_axes: Dict[str, List[str]]) -> type:
+    """
+    Build a dynamic Pydantic model at runtime that extends CayenneRefinement
+    with a ``grid_categories`` field whose per-axis sub-fields are constrained
+    to the exact tags the user has defined.
+
+    Each axis becomes a field typed ``List[str]`` with a description that lists
+    the valid tags.  The LLM is instructed (via field description) to return []
+    for axes that don't apply — enforcing the Zero-Tag Mandate.
+
+    Args:
+        user_axes: Dict mapping axis name → list of valid tag strings.
+                   e.g. {"Cuisine": ["Italian", "Mexican"], "Protein": ["Chicken"]}
+
+    Returns:
+        A dynamically-created Pydantic model class that Gemini can use as a
+        response_schema.  When user_axes is empty, returns CayenneRefinement
+        unchanged (no categorization fields added).
+    """
+    if not user_axes:
+        return CayenneRefinement
+
+    # Build per-axis sub-model fields: each axis → List[str] with valid tags in description
+    axis_fields: Dict[str, tuple] = {}
+    for axis_name, tags in user_axes.items():
+        tags_str = ", ".join(f'"{t}"' for t in tags)
+        axis_fields[axis_name] = (
+            List[str],
+            Field(
+                default_factory=list,
+                description=(
+                    f"Tags for the '{axis_name}' axis. "
+                    f"Choose 0-2 tags from this exact list: [{tags_str}]. "
+                    f"Return [] if none apply — do NOT invent tags outside this list."
+                ),
+            ),
+        )
+
+    # Create the per-axis grid sub-model
+    GridModel = create_model("GridCategories", **axis_fields)
+
+    # Extend CayenneRefinement with the typed grid_categories field
+    RefinementWithGrid = create_model(
+        "CayenneRefinementWithGrid",
+        __base__=CayenneRefinement,
+        grid_categories=(
+            GridModel,
+            Field(
+                default_factory=GridModel,
+                description=(
+                    "Multipolar categorization. For each axis, pick 0-2 matching tags "
+                    "from the provided list. Return [] for axes that don't apply."
+                ),
+            ),
+        ),
+    )
+
+    return RefinementWithGrid
+
+
+def _format_axes_for_prompt(user_axes: Dict[str, List[str]]) -> str:
+    """Format user_axes into a human-readable prompt section."""
+    if not user_axes:
+        return ""
+    lines = ["", "3. CATEGORIZATION (grid_categories):"]
+    lines.append(
+        "   Classify this recipe using the user's taxonomy axes below. "
+        "For each axis, select 0-2 tags that best describe the recipe. "
+        "Return [] for any axis that does not apply. "
+        "NEVER invent tags outside the provided lists."
+    )
+    for axis_name, tags in user_axes.items():
+        tags_str = ", ".join(f'"{t}"' for t in tags)
+        lines.append(f"   - {axis_name}: [{tags_str}]")
+    return "\n".join(lines)
+
+
 def refine_recipe_for_cayenne(
     raw_recipe: object,
     client,
     uom_system: str = "US",
-    measure_preference: str = "Volume"
+    measure_preference: str = "Volume",
+    user_axes: Optional[Dict[str, List[str]]] = None,
 ) -> Optional[CayenneRefinement]:
-    """Post-processing pass to convert raw text recipe into high-fidelity Cayenne data."""
+    """
+    Post-processing pass to convert raw text recipe into high-fidelity Cayenne data.
+
+    Combines Fat Token generation, UOM conversion, and multipolar categorization
+    into a single LLM call (Pass 2).
+
+    Args:
+        raw_recipe:        The raw RecipeExtraction object from Pass 1.
+        client:            Initialised Gemini client.
+        uom_system:        "US", "Metric", or "Imperial".
+        measure_preference: "Volume" or "Weight".
+        user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
+                           When None or empty, grid_categories will be {} in the result.
+    """
+    axes = user_axes or {}
+    categorization_section = _format_axes_for_prompt(axes)
+    schema = _build_dynamic_grid_schema(axes)
+
     prompt = f"""
 You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
 
@@ -359,7 +456,7 @@ RULES:
 2. TOKENIZED DIRECTIONS:
    - Rewrite directions using Fat Tokens: {{{{ingredient_id|original_text}}}}
    - Example: "Mix the flour" -> "Mix the {{{{ing_01|flour}}}}"
-
+{categorization_section}
 CONTEXT:
 UOM System: {uom_system}
 Measure Preference: {measure_preference}
@@ -374,11 +471,43 @@ RAW RECIPE:
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_schema": CayenneRefinement,
+                "response_schema": schema,
                 "temperature": 0.1,
             },
         )
-        return response.parsed
+        result = response.parsed
+
+        # When a dynamic schema was used, grid_categories is a nested sub-model.
+        # Normalize it back to a plain Dict[str, List[str]] on the CayenneRefinement.
+        if axes and result is not None:
+            raw_grid = result.grid_categories
+            if hasattr(raw_grid, "model_dump"):
+                # It's a Pydantic sub-model — convert to plain dict
+                normalized: Dict[str, List[str]] = {
+                    k: v for k, v in raw_grid.model_dump().items()
+                    if isinstance(v, list)
+                }
+            elif isinstance(raw_grid, dict):
+                normalized = raw_grid
+            else:
+                normalized = {}
+
+            # Re-validate: strip any tags not in the user's defined lists
+            clean_grid: Dict[str, List[str]] = {}
+            for axis_name, selected_tags in normalized.items():
+                valid_tags = set(axes.get(axis_name, []))
+                clean_grid[axis_name] = [t for t in selected_tags if t in valid_tags]
+
+            # Return a proper CayenneRefinement with the cleaned grid
+            return CayenneRefinement(
+                title=result.title,
+                base_servings=result.base_servings,
+                structured_ingredients=result.structured_ingredients,
+                tokenized_directions=result.tokenized_directions,
+                grid_categories=clean_grid,
+            )
+
+        return result
     except Exception as e:
         log.error("Cayenne refinement failed: %s", e)
         return None
