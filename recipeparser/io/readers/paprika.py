@@ -119,3 +119,61 @@ class PaprikaReader:
             "PaprikaReader: parsed %d entries from %s", len(entries), path.name
         )
         return entries
+
+    def read_entries_with_images(self, path: str | Path) -> List[Dict[str, Any]]:
+        """
+        Enhanced version of read_entries that also returns binary image data.
+        Returns a list of dicts, where each dict has:
+          - 'recipe': The recipe JSON dict
+          - 'image_bytes': Optional[bytes]
+          - 'image_name': Optional[str]
+        """
+        path = Path(path)
+        if not zipfile.is_zipfile(path):
+            raise ValueError(f"Not a valid ZIP archive: {path}")
+
+        results: List[Dict[str, Any]] = []
+
+        with zipfile.ZipFile(path, "r") as zf:
+            # Map of photo_hash -> binary data for fast lookup
+            image_map = {}
+            for name in zf.namelist():
+                # Paprika stores images in the root or a subdirectory, usually matching the photo_hash
+                if name.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                    image_map[name] = zf.read(name)
+
+            for name in zf.namelist():
+                if not name.lower().endswith(".paprikarecipe"):
+                    continue
+
+                try:
+                    compressed = zf.read(name)
+                    raw_json = gzip.decompress(compressed)
+                    entry = json.loads(raw_json)
+                except Exception:
+                    try:
+                        entry = json.loads(compressed)
+                    except Exception:
+                        continue
+
+                # Handle _cayenne_meta
+                meta = entry.get("_cayenne_meta")
+                if isinstance(meta, str):
+                    try:
+                        entry["_cayenne_meta"] = json.loads(meta)
+                    except Exception:
+                        pass
+
+                # Extract image if present
+                photo_name = entry.get('photo')
+                image_bytes = None
+                if photo_name and photo_name in image_map:
+                    image_bytes = image_map[photo_name]
+                
+                results.append({
+                    'recipe': entry,
+                    'image_bytes': image_bytes,
+                    'image_name': photo_name
+                })
+
+        return results
