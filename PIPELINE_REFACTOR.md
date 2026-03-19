@@ -720,6 +720,141 @@ pytest tests/integration/ -v -m "not live_api"
 
 ---
 
+## 10. Code Reuse Inventory
+
+> **Purpose:** This section is the anti-blanket-rewrite contract. Every function listed here MUST be preserved verbatim (or moved, not rewritten) during the refactor. The refactor is a **structural reorganisation**, not a logic rewrite. If a function is listed as "MOVE", its body must be identical in the new location — only its import path changes.
+
+---
+
+### 10.1 `gemini.py` — Preserve Everything (Move to `core/stages/`)
+
+This file contains hard-won prompt engineering and retry logic. **Nothing in it should be rewritten.**
+
+| Function | Lines of Note | Destination | Action |
+|---|---|---|---|
+| `_call_with_retry()` | Exponential back-off, 429 detection, `MAX_RETRIES` | `core/stages/_gemini_client.py` | **MOVE** |
+| `_is_rate_limit_error()` | Detects `"429"`, `"quota"`, `"resource_exhausted"` | `core/stages/_gemini_client.py` | **MOVE** |
+| `verify_connectivity()` | Single-token preflight check | `core/stages/_gemini_client.py` | **MOVE** |
+| `get_embeddings()` | `gemini-embedding-001`, 1536-dim, raises on failure | `core/stages/embed.py` | **MOVE** (wrap in `embed()`) |
+| `needs_table_normalisation()` | Baker's % regex, handles Unicode U+FFFD | `core/stages/extract.py` | **MOVE** (called inside `extract()`) |
+| `normalise_baker_table()` | Pre-processing prompt, falls back to original on failure | `core/stages/extract.py` | **MOVE** (called inside `extract()`) |
+| `extract_recipes()` | Full extraction prompt with hero image, phase, UOM rules | `core/stages/extract.py` | **MOVE** (called inside `extract()`) |
+| `extract_recipe_from_text()` | Simpler prompt for plain-text (Paprika legacy) | `core/stages/extract.py` | **MOVE** (called inside `extract()`) |
+| `extract_text_via_vision()` | OCR fallback for scanned PDFs, 2× scale pixmap | `core/stages/extract.py` | **MOVE** (called inside `extract()`) |
+| `refine_recipe_for_cayenne()` | Fat Token generation + UOM conversion + categorization in one call | `core/stages/refine.py` | **MOVE** (called inside `refine()`) |
+| `_build_dynamic_grid_schema()` | Runtime Pydantic model for multipolar categorization | `core/stages/refine.py` | **MOVE** (called inside `refine()`) |
+| `_format_axes_for_prompt()` | Formats user axes into prompt section | `core/stages/refine.py` | **MOVE** (called inside `refine()`) |
+| `_UNITS_RULES` | Dict of UOM prompt rules (metric/us/imperial/book) | `core/stages/extract.py` | **MOVE** |
+
+> **Critical:** The `refine_recipe_for_cayenne()` function combines Fat Token generation, UOM conversion, AND categorization in a single Gemini call. This is intentional — splitting them into separate API calls would triple the cost. The `categorize()` stage module wraps the `grid_categories` extraction that already happens inside `refine()`, not a separate API call.
+
+---
+
+### 10.2 `pipeline.py` — Selective Reuse
+
+| Function / Class | Lines of Note | Destination | Action |
+|---|---|---|---|
+| `_RPMRateLimiter` | Thread-safe sliding window, `wait_then_record_start()` | `core/rate_limiter.py` as `GlobalRateLimiter` | **MOVE + PROMOTE** to singleton |
+| `_process_segment()` | Semaphore + rate limiter + Baker's % + extract call | `core/pipeline.py` (inlined into `RecipePipeline._process_chunk_safe()`) | **ABSORB** |
+| `PipelineContext` | Bundles shared state for workers | Replaced by `RecipePipeline` instance attributes | **DELETE** (superseded) |
+| Checkpoint load/save logic | `controller.load_checkpoint()` / `controller.save_checkpoint()` | `core/pipeline.py` | **MOVE** verbatim |
+| Hero-image look-ahead injection | `_IMAGE_ONLY_RE` regex + prepend logic | `io/readers/epub.py` (inside `EpubReader.read()`) | **MOVE** to reader |
+| `candidate_chunks` filter | `is_recipe_candidate()` filter before thread pool | `io/readers/epub.py` (inside `EpubReader.read()`) | **MOVE** to reader |
+| Deduplication call | `deduplicate_recipes(all_recipes)` | `core/pipeline.py` (after all chunks processed) | **KEEP** |
+| Recon call | `run_recon(toc_entries, extracted_names)` | `core/pipeline.py` (after dedup) | **KEEP** |
+| Run summary logging | `log.info("--- Run summary ---")` block | `core/pipeline.py` | **KEEP** |
+| `Stage`, `ChunkingPath`, `ReconStatus`, `PreflightOutcome` enums | Pipeline state tracking | `core/pipeline.py` | **KEEP** |
+| `PipelineState` dataclass | Stage tracking for GUI/logging | `core/pipeline.py` | **KEEP** |
+
+---
+
+### 10.3 `io/readers/epub.py` — Keep Entirely
+
+This file is already well-structured. **No logic changes needed** — only the `load_epub()` return signature changes to return `List[Chunk]` instead of a tuple.
+
+| Function | Lines of Note | Action |
+|---|---|---|
+| `load_epub()` | Opens EPUB, extracts images, returns chunks | **ADAPT** return type to `List[Chunk]` |
+| `extract_all_images()` | `MIN_PHOTO_BYTES` filter, saves to `images/` dir | **KEEP** verbatim |
+| `extract_chapters_with_image_markers()` | `[IMAGE: filename]` breadcrumb injection | **KEEP** verbatim |
+| `split_large_chunk()` | Paragraph-boundary splitting at `MAX_CHUNK_CHARS` | **KEEP** verbatim |
+| `is_recipe_candidate()` | Quantity + structure keyword heuristic | **KEEP** verbatim |
+| `get_book_source()` | DC metadata extraction, `Title — Author` format | **KEEP** verbatim |
+| `extract_text_from_epub()` | Stateless text extraction (used by Paprika legacy path) | **KEEP** verbatim |
+
+---
+
+### 10.4 `io/readers/pdf.py` — Keep Entirely
+
+Same pattern as EPUB reader. Adapt return type only.
+
+| Function | Lines of Note | Action |
+|---|---|---|
+| `load_pdf()` | Text extraction + OCR fallback detection | **ADAPT** return type to `List[Chunk]` |
+| OCR fallback detection | Checks if extracted text is too sparse → triggers `extract_text_via_vision()` | **KEEP** verbatim |
+
+---
+
+### 10.5 `io/readers/paprika.py` — Extend, Don't Rewrite
+
+| Function | Lines of Note | Action |
+|---|---|---|
+| Existing ZIP parsing | Reads `.paprikarecipes` ZIP, decompresses gzipped JSON entries | **KEEP** verbatim |
+| `_cayenne_meta` detection | Checks for `_cayenne_meta` key in each entry | **KEEP** verbatim |
+| New: `input_type` assignment | Set `InputType.PAPRIKA_CAYENNE` or `InputType.PAPRIKA_LEGACY` per entry | **ADD** |
+| New: `pre_parsed` population | Populate `Chunk.pre_parsed` from `_cayenne_meta` when present | **ADD** |
+
+---
+
+### 10.6 `core/fsm.py` — Keep Entirely
+
+`PipelineController` is already well-designed. Only additions needed:
+
+| Addition | Notes |
+|---|---|
+| `on_stage_change` callback | Fire on every stage transition for progress reporting |
+| `request_pause()` / `request_resume()` / `request_cancel()` | Public API for `api.py` job registry (may already exist) |
+
+---
+
+### 10.7 `core/engine.py` — Keep Entirely
+
+| Function | Notes | Action |
+|---|---|---|
+| `deduplicate_recipes()` | Title-normalised dedup | **KEEP** verbatim |
+| `run_cayenne_pipeline()` | Legacy shim — delete in Phase 8 | **DELETE** in Phase 8 |
+
+---
+
+### 10.8 `io/writers/supabase.py` — Refactor to Class
+
+The existing `write_recipe_to_supabase()` function contains all the correct Supabase REST logic. Wrap it in `SupabaseWriter` class — do not rewrite the HTTP calls.
+
+---
+
+### 10.9 `io/writers/paprika_zip.py` — Refactor to Class
+
+The existing `create_paprika_export()` function contains the correct ZIP/gzip format. Wrap it in `PaprikaWriter` class — do not rewrite the ZIP logic.
+
+---
+
+### 10.10 What Is Actually New (Not Reused)
+
+| New Component | Why It's New |
+|---|---|
+| `GlobalRateLimiter` singleton | Promotes `_RPMRateLimiter` to process-level singleton |
+| `Chunk` dataclass + `InputType` enum | New abstraction for unified reader output |
+| `RecipePipeline` class | New orchestrator replacing `process_epub()` monolith |
+| `RecipeWriter` ABC | New abstraction for pluggable writers |
+| `CayenneZipWriter` | New writer for backup/restore format |
+| `core/stages/__init__.py` | New package |
+| Stage function wrappers (`extract()`, `refine()`, etc.) | Thin wrappers around existing `gemini.py` functions |
+| `_active_jobs` registry in `api.py` | New for pause/resume/cancel endpoints |
+
+> **Rule:** If a component is not in the "What Is Actually New" table above, it must be moved or adapted — never rewritten from scratch.
+
+---
+
 ### Definition of Done (All Phases)
 
 - [ ] `pytest tests/ -v` — all tests pass
