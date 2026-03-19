@@ -81,6 +81,10 @@ _TRANSITIONS: Dict[Tuple[PipelineStatus, str], PipelineStatus] = {
     (PipelineStatus.RUNNING,    "error"):   PipelineStatus.IDLE,
     (PipelineStatus.PAUSING,    "error"):   PipelineStatus.IDLE,
     (PipelineStatus.RESUMING,   "error"):   PipelineStatus.IDLE,
+    # After a cancelled run completes its wind-down, return to IDLE so the
+    # controller can be reused for a subsequent run.
+    (PipelineStatus.CANCELLING, "done"):    PipelineStatus.IDLE,
+    (PipelineStatus.CANCELLING, "error"):   PipelineStatus.IDLE,
 }
 
 _CHECKPOINT_VERSION = 1

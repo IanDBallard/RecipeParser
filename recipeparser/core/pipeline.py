@@ -29,7 +29,7 @@ from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.core.ports import CategorySource
-from recipeparser.models import IngestResponse
+from recipeparser.models import CayenneRecipe, IngestResponse
 
 log = logging.getLogger(__name__)
 
@@ -230,9 +230,11 @@ class RecipePipeline:
                 return []
             # Use the pre-parsed data directly; re-assemble to get a clean IngestResponse.
             pr = chunk.pre_parsed
-            embedding = chunk.pre_parsed_embedding or pr.embedding or []
+            # Use explicit None check — an empty list is a valid (if degenerate) embedding
+            # and must not fall through to pr.embedding (which CayenneRecipe lacks).
+            embedding = chunk.pre_parsed_embedding if chunk.pre_parsed_embedding is not None else []
             result = assemble(
-                recipe=_ingest_response_to_cayenne_refinement(pr),
+                recipe=_pre_parsed_to_refinement(pr),
                 embedding=embedding,
                 source_url=chunk.source_url or pr.source_url,
                 image_url=chunk.image_url or pr.image_url,
@@ -250,11 +252,11 @@ class RecipePipeline:
             pr = chunk.pre_parsed
             self._limiter.wait_then_record_start()
             embedding = embed(
-                recipe=_ingest_response_to_cayenne_refinement(pr),
+                recipe=_pre_parsed_to_refinement(pr),
                 client=self._client,
             )
             result = assemble(
-                recipe=_ingest_response_to_cayenne_refinement(pr),
+                recipe=_pre_parsed_to_refinement(pr),
                 embedding=embedding,
                 source_url=chunk.source_url or pr.source_url,
                 image_url=chunk.image_url or pr.image_url,
@@ -329,15 +331,18 @@ def _uom_to_units_key(uom_system: str) -> str:
     return mapping.get(uom_system, "book")
 
 
-def _ingest_response_to_cayenne_refinement(pr: IngestResponse):
+def _pre_parsed_to_refinement(
+    pr: "CayenneRecipe | IngestResponse",
+) -> "CayenneRefinement":
     """
-    Shim: convert an IngestResponse (from _cayenne_meta) into the
-    CayenneRefinement shape expected by assemble() and embed().
+    Shim: convert a pre-parsed object (either a ``CayenneRecipe`` stored by
+    ``PaprikaReader`` or a legacy ``IngestResponse`` from ``_cayenne_meta``)
+    into the ``CayenneRefinement`` shape expected by ``assemble()`` and
+    ``embed()``.
 
-    This is needed because the PAPRIKA_CAYENNE fast-path stores a fully
-    assembled IngestResponse in Chunk.pre_parsed, but the stage functions
-    expect a CayenneRefinement.  We create a lightweight adapter object
-    that exposes the same fields.
+    Both ``CayenneRecipe`` and ``IngestResponse`` expose the four fields used
+    here (``title``, ``base_servings``, ``structured_ingredients``,
+    ``tokenized_directions``), so the shim works for either type.
     """
     from recipeparser.models import CayenneRefinement  # local import to avoid circulars
 

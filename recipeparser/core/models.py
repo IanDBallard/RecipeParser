@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 if TYPE_CHECKING:
     # Avoid circular imports at runtime; only used for type hints.
-    from recipeparser.models import IngestResponse
+    from recipeparser.models import CayenneRecipe, IngestResponse
 
 
 class InputType(Enum):
@@ -76,5 +76,5 @@ class Chunk:
     source_url: Optional[str] = None
     image_url: Optional[str] = None
     image_bytes: Optional[bytes] = None
-    pre_parsed: Optional["IngestResponse"] = None
+    pre_parsed: Optional[Union["CayenneRecipe", "IngestResponse"]] = None
     pre_parsed_embedding: Optional[List[float]] = field(default=None)

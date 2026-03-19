@@ -262,3 +262,36 @@ class TestPipelineRun:
 
         # Fewer than all 10 chunks should have been processed
         assert len(results) < 10
+
+    def test_controller_returns_to_idle_after_cancel(self):
+        """
+        After a cancelled run completes its wind-down, the controller must
+        return to IDLE (not remain stuck in CANCELLING).  Regression test for
+        the missing (CANCELLING, 'done') → IDLE transition in fsm.py.
+        """
+        from recipeparser.core.fsm import PipelineStatus
+
+        controller = PipelineController()
+
+        chunks = [
+            Chunk(
+                text="",
+                input_type=InputType.PAPRIKA_CAYENNE,
+                pre_parsed=_make_ingest_response(f"Recipe {i}"),
+                pre_parsed_embedding=FAKE_EMBEDDING,
+            )
+            for i in range(5)
+        ]
+
+        def _cancel_on_first(*args, **kwargs):
+            controller.request_cancel()
+            return _make_ingest_response("Recipe 0")
+
+        with patch(_PATCH_ASSEMBLE, side_effect=_cancel_on_first):
+            pipeline = _make_pipeline(controller=controller)
+            pipeline.run(chunks)
+
+        # The controller must have wound down to IDLE, not be stuck in CANCELLING.
+        assert controller.status == PipelineStatus.IDLE, (
+            f"Expected IDLE after cancelled run, got {controller.status}"
+        )
