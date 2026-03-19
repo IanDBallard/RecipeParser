@@ -190,8 +190,12 @@ def _get_client():
     return genai.Client(api_key=api_key)
 
 def _fetch_user_axes_and_ids(user_id: str):
-    source = SupabaseCategorySource()
-    return source.load_axes(user_id), source.load_category_ids(user_id)
+    try:
+        source = SupabaseCategorySource()
+        return source.load_axes(user_id), source.load_category_ids(user_id)
+    except Exception as exc:
+        log.warning('_fetch_user_axes_and_ids failed (non-fatal): %s', exc)
+        return [], {}
 
 def _background_url_ingestion(
     job_id: str,
@@ -250,7 +254,7 @@ def _background_url_ingestion(
             user_axes=user_axes,
         )
         
-        _upsert_ingestion_job(job_id, user_id, 'running', stage='SAVING', progress_pct=80)
+        _upsert_ingestion_job(job_id, user_id, 'running', stage='EMBEDDING', progress_pct=80)
         
         write_recipe_to_supabase(
             result, user_id=user_id, recipe_id=recipe_id, category_ids=category_ids
@@ -293,7 +297,7 @@ def _background_paprika_ingestion(
             current_pct = int(10 + (i / total) * 85)
             _upsert_ingestion_job(
                 job_id, user_id, 'running', 
-                stage=f'EXTRACTING ({i+1}/{total})', 
+                stage='EXTRACTING', 
                 progress_pct=current_pct,
                 recipe_count=success_count
             )
@@ -373,68 +377,39 @@ def _background_file_ingestion(
             client = _get_client()
             success_count = 0
             
-            # For PDF/EPUB, we process chunks (pages/chapters)
+            # For PDF/EPUB, we process chunks (pages/chapters).
+            # Each chunk is passed through the full run_cayenne_pipeline which
+            # handles extraction, refinement, categorisation, and embedding in
+            # one call.  Chunks that don't contain a recognisable recipe are
+            # skipped (pipeline raises ValueError).
             for i, chunk in enumerate(chunks):
                 current_pct = int(10 + (i / total_chunks) * 85)
                 _upsert_ingestion_job(
                     job_id, user_id, 'running', 
-                    stage=f'PROCESSING CHUNK ({i+1}/{total_chunks})', 
+                    stage='CHUNKING', 
                     progress_pct=current_pct,
                     recipe_count=success_count
                 )
                 
                 try:
-                    # The pipeline handles extraction from the chunk.
-                    # We pass the image_dir so the pipeline can resolve [IMAGE: filename] markers.
-                    # NOTE: We need to update run_cayenne_pipeline to handle image markers.
-                    # For now, we'll pass it as a hint.
-                    
-                    # We run the pipeline on the chunk
-                    from recipeparser.core.engine import extract_recipes
-                    # Custom logic to handle image markers per chunk
-                    recipes_in_chunk = extract_recipes(chunk, client, user_axes=user_axes)
-                    
-                    for raw_recipe in recipes_in_chunk:
-                        recipe_id = str(uuid.uuid4())
+                    recipe_id = str(uuid.uuid4())
+                    result = run_cayenne_pipeline(
+                        source_text=chunk,
+                        client=client,
+                        uom_system=uom_system,
+                        measure_preference=measure_preference,
+                        source_url=source_name,
+                        image_url=None,  # image handling per-chunk not yet supported
+                        user_axes=user_axes,
+                    )
+                    write_recipe_to_supabase(
+                        result, user_id=user_id, recipe_id=recipe_id, category_ids=category_ids
+                    )
+                    success_count += 1
                         
-                        # Handle image markers from the extracted recipe
-                        image_url = None
-                        if raw_recipe.photo_filename:
-                            img_path = os.path.join(image_dir, raw_recipe.photo_filename)
-                            if os.path.exists(img_path):
-                                with open(img_path, 'rb') as f:
-                                    img_bytes = f.read()
-                                image_url = _upload_image_to_storage(
-                                    image_url=None,
-                                    user_id=user_id,
-                                    recipe_id=recipe_id,
-                                    image_bytes=img_bytes
-                                )
-
-                        from recipeparser.core.engine import refine_recipe_for_cayenne
-                        refined = refine_recipe_for_cayenne(
-                            raw_recipe,
-                            client=client,
-                            uom_system=uom_system,
-                            measure_preference=measure_preference,
-                            user_axes=user_axes
-                        )
-                        
-                        from recipeparser.gemini import get_embeddings
-                        embedding = get_embeddings(refined.model_dump_json(), client)
-                        
-                        full_result = IngestResponse(
-                            **refined.model_dump(),
-                            embedding=embedding,
-                            source_url=source_name,
-                            image_url=image_url
-                        )
-                        
-                        write_recipe_to_supabase(
-                            full_result, user_id=user_id, recipe_id=recipe_id, category_ids=category_ids
-                        )
-                        success_count += 1
-                        
+                except ValueError:
+                    # Chunk contained no recognisable recipe — skip silently
+                    log.info(f"Chunk {i+1}/{total_chunks}: no recipe found, skipping.")
                 except Exception as chunk_err:
                     log.error(f"Error processing chunk {i+1}: {chunk_err}")
 
@@ -453,9 +428,16 @@ def _background_file_ingestion(
             os.unlink(tmp_path)
 
 def _extract_image_url_from_markdown(markdown: str) -> Optional[str]:
-    match = re.search(r'!\[.*?\]\((https?://\S+)\)', markdown)
-    if match: return match.group(1)
+    # og:image / twitter:image meta lines take priority over inline Markdown images
     match = re.search(r'(?:og:image|twitter:image)["\s:]+\s*(https?://\S+)', markdown, re.IGNORECASE)
+    if match:
+        url = match.group(1)
+        # Strip one trailing ')' if the URL ends with '))' (double-paren artifact)
+        if url.endswith('))'):
+            url = url[:-1]
+        return url
+    # Fall back to the first Markdown image tag
+    match = re.search(r'!\[.*?\]\((https?://\S+)\)', markdown)
     if match: return match.group(1)
     return None
 
@@ -514,9 +496,10 @@ async def submit_job(
 ):
     user_id = _user.get('sub', 'unknown')
     job_id = str(uuid.uuid4())
+    recipe_id = str(uuid.uuid4())
     _upsert_ingestion_job(job_id, user_id, 'pending', source_hint=request.url or "Text")
     background_tasks.add_task(_background_url_ingestion, job_id, user_id, request.url, request.text, request.uom_system or 'US', request.measure_preference or 'Volume')
-    return JobResponse(job_id=job_id)
+    return JobResponse(job_id=job_id, recipe_id=recipe_id)
 
 @app.post('/jobs/file', response_model=JobResponse, status_code=202)
 async def submit_file_job(
@@ -528,19 +511,20 @@ async def submit_file_job(
 ):
     user_id = _user.get('sub', 'unknown')
     job_id = str(uuid.uuid4())
-    
+    # No recipe_id — file uploads may contain many recipes; each gets its own UUID internally.
+
     suffix = os.path.splitext(file.filename or "")[1]
     fd, tmp_path = tempfile.mkstemp(suffix=suffix)
     with os.fdopen(fd, 'wb') as tmp:
         shutil.copyfileobj(file.file, tmp)
-    
+
     _upsert_ingestion_job(job_id, user_id, 'pending', source_hint=file.filename or "File")
-    
+
     if suffix.lower() == '.paprikarecipes':
         background_tasks.add_task(_background_paprika_ingestion, job_id, user_id, tmp_path, uom_system, measure_preference)
     else:
         background_tasks.add_task(_background_file_ingestion, job_id, user_id, tmp_path, uom_system, measure_preference)
-        
+
     return JobResponse(job_id=job_id)
 
 @app.post('/ingest/paprika', response_model=JobResponse, status_code=202)
@@ -553,8 +537,180 @@ async def ingest_paprika(
 ):
     return await submit_file_job(background_tasks, file, uom_system, measure_preference, _user)
 
+# ---------------------------------------------------------------------------
+# Legacy synchronous endpoints (used by tests and direct integrations)
+# These run the pipeline synchronously and return { job_id, recipe_id }.
+# ---------------------------------------------------------------------------
+
+class IngestTextRequest(BaseModel):
+    url: Optional[str] = None
+    text: Optional[str] = None
+    uom_system: Optional[str] = 'US'
+    measure_preference: Optional[str] = 'Volume'
+
+
+class IngestUrlRequest(BaseModel):
+    url: str
+    uom_system: Optional[str] = 'US'
+    measure_preference: Optional[str] = 'Volume'
+
+
+@app.post('/ingest', response_model=JobResponse, status_code=202)
+async def ingest_text(
+    request: IngestTextRequest,
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """Synchronous text ingestion. Accepts { text } only (url not yet supported here)."""
+    user_id = _user.get('sub', 'unknown')
+
+    if not request.text or not request.text.strip():
+        raise HTTPException(status_code=400, detail='text field is required and must not be empty.')
+
+    job_id = str(uuid.uuid4())
+    recipe_id = str(uuid.uuid4())
+
+    try:
+        client = _get_client()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    user_axes, category_ids = _fetch_user_axes_and_ids(user_id)
+
+    try:
+        result = run_cayenne_pipeline(
+            source_text=request.text,
+            client=client,
+            uom_system=request.uom_system or 'US',
+            measure_preference=request.measure_preference or 'Volume',
+            source_url=None,
+            image_url=None,
+            user_axes=user_axes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    write_recipe_to_supabase(result, user_id=user_id, recipe_id=recipe_id, category_ids=category_ids)
+
+    return JobResponse(job_id=job_id, recipe_id=recipe_id)
+
+
+@app.post('/ingest/pdf', response_model=JobResponse, status_code=202)
+async def ingest_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    uom_system: str = Form('US'),
+    measure_preference: str = Form('Volume'),
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """
+    PDF ingestion — fire-and-forget background task.
+    PDFs may contain many recipes; each is extracted and written with its own UUID.
+    Returns only job_id (no recipe_id) — recipes arrive via PowerSync.
+    """
+    user_id = _user.get('sub', 'unknown')
+
+    filename = file.filename or ''
+    if not filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail='Only .pdf files are accepted.')
+
+    pdf_bytes = await file.read()
+
+    # Validate it is a real PDF before queuing the background task
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=pdf_bytes, filetype='pdf')
+        if doc.page_count == 0:
+            raise ValueError('PDF has no pages.')
+    except Exception:
+        raise HTTPException(status_code=422, detail='File could not be parsed as a valid PDF.')
+
+    # Write to a temp file for the background worker
+    fd, tmp_path = tempfile.mkstemp(suffix='.pdf')
+    with os.fdopen(fd, 'wb') as f:
+        f.write(pdf_bytes)
+
+    job_id = str(uuid.uuid4())
+    _upsert_ingestion_job(job_id, user_id, 'pending', source_hint=filename)
+    background_tasks.add_task(_background_file_ingestion, job_id, user_id, tmp_path, uom_system, measure_preference)
+
+    # No recipe_id — N recipes will be written by the background worker
+    return JobResponse(job_id=job_id)
+
+
+@app.post('/ingest/url', response_model=JobResponse, status_code=202)
+async def ingest_url(
+    request: IngestUrlRequest,
+    _user: dict = Depends(_verify_supabase_jwt),
+):
+    """Synchronous URL ingestion via Jina reader."""
+    user_id = _user.get('sub', 'unknown')
+
+    if not request.url or not request.url.strip():
+        raise HTTPException(status_code=400, detail='url field is required and must not be empty.')
+
+    job_id = str(uuid.uuid4())
+    recipe_id = str(uuid.uuid4())
+
+    # Fetch page via Jina
+    import httpx as _httpx
+    jina_url = f'https://r.jina.ai/{request.url}'
+    try:
+        async with _httpx.AsyncClient(timeout=30.0, follow_redirects=True) as http:
+            resp = await http.get(jina_url)
+            resp.raise_for_status()
+            raw_markdown = resp.text
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f'Failed to fetch URL: {exc}')
+
+    source_text = html_to_text(raw_markdown)
+
+    # Validate it looks like a recipe
+    from recipeparser.io.readers.epub import is_recipe_candidate
+    if not is_recipe_candidate(source_text):
+        raise HTTPException(status_code=422, detail='Page does not appear to contain a recipe.')
+
+    image_url = _extract_image_url_from_markdown(raw_markdown)
+    if image_url:
+        image_url = _upload_image_to_storage(image_url=image_url, user_id=user_id, recipe_id=recipe_id)
+
+    try:
+        client = _get_client()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    user_axes, category_ids = _fetch_user_axes_and_ids(user_id)
+
+    try:
+        result = run_cayenne_pipeline(
+            source_text=source_text,
+            client=client,
+            uom_system=request.uom_system or 'US',
+            measure_preference=request.measure_preference or 'Volume',
+            source_url=request.url,
+            image_url=image_url,
+            user_axes=user_axes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    write_recipe_to_supabase(result, user_id=user_id, recipe_id=recipe_id, category_ids=category_ids)
+
+    return JobResponse(job_id=job_id, recipe_id=recipe_id)
+
+
 @app.post('/embed', response_model=EmbedResponse)
 async def embed_text(request: EmbedRequest, _user: dict = Depends(_verify_supabase_jwt)):
-    client = _get_client()
-    from recipeparser.gemini import get_embeddings
-    return EmbedResponse(embedding=get_embeddings(request.text, client))
+    try:
+        client = _get_client()
+        from recipeparser.gemini import get_embeddings
+        return EmbedResponse(embedding=get_embeddings(request.text, client))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
