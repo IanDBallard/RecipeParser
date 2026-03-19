@@ -32,6 +32,14 @@ dependencies = [
 recipeparser = "recipeparser.__main__:main"
 recipeparser-gui = "recipeparser.gui:run_gui"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "syrupy>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["recipeparser*"]
@@ -45,3 +53,32 @@ recipeparser = ["*.yaml"]
 # collect_ignore is handled in conftest.py (the correct location for this setting).
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "transient: marks tests as transient (deleted in Phase 8 alongside legacy code)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"recipeparser.io".msg = "core/ modules cannot import from io/ — violates hexagonal architecture"
+"recipeparser.adapters".msg = "core/ modules cannot import from adapters/ — violates hexagonal architecture"
+
+[tool.ruff.lint.per-file-ignores]
+"recipeparser/io/**" = ["TID"]
+"recipeparser/adapters/**" = ["TID"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "recipeparser.core.fsm"
+disallow_untyped_defs = true
+disallow_any_generics = true

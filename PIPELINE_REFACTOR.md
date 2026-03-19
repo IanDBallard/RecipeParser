@@ -855,10 +855,256 @@ The existing `create_paprika_export()` function contains the correct ZIP/gzip fo
 
 ---
 
+## 11. Refactor Safety Controls
+
+These controls are mandatory additions to the refactor. They are not optional enhancements — they are the mechanical enforcement layer that makes the architectural guarantees in Sections 1–10 verifiable and regression-proof.
+
+---
+
+### 11.1 Automated Boundary Enforcement (Import Linting)
+
+**Purpose:** Mechanically enforce Design Checkpoint §1. Prevents developers from accidentally pulling I/O logic back into the pure core during complex refactoring phases. A CI failure is cheaper than a code review miss.
+
+**Implementation:** Configure `ruff` with `flake8-tidy-imports` (TID rule set) in `pyproject.toml`:
+
+```toml
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"recipeparser.io".msg = "core/ modules cannot import from io/ — violates hexagonal architecture"
+"recipeparser.adapters".msg = "core/ modules cannot import from adapters/ — violates hexagonal architecture"
+
+[tool.ruff.lint.per-file-ignores]
+"recipeparser/io/**" = ["TID"]
+"recipeparser/adapters/**" = ["TID"]
+```
+
+**Gate Test:**
+```bash
+ruff check recipeparser/core/ --select TID
+# Must return zero violations — CI fails on any boundary breach
+```
+
+**Phase:** Configured in **Phase 0** before any file moves. The gate test is added to CI as a required check.
+
+### Design Checkpoints — §11.1
+- [ ] `[tool.ruff]` and `[tool.ruff.lint.flake8-tidy-imports.banned-api]` configured in `pyproject.toml`
+- [ ] `ruff check recipeparser/core/ --select TID` returns zero violations after Phase 1
+
+---
+
+### 11.2 Shadow Execution (Dual-Run Tests)
+
+**Purpose:** Guarantee the structural refactor didn't accidentally drop fields, alter unit conversions, or skip Fat Token generation. The LLM logic in `gemini.py` is being moved without modification — this test proves it.
+
+**Implementation:** Create `tests/transient/test_shadow_execution.py`. Feed identical complex recipe text to both the legacy path and the new `RecipePipeline` using `MockProvider`. Assert that the resulting `CayenneRecipe` Pydantic models dump to identical dictionaries.
+
+```python
+# tests/transient/test_shadow_execution.py
+# TRANSIENT: Delete this file in Phase 8 when legacy code is removed.
+import pytest
+from recipeparser.pipeline import process_epub  # Legacy
+from recipeparser.core.pipeline import RecipePipeline  # New
+from recipeparser.core.models import Chunk, InputType
+
+COMPLEX_RECIPE_TEXT = "..."  # Multi-ingredient recipe with Baker's %, UOM conversions
+
+@pytest.mark.transient
+def test_shadow_execution_produces_identical_output():
+    """Structural refactor must not alter any field in the output model."""
+    legacy_result = process_epub(COMPLEX_RECIPE_TEXT, mock=True)
+    new_result = RecipePipeline(mock=True).run(
+        [Chunk(text=COMPLEX_RECIPE_TEXT, input_type=InputType.EPUB)]
+    )
+    assert legacy_result[0].model_dump() == new_result[0].model_dump(), \
+        "Refactor introduced data shape divergence — FAIL LOUDLY"
+```
+
+**Gate Test:** Must pass before Phase 8 (Delete Dead Code) begins. The `tests/transient/` directory and this file are deleted as part of the Phase 8 deliverables.
+
+**Phase:** Written in **Phase 6** (alongside refactored `api.py`); deleted in **Phase 8**.
+
+### Design Checkpoints — §11.2
+- [ ] `tests/transient/test_shadow_execution.py` created in Phase 6
+- [ ] `pytest tests/transient/ -v` passes before Phase 8 gate
+- [ ] `tests/transient/` directory deleted in Phase 8 deliverables
+- [ ] Phase 8 gate test includes `ls tests/transient/ 2>&1 | grep "No such file"` to confirm deletion
+
+---
+
+### 11.3 Snapshot Testing for Extracted Formats
+
+**Purpose:** The hard-won LLM extraction logic (`_UNITS_RULES`, table normalisation, Fat Token generation) is the most valuable asset in the repository. Snapshot tests instantly flag if the shape of data returned by the LLM changes due to how input text chunks are formatted or passed in — catching regressions introduced during the stage-wrapping refactor.
+
+**Implementation:** Add `pytest-syrupy` to dev dependencies. Create snapshot tests for each stage's output shape.
+
+```toml
+# pyproject.toml
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "syrupy>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+```
+
+```python
+# tests/snapshots/test_stage_snapshots.py
+from syrupy.assertion import SnapshotAssertion
+from recipeparser.core.stages.extract import extract
+from recipeparser.core.stages.refine import refine
+
+def test_extract_stage_output_shape(snapshot: SnapshotAssertion, mock_client):
+    """Snapshot the full model_dump() of extract() output."""
+    result = extract(FIXTURE_CHUNK_TEXT, mock_client)
+    assert result[0].model_dump() == snapshot
+
+def test_refine_stage_output_shape(snapshot: SnapshotAssertion, mock_client):
+    """Snapshot the full model_dump() of refine() output including Fat Tokens."""
+    result = refine(FIXTURE_EXTRACTION, mock_client)
+    assert result.model_dump() == snapshot
+```
+
+**Gate Test:** Snapshot tests run in CI. Any shape change requires explicit `--snapshot-update` with a mandatory code review comment explaining the intentional change.
+
+**Phase:** Created in **Phase 1** alongside the stage modules. Snapshots are committed to the repository.
+
+### Design Checkpoints — §11.3
+- [ ] `pytest-syrupy>=4.0` added to `[project.optional-dependencies.dev]` in `pyproject.toml`
+- [ ] `tests/snapshots/test_stage_snapshots.py` created in Phase 1
+- [ ] Snapshot files committed to repository (not gitignored)
+- [ ] `pytest tests/snapshots/ -v` passes in CI without `--snapshot-update`
+
+---
+
+### 11.4 Strict Type-Checking on FSM Observers (Fail Early, Fail Loudly)
+
+**Purpose:** A silently failing observer in `api.py` could result in "zombie" ingestion jobs in the Cayenne app that never transition from `RUNNING` to `DONE`. The fix is not to swallow errors — it is to **crash the job loudly** so the failure is immediately visible in logs and the job transitions to `ERROR` state.
+
+**Implementation:**
+
+**Step 1 — Explicit `Protocol` typing in `core/fsm.py`:**
+
+```python
+# recipeparser/core/fsm.py
+from typing import Callable, Optional, Protocol
+
+class ProgressCallback(Protocol):
+    """Strict type contract for pipeline progress observers."""
+    def __call__(self, stage: str, completed: int, total: int) -> None: ...
+
+class PipelineController:
+    def __init__(
+        self,
+        on_progress: Optional[ProgressCallback] = None,
+        on_stage_change: Optional[Callable[[str], None]] = None,
+    ) -> None: ...
+```
+
+**Step 2 — Fail-loudly wrapper in `adapters/api.py` (log + re-raise):**
+
+```python
+# recipeparser/adapters/api.py
+import logging
+from typing import Callable
+
+log = logging.getLogger(__name__)
+
+def _strict_observer(callback: Callable[[str, int, int], None]) -> Callable[[str, int, int], None]:
+    """
+    Wrap observer callbacks with strict error handling.
+    Logs the error and RE-RAISES — crashing the job so it transitions to ERROR,
+    not silently continuing as a zombie.
+    """
+    def wrapper(stage: str, completed: int, total: int) -> None:
+        try:
+            callback(stage, completed, total)
+        except Exception as e:
+            log.error(f"Observer callback FAILED (job will be marked ERROR): {e}", exc_info=True)
+            raise  # FAIL LOUDLY — no zombies
+    return wrapper
+
+# Usage in job handler:
+pipeline.run(chunks, on_progress=_strict_observer(update_job_progress))
+```
+
+**Step 3 — mypy strict mode:**
+
+```toml
+# pyproject.toml
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "recipeparser.core.fsm"
+disallow_untyped_defs = true
+disallow_any_generics = true
+```
+
+**Gate Test:**
+```bash
+mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict
+# Must return zero errors
+```
+
+**Phase:** `ProgressCallback` Protocol and mypy config added in **Phase 1**. `_strict_observer` wrapper added in **Phase 6** alongside the refactored `api.py`.
+
+### Design Checkpoints — §11.4
+- [ ] `ProgressCallback` Protocol defined in `core/fsm.py`
+- [ ] `PipelineController.__init__` typed with `Optional[ProgressCallback]`
+- [ ] `[tool.mypy]` configured in `pyproject.toml` with `strict = true`
+- [ ] `_strict_observer` wrapper implemented in `adapters/api.py` — re-raises on failure
+- [ ] `mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict` returns zero errors
+- [ ] Unit test: `_strict_observer` with a failing callback raises the original exception (not swallows it)
+
+---
+
+## Phase 0 — Tooling Setup
+
+**Insert before Phase 1.**
+
+**Goal:** Configure all static analysis and testing tooling before any code changes. This ensures boundary violations are caught from the first file move, not discovered after the refactor is complete.
+
+**Deliverables:**
+- Updated `pyproject.toml` with `[tool.ruff]`, `[tool.mypy]`, and `[project.optional-dependencies.dev]`
+- `tests/snapshots/` directory (with `.gitkeep`)
+- `tests/transient/` directory (with `.gitkeep`)
+
+**Gate Test — Phase 0:**
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Baseline boundary check (violations expected at this point — document them)
+ruff check recipeparser/core/ --select TID 2>&1 | tee baseline_violations.txt
+
+# Baseline mypy (errors expected — document them)
+mypy recipeparser/ --strict 2>&1 | tee baseline_mypy.txt
+
+# Confirm syrupy is available
+python -c "import syrupy; print('syrupy OK')"
+```
+
+The baseline violation counts are recorded. After Phase 1, `ruff check recipeparser/core/ --select TID` must return zero.
+
+---
+
 ### Definition of Done (All Phases)
 
 - [ ] `pytest tests/ -v` — all tests pass
 - [ ] `mypy recipeparser/` — zero type errors
 - [ ] `ruff check recipeparser/` — zero lint errors
+- [ ] `ruff check recipeparser/core/ --select TID` — zero boundary violations (§11.1)
+- [ ] `pytest tests/snapshots/ -v` — all snapshot tests pass without `--snapshot-update` (§11.3)
+- [ ] `mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict` — zero type errors (§11.4)
 - [ ] `grep -r "from recipeparser.io\|from recipeparser.adapters" recipeparser/core/` — returns empty (no layer violations)
 - [ ] `PIPELINE_REFACTOR.md` design checkpoints all ticked
