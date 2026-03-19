@@ -1062,9 +1062,10 @@ mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict
 - [x] `ProgressCallback` Protocol defined in `core/fsm.py`
 - [x] `PipelineController.__init__` typed with `Optional[ProgressCallback]`
 - [x] `[tool.mypy]` configured in `pyproject.toml` with `strict = true`
-- [ ] `_strict_observer` wrapper implemented in `adapters/api.py` — re-raises on failure
-- [ ] `mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict` returns zero errors
-- [ ] Unit test: `_strict_observer` with a failing callback raises the original exception (not swallows it)
+- [x] `notify_progress()` re-raises observer exceptions after `log.exception()` — no zombie jobs (commit 2a8b58f)
+- [x] Unit test: `test_notify_progress_raises_when_callback_fails` asserts `RuntimeError` propagates — 41/41 pass
+- [ ] `_strict_observer` wrapper implemented in `adapters/api.py` — re-raises on failure (Phase 6)
+- [ ] `mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict` returns zero errors (Phase 6)
 
 ---
 
