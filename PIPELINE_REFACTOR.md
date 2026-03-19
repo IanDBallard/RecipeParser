@@ -58,10 +58,10 @@ pluggable I/O modules, and an FSM-controlled orchestrator.
 6. **$0 fast-path** — Cayenne-native Paprika imports skip all Gemini stages when `_cayenne_meta` is present.
 
 ### Design Checkpoints — §1
-- [ ] All `core/` modules import only from `core/` or stdlib (no `io/`, no `adapters/`)
-- [ ] All `io/` modules import only from `core/` or stdlib (no `adapters/`)
-- [ ] All `adapters/` modules import from `io/` and `core/` only
-- [ ] No circular imports between layers (verified with `pydeps` or `importlib`)
+- [x] All `core/` modules import only from `core/` or stdlib (no `io/`, no `adapters/`)
+- [x] All `io/` modules import only from `core/` or stdlib (no `adapters/`)
+- [x] All `adapters/` modules import from `io/` and `core/` only
+- [x] No circular imports between layers (verified with `pydeps` or `importlib`)
 
 ## 2. Layer Definitions
 
@@ -145,11 +145,11 @@ class CategorySource(ABC):
 | `SupabaseCategorySource` | Supabase `categories` table | API |
 
 ### Design Checkpoints — §2
-- [ ] `RecipeReader` ABC defined with `read() -> List[Chunk]` signature
+- [x] `RecipeReader` ABC defined with `read() -> List[Chunk]` signature
 - [ ] `RecipeWriter` ABC defined with `write(recipes, **kwargs)` signature
-- [ ] `Chunk` dataclass has all fields: `text`, `source_url`, `image_url`, `image_bytes`, `pre_parsed`, `pre_parsed_embedding`, `input_type`
-- [ ] `InputType` enum covers: `URL`, `PDF`, `EPUB`, `PAPRIKA_LEGACY`, `PAPRIKA_CAYENNE`
-- [ ] All existing readers refactored to return `List[Chunk]`
+- [x] `Chunk` dataclass has all fields: `text`, `source_url`, `image_url`, `image_bytes`, `pre_parsed`, `pre_parsed_embedding`, `input_type`
+- [x] `InputType` enum covers: `URL`, `PDF`, `EPUB`, `PAPRIKA_LEGACY`, `PAPRIKA_CAYENNE`
+- [ ] All existing readers refactored to return `List[Chunk]` (UrlReader ✓, PaprikaReader ✓; PdfReader and EpubReader pending Phase 3 completion)
 - [ ] All existing writers refactored to implement `RecipeWriter`
 
 ## 3. Core Stage Modules
@@ -245,13 +245,13 @@ def assemble(
 - Returns `IngestResponse` ready for any writer
 
 ### Design Checkpoints — §3
-- [ ] Each stage module has zero imports from `io/` or `adapters/`
-- [ ] `extract()` returns `[]` (not raises) for non-recipe chunks
-- [ ] `refine()` raises `ValueError` on Fat Token validation failure (triggers error boundary in pipeline)
-- [ ] `categorize()` returns `{}` gracefully when `user_axes` is empty
-- [ ] `embed()` input text format is `"{title}\n{fallback_strings joined by space}"`
-- [ ] `assemble()` is a pure function with no API calls
-- [ ] Unit tests exist for each stage with mock `client` objects
+- [x] Each stage module has zero imports from `io/` or `adapters/`
+- [x] `extract()` returns `[]` (not raises) for non-recipe chunks
+- [x] `refine()` raises `ValueError` on Fat Token validation failure (triggers error boundary in pipeline)
+- [x] `categorize()` returns `{}` gracefully when `user_axes` is empty
+- [x] `embed()` input text format is `"{title}\n{fallback_strings joined by space}"`
+- [x] `assemble()` is a pure function with no API calls
+- [x] Unit tests exist for each stage with mock `client` objects
 
 ## 4. RecipePipeline Orchestrator
 
@@ -444,10 +444,10 @@ class GlobalRateLimiter:
 - `reset()` is provided for test isolation only
 
 ### Design Checkpoints — §6
-- [ ] `GlobalRateLimiter` is a true singleton (same instance across threads)
-- [ ] `wait_then_record_start()` is thread-safe (uses `threading.Lock`)
-- [ ] Multiple concurrent `RecipePipeline` instances share the same limiter
-- [ ] Unit test: 10 threads calling `wait_then_record_start()` with `rpm=5` → takes ≥ 60s for all 10
+- [x] `GlobalRateLimiter` is a true singleton (same instance across threads)
+- [x] `wait_then_record_start()` is thread-safe (uses `threading.Lock`)
+- [x] Multiple concurrent `RecipePipeline` instances share the same limiter
+- [ ] Unit test: 10 threads calling `wait_then_record_start()` with `rpm=5` → takes ≥ 60s for all 10 (not yet written)
 
 ## 7. FSM Stage Routing
 
@@ -893,8 +893,8 @@ ruff check recipeparser/core/ --select TID
 **Phase:** Configured in **Phase 0** before any file moves. The gate test is added to CI as a required check.
 
 ### Design Checkpoints — §11.1
-- [ ] `[tool.ruff]` and `[tool.ruff.lint.flake8-tidy-imports.banned-api]` configured in `pyproject.toml`
-- [ ] `ruff check recipeparser/core/ --select TID` returns zero violations after Phase 1
+- [x] `[tool.ruff]` and `[tool.ruff.lint.flake8-tidy-imports.banned-api]` configured in `pyproject.toml`
+- [x] `ruff check recipeparser/core/ --select TID` returns zero violations after Phase 1
 
 ---
 
@@ -976,10 +976,10 @@ def test_refine_stage_output_shape(snapshot: SnapshotAssertion, mock_client):
 **Phase:** Created in **Phase 1** alongside the stage modules. Snapshots are committed to the repository.
 
 ### Design Checkpoints — §11.3
-- [ ] `pytest-syrupy>=4.0` added to `[project.optional-dependencies.dev]` in `pyproject.toml`
-- [ ] `tests/snapshots/test_stage_snapshots.py` created in Phase 1
-- [ ] Snapshot files committed to repository (not gitignored)
-- [ ] `pytest tests/snapshots/ -v` passes in CI without `--snapshot-update`
+- [x] `pytest-syrupy>=4.0` added to `[project.optional-dependencies.dev]` in `pyproject.toml`
+- [x] `tests/snapshots/test_stage_snapshots.py` created in Phase 1
+- [x] Snapshot files committed to repository (not gitignored)
+- [x] `pytest tests/snapshots/ -v` passes in CI without `--snapshot-update`
 
 ---
 
@@ -1059,9 +1059,9 @@ mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict
 **Phase:** `ProgressCallback` Protocol and mypy config added in **Phase 1**. `_strict_observer` wrapper added in **Phase 6** alongside the refactored `api.py`.
 
 ### Design Checkpoints — §11.4
-- [ ] `ProgressCallback` Protocol defined in `core/fsm.py`
-- [ ] `PipelineController.__init__` typed with `Optional[ProgressCallback]`
-- [ ] `[tool.mypy]` configured in `pyproject.toml` with `strict = true`
+- [x] `ProgressCallback` Protocol defined in `core/fsm.py`
+- [x] `PipelineController.__init__` typed with `Optional[ProgressCallback]`
+- [x] `[tool.mypy]` configured in `pyproject.toml` with `strict = true`
 - [ ] `_strict_observer` wrapper implemented in `adapters/api.py` — re-raises on failure
 - [ ] `mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict` returns zero errors
 - [ ] Unit test: `_strict_observer` with a failing callback raises the original exception (not swallows it)
