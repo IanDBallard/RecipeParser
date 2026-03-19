@@ -354,15 +354,15 @@ self.controller.save_checkpoint(
 On `run()` start, the controller loads any existing checkpoint and skips already-completed chunks.
 
 ### Design Checkpoints — §4
-- [ ] `RecipePipeline.__init__` accepts `controller`, `category_source`, `uom_system`, `measure_preference`, `concurrency`, `rpm`
-- [ ] `run()` returns `List[IngestResponse]` (all successful results, not just first)
-- [ ] `_get_stages()` correctly routes `PAPRIKA_CAYENNE` to `['ASSEMBLE']` or `['EMBED', 'ASSEMBLE']`
-- [ ] Per-chunk try/except never re-raises — failed chunks are logged and skipped
-- [ ] `on_progress` callback is called after every chunk (success or failure)
-- [ ] Checkpoint is saved after every chunk
-- [ ] Checkpoint is loaded on `run()` start; completed chunks are skipped
-- [ ] `ThreadPoolExecutor` is used for parallel chunk processing
-- [ ] `GlobalRateLimiter.wait_then_record_start()` is called before every Gemini API call
+- [x] `RecipePipeline.__init__` accepts `controller`, `category_source`, `uom_system`, `measure_preference`, `concurrency`, `rpm`
+- [x] `run()` returns `List[IngestResponse]` (all successful results, not just first)
+- [x] `_get_stages()` correctly routes `PAPRIKA_CAYENNE` to `['ASSEMBLE']` or `['EMBED', 'ASSEMBLE']`
+- [x] Per-chunk try/except never re-raises — failed chunks are logged and skipped
+- [x] `on_progress` callback is called after every chunk (success or failure)
+- [ ] Checkpoint is saved after every chunk (deferred to Phase 6 — requires adapter wiring)
+- [ ] Checkpoint is loaded on `run()` start; completed chunks are skipped (deferred to Phase 6)
+- [x] `ThreadPoolExecutor` is used for parallel chunk processing
+- [x] `GlobalRateLimiter.wait_then_record_start()` is called before every Gemini API call
 
 ## 5. I/O Writers
 
