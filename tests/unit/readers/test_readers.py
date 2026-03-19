@@ -227,3 +227,38 @@ def test_paprika_reader_cayenne_entry_without_embedding_returns_cayenne_type_no_
     assert chunk.input_type == InputType.PAPRIKA_CAYENNE
     assert isinstance(chunk.pre_parsed, CayenneRecipe)
     assert chunk.pre_parsed_embedding is None
+
+
+# ---------------------------------------------------------------------------
+# PaprikaReader — corrupt _cayenne_meta falls back to legacy
+# ---------------------------------------------------------------------------
+
+
+def test_paprika_reader_corrupt_cayenne_meta_falls_back_to_legacy() -> None:
+    """
+    If _cayenne_meta is present but CayenneRecipe validation fails, the reader
+    must NOT emit PAPRIKA_CAYENNE with pre_parsed=None. It should fall back to
+    Flow A using the Paprika name/ingredients/directions fields.
+    """
+    entry = {
+        "name": "Broken Meta Cake",
+        "ingredients": "1 cup sugar",
+        "directions": "Bake.",
+        # Invalid CayenneRecipe: title must be str, not int
+        "_cayenne_meta": {"title": 999},
+    }
+    archive_path = _make_paprikarecipes([entry])
+
+    try:
+        reader = PaprikaReader()
+        chunks = reader.read(archive_path)
+    finally:
+        os.unlink(archive_path)
+
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert chunk.input_type == InputType.PAPRIKA_LEGACY
+    assert "Broken Meta Cake" in chunk.text
+    assert "sugar" in chunk.text
+    assert chunk.pre_parsed is None
+    assert chunk.pre_parsed_embedding is None

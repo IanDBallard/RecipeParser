@@ -51,10 +51,13 @@ class PaprikaReader(RecipeReader):
 
         Reads a .paprikarecipes archive and converts each entry into a Chunk:
 
-        - Entries WITH ``_cayenne_meta`` → ``InputType.PAPRIKA_CAYENNE``
-          - ``pre_parsed`` is populated from the meta dict (IngestResponse)
+        - Entries WITH ``_cayenne_meta`` that deserialize as ``CayenneRecipe`` →
+          ``InputType.PAPRIKA_CAYENNE``
+          - ``pre_parsed`` is populated from the meta dict
           - ``pre_parsed_embedding`` is extracted if present (enables $0 restore)
           - ``text`` is empty (not needed for the fast-path ASSEMBLE stage)
+        - Entries WITH corrupt ``_cayenne_meta`` (validation error) → same as
+          legacy: ``InputType.PAPRIKA_LEGACY`` using Paprika name/ingredients/directions
         - Entries WITHOUT ``_cayenne_meta`` → ``InputType.PAPRIKA_LEGACY``
           - ``text`` is built from name + ingredients + directions
           - Full pipeline (EXTRACT → REFINE → CATEGORIZE → EMBED → ASSEMBLE)
@@ -70,9 +73,11 @@ class PaprikaReader(RecipeReader):
 
         for entry in entries:
             meta = entry.get("_cayenne_meta")
+            pre_parsed = None
+            embedding: Optional[List[float]] = None
 
             if meta is not None:
-                # Flow B — Cayenne Instant Restore
+                # Flow B — Cayenne Instant Restore (only if meta deserializes)
                 # Lazy import to avoid circular dependency at module load time.
                 from recipeparser.models import CayenneRecipe  # noqa: PLC0415
 
@@ -82,18 +87,21 @@ class PaprikaReader(RecipeReader):
                 # IngestResponse *requires* embedding, so we use CayenneRecipe
                 # here and carry the vector in pre_parsed_embedding instead.
                 meta_copy = dict(meta)
-                embedding: Optional[List[float]] = meta_copy.pop("embedding", None)
+                embedding = meta_copy.pop("embedding", None)
 
                 try:
                     pre_parsed = CayenneRecipe(**meta_copy)
                 except Exception as exc:  # noqa: BLE001
                     log.warning(
-                        "PaprikaReader: could not deserialize _cayenne_meta for %r: %s",
+                        "PaprikaReader: could not deserialize _cayenne_meta for %r: %s — "
+                        "falling back to PAPRIKA_LEGACY (Flow A).",
                         entry.get("name"),
                         exc,
                     )
                     pre_parsed = None
+                    embedding = None  # orphan embedding must not attach to a legacy chunk
 
+            if pre_parsed is not None:
                 chunks.append(
                     Chunk(
                         text="",
@@ -104,7 +112,8 @@ class PaprikaReader(RecipeReader):
                     )
                 )
             else:
-                # Flow A — Legacy Paprika → full pipeline
+                # Flow A — Legacy Paprika → full pipeline (no _cayenne_meta, or
+                # corrupt meta that failed CayenneRecipe validation above).
                 name = entry.get("name", "")
                 ingredients = entry.get("ingredients", "")
                 directions = entry.get("directions", "")

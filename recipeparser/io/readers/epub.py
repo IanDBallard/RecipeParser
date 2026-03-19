@@ -1,6 +1,7 @@
 """EPUB reading, image extraction, and text chunking — no AI dependency."""
 import logging
 import os
+import tempfile
 from typing import List, Tuple
 
 import ebooklib
@@ -8,8 +9,61 @@ from ebooklib import epub
 from bs4 import BeautifulSoup
 
 from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
+from recipeparser.core.models import Chunk, InputType
+from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
+
+
+class EpubReader(RecipeReader):
+    """
+    Reads an EPUB file and returns one Chunk per recipe-candidate chapter.
+
+    Each chunk carries:
+    - ``text``: chapter text with [IMAGE: filename] breadcrumb markers
+    - ``input_type``: InputType.EPUB
+    - ``source_url``: the book source string ("Title — Author")
+
+    Images are extracted to a temporary directory managed by this reader.
+    The caller is responsible for uploading qualifying images to storage
+    before the pipeline's ASSEMBLE stage.
+    """
+
+    def read(self, source: str) -> List[Chunk]:
+        """
+        Parse an EPUB file and return recipe-candidate chapters as Chunks.
+
+        Args:
+            source: File-system path to the .epub file.
+
+        Returns:
+            List of Chunk objects, one per recipe-candidate chapter.
+            Chapters that fail the is_recipe_candidate() heuristic are
+            excluded.  If all chapters are filtered out, all chapters are
+            returned (fallback to avoid returning an empty list).
+        """
+        output_dir = tempfile.mkdtemp(prefix="cayenne_epub_")
+        book_source, _image_dir, _qualifying, raw_chunks = load_epub(source, output_dir)
+
+        # Filter to recipe-candidate chapters
+        candidate_chunks = [c for c in raw_chunks if is_recipe_candidate(c)]
+        if not candidate_chunks:
+            # Fallback: return all chapters rather than an empty list
+            candidate_chunks = raw_chunks
+
+        chunks: List[Chunk] = []
+        for text in candidate_chunks:
+            # Split oversized chapters at paragraph boundaries
+            for part in split_large_chunk(text):
+                chunks.append(
+                    Chunk(
+                        text=part,
+                        input_type=InputType.EPUB,
+                        source_url=book_source,
+                    )
+                )
+
+        return chunks
 
 
 def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, set, List[str]]:
