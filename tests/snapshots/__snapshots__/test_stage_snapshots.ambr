@@ -1,0 +1,122 @@
+# serializer version: 1
+# name: test_assemble_output_shape
+  dict({
+    'base_servings': 4,
+    'categories': list([
+      'Italian',
+      'Dessert',
+    ]),
+    'cook_time': None,
+    'embedding': '<vector len=3>',
+    'grid_categories': dict({
+      'Cuisine': list([
+        'Italian',
+      ]),
+      'Meal Type': list([
+        'Dessert',
+      ]),
+    }),
+    'image_url': None,
+    'prep_time': None,
+    'source_url': 'https://example.com/cake',
+    'structured_ingredients': list([
+      dict({
+        'amount': 1.5,
+        'converted_amount': None,
+        'converted_unit': None,
+        'fallback_string': '1.5 cups flour',
+        'id': 'ing_01',
+        'is_ai_converted': False,
+        'name': 'flour',
+        'unit': 'cups',
+      }),
+    ]),
+    'title': 'Test Cake',
+    'tokenized_directions': list([
+      dict({
+        'step': 1,
+        'text': 'Mix {{ing_01|1.5 cups flour}} until smooth.',
+      }),
+    ]),
+  })
+# ---
+# name: test_categorize_output_shape
+  dict({
+    'Cuisine': list([
+      'Italian',
+    ]),
+    'Meal Type': list([
+      'Dessert',
+    ]),
+  })
+# ---
+# name: test_embed_output_shape
+  dict({
+    'all_floats': True,
+    'first_5': list([
+      0.0,
+      0.001,
+      0.002,
+      0.003,
+      0.004,
+    ]),
+    'last_5': list([
+      1.531,
+      1.532,
+      1.533,
+      1.534,
+      1.535,
+    ]),
+    'length': 1536,
+  })
+# ---
+# name: test_extract_output_shape
+  list([
+    dict({
+      'cook_time': '30 mins',
+      'directions': list([
+        'Mix until smooth.',
+      ]),
+      'ingredients': list([
+        '1.5 cups flour',
+      ]),
+      'name': 'Test Cake',
+      'notes': None,
+      'photo_filename': None,
+      'prep_time': '10 mins',
+      'servings': '4',
+    }),
+  ])
+# ---
+# name: test_refine_output_shape
+  dict({
+    'base_servings': 4,
+    'grid_categories': dict({
+      'Cuisine': list([
+        'Italian',
+      ]),
+      'Meal Type': list([
+        'Dessert',
+      ]),
+    }),
+    'structured_ingredients': list([
+      dict({
+        'amount': 1.5,
+        'converted_amount': None,
+        'converted_unit': None,
+        'fallback_string': '1.5 cups flour',
+        'id': 'ing_01',
+        'is_ai_converted': False,
+        'name': 'flour',
+        'unit': 'cups',
+      }),
+    ]),
+    'title': 'Test Cake',
+    'tokenized_directions': list([
+      dict({
+        'step': 1,
+        'text': 'Mix {{ing_01|1.5 cups flour}} until smooth.',
+      }),
+    ]),
+  })
+# ---

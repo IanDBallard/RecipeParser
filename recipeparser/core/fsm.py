@@ -14,7 +14,7 @@ import threading
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
 from recipeparser.config import (
     CHECKPOINT_SUBDIR,
@@ -28,6 +28,29 @@ from recipeparser.exceptions import (
 )
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — ProgressCallback Protocol (§11.4)
+# ---------------------------------------------------------------------------
+
+@runtime_checkable
+class ProgressCallback(Protocol):
+    """
+    Typed callback for pipeline progress notifications.
+
+    Implementors receive a call on every meaningful stage transition so that
+    adapters (GUI, API, CLI) can update their progress indicators without
+    coupling to the FSM internals.
+
+    Args:
+        stage:     The current pipeline stage name (e.g. "EXTRACTING").
+        completed: Number of items completed so far in this stage.
+        total:     Total number of items expected in this stage.
+                   May be 0 when the total is not yet known.
+    """
+
+    def __call__(self, stage: str, completed: int, total: int) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -91,16 +114,40 @@ class PipelineController:
         }
     """
 
-    def __init__(self, output_dir: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        output_dir: Optional[str] = None,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> None:
         self._lock = threading.Lock()
         self.status: PipelineStatus = PipelineStatus.IDLE
         self._consecutive_429s: int = 0
         self._output_dir: Optional[Path] = Path(output_dir) if output_dir else None
+        # Typed progress callback — fired by notify_progress()
+        self._on_progress: Optional[ProgressCallback] = on_progress
         # Event used to block the worker thread while paused
         self._resume_event = threading.Event()
         self._resume_event.set()  # not paused initially
         # Timer handle for auto-resume after rate-limit pause
         self._auto_resume_timer: Optional[threading.Timer] = None
+
+    # ── Progress notification ─────────────────────────────────────────────────
+
+    def notify_progress(self, stage: str, completed: int, total: int) -> None:
+        """
+        Fire the registered ``on_progress`` callback (if any).
+
+        Safe to call from any thread.  Swallows exceptions from the callback
+        so a misbehaving adapter never crashes the worker.
+        """
+        if self._on_progress is not None:
+            try:
+                self._on_progress(stage, completed, total)
+            except Exception:  # noqa: BLE001
+                log.warning(
+                    "PipelineController: on_progress callback raised an exception — ignored.",
+                    exc_info=True,
+                )
 
     # ── FSM ───────────────────────────────────────────────────────────────────
 
