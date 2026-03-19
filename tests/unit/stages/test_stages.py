@@ -311,6 +311,73 @@ class TestAssemble:
         )
         assert result.embedding == embedding
 
+    def test_image_url_is_passed_through(self) -> None:
+        """image_url must survive verbatim into IngestResponse — regression guard."""
+        from recipeparser.core.stages.assemble import assemble
+        refinement = _make_refinement()
+        embedding = [0.0] * 1536
+        image_url = "https://storage.supabase.co/bucket/hero.jpg"
+        result = assemble(
+            recipe=refinement,
+            embedding=embedding,
+            source_url=None,
+            image_url=image_url,
+            grid_categories={},
+        )
+        assert result.image_url == image_url
+
+    def test_source_url_none_for_file_input(self) -> None:
+        """source_url=None (file/text input) must be preserved as None, not coerced."""
+        from recipeparser.core.stages.assemble import assemble
+        refinement = _make_refinement()
+        embedding = [0.0] * 1536
+        result = assemble(
+            recipe=refinement,
+            embedding=embedding,
+            source_url=None,
+            image_url=None,
+            grid_categories={},
+        )
+        assert result.source_url is None
+
+    def test_prep_and_cook_time_are_passed_through(self) -> None:
+        """prep_time and cook_time must come from explicit params, not CayenneRefinement.
+
+        Regression guard: CayenneRefinement has no prep_time/cook_time fields.
+        Accessing them on the recipe object would raise AttributeError — this test
+        ensures the assemble() fix (explicit params) is never reverted.
+        """
+        from recipeparser.core.stages.assemble import assemble
+        refinement = _make_refinement()
+        embedding = [0.0] * 1536
+        result = assemble(
+            recipe=refinement,
+            embedding=embedding,
+            source_url=None,
+            image_url=None,
+            grid_categories={},
+            prep_time="15 mins",
+            cook_time="45 mins",
+        )
+        assert result.prep_time == "15 mins"
+        assert result.cook_time == "45 mins"
+
+    def test_prep_and_cook_time_default_to_none(self) -> None:
+        """When omitted, prep_time and cook_time must default to None (not raise)."""
+        from recipeparser.core.stages.assemble import assemble
+        refinement = _make_refinement()
+        embedding = [0.0] * 1536
+        result = assemble(
+            recipe=refinement,
+            embedding=embedding,
+            source_url=None,
+            image_url=None,
+            grid_categories={},
+            # prep_time and cook_time intentionally omitted
+        )
+        assert result.prep_time is None
+        assert result.cook_time is None
+
 
 # ---------------------------------------------------------------------------
 # Gate 6 — ProgressCallback + notify_progress
