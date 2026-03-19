@@ -111,7 +111,7 @@ def _make_ingest_response(**kwargs) -> IngestResponse:
 def test_ingest_missing_both_url_and_text():
     resp = client.post("/ingest", json={})
     assert resp.status_code == 400
-    assert "Only text ingestion" in resp.json()["detail"]
+    assert "text field is required" in resp.json()["detail"]
 
 
 def test_ingest_url_only_not_yet_supported():
