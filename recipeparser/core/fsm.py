@@ -137,17 +137,18 @@ class PipelineController:
         """
         Fire the registered ``on_progress`` callback (if any).
 
-        Safe to call from any thread.  Swallows exceptions from the callback
-        so a misbehaving adapter never crashes the worker.
+        Safe to call from any thread. Callback failures **re-raise** after logging
+        (PIPELINE_REFACTOR §11.4 — FAIL LOUDLY): swallowing adapter errors can
+        leave zombie ingestion jobs that never reach ERROR state.
         """
         if self._on_progress is not None:
             try:
                 self._on_progress(stage, completed, total)
             except Exception:  # noqa: BLE001
-                log.warning(
-                    "PipelineController: on_progress callback raised an exception — ignored.",
-                    exc_info=True,
+                log.exception(
+                    "PipelineController: on_progress callback failed — re-raising (§11.4).",
                 )
+                raise
 
     # ── FSM ───────────────────────────────────────────────────────────────────
 
