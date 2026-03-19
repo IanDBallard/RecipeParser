@@ -166,6 +166,57 @@ class TestRefine:
             with pytest.raises(ValueError, match="ing_99"):
                 refine(raw, client=MagicMock())
 
+    def test_grid_categories_from_gemini_are_preserved_in_refinement(self) -> None:
+        """Regression guard: grid_categories produced by Gemini inside refine() must
+        survive verbatim into the returned CayenneRefinement.
+
+        This is the critical path: Gemini returns grid_categories as part of the
+        CayenneRefinement response → refine() must not drop or overwrite them.
+        Without this test, a refactor could silently zero-out grid_categories and
+        the categorize() stage would always return {}, breaking auto-tagging.
+        """
+        from recipeparser.core.stages.refine import refine
+        raw = _make_raw_recipe()
+        # Simulate Gemini returning a refinement WITH populated grid_categories
+        refinement_with_cats = CayenneRefinement(
+            title="Spaghetti Carbonara",
+            base_servings=2,
+            structured_ingredients=[_make_ingredient("ing_01", "spaghetti")],
+            tokenized_directions=[
+                TokenizedDirection(step=1, text="Cook {{ing_01|1.5 cups spaghetti}}.")
+            ],
+            grid_categories={"Cuisine": ["Italian"], "Protein": ["Pork"]},
+        )
+        with patch(
+            "recipeparser.core.stages.refine.refine_recipe_for_cayenne",
+            return_value=refinement_with_cats,
+        ):
+            result = refine(raw, client=MagicMock())
+        # grid_categories must be preserved exactly — not dropped, not zeroed
+        assert result.grid_categories == {"Cuisine": ["Italian"], "Protein": ["Pork"]}
+
+    def test_grid_categories_empty_when_gemini_assigns_none(self) -> None:
+        """When Gemini assigns no categories (e.g. no axes configured), grid_categories
+        must be {} — not None, not missing — so downstream stages handle it safely."""
+        from recipeparser.core.stages.refine import refine
+        raw = _make_raw_recipe()
+        refinement_no_cats = CayenneRefinement(
+            title="Mystery Dish",
+            base_servings=1,
+            structured_ingredients=[_make_ingredient("ing_01")],
+            tokenized_directions=[
+                TokenizedDirection(step=1, text="Cook {{ing_01|1.5 cups flour}}.")
+            ],
+            grid_categories={},  # Gemini returned no categories
+        )
+        with patch(
+            "recipeparser.core.stages.refine.refine_recipe_for_cayenne",
+            return_value=refinement_no_cats,
+        ):
+            result = refine(raw, client=MagicMock())
+        assert result.grid_categories == {}
+        assert isinstance(result.grid_categories, dict)
+
 
 # ---------------------------------------------------------------------------
 # Gate 3 — categorize
@@ -412,12 +463,13 @@ class TestProgressCallback:
         # Must not raise
         ctrl.notify_progress("EXTRACTING", 0, 0)
 
-    def test_notify_progress_swallows_callback_exception(self) -> None:
+    def test_notify_progress_raises_when_callback_fails(self) -> None:
+        """§11.4: observer failures must propagate — no zombie ingestion jobs."""
         from recipeparser.core.fsm import PipelineController
 
         def bad_cb(stage: str, completed: int, total: int) -> None:
             raise RuntimeError("adapter bug")
 
         ctrl = PipelineController(on_progress=bad_cb)
-        # Must not propagate the exception
-        ctrl.notify_progress("EXTRACTING", 1, 5)
+        with pytest.raises(RuntimeError, match="adapter bug"):
+            ctrl.notify_progress("EXTRACTING", 1, 5)
