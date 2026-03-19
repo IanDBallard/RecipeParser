@@ -47,7 +47,11 @@ class PdfReader(RecipeReader):
             PdfExtractionError: If the PDF fails pre-flight checks (encrypted,
                                 no pages, insufficient text layer, etc.).
         """
-        output_dir = tempfile.mkdtemp(prefix="cayenne_pdf_")
+        with tempfile.TemporaryDirectory(prefix="cayenne_pdf_") as output_dir:
+            return self._read_in_dir(source, output_dir)
+
+    def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
+        """Internal helper — called with a managed temp directory."""
         book_source, _image_dir, _qualifying, raw_chunks = load_pdf(source, output_dir)
 
         chunks: List[Chunk] = []

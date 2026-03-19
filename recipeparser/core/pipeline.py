@@ -289,12 +289,12 @@ class RecipePipeline:
                 client=self._client,
                 uom_system=self._uom_system,
                 measure_preference=self._measure_preference,
+                user_axes=user_axes,
             )
 
             # CATEGORIZE (result is already embedded in refined via refine())
             grid_cats = categorize(
                 recipe=refined,
-                client=self._client,
                 user_axes=user_axes,
             )
 

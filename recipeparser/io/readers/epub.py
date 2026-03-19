@@ -42,7 +42,11 @@ class EpubReader(RecipeReader):
             excluded.  If all chapters are filtered out, all chapters are
             returned (fallback to avoid returning an empty list).
         """
-        output_dir = tempfile.mkdtemp(prefix="cayenne_epub_")
+        with tempfile.TemporaryDirectory(prefix="cayenne_epub_") as output_dir:
+            return self._read_in_dir(source, output_dir)
+
+    def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
+        """Internal helper — called with a managed temp directory."""
         book_source, _image_dir, _qualifying, raw_chunks = load_epub(source, output_dir)
 
         # Filter to recipe-candidate chapters
