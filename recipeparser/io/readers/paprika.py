@@ -28,12 +28,15 @@ import json
 import logging
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+from recipeparser.core.models import Chunk, InputType
+from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
 
 
-class PaprikaReader:
+class PaprikaReader(RecipeReader):
     """
     Reads a .paprikarecipes ZIP archive and returns the decoded recipe entries.
 
@@ -41,6 +44,85 @@ class PaprikaReader:
     object. The ``_cayenne_meta`` key, if present, contains the full
     CayenneRecipe JSON (including the 1536-dim embedding) as a nested dict.
     """
+
+    def read(self, source: str) -> List[Chunk]:
+        """
+        Implement the RecipeReader ABC.
+
+        Reads a .paprikarecipes archive and converts each entry into a Chunk:
+
+        - Entries WITH ``_cayenne_meta`` → ``InputType.PAPRIKA_CAYENNE``
+          - ``pre_parsed`` is populated from the meta dict (IngestResponse)
+          - ``pre_parsed_embedding`` is extracted if present (enables $0 restore)
+          - ``text`` is empty (not needed for the fast-path ASSEMBLE stage)
+        - Entries WITHOUT ``_cayenne_meta`` → ``InputType.PAPRIKA_LEGACY``
+          - ``text`` is built from name + ingredients + directions
+          - Full pipeline (EXTRACT → REFINE → CATEGORIZE → EMBED → ASSEMBLE)
+
+        Args:
+            source: File-system path to the .paprikarecipes ZIP archive.
+
+        Returns:
+            A list of Chunk objects, one per recipe entry.
+        """
+        entries = self.read_entries(source)
+        chunks: List[Chunk] = []
+
+        for entry in entries:
+            meta = entry.get("_cayenne_meta")
+
+            if meta is not None:
+                # Flow B — Cayenne Instant Restore
+                # Lazy import to avoid circular dependency at module load time.
+                from recipeparser.models import CayenneRecipe  # noqa: PLC0415
+
+                # Extract the embedding separately before constructing the recipe
+                # model. CayenneRecipe does not require an embedding field, so
+                # this works whether or not the archive was exported with one.
+                # IngestResponse *requires* embedding, so we use CayenneRecipe
+                # here and carry the vector in pre_parsed_embedding instead.
+                meta_copy = dict(meta)
+                embedding: Optional[List[float]] = meta_copy.pop("embedding", None)
+
+                try:
+                    pre_parsed = CayenneRecipe(**meta_copy)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "PaprikaReader: could not deserialize _cayenne_meta for %r: %s",
+                        entry.get("name"),
+                        exc,
+                    )
+                    pre_parsed = None
+
+                chunks.append(
+                    Chunk(
+                        text="",
+                        input_type=InputType.PAPRIKA_CAYENNE,
+                        pre_parsed=pre_parsed,
+                        pre_parsed_embedding=embedding,
+                        image_bytes=entry.get("photo_data"),
+                    )
+                )
+            else:
+                # Flow A — Legacy Paprika → full pipeline
+                name = entry.get("name", "")
+                ingredients = entry.get("ingredients", "")
+                directions = entry.get("directions", "")
+                text = f"{name}\n\nIngredients:\n{ingredients}\n\nDirections:\n{directions}"
+
+                chunks.append(
+                    Chunk(
+                        text=text,
+                        input_type=InputType.PAPRIKA_LEGACY,
+                        image_bytes=entry.get("photo_data"),
+                    )
+                )
+
+        log.info(
+            "PaprikaReader.read: produced %d chunks from %s", len(chunks), source
+        )
+        return chunks
+
 
     def read_entries(self, path: str | Path) -> List[Dict[str, Any]]:
         """
