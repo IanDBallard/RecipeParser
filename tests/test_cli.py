@@ -164,8 +164,10 @@ class TestConcurrencyRpmArgs:
     def test_concurrency_1_accepted(self, tmp_path):
         epub = tmp_path / "cookbook.epub"
         epub.write_bytes(b"PK")
-        with patch("recipeparser.__main__.process_epub") as mock_process, \
+        with patch("recipeparser.__main__.run_cli_pipeline") as mock_process, \
              patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("google.genai.Client"), \
+             patch("os.environ.get", return_value="dummy-key"), \
              patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "1"]):
             from recipeparser.__main__ import main
             main()
@@ -175,8 +177,10 @@ class TestConcurrencyRpmArgs:
     def test_concurrency_10_accepted(self, tmp_path):
         epub = tmp_path / "cookbook.epub"
         epub.write_bytes(b"PK")
-        with patch("recipeparser.__main__.process_epub") as mock_process, \
+        with patch("recipeparser.__main__.run_cli_pipeline") as mock_process, \
              patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("google.genai.Client"), \
+             patch("os.environ.get", return_value="dummy-key"), \
              patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "10"]):
             from recipeparser.__main__ import main
             main()
@@ -209,8 +213,10 @@ class TestConcurrencyRpmArgs:
     def test_rpm_passed_to_process_epub(self, tmp_path):
         epub = tmp_path / "cookbook.epub"
         epub.write_bytes(b"PK")
-        with patch("recipeparser.__main__.process_epub") as mock_process, \
+        with patch("recipeparser.__main__.run_cli_pipeline") as mock_process, \
              patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("google.genai.Client"), \
+             patch("os.environ.get", return_value="dummy-key"), \
              patch("sys.argv", ["recipeparser", str(epub), "--rpm", "15"]):
             from recipeparser.__main__ import main
             main()
@@ -220,8 +226,10 @@ class TestConcurrencyRpmArgs:
     def test_concurrency_and_rpm_both_passed(self, tmp_path):
         epub = tmp_path / "cookbook.epub"
         epub.write_bytes(b"PK")
-        with patch("recipeparser.__main__.process_epub") as mock_process, \
+        with patch("recipeparser.__main__.run_cli_pipeline") as mock_process, \
              patch("recipeparser.__main__._resolve_epub", return_value=str(epub)), \
+             patch("google.genai.Client"), \
+             patch("os.environ.get", return_value="dummy-key"), \
              patch("sys.argv", ["recipeparser", str(epub), "--concurrency", "5", "--rpm", "30"]):
             from recipeparser.__main__ import main
             main()
@@ -341,7 +349,7 @@ class TestFolderCommand:
 
         import os
         os.environ["GOOGLE_API_KEY"] = "dummy-key"
-        with patch("recipeparser.__main__.process_epub", return_value=str(tmp_path / "out.paprikarecipes")) as mock_process, \
+        with patch("recipeparser.__main__.run_cli_pipeline", return_value=str(tmp_path / "out.paprikarecipes")) as mock_process, \
              patch("google.genai.Client"), \
              patch("sys.argv", ["recipeparser", "--folder", str(tmp_path),
                                 "--output", str(tmp_path)]):
@@ -378,7 +386,7 @@ class TestFolderCommand:
 
         import os
         os.environ["GOOGLE_API_KEY"] = "dummy-key"
-        with patch("recipeparser.__main__.process_epub", return_value=str(tmp_path / "out.paprikarecipes")) as mock_process, \
+        with patch("recipeparser.__main__.run_cli_pipeline", return_value=str(tmp_path / "out.paprikarecipes")) as mock_process, \
              patch("google.genai.Client"), \
              patch("sys.argv", ["recipeparser", "--folder", str(tmp_path),
                                 "--output", str(tmp_path)]):
@@ -389,7 +397,6 @@ class TestFolderCommand:
 
     def test_folder_partial_failure_exits_nonzero(self, tmp_path, capsys):
         """If one book fails, the command exits non-zero after processing all."""
-        from recipeparser.exceptions import EpubExtractionError
         (tmp_path / "good.epub").write_bytes(b"PK")
         (tmp_path / "bad.epub").write_bytes(b"PK")
 
@@ -399,12 +406,12 @@ class TestFolderCommand:
             nonlocal call_count
             call_count += 1
             if "bad" in args[0]:
-                raise EpubExtractionError("bad book")
+                raise RuntimeError("bad book")
             return str(tmp_path / "out.paprikarecipes")
 
         import os
         os.environ["GOOGLE_API_KEY"] = "dummy-key"
-        with patch("recipeparser.__main__.process_epub", side_effect=side_effect), \
+        with patch("recipeparser.__main__.run_cli_pipeline", side_effect=side_effect), \
              patch("google.genai.Client"), \
              patch("sys.argv", ["recipeparser", "--folder", str(tmp_path),
                                 "--output", str(tmp_path)]):

@@ -12,7 +12,7 @@ from pathlib import Path
 from recipeparser.paprika_db import find_paprika_db, read_categories_from_db
 from recipeparser.categories import _CATEGORIES_FILE
 from recipeparser.paths import get_default_output_dir, get_env_file
-from recipeparser import process_epub
+from recipeparser.adapters.cli import run_cli_pipeline
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,6 +66,23 @@ def _resolve_book(raw: str) -> str:
 
 # Backward compatibility for callers (e.g. tests) that use the old name
 _resolve_epub = _resolve_book
+
+
+def _units_to_uom(units: str) -> str:
+    """Map the CLI --units flag value to the uom_system string expected by RecipePipeline.
+
+    CLI flag values: "metric" | "us" | "imperial" | "book"
+    Pipeline values: "Metric" | "US" | "Imperial"
+
+    "book" means "preserve whatever the book uses" — we pass "US" as the
+    default and let the pipeline's extraction prompt handle it naturally.
+    """
+    return {
+        "metric": "Metric",
+        "us": "US",
+        "imperial": "Imperial",
+        "book": "US",  # pipeline default; extraction prompt preserves book units
+    }.get(units.lower(), "US")
 
 
 def _cmd_sync_categories() -> None:
@@ -318,16 +335,16 @@ def main():
         for book in books:
             log.info("Processing: %s", book.name)
             try:
-                result = process_epub(
+                result = run_cli_pipeline(
                     str(book),
                     args.output,
                     client,
-                    units=args.units,
+                    uom_system=_units_to_uom(args.units),
                     concurrency=args.concurrency,
                     rpm=args.rpm,
                 )
                 print(f"  ✓ {book.name} → {result}")
-            except RecipeParserError as e:
+            except (RecipeParserError, RuntimeError, ValueError) as e:
                 log.error("  ✗ %s: %s", book.name, e)
                 errors.append((book.name, str(e)))
 
@@ -354,18 +371,39 @@ def main():
 
     book_path = _resolve_book(args.epub)
 
+    import os
     from recipeparser.exceptions import RecipeParserError
 
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        env_file = get_env_file()
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("GOOGLE_API_KEY="):
+                    api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    os.environ["GOOGLE_API_KEY"] = api_key
+                    break
+    if not api_key:
+        print(
+            "Error: GOOGLE_API_KEY not set. Set the environment variable or save it via the GUI.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    from google import genai
+    client = genai.Client(api_key=api_key)
+
     try:
-        result = process_epub(
+        result = run_cli_pipeline(
             book_path,
             args.output,
-            units=args.units,
+            client,
+            uom_system=_units_to_uom(args.units),
             concurrency=args.concurrency,
             rpm=args.rpm,
         )
         print(f"Export written to: {result}")
-    except RecipeParserError as e:
+    except (RecipeParserError, RuntimeError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
