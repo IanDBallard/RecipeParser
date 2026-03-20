@@ -15,10 +15,12 @@ Usage::
     # → [Chunk(text="...", input_type=InputType.URL, source_url="https://...")]
 """
 
+from __future__ import annotations
+
 import logging
 from typing import List
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers import RecipeReader

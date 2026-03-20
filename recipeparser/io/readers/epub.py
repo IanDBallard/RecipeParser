@@ -1,12 +1,14 @@
 """EPUB reading, image extraction, and text chunking — no AI dependency."""
+from __future__ import annotations
+
 import logging
 import os
 import tempfile
-from typing import List, Tuple
+from typing import List, Optional, Set, Tuple
 
-import ebooklib
+import ebooklib  # type: ignore[import-untyped]
 from ebooklib import epub
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
 from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
 from recipeparser.core.models import Chunk, InputType
@@ -70,7 +72,7 @@ class EpubReader(RecipeReader):
         return chunks
 
 
-def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, set, List[str]]:
+def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, Set[str], List[str]]:
     """
     Load an EPUB and return the standard book-loader tuple.
 
@@ -88,7 +90,7 @@ def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, set, List[str]
     return book_source, image_dir, qualifying_images, raw_chunks
 
 
-def extract_all_images(book: epub.EpubBook, output_dir: str) -> tuple:
+def extract_all_images(book: epub.EpubBook, output_dir: str) -> Tuple[str, Set[str]]:
     """
     Write qualifying image items from the EPUB to <output_dir>/images/.
     Images smaller than MIN_PHOTO_BYTES are skipped as decorative separators.
@@ -98,7 +100,7 @@ def extract_all_images(book: epub.EpubBook, output_dir: str) -> tuple:
     os.makedirs(image_dir, exist_ok=True)
 
     saved = skipped = 0
-    qualifying: set = set()
+    qualifying: Set[str] = set()
     for item in book.get_items():
         if item.get_type() == ebooklib.ITEM_IMAGE:
             content = item.get_content()
@@ -119,7 +121,7 @@ def extract_all_images(book: epub.EpubBook, output_dir: str) -> tuple:
 
 def extract_chapters_with_image_markers(
     book: epub.EpubBook,
-    qualifying_images: set = None,
+    qualifying_images: Optional[Set[str]] = None,
 ) -> List[str]:
     """
     Return one text string per EPUB document item, with <img> tags replaced

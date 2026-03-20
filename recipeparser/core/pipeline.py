@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType
@@ -29,7 +29,7 @@ from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.core.ports import CategorySource
-from recipeparser.models import CayenneRecipe, IngestResponse
+from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class RecipePipeline:
 
     def __init__(
         self,
-        client,
+        client: Any,
         controller: PipelineController,
         category_source: CategorySource,
         uom_system: str = "US",
@@ -344,8 +344,6 @@ def _pre_parsed_to_refinement(
     here (``title``, ``base_servings``, ``structured_ingredients``,
     ``tokenized_directions``), so the shim works for either type.
     """
-    from recipeparser.models import CayenneRefinement  # local import to avoid circulars
-
     return CayenneRefinement(
         title=pr.title,
         base_servings=pr.base_servings,

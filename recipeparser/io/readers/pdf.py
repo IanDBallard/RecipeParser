@@ -1,10 +1,12 @@
 """PDF loading, pre-flight assessment, image extraction, and page-based text chunks."""
+from __future__ import annotations
+
 import logging
 import os
 import tempfile
-from typing import List, Set, Tuple
+from typing import Any, List, Set, Tuple
 
-import fitz  # PyMuPDF
+import fitz  # type: ignore[import-untyped]  # PyMuPDF
 
 from recipeparser.config import (
     MIN_PHOTO_BYTES,
@@ -182,7 +184,7 @@ def _extract_page_images(
     return filenames
 
 
-def extract_text_from_pdf(pdf_path: str, client=None) -> str:
+def extract_text_from_pdf(pdf_path: str, client: Any = None) -> str:
     """
     Stateless text extraction from a PDF.
     - Handles pre-flight (password, etc.)

@@ -8,7 +8,7 @@ and all ingredient fallback strings.
 No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 import logging
-from typing import List
+from typing import Any, List
 
 from recipeparser.gemini import get_embeddings
 from recipeparser.models import CayenneRefinement
@@ -20,7 +20,7 @@ _EXPECTED_DIMS = 1536
 
 def embed(
     recipe: CayenneRefinement,
-    client,
+    client: Any,
 ) -> List[float]:
     """
     Generate a 1536-dimension embedding vector for a refined recipe.

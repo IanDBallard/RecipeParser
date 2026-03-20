@@ -46,13 +46,19 @@ class GlobalRateLimiter:
     _instance: Optional["GlobalRateLimiter"] = None
     _class_lock: threading.Lock = threading.Lock()
 
+    # Instance attributes declared at class level so mypy strict can track them
+    # across the __new__-based singleton pattern (set on `inst`, not `self`).
+    _rpm: int
+    _lock: threading.Lock
+    _starts: List[float]
+
     def __new__(cls, rpm: int = 60) -> "GlobalRateLimiter":
         with cls._class_lock:
             if cls._instance is None:
                 inst = super().__new__(cls)
-                inst._rpm: int = rpm
-                inst._lock: threading.Lock = threading.Lock()
-                inst._starts: List[float] = []
+                inst._rpm = rpm
+                inst._lock = threading.Lock()
+                inst._starts = []
                 cls._instance = inst
         return cls._instance
 

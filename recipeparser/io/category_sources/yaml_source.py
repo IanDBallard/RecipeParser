@@ -1,3 +1,4 @@
+
 """
 YAML-backed category source for CLI and GUI adapters.
 
@@ -22,11 +23,13 @@ Expected YAML format:
 The top-level key must be ``axes``. Each key under ``axes`` is an axis name;
 its value is a list of valid tag strings.
 """
+from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from recipeparser.io.category_sources.base import CategorySource
 
@@ -42,10 +45,10 @@ class YamlCategorySource(CategorySource):
                    not exist, load_axes() returns {} (no categorization).
     """
 
-    def __init__(self, yaml_path: str | Path | None = None) -> None:
+    def __init__(self, yaml_path: Union[str, Path, None] = None) -> None:
         self._path = Path(yaml_path) if yaml_path else None
 
-    def load_axes(self, user_id: str) -> Dict[str, List[str]]:
+    def load_axes(self, user_id: str = "") -> Dict[str, List[str]]:
         """
         Load axes from the YAML file. ``user_id`` is ignored (file-based source).
 
@@ -102,7 +105,7 @@ class YamlCategorySource(CategorySource):
         )
         return axes
 
-    def load_category_ids(self, user_id: str) -> Dict[str, str]:
+    def load_category_ids(self, user_id: str = "") -> Dict[str, str]:
         """
         YAML source does not write to Supabase — returns empty dict.
         Junction table writes are not supported for file-based sources.

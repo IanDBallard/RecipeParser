@@ -23,12 +23,14 @@ Usage::
             # Flow A: Legacy Paprika → full pipeline
 """
 
+from __future__ import annotations
+
 import gzip
 import json
 import logging
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers import RecipeReader
@@ -133,7 +135,7 @@ class PaprikaReader(RecipeReader):
         return chunks
 
 
-    def read_entries(self, path: str | Path) -> List[Dict[str, Any]]:
+    def read_entries(self, path: Union[str, Path]) -> List[Dict[str, Any]]:
         """
         Parse a .paprikarecipes archive and return all recipe entries.
 
@@ -211,7 +213,7 @@ class PaprikaReader(RecipeReader):
         )
         return entries
 
-    def read_entries_with_images(self, path: str | Path) -> List[Dict[str, Any]]:
+    def read_entries_with_images(self, path: Union[str, Path]) -> List[Dict[str, Any]]:
         """
         Enhanced version of read_entries that also returns binary image data.
         Returns a list of dicts, where each dict has:

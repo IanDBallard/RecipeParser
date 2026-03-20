@@ -14,7 +14,7 @@ import threading
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, Tuple, cast, runtime_checkable
 
 from recipeparser.config import (
     CHECKPOINT_SUBDIR,
@@ -319,7 +319,7 @@ class PipelineController:
         short = book_hash.split(":")[-1][:16]
         cp_dir = self._output_dir / CHECKPOINT_SUBDIR
         cp_dir.mkdir(parents=True, exist_ok=True)
-        return cp_dir / f"{short}.json"
+        return cast(Path, cp_dir / f"{short}.json")
 
     def save_checkpoint(
         self,
@@ -392,7 +392,7 @@ class PipelineController:
             "Checkpoint loaded: stage=%s, %d completed segment(s).",
             data.get("stage"), len(data.get("completed_segments", [])),
         )
-        return data
+        return cast(Dict[str, Any], data)
 
     def delete_checkpoint(self, book_path: str) -> None:
         """Remove the checkpoint file for ``book_path`` (called on successful completion)."""

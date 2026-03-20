@@ -19,10 +19,12 @@ treated as a single-tag axis (axis name == tag name).
 If the database file is missing, unreadable, or has no categories, load_axes()
 returns {} (no categorization — Zero-Tag Mandate).
 """
+from __future__ import annotations
+
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 from recipeparser.io.category_sources.base import CategorySource
 
@@ -38,14 +40,14 @@ class PaprikaCategorySource(CategorySource):
                  file does not exist, load_axes() returns {}.
     """
 
-    def __init__(self, db_path: str | Path | None = None) -> None:
+    def __init__(self, db_path: Union[str, Path, None] = None) -> None:
         self._path = Path(db_path) if db_path else None
 
     # ------------------------------------------------------------------
     # CategorySource interface
     # ------------------------------------------------------------------
 
-    def load_axes(self, user_id: str) -> Dict[str, List[str]]:
+    def load_axes(self, user_id: str = "") -> Dict[str, List[str]]:
         """
         Derive multipolar axes from the Paprika category hierarchy.
 
@@ -94,7 +96,7 @@ class PaprikaCategorySource(CategorySource):
         )
         return axes
 
-    def load_category_ids(self, user_id: str) -> Dict[str, str]:
+    def load_category_ids(self, user_id: str = "") -> Dict[str, str]:
         """
         Paprika DB source does not write to Supabase — returns empty dict.
         Junction table writes are not supported for file-based sources.
@@ -105,7 +107,7 @@ class PaprikaCategorySource(CategorySource):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _read_categories(self) -> List[tuple]:
+    def _read_categories(self) -> List[Tuple[int, str, Optional[int]]]:
         """
         Query the Paprika SQLite DB for all category rows.
 

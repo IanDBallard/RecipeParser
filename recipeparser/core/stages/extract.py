@@ -8,7 +8,7 @@ single clean interface.  Returns a list of RecipeExtraction objects; returns
 No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 import logging
-from typing import List
+from typing import Any, List
 
 from recipeparser.gemini import (
     extract_recipe_from_text,
@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 
 def extract(
     chunk_text: str,
-    client,
+    client: Any,
     *,
     units: str = "book",
     plain_text_mode: bool = False,

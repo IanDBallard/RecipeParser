@@ -1,4 +1,12 @@
-"""Paprika 3 export bundler — assembles the .paprikarecipes ZIP archive."""
+"""Paprika 3 export bundler — assembles the .paprikarecipes ZIP archive.
+
+Also exposes ``PaprikaWriter`` — a ``RecipeWriter`` port implementation that
+converts ``IngestResponse`` objects to Paprika 3 format and writes them to a
+``.paprikarecipes`` ZIP archive.
+
+Fat Tokens in ``tokenized_directions[].text`` are stripped to their fallback
+strings before writing, so the output is plain-text compatible with Paprika.
+"""
 import base64
 import datetime
 import gzip
@@ -11,10 +19,14 @@ import unicodedata
 import uuid
 import zipfile
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-from recipeparser.models import RecipeExtraction
+from recipeparser.io.writers import RecipeWriter
+from recipeparser.models import IngestResponse, RecipeExtraction
 from recipeparser.utils import title_case
+
+# Regex that matches a single Fat Token: {{ing_01|fallback text}}
+_FAT_TOKEN_RE = re.compile(r"\{\{[^|]+\|([^}]+)\}\}")
 
 log = logging.getLogger(__name__)
 
@@ -168,8 +180,8 @@ def merge_exports(paths: List[Path], output_dir: Path) -> Path:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    seen_keys: set = set()
-    entries: list = []  # list of (internal_filename, raw_bytes) tuples
+    seen_keys: Set[str] = set()
+    entries: List[Tuple[str, bytes]] = []  # list of (internal_filename, raw_bytes) tuples
 
     for archive_path in paths:
         archive_path = Path(archive_path)
@@ -215,3 +227,124 @@ def merge_exports(paths: List[Path], output_dir: Path) -> Path:
         "merge_exports: wrote %d recipe(s) → %s", len(entries), out_path
     )
     return out_path
+
+
+# ---------------------------------------------------------------------------
+# PaprikaWriter — RecipeWriter port implementation
+# ---------------------------------------------------------------------------
+
+def _strip_fat_tokens(text: str) -> str:
+    """Replace every Fat Token with its fallback string.
+
+    ``{{ing_01|1.5 cups flour}}`` → ``1.5 cups flour``
+    """
+    return _FAT_TOKEN_RE.sub(r"\1", text)
+
+
+def _ingest_to_paprika_dict(recipe: IngestResponse) -> Dict[str, Any]:
+    """
+    Convert an ``IngestResponse`` to a Paprika 3 JSON dict.
+
+    - ``structured_ingredients`` → plain-text ``ingredients`` (one per line,
+      using ``fallback_string`` so the output is human-readable).
+    - ``tokenized_directions`` → plain-text ``directions`` (Fat Tokens stripped
+      to their fallback strings).
+    - ``categories`` flat list → Paprika ``categories`` list.
+    """
+    recipe_uid = str(uuid.uuid4()).upper()
+    created = datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    ingredients_lines = [
+        ing.fallback_string for ing in recipe.structured_ingredients
+    ]
+    directions_lines = [
+        _strip_fat_tokens(step.text)
+        for step in sorted(recipe.tokenized_directions, key=lambda s: s.step)
+    ]
+
+    servings_str = str(recipe.base_servings) if recipe.base_servings is not None else ""
+
+    return {
+        "uid": recipe_uid,
+        "name": recipe.title,
+        "directions": "\n".join(directions_lines),
+        "ingredients": "\n".join(ingredients_lines),
+        "prep_time": recipe.prep_time or "",
+        "cook_time": recipe.cook_time or "",
+        "total_time": "",
+        "servings": servings_str,
+        "notes": "",
+        "description": "",
+        "nutritional_info": "",
+        "difficulty": "",
+        "rating": 0,
+        "source": "",
+        "source_url": recipe.source_url or "",
+        "image_url": recipe.image_url or "",
+        "categories": recipe.categories,
+        "created": created,
+        "hash": hashlib.sha256(recipe_uid.encode()).hexdigest(),
+        "photo_hash": "",
+        "photo_large": None,
+    }
+
+
+class PaprikaWriter(RecipeWriter):
+    """
+    Writes a batch of ``IngestResponse`` objects to a ``.paprikarecipes`` ZIP.
+
+    Fat Tokens in ``tokenized_directions[].text`` are stripped to their
+    fallback strings so the output is plain-text compatible with Paprika 3.
+    No ``_cayenne_meta`` key is embedded — use ``CayenneZipWriter`` for that.
+
+    Args:
+        output_path: Destination file path for the ``.paprikarecipes`` archive.
+                     The parent directory must already exist.
+
+    Example::
+
+        writer = PaprikaWriter(output_path="/tmp/export.paprikarecipes")
+        writer.write(pipeline_results)
+    """
+
+    def __init__(self, output_path: Union[str, Path]) -> None:
+        self._output_path = Path(output_path)
+
+    def write(self, recipes: List[IngestResponse], **kwargs: object) -> None:
+        """
+        Serialise each recipe to Paprika 3 format and bundle into a ZIP.
+
+        Args:
+            recipes: All successfully processed ``IngestResponse`` objects.
+            **kwargs: Accepted but ignored (satisfies the ABC contract).
+
+        Raises:
+            RuntimeError: If the archive cannot be written.
+        """
+        if not recipes:
+            log.warning("PaprikaWriter.write: no recipes — skipping.")
+            return
+
+        try:
+            with zipfile.ZipFile(self._output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for recipe in recipes:
+                    paprika_dict = _ingest_to_paprika_dict(recipe)
+                    json_str = json.dumps(paprika_dict, ensure_ascii=False)
+                    gzipped = gzip.compress(json_str.encode("utf-8"))
+
+                    safe_title = "".join(
+                        c for c in recipe.title if c.isalnum() or c in " -_"
+                    ).strip() or "Untitled_Recipe"
+                    zf.writestr(f"{safe_title}.paprikarecipe", gzipped)
+        except OSError as exc:
+            raise RuntimeError(
+                f"PaprikaWriter: could not write archive {self._output_path}: {exc}"
+            ) from exc
+
+        log.info(
+            "PaprikaWriter: wrote %d recipe(s) → %s",
+            len(recipes),
+            self._output_path,
+        )

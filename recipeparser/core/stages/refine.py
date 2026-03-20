@@ -9,7 +9,7 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from recipeparser.gemini import refine_recipe_for_cayenne
 from recipeparser.models import CayenneRefinement, RecipeExtraction
@@ -40,7 +40,7 @@ def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
 
 def refine(
     raw: RecipeExtraction,
-    client,
+    client: Any,
     *,
     uom_system: str = "US",
     measure_preference: str = "Volume",
