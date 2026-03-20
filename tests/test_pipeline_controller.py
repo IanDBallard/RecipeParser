@@ -6,8 +6,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from recipeparser.pipeline import PipelineController, PipelineStatus, _TRANSITIONS
-from recipeparser.core.fsm import StageChangeCallback
+from recipeparser.core.fsm import PipelineController, PipelineStatus, _TRANSITIONS, StageChangeCallback
 from recipeparser.exceptions import (
     CheckpointError,
     PipelineTransitionError,

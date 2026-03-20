@@ -1093,9 +1093,9 @@ def test_shadow_execution_produces_identical_output():
 
 ### Design Checkpoints — §11.2
 - [x] `tests/transient/test_shadow_execution.py` created in Phase 6
-- [ ] `pytest tests/transient/ -v` passes before Phase 8 gate
-- [ ] `tests/transient/` directory deleted in Phase 8 deliverables
-- [ ] Phase 8 gate test includes `ls tests/transient/ 2>&1 | grep "No such file"` to confirm deletion
+- [x] `pytest tests/transient/ -v` passes before Phase 8 gate
+- [x] `tests/transient/` directory deleted in Phase 8 deliverables
+- [x] Phase 8 gate test includes `ls tests/transient/ 2>&1 | grep "No such file"` to confirm deletion
 
 ---
 
@@ -1263,11 +1263,11 @@ The baseline violation counts are recorded. After Phase 1, `ruff check recipepar
 
 ### Definition of Done (All Phases)
 
-- [ ] `pytest tests/ -v` — all tests pass
+- [x] `pytest tests/ -v` — all tests pass
 - [ ] `mypy recipeparser/` — zero type errors
 - [ ] `ruff check recipeparser/` — zero lint errors
 - [ ] `ruff check recipeparser/core/ --select TID` — zero boundary violations (§11.1)
-- [ ] `pytest tests/snapshots/ -v` — all snapshot tests pass without `--snapshot-update` (§11.3)
+- [x] `pytest tests/snapshots/ -v` — all snapshot tests pass without `--snapshot-update` (§11.3)
 - [ ] `mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict` — zero type errors (§11.4)
-- [ ] `grep -r "from recipeparser.io\|from recipeparser.adapters" recipeparser/core/` — returns empty (no layer violations)
-- [ ] `PIPELINE_REFACTOR.md` design checkpoints all ticked
+- [x] `grep -r "from recipeparser.io\|from recipeparser.adapters" recipeparser/core/` — returns empty (no layer violations)
+- [x] `PIPELINE_REFACTOR.md` design checkpoints all ticked
