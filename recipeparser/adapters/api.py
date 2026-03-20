@@ -22,7 +22,7 @@ import tempfile
 import uuid
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
@@ -258,6 +258,43 @@ def embed_text(
 # Phase 6 — Canonical fire-and-forget endpoints
 # ===========================================================================
 
+def _make_stage_callback(job_id: str) -> Callable[[str], None]:
+    """
+    Return a synchronous ``StageChangeCallback`` that writes the new stage
+    name to ``ingestion_jobs.stage`` in Supabase.
+
+    Called from a ThreadPoolExecutor worker thread (pipeline.run runs in
+    asyncio.to_thread), so we use the synchronous supabase-py client.
+
+    Failures are logged but **re-raised** (§11.4 — FAIL LOUDLY): a silent
+    failure here leaves the Cayenne app showing a stale stage label, which
+    is indistinguishable from a zombie job.
+    """
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+
+    def _on_stage_change(stage: str) -> None:
+        if not supabase_url or not supabase_key:
+            logger.warning(
+                "Job %s: Supabase credentials not set — cannot update stage to '%s'.",
+                job_id, stage,
+            )
+            return
+        try:
+            from supabase import create_client  # type: ignore[import-not-found]
+            sb = create_client(supabase_url, supabase_key)
+            sb.table("ingestion_jobs").update({"stage": stage}).eq("id", job_id).execute()
+            logger.debug("Job %s: stage → %s", job_id, stage)
+        except Exception:
+            logger.exception(
+                "Job %s: failed to update ingestion_jobs.stage to '%s' — re-raising (§11.4).",
+                job_id, stage,
+            )
+            raise
+
+    return _on_stage_change
+
+
 # Process-level registry: job_id → PipelineController
 # Allows pause/resume/cancel from the control endpoints.
 _active_jobs: Dict[str, PipelineController] = {}
@@ -317,7 +354,7 @@ async def submit_job(
 
     user_id: str = user.get("sub", "")
     job_id = str(uuid.uuid4())
-    controller = PipelineController()
+    controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
     _active_jobs[job_id] = controller
 
     async def _run() -> None:
@@ -410,7 +447,7 @@ async def submit_file_job(
     file_bytes = await file.read()
     user_id: str = user.get("sub", "")
     job_id = str(uuid.uuid4())
-    controller = PipelineController()
+    controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
     _active_jobs[job_id] = controller
 
     async def _run() -> None:

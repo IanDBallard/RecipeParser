@@ -1,12 +1,13 @@
-"""Tests for PipelineController FSM (Phase 3b/3c)."""
+"""Tests for PipelineController FSM (Phase 3b/3c + Phase 7A stage callbacks)."""
 import json
 import threading
 import time
 import pytest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from recipeparser.pipeline import PipelineController, PipelineStatus, _TRANSITIONS
+from recipeparser.core.fsm import StageChangeCallback
 from recipeparser.exceptions import (
     CheckpointError,
     PipelineTransitionError,
@@ -559,3 +560,101 @@ class TestCheckpointPersistence:
         with patch("pathlib.Path.write_text", side_effect=OSError("disk full")):
             with pytest.raises(CheckpointError):
                 ctrl.save_checkpoint(str(book), "EXTRACT", [], [], [])
+
+
+# ---------------------------------------------------------------------------
+# Stage-change callback (Phase 7A — §11.4)
+# ---------------------------------------------------------------------------
+
+class TestStageChangeCallback:
+    """Tests for PipelineController.notify_stage_change() and on_stage_change wiring."""
+
+    def test_notify_stage_change_calls_callback(self):
+        """notify_stage_change fires the registered callback with the stage name."""
+        received: list[str] = []
+        ctrl = PipelineController(on_stage_change=lambda s: received.append(s))
+        ctrl.notify_stage_change("EXTRACTING")
+        assert received == ["EXTRACTING"]
+
+    def test_notify_stage_change_fires_multiple_times(self):
+        """Each call to notify_stage_change fires the callback once."""
+        received: list[str] = []
+        ctrl = PipelineController(on_stage_change=lambda s: received.append(s))
+        for stage in ["EXTRACTING", "REFINING", "CATEGORIZING", "EMBEDDING"]:
+            ctrl.notify_stage_change(stage)
+        assert received == ["EXTRACTING", "REFINING", "CATEGORIZING", "EMBEDDING"]
+
+    def test_notify_stage_change_no_callback_is_noop(self):
+        """notify_stage_change with no callback registered does not raise."""
+        ctrl = PipelineController()  # no on_stage_change
+        ctrl.notify_stage_change("EXTRACTING")  # must not raise
+
+    def test_notify_stage_change_reraises_callback_exception(self):
+        """Callback failures re-raise (§11.4 — FAIL LOUDLY)."""
+        def _bad_callback(stage: str) -> None:
+            raise RuntimeError("Supabase write failed")
+
+        ctrl = PipelineController(on_stage_change=_bad_callback)
+        with pytest.raises(RuntimeError, match="Supabase write failed"):
+            ctrl.notify_stage_change("EXTRACTING")
+
+    def test_on_stage_change_accepts_callable_matching_protocol(self):
+        """StageChangeCallback Protocol is satisfied by a plain callable."""
+        mock = MagicMock()
+        ctrl = PipelineController(on_stage_change=mock)
+        ctrl.notify_stage_change("EMBEDDING")
+        mock.assert_called_once_with("EMBEDDING")
+
+    def test_stage_change_callback_is_independent_of_progress_callback(self):
+        """on_stage_change and on_progress are independent — both fire correctly."""
+        stage_calls: list[str] = []
+        progress_calls: list[tuple] = []
+
+        ctrl = PipelineController(
+            on_stage_change=lambda s: stage_calls.append(s),
+            on_progress=lambda s, c, t: progress_calls.append((s, c, t)),
+        )
+        ctrl.notify_stage_change("REFINING")
+        ctrl.notify_progress("PROCESSING", 1, 5)
+
+        assert stage_calls == ["REFINING"]
+        assert progress_calls == [("PROCESSING", 1, 5)]
+
+    def test_stage_change_callback_is_thread_safe(self):
+        """notify_stage_change can be called from multiple threads without data loss."""
+        received: list[str] = []
+        lock = threading.Lock()
+
+        def _thread_safe_cb(stage: str) -> None:
+            with lock:
+                received.append(stage)
+
+        ctrl = PipelineController(on_stage_change=_thread_safe_cb)
+        stages = ["EXTRACTING", "REFINING", "CATEGORIZING", "EMBEDDING"] * 10
+
+        threads = [
+            threading.Thread(target=ctrl.notify_stage_change, args=(s,))
+            for s in stages
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=2.0)
+
+        assert sorted(received) == sorted(stages)
+
+    def test_on_stage_change_stored_on_controller(self):
+        """The callback is stored as _on_stage_change on the controller instance."""
+        cb = MagicMock()
+        ctrl = PipelineController(on_stage_change=cb)
+        assert ctrl._on_stage_change is cb
+
+    def test_on_stage_change_none_by_default(self):
+        """Without on_stage_change kwarg, _on_stage_change is None."""
+        ctrl = PipelineController()
+        assert ctrl._on_stage_change is None
+
+    def test_stage_change_callback_satisfies_protocol(self):
+        """A lambda satisfies the StageChangeCallback Protocol (runtime_checkable)."""
+        cb = lambda s: None  # noqa: E731
+        assert isinstance(cb, StageChangeCallback)

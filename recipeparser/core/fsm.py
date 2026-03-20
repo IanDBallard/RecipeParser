@@ -53,6 +53,26 @@ class ProgressCallback(Protocol):
     def __call__(self, stage: str, completed: int, total: int) -> None: ...
 
 
+@runtime_checkable
+class StageChangeCallback(Protocol):
+    """
+    Typed callback fired when the pipeline enters a new processing stage.
+
+    This is distinct from ProgressCallback (which tracks chunk-level progress)
+    — StageChangeCallback tracks which stage is currently executing within a
+    chunk (EXTRACTING, REFINING, CATEGORIZING, EMBEDDING, ASSEMBLING).
+
+    Adapters use this to update the ``ingestion_jobs.stage`` column in
+    Supabase so the Cayenne app can show granular progress.
+
+    Args:
+        stage: The stage name matching the ``ingestion_jobs.stage`` CHECK
+               constraint (e.g. "EXTRACTING", "REFINING", "EMBEDDING").
+    """
+
+    def __call__(self, stage: str) -> None: ...
+
+
 # ---------------------------------------------------------------------------
 # Phase 3b/3c — PipelineController FSM with checkpoint and auto-pause
 # ---------------------------------------------------------------------------
@@ -122,6 +142,7 @@ class PipelineController:
         self,
         output_dir: Optional[str] = None,
         on_progress: Optional[ProgressCallback] = None,
+        on_stage_change: Optional[StageChangeCallback] = None,
     ) -> None:
         self._lock = threading.Lock()
         self.status: PipelineStatus = PipelineStatus.IDLE
@@ -129,13 +150,15 @@ class PipelineController:
         self._output_dir: Optional[Path] = Path(output_dir) if output_dir else None
         # Typed progress callback — fired by notify_progress()
         self._on_progress: Optional[ProgressCallback] = on_progress
+        # Stage-change callback — fired by notify_stage_change() before each stage
+        self._on_stage_change: Optional[StageChangeCallback] = on_stage_change
         # Event used to block the worker thread while paused
         self._resume_event = threading.Event()
         self._resume_event.set()  # not paused initially
         # Timer handle for auto-resume after rate-limit pause
         self._auto_resume_timer: Optional[threading.Timer] = None
 
-    # ── Progress notification ─────────────────────────────────────────────────
+    # ── Progress / stage-change notifications ────────────────────────────────
 
     def notify_progress(self, stage: str, completed: int, total: int) -> None:
         """
@@ -151,6 +174,32 @@ class PipelineController:
             except Exception:  # noqa: BLE001
                 log.exception(
                     "PipelineController: on_progress callback failed — re-raising (§11.4).",
+                )
+                raise
+
+    def notify_stage_change(self, stage: str) -> None:
+        """
+        Fire the registered ``on_stage_change`` callback (if any).
+
+        Called by ``RecipePipeline._process_chunk()`` immediately before
+        entering each stage (EXTRACTING, REFINING, CATEGORIZING, EMBEDDING,
+        ASSEMBLING).  Adapters use this to update ``ingestion_jobs.stage``
+        in Supabase so the Cayenne app shows granular per-stage progress.
+
+        Safe to call from any thread.  Callback failures **re-raise** after
+        logging (§11.4 — FAIL LOUDLY): a silent failure here means the
+        Cayenne app sees a stale stage label, which is a zombie-job symptom.
+
+        Args:
+            stage: Stage name matching the ``ingestion_jobs.stage`` CHECK
+                   constraint (e.g. "EXTRACTING", "REFINING", "EMBEDDING").
+        """
+        if self._on_stage_change is not None:
+            try:
+                self._on_stage_change(stage)
+            except Exception:  # noqa: BLE001
+                log.exception(
+                    "PipelineController: on_stage_change callback failed — re-raising (§11.4).",
                 )
                 raise
 

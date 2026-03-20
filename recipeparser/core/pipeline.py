@@ -233,6 +233,7 @@ class RecipePipeline:
             # Use explicit None check — an empty list is a valid (if degenerate) embedding
             # and must not fall through to pr.embedding (which CayenneRecipe lacks).
             embedding = chunk.pre_parsed_embedding if chunk.pre_parsed_embedding is not None else []
+            self._controller.notify_stage_change("EMBEDDING")
             result = assemble(
                 recipe=_pre_parsed_to_refinement(pr),
                 embedding=embedding,
@@ -250,6 +251,7 @@ class RecipePipeline:
                 log.warning("_process_chunk: EMBED+ASSEMBLE stage but pre_parsed is None — skipping chunk.")
                 return []
             pr = chunk.pre_parsed
+            self._controller.notify_stage_change("EMBEDDING")
             self._limiter.wait_then_record_start()
             embedding = embed(
                 recipe=_pre_parsed_to_refinement(pr),
@@ -270,6 +272,7 @@ class RecipePipeline:
         plain_text = chunk.input_type == InputType.PAPRIKA_LEGACY
 
         # EXTRACT
+        self._controller.notify_stage_change("EXTRACTING")
         self._limiter.wait_then_record_start()
         extractions = extract(
             chunk_text=chunk.text,
@@ -283,6 +286,7 @@ class RecipePipeline:
 
         for raw in extractions:
             # REFINE
+            self._controller.notify_stage_change("REFINING")
             self._limiter.wait_then_record_start()
             refined = refine(
                 raw=raw,
@@ -293,16 +297,18 @@ class RecipePipeline:
             )
 
             # CATEGORIZE (result is already embedded in refined via refine())
+            self._controller.notify_stage_change("CATEGORIZING")
             grid_cats = categorize(
                 recipe=refined,
                 user_axes=user_axes,
             )
 
             # EMBED
+            self._controller.notify_stage_change("EMBEDDING")
             self._limiter.wait_then_record_start()
             embedding = embed(recipe=refined, client=self._client)
 
-            # ASSEMBLE
+            # ASSEMBLE (no separate DB stage — stays at EMBEDDING per §7.2)
             result = assemble(
                 recipe=refined,
                 embedding=embedding,
