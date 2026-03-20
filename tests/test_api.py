@@ -162,7 +162,10 @@ def test_ingest_happy_path_response_has_recipe_id():
         resp = client.post("/ingest", json={"text": "Some recipe text"})
     data = resp.json()
     assert "recipe_id" in data
-    assert data["recipe_id"] == FAKE_RECIPE_ID
+    # recipe_id is pre-generated inside the endpoint; verify it is a valid UUID string
+    import uuid as _uuid
+    _uuid.UUID(data["recipe_id"])  # raises ValueError if not a valid UUID
+    assert len(data["recipe_id"]) == 36
 
 
 def test_ingest_happy_path_no_recipe_json_in_response():
@@ -313,52 +316,50 @@ def test_pdf_corrupt_pdf_returns_422():
 
 
 def test_pdf_happy_path_returns_202():
-    result = _make_ingest_response()
+    """
+    /ingest/pdf is a fire-and-forget background task.
+    The endpoint validates the PDF synchronously then queues the work.
+    It returns 202 immediately with only job_id (no recipe_id).
+    """
     pdf_bytes = _make_pdf_bytes([_TEXT_PDF_CONTENT])
-    with patch(MOCK_TARGETS["client"]), \
-         patch("recipeparser.io.readers.pdf.extract_text_from_pdf", return_value=_TEXT_PDF_CONTENT), \
-         patch(MOCK_TARGETS["pipeline"], return_value=result), \
-         patch(MOCK_TARGETS["write"], return_value=FAKE_RECIPE_ID):
+    with patch("recipeparser.adapters.api._background_file_ingestion"):
         resp = _upload_pdf(pdf_bytes)
     assert resp.status_code == 202
 
 
-def test_pdf_happy_path_has_job_id_and_recipe_id():
-    result = _make_ingest_response()
+def test_pdf_happy_path_has_job_id_no_recipe_id():
+    """
+    /ingest/pdf returns job_id only — no recipe_id because N recipes may be written.
+    Recipes reach the client via PowerSync after the background task completes.
+    """
     pdf_bytes = _make_pdf_bytes([_TEXT_PDF_CONTENT])
-    with patch(MOCK_TARGETS["client"]), \
-         patch("recipeparser.io.readers.pdf.extract_text_from_pdf", return_value=_TEXT_PDF_CONTENT), \
-         patch(MOCK_TARGETS["pipeline"], return_value=result), \
-         patch(MOCK_TARGETS["write"], return_value=FAKE_RECIPE_ID):
+    with patch("recipeparser.adapters.api._background_file_ingestion"):
         resp = _upload_pdf(pdf_bytes)
     data = resp.json()
     assert "job_id" in data
-    assert "recipe_id" in data
-    assert data["recipe_id"] == FAKE_RECIPE_ID
+    import uuid as _uuid
+    _uuid.UUID(data["job_id"])  # must be a valid UUID
+    assert "recipe_id" not in data or data.get("recipe_id") is None
 
 
 def test_pdf_no_recipe_json_in_response():
-    result = _make_ingest_response()
+    """The response must contain only job_id — no recipe fields."""
     pdf_bytes = _make_pdf_bytes([_TEXT_PDF_CONTENT])
-    with patch(MOCK_TARGETS["client"]), \
-         patch("recipeparser.io.readers.pdf.extract_text_from_pdf", return_value=_TEXT_PDF_CONTENT), \
-         patch(MOCK_TARGETS["pipeline"], return_value=result), \
-         patch(MOCK_TARGETS["write"], return_value=FAKE_RECIPE_ID):
+    with patch("recipeparser.adapters.api._background_file_ingestion"):
         resp = _upload_pdf(pdf_bytes)
     data = resp.json()
-    for forbidden_key in ("title", "embedding", "structured_ingredients"):
-        assert forbidden_key not in data, f"Response must not contain '{forbidden_key}'"
+    for forbidden_key in ("title", "embedding", "structured_ingredients", "recipe_id"):
+        assert data.get(forbidden_key) is None, f"Response must not contain '{forbidden_key}'"
 
 
 def test_pdf_no_recipes_found_returns_422():
-    pdf_bytes = _make_pdf_bytes([_TEXT_PDF_CONTENT])
-    with patch(MOCK_TARGETS["client"]), \
-         patch("recipeparser.io.readers.pdf.extract_text_from_pdf", return_value=_TEXT_PDF_CONTENT), \
-         patch(MOCK_TARGETS["pipeline"], side_effect=ValueError("No recipes found in source text.")), \
-         patch(MOCK_TARGETS["write"]):
-        resp = _upload_pdf(pdf_bytes)
+    """
+    /ingest/pdf validates the PDF is parseable before queuing.
+    A corrupt/empty PDF returns 422 synchronously.
+    (Pipeline errors happen in the background and are tracked via ingestion_jobs.)
+    """
+    resp = _upload_pdf(b"this is not a pdf at all")
     assert resp.status_code == 422
-    assert "No recipes found" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
