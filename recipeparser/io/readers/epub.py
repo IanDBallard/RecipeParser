@@ -1,18 +1,78 @@
 """EPUB reading, image extraction, and text chunking — no AI dependency."""
+from __future__ import annotations
+
 import logging
 import os
-from typing import List, Tuple
+import tempfile
+from typing import List, Optional, Set, Tuple
 
-import ebooklib
+import ebooklib  # type: ignore[import-untyped]
 from ebooklib import epub
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
 from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
+from recipeparser.core.models import Chunk, InputType
+from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
 
 
-def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, set, List[str]]:
+class EpubReader(RecipeReader):
+    """
+    Reads an EPUB file and returns one Chunk per recipe-candidate chapter.
+
+    Each chunk carries:
+    - ``text``: chapter text with [IMAGE: filename] breadcrumb markers
+    - ``input_type``: InputType.EPUB
+    - ``source_url``: the book source string ("Title — Author")
+
+    Images are extracted to a temporary directory managed by this reader.
+    The caller is responsible for uploading qualifying images to storage
+    before the pipeline's ASSEMBLE stage.
+    """
+
+    def read(self, source: str) -> List[Chunk]:
+        """
+        Parse an EPUB file and return recipe-candidate chapters as Chunks.
+
+        Args:
+            source: File-system path to the .epub file.
+
+        Returns:
+            List of Chunk objects, one per recipe-candidate chapter.
+            Chapters that fail the is_recipe_candidate() heuristic are
+            excluded.  If all chapters are filtered out, all chapters are
+            returned (fallback to avoid returning an empty list).
+        """
+        with tempfile.TemporaryDirectory(prefix="cayenne_epub_") as output_dir:
+            return self._read_in_dir(source, output_dir)
+
+    def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
+        """Internal helper — called with a managed temp directory."""
+        book_source, _image_dir, _qualifying, raw_chunks = load_epub(source, output_dir)
+
+        # Filter to recipe-candidate chapters
+        candidate_chunks = [c for c in raw_chunks if is_recipe_candidate(c)]
+        if not candidate_chunks:
+            # Fallback: return all chapters rather than an empty list
+            candidate_chunks = raw_chunks
+
+        chunks: List[Chunk] = []
+        for text in candidate_chunks:
+            # Split oversized chapters at paragraph boundaries
+            for part in split_large_chunk(text):
+                chunks.append(
+                    Chunk(
+                        text=part,
+                        input_type=InputType.EPUB,
+                        source_url=book_source,
+                    )
+                )
+
+        return chunks
+
+
+def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, Set[str], List[str]]:
     """
     Load an EPUB and return the standard book-loader tuple.
 
@@ -30,7 +90,7 @@ def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, set, List[str]
     return book_source, image_dir, qualifying_images, raw_chunks
 
 
-def extract_all_images(book: epub.EpubBook, output_dir: str) -> tuple:
+def extract_all_images(book: epub.EpubBook, output_dir: str) -> Tuple[str, Set[str]]:
     """
     Write qualifying image items from the EPUB to <output_dir>/images/.
     Images smaller than MIN_PHOTO_BYTES are skipped as decorative separators.
@@ -40,7 +100,7 @@ def extract_all_images(book: epub.EpubBook, output_dir: str) -> tuple:
     os.makedirs(image_dir, exist_ok=True)
 
     saved = skipped = 0
-    qualifying: set = set()
+    qualifying: Set[str] = set()
     for item in book.get_items():
         if item.get_type() == ebooklib.ITEM_IMAGE:
             content = item.get_content()
@@ -61,7 +121,7 @@ def extract_all_images(book: epub.EpubBook, output_dir: str) -> tuple:
 
 def extract_chapters_with_image_markers(
     book: epub.EpubBook,
-    qualifying_images: set = None,
+    qualifying_images: Optional[Set[str]] = None,
 ) -> List[str]:
     """
     Return one text string per EPUB document item, with <img> tags replaced

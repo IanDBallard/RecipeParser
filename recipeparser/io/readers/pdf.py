@@ -1,9 +1,12 @@
 """PDF loading, pre-flight assessment, image extraction, and page-based text chunks."""
+from __future__ import annotations
+
 import logging
 import os
-from typing import List, Set, Tuple
+import tempfile
+from typing import Any, List, Set, Tuple
 
-import fitz  # PyMuPDF
+import fitz  # type: ignore[import-untyped]  # PyMuPDF
 
 from recipeparser.config import (
     MIN_PHOTO_BYTES,
@@ -12,9 +15,59 @@ from recipeparser.config import (
     PDF_PREFLIGHT_MIN_PAGES,
     PDF_PREFLIGHT_SAMPLE_PAGES,
 )
+from recipeparser.core.models import Chunk, InputType
 from recipeparser.exceptions import PdfExtractionError
+from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
+
+
+class PdfReader(RecipeReader):
+    """
+    Reads a PDF file and returns one Chunk per page (or page group).
+
+    Each chunk carries:
+    - ``text``: page text with [IMAGE: filename] breadcrumb markers
+    - ``input_type``: InputType.PDF
+    - ``source_url``: the book source string ("Title — Author" or filename)
+
+    Images are extracted to a temporary directory.  The caller is responsible
+    for uploading qualifying images to storage before the ASSEMBLE stage.
+    """
+
+    def read(self, source: str) -> List[Chunk]:
+        """
+        Parse a PDF file and return page chunks.
+
+        Args:
+            source: File-system path to the .pdf file.
+
+        Returns:
+            List of Chunk objects, one per non-empty page.
+
+        Raises:
+            PdfExtractionError: If the PDF fails pre-flight checks (encrypted,
+                                no pages, insufficient text layer, etc.).
+        """
+        with tempfile.TemporaryDirectory(prefix="cayenne_pdf_") as output_dir:
+            return self._read_in_dir(source, output_dir)
+
+    def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
+        """Internal helper — called with a managed temp directory."""
+        book_source, _image_dir, _qualifying, raw_chunks = load_pdf(source, output_dir)
+
+        chunks: List[Chunk] = []
+        for text in raw_chunks:
+            if text.strip():
+                chunks.append(
+                    Chunk(
+                        text=text,
+                        input_type=InputType.PDF,
+                        source_url=book_source,
+                    )
+                )
+
+        return chunks
 
 
 def load_pdf(path: str, output_dir: str) -> Tuple[str, str, Set[str], List[str]]:
@@ -131,7 +184,7 @@ def _extract_page_images(
     return filenames
 
 
-def extract_text_from_pdf(pdf_path: str, client=None) -> str:
+def extract_text_from_pdf(pdf_path: str, client: Any = None) -> str:
     """
     Stateless text extraction from a PDF.
     - Handles pre-flight (password, etc.)

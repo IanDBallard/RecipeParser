@@ -1,64 +1,18 @@
 """
-Abstract base class for category source implementations.
+recipeparser/io/category_sources/base.py — backward-compatibility re-export.
 
-ARCHITECTURAL INVARIANT:
-  CategorySource is a Port (in Ports & Adapters terminology). Concrete
-  implementations are Adapters that load user taxonomy from different backends
-  (YAML file, Paprika SQLite, Supabase REST API).
+The ``CategorySource`` ABC has been moved to ``recipeparser.core.ports`` so
+that ``core/pipeline.py`` can depend on it without violating the hexagonal
+architecture boundary (TID rule: core/ must not import from io/).
 
-  The engine and gemini layers depend ONLY on this ABC — never on concrete
-  implementations. Concrete classes are injected by the adapter layer (CLI,
-  GUI, API) at startup.
+This module re-exports ``CategorySource`` from its new canonical location so
+that existing concrete implementations (yaml_source, paprika_db,
+supabase_source) continue to work without modification.
+
+Concrete implementations in this package should update their imports to:
+    from recipeparser.core.ports import CategorySource
+at their next scheduled edit.  This shim will be removed in Phase 8.
 """
-from abc import ABC, abstractmethod
-from typing import Dict, List
+from recipeparser.core.ports import CategorySource  # noqa: F401 — re-export
 
-
-class CategorySource(ABC):
-    """
-    Port for loading a user's multipolar taxonomy axes.
-
-    Returns a dict mapping axis name → list of valid tag strings.
-    An empty dict means "no categories defined" — the engine will skip
-    categorization entirely (Zero-Tag Mandate: no Uncategorized fallback).
-
-    Example return value:
-        {
-            "Cuisine": ["Italian", "Mexican", "Japanese", "French"],
-            "Protein": ["Chicken", "Beef", "Pork", "Vegetarian", "Seafood"],
-            "Meal Type": ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert"],
-        }
-    """
-
-    @abstractmethod
-    def load_axes(self, user_id: str) -> Dict[str, List[str]]:
-        """
-        Load the user's taxonomy axes.
-
-        Args:
-            user_id: The authenticated user's UUID. Used by Supabase source
-                     to scope the query. May be ignored by file-based sources.
-
-        Returns:
-            Dict mapping axis name → list of valid tag strings.
-            Returns {} if no axes are defined for this user.
-        """
-        ...
-
-    @abstractmethod
-    def load_category_ids(self, user_id: str) -> Dict[str, str]:
-        """
-        Load a mapping of category name → category UUID for junction table writes.
-
-        The Supabase writer needs the UUID of each category row to insert into
-        the recipe_categories junction table. File-based sources return {} since
-        they don't write to Supabase.
-
-        Args:
-            user_id: The authenticated user's UUID.
-
-        Returns:
-            Dict mapping category name (tag) → UUID string.
-            Returns {} for sources that don't support Supabase writes.
-        """
-        ...
+__all__ = ["CategorySource"]

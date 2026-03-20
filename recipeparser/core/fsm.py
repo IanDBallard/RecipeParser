@@ -14,7 +14,7 @@ import threading
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Protocol, Tuple, cast, runtime_checkable
 
 from recipeparser.config import (
     CHECKPOINT_SUBDIR,
@@ -28,6 +28,29 @@ from recipeparser.exceptions import (
 )
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — ProgressCallback Protocol (§11.4)
+# ---------------------------------------------------------------------------
+
+@runtime_checkable
+class ProgressCallback(Protocol):
+    """
+    Typed callback for pipeline progress notifications.
+
+    Implementors receive a call on every meaningful stage transition so that
+    adapters (GUI, API, CLI) can update their progress indicators without
+    coupling to the FSM internals.
+
+    Args:
+        stage:     The current pipeline stage name (e.g. "EXTRACTING").
+        completed: Number of items completed so far in this stage.
+        total:     Total number of items expected in this stage.
+                   May be 0 when the total is not yet known.
+    """
+
+    def __call__(self, stage: str, completed: int, total: int) -> None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +81,10 @@ _TRANSITIONS: Dict[Tuple[PipelineStatus, str], PipelineStatus] = {
     (PipelineStatus.RUNNING,    "error"):   PipelineStatus.IDLE,
     (PipelineStatus.PAUSING,    "error"):   PipelineStatus.IDLE,
     (PipelineStatus.RESUMING,   "error"):   PipelineStatus.IDLE,
+    # After a cancelled run completes its wind-down, return to IDLE so the
+    # controller can be reused for a subsequent run.
+    (PipelineStatus.CANCELLING, "done"):    PipelineStatus.IDLE,
+    (PipelineStatus.CANCELLING, "error"):   PipelineStatus.IDLE,
 }
 
 _CHECKPOINT_VERSION = 1
@@ -91,16 +118,41 @@ class PipelineController:
         }
     """
 
-    def __init__(self, output_dir: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        output_dir: Optional[str] = None,
+        on_progress: Optional[ProgressCallback] = None,
+    ) -> None:
         self._lock = threading.Lock()
         self.status: PipelineStatus = PipelineStatus.IDLE
         self._consecutive_429s: int = 0
         self._output_dir: Optional[Path] = Path(output_dir) if output_dir else None
+        # Typed progress callback — fired by notify_progress()
+        self._on_progress: Optional[ProgressCallback] = on_progress
         # Event used to block the worker thread while paused
         self._resume_event = threading.Event()
         self._resume_event.set()  # not paused initially
         # Timer handle for auto-resume after rate-limit pause
         self._auto_resume_timer: Optional[threading.Timer] = None
+
+    # ── Progress notification ─────────────────────────────────────────────────
+
+    def notify_progress(self, stage: str, completed: int, total: int) -> None:
+        """
+        Fire the registered ``on_progress`` callback (if any).
+
+        Safe to call from any thread. Callback failures **re-raise** after logging
+        (PIPELINE_REFACTOR §11.4 — FAIL LOUDLY): swallowing adapter errors can
+        leave zombie ingestion jobs that never reach ERROR state.
+        """
+        if self._on_progress is not None:
+            try:
+                self._on_progress(stage, completed, total)
+            except Exception:  # noqa: BLE001
+                log.exception(
+                    "PipelineController: on_progress callback failed — re-raising (§11.4).",
+                )
+                raise
 
     # ── FSM ───────────────────────────────────────────────────────────────────
 
@@ -267,7 +319,7 @@ class PipelineController:
         short = book_hash.split(":")[-1][:16]
         cp_dir = self._output_dir / CHECKPOINT_SUBDIR
         cp_dir.mkdir(parents=True, exist_ok=True)
-        return cp_dir / f"{short}.json"
+        return cast(Path, cp_dir / f"{short}.json")
 
     def save_checkpoint(
         self,
@@ -340,7 +392,7 @@ class PipelineController:
             "Checkpoint loaded: stage=%s, %d completed segment(s).",
             data.get("stage"), len(data.get("completed_segments", [])),
         )
-        return data
+        return cast(Dict[str, Any], data)
 
     def delete_checkpoint(self, book_path: str) -> None:
         """Remove the checkpoint file for ``book_path`` (called on successful completion)."""

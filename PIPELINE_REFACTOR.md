@@ -58,10 +58,10 @@ pluggable I/O modules, and an FSM-controlled orchestrator.
 6. **$0 fast-path** — Cayenne-native Paprika imports skip all Gemini stages when `_cayenne_meta` is present.
 
 ### Design Checkpoints — §1
-- [ ] All `core/` modules import only from `core/` or stdlib (no `io/`, no `adapters/`)
-- [ ] All `io/` modules import only from `core/` or stdlib (no `adapters/`)
-- [ ] All `adapters/` modules import from `io/` and `core/` only
-- [ ] No circular imports between layers (verified with `pydeps` or `importlib`)
+- [x] All `core/` modules import only from `core/` or stdlib (no `io/`, no `adapters/`)
+- [x] All `io/` modules import only from `core/` or stdlib (no `adapters/`)
+- [x] All `adapters/` modules import from `io/` and `core/` only
+- [x] No circular imports between layers (verified with `pydeps` or `importlib`)
 
 ## 2. Layer Definitions
 
@@ -145,12 +145,12 @@ class CategorySource(ABC):
 | `SupabaseCategorySource` | Supabase `categories` table | API |
 
 ### Design Checkpoints — §2
-- [ ] `RecipeReader` ABC defined with `read() -> List[Chunk]` signature
-- [ ] `RecipeWriter` ABC defined with `write(recipes, **kwargs)` signature
-- [ ] `Chunk` dataclass has all fields: `text`, `source_url`, `image_url`, `image_bytes`, `pre_parsed`, `pre_parsed_embedding`, `input_type`
-- [ ] `InputType` enum covers: `URL`, `PDF`, `EPUB`, `PAPRIKA_LEGACY`, `PAPRIKA_CAYENNE`
-- [ ] All existing readers refactored to return `List[Chunk]`
-- [ ] All existing writers refactored to implement `RecipeWriter`
+- [x] `RecipeReader` ABC defined with `read() -> List[Chunk]` signature
+- [x] `RecipeWriter` ABC defined with `write(recipes, **kwargs)` signature
+- [x] `Chunk` dataclass has all fields: `text`, `source_url`, `image_url`, `image_bytes`, `pre_parsed`, `pre_parsed_embedding`, `input_type`
+- [x] `InputType` enum covers: `URL`, `PDF`, `EPUB`, `PAPRIKA_LEGACY`, `PAPRIKA_CAYENNE`
+- [ ] All existing readers refactored to return `List[Chunk]` (UrlReader ✓, PaprikaReader ✓; PdfReader and EpubReader pending Phase 3 completion)
+- [x] All existing writers refactored to implement `RecipeWriter` (`SupabaseWriter` ✓, `PaprikaWriter` ✓, `CayenneZipWriter` ✓ — Phase 5 complete)
 
 ## 3. Core Stage Modules
 
@@ -245,13 +245,13 @@ def assemble(
 - Returns `IngestResponse` ready for any writer
 
 ### Design Checkpoints — §3
-- [ ] Each stage module has zero imports from `io/` or `adapters/`
-- [ ] `extract()` returns `[]` (not raises) for non-recipe chunks
-- [ ] `refine()` raises `ValueError` on Fat Token validation failure (triggers error boundary in pipeline)
-- [ ] `categorize()` returns `{}` gracefully when `user_axes` is empty
-- [ ] `embed()` input text format is `"{title}\n{fallback_strings joined by space}"`
-- [ ] `assemble()` is a pure function with no API calls
-- [ ] Unit tests exist for each stage with mock `client` objects
+- [x] Each stage module has zero imports from `io/` or `adapters/`
+- [x] `extract()` returns `[]` (not raises) for non-recipe chunks
+- [x] `refine()` raises `ValueError` on Fat Token validation failure (triggers error boundary in pipeline)
+- [x] `categorize()` returns `{}` gracefully when `user_axes` is empty
+- [x] `embed()` input text format is `"{title}\n{fallback_strings joined by space}"`
+- [x] `assemble()` is a pure function with no API calls
+- [x] Unit tests exist for each stage with mock `client` objects
 
 ## 4. RecipePipeline Orchestrator
 
@@ -354,15 +354,15 @@ self.controller.save_checkpoint(
 On `run()` start, the controller loads any existing checkpoint and skips already-completed chunks.
 
 ### Design Checkpoints — §4
-- [ ] `RecipePipeline.__init__` accepts `controller`, `category_source`, `uom_system`, `measure_preference`, `concurrency`, `rpm`
-- [ ] `run()` returns `List[IngestResponse]` (all successful results, not just first)
-- [ ] `_get_stages()` correctly routes `PAPRIKA_CAYENNE` to `['ASSEMBLE']` or `['EMBED', 'ASSEMBLE']`
-- [ ] Per-chunk try/except never re-raises — failed chunks are logged and skipped
-- [ ] `on_progress` callback is called after every chunk (success or failure)
-- [ ] Checkpoint is saved after every chunk
-- [ ] Checkpoint is loaded on `run()` start; completed chunks are skipped
-- [ ] `ThreadPoolExecutor` is used for parallel chunk processing
-- [ ] `GlobalRateLimiter.wait_then_record_start()` is called before every Gemini API call
+- [x] `RecipePipeline.__init__` accepts `controller`, `category_source`, `uom_system`, `measure_preference`, `concurrency`, `rpm`
+- [x] `run()` returns `List[IngestResponse]` (all successful results, not just first)
+- [x] `_get_stages()` correctly routes `PAPRIKA_CAYENNE` to `['ASSEMBLE']` or `['EMBED', 'ASSEMBLE']`
+- [x] Per-chunk try/except never re-raises — failed chunks are logged and skipped
+- [x] `on_progress` callback is called after every chunk (success or failure)
+- [ ] Checkpoint is saved after every chunk (deferred to Phase 6 — requires adapter wiring)
+- [ ] Checkpoint is loaded on `run()` start; completed chunks are skipped (deferred to Phase 6)
+- [x] `ThreadPoolExecutor` is used for parallel chunk processing
+- [x] `GlobalRateLimiter.wait_then_record_start()` is called before every Gemini API call
 
 ## 5. I/O Writers
 
@@ -417,11 +417,11 @@ class CayenneZipWriter(RecipeWriter):
 ```
 
 ### Design Checkpoints — §5
-- [ ] `SupabaseWriter.write()` inserts all recipes (not just first)
-- [ ] `SupabaseWriter.write()` inserts `recipe_categories` rows for each category match
-- [ ] `PaprikaWriter.write()` produces valid `.paprikarecipes` ZIP (round-trip test passes)
-- [ ] `CayenneZipWriter.write()` embeds `_cayenne_meta` with embedding included
-- [ ] `CayenneZipWriter` output → `PaprikaReader` → `PAPRIKA_CAYENNE` path → $0 restore (round-trip test)
+- [x] `SupabaseWriter.write()` inserts all recipes (not just first) — iterates `for recipe in recipes` (Phase 5 complete)
+- [x] `SupabaseWriter.write()` inserts `recipe_categories` rows for each category match — via `_write_category_junctions()` (Phase 5 complete)
+- [x] `PaprikaWriter.write()` produces valid `.paprikarecipes` ZIP — `test_paprika_writer_produces_valid_zip` passes (Phase 5 complete)
+- [x] `CayenneZipWriter.write()` embeds `_cayenne_meta` with embedding included — `test_cayenne_zip_writer_embeds_cayenne_meta` passes (Phase 5 complete)
+- [x] `CayenneZipWriter` output → `PaprikaReader` → `PAPRIKA_CAYENNE` path → $0 restore — `test_round_trip_cayenne_zip_to_paprika_reader_is_zero_cost` passes (Phase 5 complete)
 
 ## 6. GlobalRateLimiter
 
@@ -444,10 +444,10 @@ class GlobalRateLimiter:
 - `reset()` is provided for test isolation only
 
 ### Design Checkpoints — §6
-- [ ] `GlobalRateLimiter` is a true singleton (same instance across threads)
-- [ ] `wait_then_record_start()` is thread-safe (uses `threading.Lock`)
-- [ ] Multiple concurrent `RecipePipeline` instances share the same limiter
-- [ ] Unit test: 10 threads calling `wait_then_record_start()` with `rpm=5` → takes ≥ 60s for all 10
+- [x] `GlobalRateLimiter` is a true singleton (same instance across threads)
+- [x] `wait_then_record_start()` is thread-safe (uses `threading.Lock`)
+- [x] Multiple concurrent `RecipePipeline` instances share the same limiter
+- [ ] Unit test: 10 threads calling `wait_then_record_start()` with `rpm=5` → takes ≥ 60s for all 10 (not yet written)
 
 ## 7. FSM Stage Routing
 
@@ -494,7 +494,7 @@ The `stage` column in `ingestion_jobs` must match the DB constraint:
 ### Design Checkpoints — §7
 - [ ] `PipelineController` fires `on_stage_change` callback on every stage transition
 - [ ] `on_progress` in `RecipePipeline.run()` maps internal stage to `ingestion_jobs.stage` value
-- [ ] `REFINING` stage added to Supabase `ingestion_jobs.stage` CHECK constraint (migration 007)
+- [x] `REFINING` stage added to Supabase `ingestion_jobs.stage` CHECK constraint (migration 007)
 - [ ] Stage routing table is unit-tested: each `InputType` produces the correct stage list
 
 ## 8. Concurrent Job Handling
@@ -534,9 +534,9 @@ With `GlobalRateLimiter`, concurrent jobs naturally interleave:
 - Job B completes faster because it has fewer chunks, not because it gets priority
 
 ### Design Checkpoints — §8
-- [ ] `_active_jobs` dict is populated on job start and cleaned up on job end
-- [ ] `POST /jobs/{job_id}/pause` returns 404 if job not found, 200 if paused
-- [ ] `POST /jobs/{job_id}/cancel` returns 404 if job not found, 200 if cancelled
+- [x] `_active_jobs` dict is populated on job start and cleaned up on job end
+- [x] `POST /jobs/{job_id}/pause` returns 404 if job not found, 200 if paused
+- [x] `POST /jobs/{job_id}/cancel` returns 404 if job not found, 200 if cancelled
 - [ ] Two concurrent jobs do not exceed `GlobalRateLimiter` RPM (integration test)
 - [ ] Cancelling Job A does not affect Job B
 
@@ -651,22 +651,164 @@ pytest tests/unit/writers/ -v
 ---
 
 ### Phase 6 — Refactor `api.py`
-**Goal:** Replace monolithic `process_epub()` with `RecipePipeline` + `SupabaseWriter`.
+**Goal:** Replace monolithic `process_epub()` with `RecipePipeline` + `SupabaseWriter`. Introduce the canonical `POST /jobs` and `POST /jobs/file` endpoints that the Cayenne app expects. Deprecate legacy endpoints as shims.
 
 **Deliverables:**
-- `recipeparser/adapters/api.py` — refactored
+- `recipeparser/adapters/api.py` — refactored with `RecipePipeline` + `SupabaseWriter`
 - `recipeparser/adapters/api.py` — `_active_jobs` registry + pause/resume/cancel endpoints
+- `recipeparser/adapters/api.py` — `POST /jobs` (text/URL) and `POST /jobs/file` (binary upload) canonical endpoints
+- `recipeparser/adapters/api.py` — legacy endpoints (`/ingest`, `/ingest/pdf`, `/ingest/url`) converted to deprecated shims
+
+#### 6.1 Canonical Endpoints (Cayenne App Contract)
+
+The Cayenne mobile app (`ingestionApi.ts`) calls exactly two endpoints:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `POST /jobs` | Text/URL submission | Submit a URL or raw text for ingestion |
+| `POST /jobs/file` | Binary file upload | Submit a PDF, EPUB, or `.paprikarecipes` file |
+| `GET /jobs/{job_id}` | Status poll | Check job status (also synced via PowerSync) |
+| `POST /jobs/{job_id}/pause` | Control | Pause a running job |
+| `POST /jobs/{job_id}/resume` | Control | Resume a paused job |
+| `POST /jobs/{job_id}/cancel` | Control | Cancel a running job |
+
+#### 6.2 Endpoint Deprecation Plan
+
+The legacy endpoints (`/ingest`, `/ingest/pdf`, `/ingest/url`) were the original API surface. They are **not removed in Phase 6** — they become deprecated shims that delegate to the new `POST /jobs` / `POST /jobs/file` handlers internally. This preserves backward compatibility for any non-Cayenne callers (CLI scripts, tests, external integrations) during the transition period.
+
+| Legacy Endpoint | Status in Phase 6 | Removed In |
+|---|---|---|
+| `POST /ingest` | Deprecated shim → delegates to `POST /jobs` handler | Phase 8 |
+| `POST /ingest/pdf` | Deprecated shim → delegates to `POST /jobs/file` handler | Phase 8 |
+| `POST /ingest/url` | Deprecated shim → delegates to `POST /jobs` handler | Phase 8 |
+
+Deprecated shims MUST:
+1. Log a `DeprecationWarning` on every call: `log.warning("DEPRECATED: /ingest — use POST /jobs instead")`
+2. Return the same `202 Accepted` + `{ "job_id": "..." }` response shape as the canonical endpoint
+3. Add a `Deprecation: true` response header so callers can detect the deprecation programmatically
+
+#### 6.3 Background Task Concurrency Primitive
+
+`RecipePipeline.run()` is a **synchronous, blocking** function (it uses `ThreadPoolExecutor` internally for chunk parallelism, but the `run()` call itself blocks until all chunks complete). FastAPI is async-native. The adapter MUST offload `run()` to a thread so `POST /jobs` returns `202 Accepted` immediately without blocking the event loop.
+
+**Chosen approach: `asyncio.to_thread()`** (Python 3.9+, FastAPI-native):
+
+```python
+# recipeparser/adapters/api.py
+import asyncio
+
+@app.post("/jobs", response_model=JobResponse, status_code=202)  # type: ignore[untyped-decorator]
+async def submit_job(request: IngestRequest) -> JobResponse:
+    job_id = str(uuid.uuid4())
+    controller = PipelineController()
+    _active_jobs[job_id] = controller
+
+    async def _run_job() -> None:
+        try:
+            chunks = _build_chunks_from_request(request)
+            pipeline = _build_pipeline(controller, request.user_id)
+            results = await asyncio.to_thread(
+                pipeline.run,
+                chunks,
+                _strict_observer(_make_progress_callback(job_id, request.user_id)),
+            )
+            writer = SupabaseWriter(user_id=request.user_id, category_ids=...)
+            await asyncio.to_thread(writer.write, results)
+        except Exception as e:
+            log.error(f"Job {job_id} failed: {e}", exc_info=True)
+            _update_job_status(job_id, "error", error_message=str(e))
+        finally:
+            _active_jobs.pop(job_id, None)
+
+    asyncio.create_task(_run_job())
+    return JobResponse(job_id=job_id)
+```
+
+**Why `asyncio.to_thread()` over `run_in_executor()`:**
+- `asyncio.to_thread()` is the idiomatic Python 3.9+ equivalent of `loop.run_in_executor(None, fn, *args)`
+- Both use the default `ThreadPoolExecutor` under the hood — they are functionally identical
+- `asyncio.to_thread()` is preferred for new code because it is cleaner, does not require a `loop` reference, and is the documented FastAPI recommendation for sync-in-async offloading
+
+#### 6.4 `POST /jobs/file` Content-Type Routing
+
+`POST /jobs/file` accepts a binary file upload and must route to the correct reader based on the file's content type or filename extension. The routing table:
+
+| `file.content_type` | Filename Extension | Reader |
+|---|---|---|
+| `application/pdf` | `.pdf` | `PdfReader` |
+| `application/epub+zip` | `.epub` | `EpubReader` |
+| `application/zip` or `application/octet-stream` | `.paprikarecipes` | `PaprikaReader` |
+
+**Implementation:**
+
+```python
+# recipeparser/adapters/api.py
+from recipeparser.io.readers.pdf import PdfReader
+from recipeparser.io.readers.epub import EpubReader
+from recipeparser.io.readers.paprika import PaprikaReader
+
+def _select_reader(filename: str, content_type: str) -> RecipeReader:
+    """Route to the correct reader based on filename extension (primary) or content-type."""
+    ext = Path(filename).suffix.lower()
+    if ext == ".pdf" or content_type == "application/pdf":
+        return PdfReader()
+    if ext == ".epub" or content_type == "application/epub+zip":
+        return EpubReader()
+    if ext == ".paprikarecipes":
+        return PaprikaReader()
+    raise ValueError(
+        f"Unsupported file type: extension='{ext}', content_type='{content_type}'. "
+        "Supported: .pdf, .epub, .paprikarecipes"
+    )
+```
+
+**Routing priority:** Filename extension takes precedence over `content_type` because browsers and HTTP clients frequently misreport MIME types for `.paprikarecipes` files (often sent as `application/octet-stream` or `application/zip`).
+
+**Error response:** Unsupported file types return `422 Unprocessable Entity` with a clear error message — not a 500.
+
+#### 6.5 `_strict_observer` Specificity
+
+The `_strict_observer` wrapper (§11.4) wraps **specifically the `update_ingestion_job()` callback** — the function that writes progress updates to the Supabase `ingestion_jobs` table. This is the only observer that can produce zombie jobs if it fails silently.
+
+```python
+# recipeparser/adapters/api.py
+
+def _make_progress_callback(job_id: str, user_id: str) -> Callable[[str, int, int], None]:
+    """
+    Returns the callback that updates the ingestion_jobs row in Supabase.
+    This is the ONLY callback wrapped with _strict_observer — a failure here
+    means the job's progress is invisible to the Cayenne app, which is a zombie.
+    """
+    def update_ingestion_job(stage: str, completed: int, total: int) -> None:
+        pct = int((completed / total) * 100) if total > 0 else 0
+        _supabase_update_job(job_id=job_id, stage=stage, progress_pct=pct)
+
+    return update_ingestion_job
+
+# In the job handler:
+pipeline.run(
+    chunks,
+    on_progress=_strict_observer(_make_progress_callback(job_id, user_id)),
+)
+```
+
+**What `_strict_observer` does NOT wrap:** Internal stage callbacks, logging callbacks, or GUI progress callbacks. Only the Supabase `ingestion_jobs` writer is wrapped, because only that callback's failure produces an invisible zombie job.
 
 **Gate Test — Phase 6:**
 ```bash
 pytest tests/test_api.py -v
 ```
-- All existing API tests pass
+- All existing API tests pass (40/40 ✅ — verified)
 - `test_post_jobs_file_returns_202_with_job_id`
 - `test_get_jobs_job_id_returns_status`
 - `test_post_jobs_pause_returns_200`
 - `test_post_jobs_cancel_returns_200`
 - `test_post_jobs_cancel_unknown_job_returns_404`
+- `test_post_jobs_file_pdf_routes_to_pdf_reader`
+- `test_post_jobs_file_epub_routes_to_epub_reader`
+- `test_post_jobs_file_paprikarecipes_routes_to_paprika_reader`
+- `test_post_jobs_file_unsupported_type_returns_422`
+- `test_legacy_ingest_endpoint_returns_deprecation_header`
 
 ---
 
@@ -688,18 +830,36 @@ psql -c "INSERT INTO ingestion_jobs (user_id, status, stage) VALUES ('...', 'run
 ---
 
 ### Phase 8 — Delete Dead Code
-**Goal:** Remove all legacy monolithic functions.
+**Goal:** Remove all legacy monolithic functions and deprecated endpoint shims. The codebase must contain only the canonical hexagonal architecture — no legacy bridges, no deprecated routes.
 
 **Targets:**
 - `run_cayenne_pipeline()` in `engine.py`
 - Old `process_epub()` in `adapters/`
 - Duplicate `_RPMRateLimiter` (replaced by `GlobalRateLimiter`)
 - Any `process_*` worker functions now handled by stage modules
+- **Deprecated endpoint shims:** `POST /ingest`, `POST /ingest/pdf`, `POST /ingest/url` — removed from `adapters/api.py`
+- `tests/transient/` directory and `test_shadow_execution.py` (shadow tests no longer needed once legacy code is gone)
+
+**Prerequisite:** `pytest tests/transient/ -v` must pass before this phase begins (§11.2). The shadow execution test proves the new pipeline is output-identical to the legacy path before the legacy path is deleted.
 
 **Gate Test — Phase 8:**
 ```bash
-pytest tests/ -v  # Full suite — all tests still pass
-grep -r "run_cayenne_pipeline\|process_epub" recipeparser/ # Must return empty
+# Full test suite must still pass after all deletions
+pytest tests/ -v
+
+# Legacy function names must be gone
+grep -r "run_cayenne_pipeline\|process_epub" recipeparser/
+# Must return empty
+
+# Deprecated endpoint routes must be gone
+grep -r "app\.post.*\"/ingest\"" recipeparser/adapters/api.py
+grep -r "app\.post.*\"/ingest/pdf\"" recipeparser/adapters/api.py
+grep -r "app\.post.*\"/ingest/url\"" recipeparser/adapters/api.py
+# All three must return empty
+
+# Transient test directory must be deleted
+ls tests/transient/ 2>&1 | grep "No such file"
+# Must succeed
 ```
 
 ---
@@ -836,6 +996,8 @@ The existing `write_recipe_to_supabase()` function contains all the correct Supa
 
 The existing `create_paprika_export()` function contains the correct ZIP/gzip format. Wrap it in `PaprikaWriter` class — do not rewrite the ZIP logic.
 
+> **Phase 5 Implementation Note — Justified Deviation:** The spec mandated wrapping `create_paprika_export()` directly. This was not possible because `create_paprika_export()` takes `List[RecipeExtraction]` (the legacy model with `photo_filename`, `directions: List[str]`, `name`, etc.) while `PaprikaWriter.write()` takes `List[IngestResponse]` (the new model with `structured_ingredients`, `tokenized_directions`, `title`, etc.). The types are structurally incompatible — a direct call would require converting `IngestResponse` back to `RecipeExtraction`, which would be a lossy round-trip. Instead, `PaprikaWriter` uses a new helper `_ingest_to_paprika_dict()` that produces the identical Paprika 3 JSON dict format using the new model's fields. The ZIP/gzip format, field names, and output structure are identical to `create_paprika_export()` — only the input model changed. `create_paprika_export()` is preserved verbatim for legacy `RecipeExtraction` callers (CLI/GUI adapters not yet migrated to Phase 6).
+
 ---
 
 ### 10.10 What Is Actually New (Not Reused)
@@ -855,10 +1017,257 @@ The existing `create_paprika_export()` function contains the correct ZIP/gzip fo
 
 ---
 
+## 11. Refactor Safety Controls
+
+These controls are mandatory additions to the refactor. They are not optional enhancements — they are the mechanical enforcement layer that makes the architectural guarantees in Sections 1–10 verifiable and regression-proof.
+
+---
+
+### 11.1 Automated Boundary Enforcement (Import Linting)
+
+**Purpose:** Mechanically enforce Design Checkpoint §1. Prevents developers from accidentally pulling I/O logic back into the pure core during complex refactoring phases. A CI failure is cheaper than a code review miss.
+
+**Implementation:** Configure `ruff` with `flake8-tidy-imports` (TID rule set) in `pyproject.toml`:
+
+```toml
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "TID"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"recipeparser.io".msg = "core/ modules cannot import from io/ — violates hexagonal architecture"
+"recipeparser.adapters".msg = "core/ modules cannot import from adapters/ — violates hexagonal architecture"
+
+[tool.ruff.lint.per-file-ignores]
+"recipeparser/io/**" = ["TID"]
+"recipeparser/adapters/**" = ["TID"]
+```
+
+**Gate Test:**
+```bash
+ruff check recipeparser/core/ --select TID
+# Must return zero violations — CI fails on any boundary breach
+```
+
+**Phase:** Configured in **Phase 0** before any file moves. The gate test is added to CI as a required check.
+
+### Design Checkpoints — §11.1
+- [x] `[tool.ruff]` and `[tool.ruff.lint.flake8-tidy-imports.banned-api]` configured in `pyproject.toml`
+- [x] `ruff check recipeparser/core/ --select TID` returns zero violations after Phase 1
+
+---
+
+### 11.2 Shadow Execution (Dual-Run Tests)
+
+**Purpose:** Guarantee the structural refactor didn't accidentally drop fields, alter unit conversions, or skip Fat Token generation. The LLM logic in `gemini.py` is being moved without modification — this test proves it.
+
+**Implementation:** Create `tests/transient/test_shadow_execution.py`. Feed identical complex recipe text to both the legacy path and the new `RecipePipeline` using `MockProvider`. Assert that the resulting `CayenneRecipe` Pydantic models dump to identical dictionaries.
+
+```python
+# tests/transient/test_shadow_execution.py
+# TRANSIENT: Delete this file in Phase 8 when legacy code is removed.
+import pytest
+from recipeparser.pipeline import process_epub  # Legacy
+from recipeparser.core.pipeline import RecipePipeline  # New
+from recipeparser.core.models import Chunk, InputType
+
+COMPLEX_RECIPE_TEXT = "..."  # Multi-ingredient recipe with Baker's %, UOM conversions
+
+@pytest.mark.transient
+def test_shadow_execution_produces_identical_output():
+    """Structural refactor must not alter any field in the output model."""
+    legacy_result = process_epub(COMPLEX_RECIPE_TEXT, mock=True)
+    new_result = RecipePipeline(mock=True).run(
+        [Chunk(text=COMPLEX_RECIPE_TEXT, input_type=InputType.EPUB)]
+    )
+    assert legacy_result[0].model_dump() == new_result[0].model_dump(), \
+        "Refactor introduced data shape divergence — FAIL LOUDLY"
+```
+
+**Gate Test:** Must pass before Phase 8 (Delete Dead Code) begins. The `tests/transient/` directory and this file are deleted as part of the Phase 8 deliverables.
+
+**Phase:** Written in **Phase 6** (alongside refactored `api.py`); deleted in **Phase 8**.
+
+### Design Checkpoints — §11.2
+- [x] `tests/transient/test_shadow_execution.py` created in Phase 6
+- [ ] `pytest tests/transient/ -v` passes before Phase 8 gate
+- [ ] `tests/transient/` directory deleted in Phase 8 deliverables
+- [ ] Phase 8 gate test includes `ls tests/transient/ 2>&1 | grep "No such file"` to confirm deletion
+
+---
+
+### 11.3 Snapshot Testing for Extracted Formats
+
+**Purpose:** The hard-won LLM extraction logic (`_UNITS_RULES`, table normalisation, Fat Token generation) is the most valuable asset in the repository. Snapshot tests instantly flag if the shape of data returned by the LLM changes due to how input text chunks are formatted or passed in — catching regressions introduced during the stage-wrapping refactor.
+
+**Implementation:** Add `pytest-syrupy` to dev dependencies. Create snapshot tests for each stage's output shape.
+
+```toml
+# pyproject.toml
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "syrupy>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+```
+
+```python
+# tests/snapshots/test_stage_snapshots.py
+from syrupy.assertion import SnapshotAssertion
+from recipeparser.core.stages.extract import extract
+from recipeparser.core.stages.refine import refine
+
+def test_extract_stage_output_shape(snapshot: SnapshotAssertion, mock_client):
+    """Snapshot the full model_dump() of extract() output."""
+    result = extract(FIXTURE_CHUNK_TEXT, mock_client)
+    assert result[0].model_dump() == snapshot
+
+def test_refine_stage_output_shape(snapshot: SnapshotAssertion, mock_client):
+    """Snapshot the full model_dump() of refine() output including Fat Tokens."""
+    result = refine(FIXTURE_EXTRACTION, mock_client)
+    assert result.model_dump() == snapshot
+```
+
+**Gate Test:** Snapshot tests run in CI. Any shape change requires explicit `--snapshot-update` with a mandatory code review comment explaining the intentional change.
+
+**Phase:** Created in **Phase 1** alongside the stage modules. Snapshots are committed to the repository.
+
+### Design Checkpoints — §11.3
+- [x] `pytest-syrupy>=4.0` added to `[project.optional-dependencies.dev]` in `pyproject.toml`
+- [x] `tests/snapshots/test_stage_snapshots.py` created in Phase 1
+- [x] Snapshot files committed to repository (not gitignored)
+- [x] `pytest tests/snapshots/ -v` passes in CI without `--snapshot-update`
+
+---
+
+### 11.4 Strict Type-Checking on FSM Observers (Fail Early, Fail Loudly)
+
+**Purpose:** A silently failing observer in `api.py` could result in "zombie" ingestion jobs in the Cayenne app that never transition from `RUNNING` to `DONE`. The fix is not to swallow errors — it is to **crash the job loudly** so the failure is immediately visible in logs and the job transitions to `ERROR` state.
+
+**Implementation:**
+
+**Step 1 — Explicit `Protocol` typing in `core/fsm.py`:**
+
+```python
+# recipeparser/core/fsm.py
+from typing import Callable, Optional, Protocol
+
+class ProgressCallback(Protocol):
+    """Strict type contract for pipeline progress observers."""
+    def __call__(self, stage: str, completed: int, total: int) -> None: ...
+
+class PipelineController:
+    def __init__(
+        self,
+        on_progress: Optional[ProgressCallback] = None,
+        on_stage_change: Optional[Callable[[str], None]] = None,
+    ) -> None: ...
+```
+
+**Step 2 — Fail-loudly wrapper in `adapters/api.py` (log + re-raise):**
+
+```python
+# recipeparser/adapters/api.py
+import logging
+from typing import Callable
+
+log = logging.getLogger(__name__)
+
+def _strict_observer(callback: Callable[[str, int, int], None]) -> Callable[[str, int, int], None]:
+    """
+    Wrap observer callbacks with strict error handling.
+    Logs the error and RE-RAISES — crashing the job so it transitions to ERROR,
+    not silently continuing as a zombie.
+    """
+    def wrapper(stage: str, completed: int, total: int) -> None:
+        try:
+            callback(stage, completed, total)
+        except Exception as e:
+            log.error(f"Observer callback FAILED (job will be marked ERROR): {e}", exc_info=True)
+            raise  # FAIL LOUDLY — no zombies
+    return wrapper
+
+# Usage in job handler:
+pipeline.run(chunks, on_progress=_strict_observer(update_job_progress))
+```
+
+**Step 3 — mypy strict mode:**
+
+```toml
+# pyproject.toml
+[tool.mypy]
+python_version = "3.9"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "recipeparser.core.fsm"
+disallow_untyped_defs = true
+disallow_any_generics = true
+```
+
+**Gate Test:**
+```bash
+mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict
+# Must return zero errors
+```
+
+**Phase:** `ProgressCallback` Protocol and mypy config added in **Phase 1**. `_strict_observer` wrapper added in **Phase 6** alongside the refactored `api.py`.
+
+### Design Checkpoints — §11.4
+- [x] `ProgressCallback` Protocol defined in `core/fsm.py`
+- [x] `PipelineController.__init__` typed with `Optional[ProgressCallback]`
+- [x] `[tool.mypy]` configured in `pyproject.toml` with `strict = true`
+- [x] `notify_progress()` re-raises observer exceptions after `log.exception()` — no zombie jobs (commit 2a8b58f)
+- [x] Unit test: `test_notify_progress_raises_when_callback_fails` asserts `RuntimeError` propagates — 41/41 pass
+- [x] `_strict_observer` wrapper implemented in `adapters/api.py` — re-raises on failure (Phase 6)
+- [x] `mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict` returns zero errors (Phase 6)
+
+---
+
+## Phase 0 — Tooling Setup
+
+**Insert before Phase 1.**
+
+**Goal:** Configure all static analysis and testing tooling before any code changes. This ensures boundary violations are caught from the first file move, not discovered after the refactor is complete.
+
+**Deliverables:**
+- Updated `pyproject.toml` with `[tool.ruff]`, `[tool.mypy]`, and `[project.optional-dependencies.dev]`
+- `tests/snapshots/` directory (with `.gitkeep`)
+- `tests/transient/` directory (with `.gitkeep`)
+
+**Gate Test — Phase 0:**
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Baseline boundary check (violations expected at this point — document them)
+ruff check recipeparser/core/ --select TID 2>&1 | tee baseline_violations.txt
+
+# Baseline mypy (errors expected — document them)
+mypy recipeparser/ --strict 2>&1 | tee baseline_mypy.txt
+
+# Confirm syrupy is available
+python -c "import syrupy; print('syrupy OK')"
+```
+
+The baseline violation counts are recorded. After Phase 1, `ruff check recipeparser/core/ --select TID` must return zero.
+
+---
+
 ### Definition of Done (All Phases)
 
 - [ ] `pytest tests/ -v` — all tests pass
 - [ ] `mypy recipeparser/` — zero type errors
 - [ ] `ruff check recipeparser/` — zero lint errors
+- [ ] `ruff check recipeparser/core/ --select TID` — zero boundary violations (§11.1)
+- [ ] `pytest tests/snapshots/ -v` — all snapshot tests pass without `--snapshot-update` (§11.3)
+- [ ] `mypy recipeparser/core/fsm.py recipeparser/adapters/api.py --strict` — zero type errors (§11.4)
 - [ ] `grep -r "from recipeparser.io\|from recipeparser.adapters" recipeparser/core/` — returns empty (no layer violations)
 - [ ] `PIPELINE_REFACTOR.md` design checkpoints all ticked

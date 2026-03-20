@@ -29,9 +29,11 @@ Required env vars (read from environment at call time — not at import):
   SUPABASE_URL         — e.g. https://<ref>.supabase.co
   SUPABASE_SERVICE_KEY — service-role key (never the anon key)
 """
+from __future__ import annotations
+
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import httpx
 
@@ -57,14 +59,14 @@ class SupabaseCategorySource(CategorySource):
         supabase_url: Optional[str] = None,
         service_key: Optional[str] = None,
     ) -> None:
-        self._url = (supabase_url or os.getenv("SUPABASE_URL", "")).rstrip("/")
+        self._url = (supabase_url or os.getenv("SUPABASE_URL") or "").rstrip("/")
         self._key = service_key or os.getenv("SUPABASE_SERVICE_KEY", "")
 
     # ------------------------------------------------------------------
     # CategorySource interface
     # ------------------------------------------------------------------
 
-    def load_axes(self, user_id: str) -> Dict[str, List[str]]:
+    def load_axes(self, user_id: str = "") -> Dict[str, List[str]]:
         """
         Fetch the user's category tree from Supabase and return it as a
         multipolar axis dict.
@@ -86,7 +88,7 @@ class SupabaseCategorySource(CategorySource):
         )
         return axes
 
-    def load_category_ids(self, user_id: str) -> Dict[str, str]:
+    def load_category_ids(self, user_id: str = "") -> Dict[str, str]:
         """
         Return a flat mapping of category_name → UUID for all of the user's
         categories.  Used by the Supabase writer to populate the
@@ -117,7 +119,7 @@ class SupabaseCategorySource(CategorySource):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _fetch_categories(self, user_id: str) -> List[dict]:
+    def _fetch_categories(self, user_id: str) -> List[Dict[str, Any]]:
         """
         Query Supabase for all category rows belonging to ``user_id``.
 
@@ -160,7 +162,7 @@ class SupabaseCategorySource(CategorySource):
             )
             return []
 
-        rows = resp.json()
+        rows: List[Dict[str, Any]] = resp.json()
         if not isinstance(rows, list):
             log.warning(
                 "SupabaseCategorySource: unexpected response shape for user %s.",
@@ -175,7 +177,7 @@ class SupabaseCategorySource(CategorySource):
         )
         return rows
 
-    def _build_axes(self, rows: List[dict]) -> Dict[str, List[str]]:
+    def _build_axes(self, rows: List[Dict[str, Any]]) -> Dict[str, List[str]]:
         """
         Convert a flat list of category rows into a multipolar axis dict.
 
@@ -219,7 +221,7 @@ class SupabaseCategorySource(CategorySource):
             # Collect all descendants (BFS), flatten to tag names
             tag_names: List[str] = []
             queue = list(children_by_parent.get(axis_id, []))
-            visited: set = set()
+            visited: Set[str] = set()
             while queue:
                 child_id = queue.pop(0)
                 if child_id in visited:

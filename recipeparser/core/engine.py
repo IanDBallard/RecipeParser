@@ -10,10 +10,12 @@ ARCHITECTURAL INVARIANT:
   Forbidden imports: recipeparser.export, recipeparser.supabase_writer,
                      recipeparser.io.*, recipeparser.adapters.*
 """
-import logging
-from typing import Dict, List, Optional
+from __future__ import annotations
 
-from recipeparser.models import RecipeExtraction
+import logging
+from typing import Any, Dict, List, Optional, Set
+
+from recipeparser.models import IngestResponse, RecipeExtraction
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +25,7 @@ def deduplicate_recipes(recipes: List[RecipeExtraction]) -> List[RecipeExtractio
     Remove duplicate recipes based on a normalised version of the name.
     Keeps the first occurrence (preserves chapter order).
     """
-    seen: set = set()
+    seen: Set[str] = set()
     unique: List[RecipeExtraction] = []
 
     for recipe in recipes:
@@ -39,13 +41,13 @@ def deduplicate_recipes(recipes: List[RecipeExtraction]) -> List[RecipeExtractio
 
 def run_cayenne_pipeline(
     source_text: str,
-    client,
+    client: Any,
     uom_system: str = "US",
     measure_preference: str = "Volume",
     source_url: Optional[str] = None,
     image_url: Optional[str] = None,
     user_axes: Optional[Dict[str, List[str]]] = None,
-) -> "IngestResponse":
+) -> IngestResponse:
     """
     Stateless high-fidelity pipeline for Project Cayenne:
     1. Extract raw recipe(s) from text.
@@ -66,7 +68,7 @@ def run_cayenne_pipeline(
     Returns an IngestResponse (defined in models.py).
     Raises RuntimeError or ValueError on pipeline failure.
     """
-    from recipeparser.models import CayenneRecipe, IngestResponse
+    from recipeparser.models import CayenneRecipe
     from recipeparser.gemini import (
         extract_recipe_from_text,
         refine_recipe_for_cayenne,
