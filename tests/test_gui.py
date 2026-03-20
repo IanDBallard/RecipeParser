@@ -8,7 +8,7 @@ need a headless CTk or display server.
 """
 import pytest
 
-from recipeparser.gui import _parse_run_config
+from recipeparser.adapters.gui import _parse_run_config
 
 
 class TestParseRunConfig:

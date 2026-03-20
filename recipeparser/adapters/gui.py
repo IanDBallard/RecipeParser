@@ -666,7 +666,7 @@ class ParseFrame(ctk.CTkFrame):
     def _toggle_pause(self):
         if not self._controller:
             return
-        from recipeparser.pipeline import PipelineStatus
+        from recipeparser.core.fsm import PipelineStatus
         status = self._controller.status
         if status in (PipelineStatus.RUNNING, PipelineStatus.PAUSING):
             self._controller.request_pause()
@@ -701,8 +701,8 @@ class ParseFrame(ctk.CTkFrame):
 
         Path(output).mkdir(parents=True, exist_ok=True)
 
-        from recipeparser.pipeline import PipelineController
-        self._controller = PipelineController(output_dir=output)
+        from recipeparser.core.fsm import PipelineController
+        self._controller = PipelineController()
 
         self._log_clear()
         self._progress.set(0)
@@ -730,11 +730,14 @@ class ParseFrame(ctk.CTkFrame):
             try:
                 os.environ["GOOGLE_API_KEY"] = api_key
                 from google import genai
-                from recipeparser.pipeline import process_epub as _pipeline
+                from recipeparser.adapters.cli import run_cli_pipeline
+                from recipeparser.__main__ import _units_to_uom
                 client = genai.Client(api_key=api_key)
-                result_path = _pipeline(
+                result_path = run_cli_pipeline(
                     book_path, output, client,
-                    units=units, concurrency=concurrency_val, rpm=rpm_val,
+                    uom_system=_units_to_uom(units),
+                    concurrency=concurrency_val,
+                    rpm=rpm_val,
                     controller=self._controller,
                 )
             except Exception as exc:
@@ -752,7 +755,7 @@ class ParseFrame(ctk.CTkFrame):
         self._cancel_btn.configure(state="disabled")
         self._progress.set(1 if result_path else 0)
         
-        from recipeparser.pipeline import PipelineStatus
+        from recipeparser.core.fsm import PipelineStatus
         if self._controller and self._controller.status == PipelineStatus.CANCELLING:
             self._status_var.set("Cancelled.")
         elif result_path:
@@ -787,7 +790,7 @@ class ParseFrame(ctk.CTkFrame):
             pass
 
         if self._running and self._controller:
-            from recipeparser.pipeline import PipelineStatus
+            from recipeparser.core.fsm import PipelineStatus
             status = self._controller.status
             
             # Sync Pause button text

@@ -31,7 +31,7 @@ dependencies = [
 
 [project.scripts]
 recipeparser = "recipeparser.__main__:main"
-recipeparser-gui = "recipeparser.gui:run_gui"
+recipeparser-gui = "recipeparser.adapters.gui:run_gui"
 
 [project.optional-dependencies]
 dev = [
