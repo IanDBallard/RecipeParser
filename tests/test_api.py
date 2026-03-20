@@ -189,7 +189,7 @@ class TestPostJobsFile:
             resp = self._upload(client, "cookbook.epub", b"PK\x03\x04", "application/epub+zip")
         assert resp.status_code == 202
 
-    def test_paprikarecipes_flow_b_writes_pre_parsed_directly(self, client: TestClient) -> None:
+    def test_paprikarecipes_flow_b_writes_pre_parsed_directly(self) -> None:
         """PAPRIKA_CAYENNE chunks (text="" + pre_parsed_embedding) must be routed
         through RecipePipeline which handles them via the cheap ASSEMBLE-only path
         ($0 — no Gemini calls).  SupabaseWriter.write() must be called with the result.
@@ -197,6 +197,12 @@ class TestPostJobsFile:
         In the Phase 6 architecture, RecipePipeline._get_stages() routes
         PAPRIKA_CAYENNE chunks internally — the pipeline IS instantiated, but
         it skips EXTRACT/REFINE/EMBED and goes straight to ASSEMBLE.
+
+        NOTE: Uses TestClient as a context manager to ensure the ASGI event loop
+        drains all background tasks (asyncio.create_task) before assertions run.
+        Patches must remain active for the full duration including background task
+        execution — exiting the patch context before the task runs causes the real
+        classes to be used, which fail silently.
         """
         # Build a PAPRIKA_CAYENNE chunk: text="" + pre_parsed CayenneRecipe + embedding
         mock_pre_parsed = MagicMock()
@@ -216,17 +222,21 @@ class TestPostJobsFile:
         mock_chunk.pre_parsed_embedding = [0.1] * 1536
 
         stack, _mock_client, mock_pipeline_cls, mock_writer_cls = _patch_pipeline_and_writer()
+        # Use TestClient as a context manager so the ASGI event loop is fully
+        # drained (all asyncio.create_task background tasks complete) before
+        # the with-block exits and we assert on the mocks.
         with stack, \
-             patch("recipeparser.adapters.api._PaprikaReader") as mock_reader_cls:
+             patch("recipeparser.adapters.api._PaprikaReader") as mock_reader_cls, \
+             TestClient(app, raise_server_exceptions=False) as tc:
             mock_reader_cls.return_value.read.return_value = [mock_chunk]
-            resp = self._upload(
-                client,
-                "cayenne_export.paprikarecipes",
-                b"PK\x03\x04",
-                "application/octet-stream",
+            resp = tc.post(
+                "/jobs/file",
+                files={"file": ("cayenne_export.paprikarecipes", io.BytesIO(b"PK\x03\x04"), "application/octet-stream")},
             )
+            assert resp.status_code == 202
 
-        assert resp.status_code == 202
+        # Assertions run after the context manager exits — by then the ASGI
+        # lifespan has shut down and all background tasks have completed.
         # RecipePipeline must be instantiated (it handles Flow B routing internally)
         mock_pipeline_cls.assert_called_once()
         # SupabaseWriter.write() must be called exactly once with the pipeline results
