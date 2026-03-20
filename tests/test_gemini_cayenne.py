@@ -40,27 +40,31 @@ def test_refine_recipe_for_cayenne_success():
                 amount=1.0,
                 unit="cup",
                 name="flour",
-                fallback_string="1 cup flour"
+                fallback_string="1 cup flour",
             )
         ],
         tokenized_directions=[
-            TokenizedDirection(step=1, text="Use {{ing_01|flour}}.")
-        ]
+            TokenizedDirection(step=1, text="Use {{ing_01|flour}}."),
+        ],
     )
-    
+
     mock_response = MagicMock()
-    mock_response.parsed = expected_refined
+    # refine uses response_json_schema; we parse response.text manually
+    mock_response.text = expected_refined.model_dump_json()
     mock_client.models.generate_content.return_value = mock_response
 
     raw_recipe = MagicMock()
     raw_recipe.__str__.return_value = "Raw Recipe Text"
 
     result = refine_recipe_for_cayenne(raw_recipe, mock_client)
-    
-    assert result == expected_refined
+
+    assert result is not None
+    assert result.title == expected_refined.title
+    assert result.base_servings == expected_refined.base_servings
     args, kwargs = mock_client.models.generate_content.call_args
     assert kwargs["model"] == "gemini-2.5-flash"
-    assert kwargs["config"]["response_schema"] == CayenneRefinement
+    assert "response_json_schema" in kwargs["config"]
+    assert "additionalProperties" not in str(kwargs["config"]["response_json_schema"])
     assert "Raw Recipe Text" in kwargs["contents"]
 
 def test_refine_recipe_for_cayenne_failure_returns_none():

@@ -102,7 +102,7 @@ def _verify_supabase_jwt(
 # ---------------------------------------------------------------------------
 
 def _get_client() -> Any:
-    """Create and return a Gemini generative client.
+    """Create and return a Gemini generative client (google.genai.Client).
 
     Raises RuntimeError if GOOGLE_API_KEY is not set.
     This function is a named top-level so tests can patch it via
@@ -111,9 +111,8 @@ def _get_client() -> Any:
     api_key = os.environ.get("GOOGLE_API_KEY", "")
     if not api_key:
         raise RuntimeError("GOOGLE_API_KEY not found in environment")
-    import google.generativeai as genai
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel("gemini-2.5-flash")
+    from google import genai  # noqa: PLC0415
+    return genai.Client(api_key=api_key)
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +257,92 @@ def embed_text(
 # Phase 6 — Canonical fire-and-forget endpoints
 # ===========================================================================
 
+def _get_supabase_service_client() -> Any:
+    """Return a synchronous supabase-py client using the service role key.
+
+    Returns None if credentials are not configured (test/offline mode).
+    """
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not supabase_url or not supabase_key:
+        return None
+    from supabase import create_client  # type: ignore[import-not-found]
+    return create_client(supabase_url, supabase_key)
+
+
+def _create_ingestion_job(
+    job_id: str,
+    user_id: str,
+    source_hint: Optional[str] = None,
+) -> None:
+    """INSERT the initial ingestion_jobs row into Supabase.
+
+    Called synchronously before the background task is fired so the row
+    exists immediately and the Cayenne app can start polling.
+
+    Failures are logged but NOT re-raised — a missing job row is bad UX
+    but must never prevent the job from starting.
+    """
+    import datetime
+    sb = _get_supabase_service_client()
+    if sb is None:
+        logger.warning("Job %s: Supabase credentials not set — skipping ingestion_jobs INSERT.", job_id)
+        return
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    try:
+        sb.table("ingestion_jobs").insert({
+            "id": job_id,
+            "user_id": user_id,
+            "status": "running",
+            "stage": "IDLE",
+            "progress_pct": 0,
+            "recipe_count": 0,
+            "source_hint": source_hint,
+            "error_message": None,
+            "created_at": now,
+            "updated_at": now,
+        }).execute()
+        logger.info("Job %s: ingestion_jobs row created (user=%s).", job_id, user_id)
+    except Exception:
+        logger.exception("Job %s: failed to INSERT ingestion_jobs row — job will still run.", job_id)
+
+
+def _finalize_ingestion_job(
+    job_id: str,
+    success: bool,
+    recipe_count: int = 0,
+    error_message: Optional[str] = None,
+) -> None:
+    """UPDATE ingestion_jobs to terminal state (done or error).
+
+    Called at the end of _run() in both submit_job and submit_file_job.
+    Failures are logged but NOT re-raised.
+    """
+    import datetime
+    sb = _get_supabase_service_client()
+    if sb is None:
+        logger.warning("Job %s: Supabase credentials not set — skipping ingestion_jobs finalize.", job_id)
+        return
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    update_payload: dict[str, Any] = {
+        "status": "done" if success else "error",
+        "stage": "DONE" if success else "ERROR",
+        "progress_pct": 100 if success else 0,
+        "recipe_count": recipe_count,
+        "updated_at": now,
+    }
+    if error_message:
+        update_payload["error_message"] = error_message
+    try:
+        sb.table("ingestion_jobs").update(update_payload).eq("id", job_id).execute()
+        logger.info(
+            "Job %s: finalized — status=%s, recipe_count=%d.",
+            job_id, update_payload["status"], recipe_count,
+        )
+    except Exception:
+        logger.exception("Job %s: failed to finalize ingestion_jobs row.", job_id)
+
+
 def _make_stage_callback(job_id: str) -> Callable[[str], None]:
     """
     Return a synchronous ``StageChangeCallback`` that writes the new stage
@@ -281,9 +366,14 @@ def _make_stage_callback(job_id: str) -> Callable[[str], None]:
             )
             return
         try:
+            import datetime
             from supabase import create_client  # type: ignore[import-not-found]
             sb = create_client(supabase_url, supabase_key)
-            sb.table("ingestion_jobs").update({"stage": stage}).eq("id", job_id).execute()
+            sb.table("ingestion_jobs").update({
+                "stage": stage,
+                "status": "running",
+                "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
+            }).eq("id", job_id).execute()
             logger.debug("Job %s: stage → %s", job_id, stage)
         except Exception:
             logger.exception(
@@ -315,7 +405,12 @@ def _select_reader(filename: str, content_type: str) -> str:
         return "pdf"
     if ext == ".epub" or content_type == "application/epub+zip":
         return "epub"
-    if ext == ".paprikarecipes":
+    # .paprikarecipes files are ZIP archives; browsers/Node may send them as
+    # application/zip or application/octet-stream — match by extension first.
+    if ext == ".paprikarecipes" or (
+        not ext and content_type in ("application/zip", "application/octet-stream")
+        and filename.lower().endswith(".paprikarecipes")
+    ):
         return "paprika"
     raise ValueError(
         f"Unsupported file type: extension='{ext}', content_type='{content_type}'."
@@ -407,12 +502,15 @@ async def submit_job(
             results = await asyncio.to_thread(pipeline.run, [chunk], None, user_id)
             await asyncio.to_thread(writer.write, results)
             logger.info("Job %s completed successfully (%d recipe(s)).", job_id, len(results))
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, True, len(results))
         except Exception as exc:
             logger.error("Job %s failed: %s", job_id, exc, exc_info=True)
             controller.transition("error")
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, False, 0, str(exc))
         finally:
             _active_jobs.pop(job_id, None)
 
+    _create_ingestion_job(job_id, user_id, source_hint=body.url or None)
     asyncio.create_task(_run())
     return AsyncJobResponse(job_id=job_id)
 
@@ -440,7 +538,7 @@ async def submit_file_job(
         reader_tag = _select_reader(filename, content_type)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
 
@@ -501,6 +599,7 @@ async def submit_file_job(
                 "File job %s completed successfully (%d recipe(s)).",
                 job_id, len(results),
             )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, True, len(results))
         except Exception as exc:
             logger.error("File job %s failed: %s", job_id, exc, exc_info=True)
             # Transition to IDLE via "error" event.  The FSM allows this from
@@ -508,9 +607,11 @@ async def submit_file_job(
             # started (e.g. reader raised before pipeline.run()), the controller
             # is still IDLE and the transition is a no-op (logs a warning).
             controller.transition("error")
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, False, 0, str(exc))
         finally:
             _active_jobs.pop(job_id, None)
 
+    _create_ingestion_job(job_id, user_id, source_hint=filename or None)
     asyncio.create_task(_run())
     return AsyncJobResponse(job_id=job_id)
 

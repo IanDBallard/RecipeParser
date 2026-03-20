@@ -838,8 +838,8 @@ class App(ctk.CTk):
         tabs.add("Parse")
         tabs.add("Categories")
 
-        parse_frame = ParseFrame(tabs.tab("Parse"))
-        parse_frame.pack(fill="both", expand=True)
+        self._parse_frame = ParseFrame(tabs.tab("Parse"))
+        self._parse_frame.pack(fill="both", expand=True)
 
         cat_frame = CategoryEditorFrame(tabs.tab("Categories"))
         cat_frame.pack(fill="both", expand=True)
@@ -859,6 +859,14 @@ class App(ctk.CTk):
 # ──────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
+
+def create_app_for_test() -> App:
+    """
+    Create and return an App instance without starting mainloop.
+    For use by live_gui_e2e.py and other test harnesses.
+    """
+    return App()
+
 
 def run_gui():
     app = App()

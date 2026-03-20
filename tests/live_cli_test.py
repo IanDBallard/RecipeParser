@@ -6,7 +6,11 @@ from RecipeParser/RecipeParser after pip install -e .
 Requires GOOGLE_API_KEY in environment or .env file.
 """
 from __future__ import annotations
-import gzip, json, os, shutil, subprocess, sys, tempfile, time, zipfile
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +30,11 @@ except ImportError:
 
 HERE = Path(__file__).parent
 REPO_ROOT = HERE.parent
+# Ensure tests.fixtures is importable when run as python tests/live_cli_test.py
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from tests.fixtures import make_epub, make_pdf, read_paprikarecipes
+
 FIXTURES_DIR = (
     REPO_ROOT.parent.parent
     / "cayenne-app" / "src" / "services" / "__tests__" / "fixtures"
@@ -67,83 +76,6 @@ def _run_cli(*args, **kwargs):
     return subprocess.run(
         cmd, capture_output=True, text=True, cwd=str(REPO_ROOT), **kwargs
     )
-
-
-def _read_paprikarecipes(path: str) -> list:
-    """Open a .paprikarecipes ZIP and return list of parsed recipe dicts."""
-    recipes = []
-    with zipfile.ZipFile(path, "r") as zf:
-        for name in zf.namelist():
-            raw = zf.read(name)
-            data = json.loads(gzip.decompress(raw).decode("utf-8"))
-            recipes.append(data)
-    return recipes
-
-
-def _make_epub(title: str = "Test Pancakes") -> tuple:
-    """Generate a minimal valid EPUB using ebooklib. Returns (bytes, tmp_path)."""
-    from ebooklib import epub as E
-    book = E.EpubBook()
-    book.set_identifier("test-cli-001")
-    book.set_title(title)
-    book.set_language("en")
-    book.add_author("Test Kitchen")
-    html = (
-        f"<html><body><h1>{title}</h1><p>Servings: 4</p>"
-        "<h2>Ingredients</h2><ul>"
-        "<li>2 cups all-purpose flour</li>"
-        "<li>2 tbsp sugar</li><li>1 tsp baking powder</li>"
-        "<li>1 cup milk</li><li>2 eggs</li>"
-        "<li>2 tbsp butter, melted</li>"
-        "</ul><h2>Directions</h2><ol>"
-        "<li>Mix dry ingredients in a bowl.</li>"
-        "<li>Whisk wet ingredients separately.</li>"
-        "<li>Combine wet and dry; stir until just mixed.</li>"
-        "<li>Cook on a greased griddle over medium heat, 2 min per side.</li>"
-        "</ol></body></html>"
-    )
-    ch = E.EpubHtml(title=title, file_name="chapter1.xhtml", lang="en")
-    ch.set_content(html)
-    book.add_item(ch)
-    book.add_item(E.EpubNcx())
-    book.add_item(E.EpubNav())
-    book.spine = ["nav", ch]
-    import tempfile as _tmp
-    with _tmp.NamedTemporaryFile(suffix=".epub", delete=False) as tmp:
-        tmp_path = tmp.name
-    E.write_epub(tmp_path, book)
-    return Path(tmp_path).read_bytes(), tmp_path
-
-
-def _make_pdf(title: str = "Test Beef Stew") -> tuple:
-    """Generate a minimal PDF using PyMuPDF. Returns (bytes, tmp_path)."""
-    import fitz
-    import tempfile as _tmp
-    doc = fitz.open()
-    page = doc.new_page()
-    text = "\n".join([
-        title,
-        "Servings: 6",
-        "",
-        "Ingredients:",
-        "2 lbs beef chuck",
-        "3 carrots, sliced",
-        "3 potatoes, cubed",
-        "1 onion, diced",
-        "2 cups beef broth",
-        "1 tbsp tomato paste",
-        "",
-        "Directions:",
-        "1. Brown beef in batches.",
-        "2. Add vegetables and broth.",
-        "3. Simmer 90 minutes until tender.",
-    ])
-    page.insert_text((72, 72), text, fontsize=12)
-    with _tmp.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp_path = tmp.name
-    doc.save(tmp_path)
-    doc.close()
-    return Path(tmp_path).read_bytes(), tmp_path
 
 
 # ── Test stubs ───────────────────────────────────────────────────────────────
@@ -198,7 +130,7 @@ def test_error_nonexistent_file(r: TestResult) -> None:
 
 def test_epub_ingest(r: TestResult) -> None:
     """EPUB ingest → exit 0, .paprikarecipes created, ≥1 recipe with valid fields."""
-    _, epub_path = _make_epub("Test Pancakes")
+    _, epub_path = make_epub("Test Pancakes")
     try:
         with tempfile.TemporaryDirectory() as out_dir:
             proc = _run_cli(epub_path, "--output", out_dir)
@@ -209,7 +141,7 @@ def test_epub_ingest(r: TestResult) -> None:
             if not archives:
                 r.fail(f"no .paprikarecipes file in output dir; stdout={proc.stdout[:120]}")
                 return
-            recipes = _read_paprikarecipes(str(archives[0]))
+            recipes = read_paprikarecipes(str(archives[0]))
             if not recipes:
                 r.fail("archive is empty (0 recipes)")
                 return
@@ -225,7 +157,7 @@ def test_epub_ingest(r: TestResult) -> None:
 
 def test_pdf_ingest(r: TestResult) -> None:
     """PDF ingest → exit 0, .paprikarecipes created, ≥1 recipe with valid fields."""
-    _, pdf_path = _make_pdf("Test Beef Stew")
+    _, pdf_path = make_pdf("Test Beef Stew")
     try:
         with tempfile.TemporaryDirectory() as out_dir:
             proc = _run_cli(pdf_path, "--output", out_dir)
@@ -236,7 +168,7 @@ def test_pdf_ingest(r: TestResult) -> None:
             if not archives:
                 r.fail(f"no .paprikarecipes file in output dir; stdout={proc.stdout[:120]}")
                 return
-            recipes = _read_paprikarecipes(str(archives[0]))
+            recipes = read_paprikarecipes(str(archives[0]))
             if not recipes:
                 r.fail("archive is empty (0 recipes)")
                 return
@@ -252,7 +184,7 @@ def test_pdf_ingest(r: TestResult) -> None:
 
 def test_epub_metric(r: TestResult) -> None:
     """EPUB ingest with --units metric → exit 0, archive created."""
-    _, epub_path = _make_epub("Test Metric Pancakes")
+    _, epub_path = make_epub("Test Metric Pancakes")
     try:
         with tempfile.TemporaryDirectory() as out_dir:
             proc = _run_cli(epub_path, "--output", out_dir, "--units", "metric")
@@ -263,7 +195,7 @@ def test_epub_metric(r: TestResult) -> None:
             if not archives:
                 r.fail("no .paprikarecipes file produced with --units metric")
                 return
-            recipes = _read_paprikarecipes(str(archives[0]))
+            recipes = read_paprikarecipes(str(archives[0]))
             if not recipes:
                 r.fail("archive is empty (0 recipes)")
                 return
@@ -274,8 +206,8 @@ def test_epub_metric(r: TestResult) -> None:
 
 def test_merge(r: TestResult) -> None:
     """--merge of two archives → single merged archive containing recipes from both."""
-    _, epub_path1 = _make_epub("Merge Pancakes")
-    _, epub_path2 = _make_epub("Merge Waffles")
+    _, epub_path1 = make_epub("Merge Pancakes")
+    _, epub_path2 = make_epub("Merge Waffles")
     try:
         with tempfile.TemporaryDirectory() as out_dir1, \
              tempfile.TemporaryDirectory() as out_dir2, \
@@ -294,8 +226,8 @@ def test_merge(r: TestResult) -> None:
             if not archives1 or not archives2:
                 r.fail("one or both source archives missing")
                 return
-            count1 = len(_read_paprikarecipes(str(archives1[0])))
-            count2 = len(_read_paprikarecipes(str(archives2[0])))
+            count1 = len(read_paprikarecipes(str(archives1[0])))
+            count2 = len(read_paprikarecipes(str(archives2[0])))
             # Merge
             proc_merge = _run_cli(
                 "--merge", str(archives1[0]), str(archives2[0]),
@@ -308,7 +240,7 @@ def test_merge(r: TestResult) -> None:
             if not merged:
                 r.fail("no merged archive produced")
                 return
-            merged_recipes = _read_paprikarecipes(str(merged[0]))
+            merged_recipes = read_paprikarecipes(str(merged[0]))
             expected = count1 + count2
             if len(merged_recipes) < expected:
                 r.fail(f"merged has {len(merged_recipes)} recipes, expected ≥{expected}")

@@ -1,15 +1,41 @@
 """All Gemini API calls with retry, timeout, and rate-limit back-off."""
+import json
 import logging
 import re
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
-from pydantic import create_model, Field
+from pydantic import BaseModel, create_model, Field
 
 from recipeparser.config import BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, MAX_RETRIES
 from recipeparser.models import RecipeList, CayenneRefinement
 
 log = logging.getLogger(__name__)
+
+
+def _strip_additional_properties(obj: Any) -> Any:
+    """
+    Recursively remove all 'additionalProperties' keys from a JSON schema dict.
+    Gemini API rejects schemas containing additionalProperties (see googleapis/python-genai#70).
+    """
+    if isinstance(obj, dict):
+        return {
+            k: _strip_additional_properties(v)
+            for k, v in obj.items()
+            if k != "additionalProperties"
+        }
+    if isinstance(obj, list):
+        return [_strip_additional_properties(item) for item in obj]
+    return obj
+
+
+def _schema_for_gemini(schema_class: Type[BaseModel]) -> dict:
+    """
+    Return a JSON schema suitable for Gemini by stripping additionalProperties.
+    Use with response_json_schema; the API will constrain output but we parse manually.
+    """
+    raw = schema_class.model_json_schema()
+    return _strip_additional_properties(raw)
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
@@ -465,17 +491,25 @@ RAW RECIPE:
 {raw_recipe}
 """
     try:
+        # Use response_json_schema with additionalProperties stripped — Gemini API
+        # rejects response_schema when Pydantic emits additionalProperties (Dict types).
+        json_schema = _schema_for_gemini(schema)
         response = _call_with_retry(
             client,
             model="gemini-2.5-flash",
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_schema": schema,
+                "response_json_schema": json_schema,
                 "temperature": 0.1,
             },
         )
-        result = response.parsed
+        # response_json_schema does not auto-parse; we get raw JSON text.
+        if not response.text or not response.text.strip():
+            log.error("Cayenne refinement failed: Gemini returned empty response")
+            return None
+        raw_data = json.loads(response.text)
+        result = schema.model_validate(raw_data)
 
         # When a dynamic schema was used, grid_categories is a nested sub-model.
         # Normalize it back to a plain Dict[str, List[str]] on the CayenneRefinement.

@@ -42,6 +42,7 @@ def run_cli_pipeline(
     concurrency: Optional[int] = None,
     rpm: Optional[int] = None,
     verbose: bool = True,
+    controller: Optional[PipelineController] = None,
 ) -> str:
     """
     Process a single EPUB or PDF cookbook and write a .paprikarecipes archive.
@@ -60,6 +61,7 @@ def run_cli_pipeline(
         concurrency:        Max parallel Gemini API calls (default: pipeline default).
         rpm:                Optional RPM cap for the GlobalRateLimiter.
         verbose:            If True, print per-chunk progress to stdout.
+        controller:         Optional PipelineController for Pause/Cancel (GUI use).
 
     Returns:
         The absolute path to the written .paprikarecipes archive.
@@ -107,7 +109,8 @@ def run_cli_pipeline(
     category_source = YamlCategorySource(yaml_path=yaml_path if yaml_path.exists() else None)
 
     # ── 3. Build pipeline ─────────────────────────────────────────────────────
-    controller = PipelineController()
+    if controller is None:
+        controller = PipelineController()
 
     pipeline_kwargs: dict = dict(
         client=client,
