@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import os
+import time
 import uuid
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -234,9 +235,17 @@ class TestPostJobsFile:
                 files={"file": ("cayenne_export.paprikarecipes", io.BytesIO(b"PK\x03\x04"), "application/octet-stream")},
             )
             assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
 
-        # Assertions run after the context manager exits — by then the ASGI
-        # lifespan has shut down and all background tasks have completed.
+            # Poll until the background task completes: the task's finally-block
+            # calls _active_jobs.pop(job_id), so absence means write() has run.
+            # Timeout after 5 s to avoid hanging CI on unexpected failures.
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+        # Assertions run after the context manager exits — patches are still
+        # active above, so the mocks were used by the background task.
         # RecipePipeline must be instantiated (it handles Flow B routing internally)
         mock_pipeline_cls.assert_called_once()
         # SupabaseWriter.write() must be called exactly once with the pipeline results
