@@ -165,6 +165,10 @@ class JobResponse(BaseModel):
       The API writes the recipe directly to Supabase and returns only this
       lightweight acknowledgment. The client app NEVER receives recipe JSON
       in an HTTP response. Recipes reach the client via PowerSync sync.
+
+    recipe_id is present only for single-recipe endpoints (/ingest, /ingest/url).
+    Multi-recipe endpoints (/ingest/pdf, /jobs/file) omit it because N recipes
+    are written asynchronously — each gets its own UUID internally.
     """
-    job_id: str   # UUID — correlates with the ingestion_jobs row
-    recipe_id: str  # UUID — the row written to the Supabase `recipes` table
+    job_id: str                  # UUID — correlates with the ingestion_jobs row
+    recipe_id: Optional[str] = None  # UUID — only set for single-recipe endpoints
