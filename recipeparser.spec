@@ -63,6 +63,7 @@ hiddenimports = [
     # Standard library / lightweight deps occasionally missed by the analyser
     "sqlite3",
     "recipeparser",
+    "recipeparser.paprika_db",              # Sync from Paprika (gui, __main__) — lazy import
     "recipeparser.io.category_sources.paprika_db",
     "yaml",
     "dotenv",
