@@ -63,7 +63,7 @@ hiddenimports = [
     # Standard library / lightweight deps occasionally missed by the analyser
     "sqlite3",
     "recipeparser",
-    "recipeparser.paprika_db",
+    "recipeparser.io.category_sources.paprika_db",
     "yaml",
     "dotenv",
     "pydantic",
@@ -108,7 +108,7 @@ hiddenimports += _h
 
 # ── Analysis ─────────────────────────────────────────────────────────────────
 a = Analysis(
-    ["recipeparser/gui.py"],
+    ["recipeparser/adapters/gui.py"],
     pathex=["."],
     binaries=binaries,
     datas=datas,
