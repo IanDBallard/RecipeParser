@@ -1,15 +1,31 @@
 """Tests for recipeparser.gemini — API calls, retries, normalisation."""
+import json
 import pytest
 from unittest.mock import MagicMock
 
 from tests.conftest import make_recipe, make_mock_client
 from recipeparser.models import RecipeExtraction, RecipeList
 from recipeparser.gemini import (
+    extract_recipe_from_text,
     extract_recipes,
     needs_table_normalisation,
     normalise_baker_table,
     _UNITS_RULES,
 )
+
+
+def _make_text_response(recipe_list: RecipeList) -> MagicMock:
+    """
+    Build a mock Gemini response whose .text attribute contains the JSON
+    serialisation of a RecipeList.  This matches the new response_json_schema
+    pattern (Bug 2 fix) where we call json.loads(response.text) instead of
+    response.parsed.
+    """
+    mock_response = MagicMock()
+    mock_response.text = recipe_list.model_dump_json()
+    # Explicitly remove .parsed so tests that accidentally use it fail loudly
+    del mock_response.parsed
+    return mock_response
 
 
 # ---------------------------------------------------------------------------
@@ -184,8 +200,7 @@ class TestNormaliseBakerTable:
         norm_response.text = NORMALISED_CHUNK
 
         recipe = make_recipe("Saturday Pizza Dough")
-        extract_response = MagicMock()
-        extract_response.parsed = RecipeList(recipes=[recipe])
+        extract_response = _make_text_response(RecipeList(recipes=[recipe]))
 
         client = MagicMock()
         client.models.generate_content.side_effect = [norm_response, extract_response]
@@ -209,9 +224,7 @@ class TestExtractRecipes:
 
     def test_valid_response_returned_as_recipe_list(self):
         expected = self._make_recipe_list(make_recipe("Chocolate Cake", photo="cake.jpg"))
-        mock_response = MagicMock()
-        mock_response.parsed = expected
-        client = make_mock_client(return_value=mock_response)
+        client = make_mock_client(return_value=_make_text_response(expected))
 
         result = extract_recipes("some chunk of text", client)
 
@@ -226,9 +239,7 @@ class TestExtractRecipes:
         assert result is None
 
     def test_empty_recipe_list_returned_cleanly(self):
-        mock_response = MagicMock()
-        mock_response.parsed = RecipeList(recipes=[])
-        client = make_mock_client(return_value=mock_response)
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
 
         result = extract_recipes("Introduction to the author.", client)
 
@@ -241,9 +252,7 @@ class TestExtractRecipes:
             make_recipe("Caesar Salad"),
             make_recipe("Tiramisu"),
         )
-        mock_response = MagicMock()
-        mock_response.parsed = expected
-        client = make_mock_client(return_value=mock_response)
+        client = make_mock_client(return_value=_make_text_response(expected))
 
         result = extract_recipes("chunk with three recipes", client)
 
@@ -252,9 +261,7 @@ class TestExtractRecipes:
         assert result.recipes[1].name == "Caesar Salad"
 
     def test_correct_model_and_config_passed_to_api(self):
-        mock_response = MagicMock()
-        mock_response.parsed = RecipeList(recipes=[])
-        client = make_mock_client(return_value=mock_response)
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
 
         extract_recipes("any text", client)
 
@@ -264,11 +271,23 @@ class TestExtractRecipes:
         assert config["response_mime_type"] == "application/json"
         assert config["temperature"] == 0.1
 
+    def test_response_json_schema_used_not_response_schema(self):
+        """Regression test for Bug 2: must use response_json_schema, not response_schema."""
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
+
+        extract_recipes("any text", client)
+
+        config = client.models.generate_content.call_args.kwargs["config"]
+        assert "response_json_schema" in config, (
+            "Bug 2 regression: response_json_schema must be used (not response_schema)"
+        )
+        assert "response_schema" not in config, (
+            "Bug 2 regression: deprecated response_schema must NOT be present"
+        )
+
     def test_text_chunk_included_in_prompt(self):
-        mock_response = MagicMock()
-        mock_response.parsed = RecipeList(recipes=[])
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
         sentinel = "UNIQUE_SENTINEL_STRING_XYZ"
-        client = make_mock_client(return_value=mock_response)
 
         extract_recipes(sentinel, client)
 
@@ -281,18 +300,29 @@ class TestExtractRecipes:
             ingredients=["1/2 cup butter", "3/4 cup milk"],
             directions=["Mix.", "Bake."],
         )
-        mock_response = MagicMock()
-        mock_response.parsed = RecipeList(recipes=[recipe_with_fractions])
-        client = make_mock_client(return_value=mock_response)
+        client = make_mock_client(
+            return_value=_make_text_response(RecipeList(recipes=[recipe_with_fractions]))
+        )
 
         result = extract_recipes("scone text", client)
 
         assert result.recipes[0].ingredients[0] == "1/2 cup butter"
         assert result.recipes[0].ingredients[1] == "3/4 cup milk"
 
-    def test_none_parsed_response_handled(self):
+    def test_empty_response_text_returns_none(self):
+        """Regression test for Bug 2: empty response.text must return None gracefully."""
         mock_response = MagicMock()
-        mock_response.parsed = None
+        mock_response.text = ""
+        client = make_mock_client(return_value=mock_response)
+
+        result = extract_recipes("any text", client)
+
+        assert result is None
+
+    def test_whitespace_only_response_text_returns_none(self):
+        """Regression test for Bug 2: whitespace-only response.text must return None."""
+        mock_response = MagicMock()
+        mock_response.text = "   \n  "
         client = make_mock_client(return_value=mock_response)
 
         result = extract_recipes("any text", client)
@@ -321,9 +351,7 @@ class TestUnitsPreference:
 
     def _run_extract(self, units: str) -> str:
         """Return the prompt string sent to the API for a given units value."""
-        mock_response = MagicMock()
-        mock_response.parsed = RecipeList(recipes=[])
-        client = make_mock_client(return_value=mock_response)
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
         extract_recipes(DUAL_UOM_CHUNK, client, units=units)
         return client.models.generate_content.call_args.kwargs["contents"]
 
@@ -357,9 +385,7 @@ class TestUnitsPreference:
 
     def test_chunk_always_in_prompt(self):
         sentinel = "UNIQUE_CHUNK_SENTINEL_ABC"
-        mock_response = MagicMock()
-        mock_response.parsed = RecipeList(recipes=[])
-        client = make_mock_client(return_value=mock_response)
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
         extract_recipes(sentinel, client, units="metric")
         prompt = client.models.generate_content.call_args.kwargs["contents"]
         assert sentinel in prompt
@@ -369,9 +395,7 @@ class TestPhaseInstructions:
     """Verify that multi-phase recipe handling is explicit in the prompt."""
 
     def _get_prompt(self) -> str:
-        mock_response = MagicMock()
-        mock_response.parsed = RecipeList(recipes=[])
-        client = make_mock_client(return_value=mock_response)
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
         extract_recipes("some text", client)
         return client.models.generate_content.call_args.kwargs["contents"]
 
@@ -595,3 +619,108 @@ class TestExtractTextViaVision:
 
         with pytest.raises(RuntimeError, match="no text for any page"):
             extract_text_via_vision(doc, client)
+
+
+# ---------------------------------------------------------------------------
+# extract_recipe_from_text  (mocked — regression tests for Bug 2)
+# ---------------------------------------------------------------------------
+
+class TestExtractRecipeFromText:
+    """
+    Regression tests for extract_recipe_from_text (Bug 2 fix).
+
+    Before the fix this function used response_schema + response.parsed,
+    which broke when the Gemini SDK deprecated that pattern.  After the fix
+    it uses response_json_schema + json.loads(response.text).
+    """
+
+    def test_valid_text_returns_recipe_list(self):
+        """Happy path: well-formed JSON in response.text is parsed correctly."""
+        recipe = make_recipe("Lemon Tart")
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[recipe])))
+
+        result = extract_recipe_from_text("Lemon Tart recipe text", client)
+
+        assert result is not None
+        assert len(result.recipes) == 1
+        assert result.recipes[0].name == "Lemon Tart"
+
+    def test_api_exception_returns_none(self):
+        """If the API raises, the function must return None (not propagate)."""
+        client = make_mock_client(side_effect=Exception("503 Service Unavailable"))
+
+        result = extract_recipe_from_text("some text", client)
+
+        assert result is None
+
+    def test_empty_response_text_returns_none(self):
+        """Regression: empty response.text must return None, not raise."""
+        mock_response = MagicMock()
+        mock_response.text = ""
+        client = make_mock_client(return_value=mock_response)
+
+        result = extract_recipe_from_text("some text", client)
+
+        assert result is None
+
+    def test_whitespace_only_response_text_returns_none(self):
+        """Regression: whitespace-only response.text must return None, not raise."""
+        mock_response = MagicMock()
+        mock_response.text = "   \n  "
+        client = make_mock_client(return_value=mock_response)
+
+        result = extract_recipe_from_text("some text", client)
+
+        assert result is None
+
+    def test_response_json_schema_used_not_response_schema(self):
+        """Regression for Bug 2: response_json_schema must be in config, not response_schema."""
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
+
+        extract_recipe_from_text("any text", client)
+
+        config = client.models.generate_content.call_args.kwargs["config"]
+        assert "response_json_schema" in config, (
+            "Bug 2 regression: response_json_schema must be used (not response_schema)"
+        )
+        assert "response_schema" not in config, (
+            "Bug 2 regression: deprecated response_schema must NOT be present"
+        )
+
+    def test_result_parsed_via_json_loads_not_parsed_attr(self):
+        """
+        Regression for Bug 2: result must come from json.loads(response.text),
+        not response.parsed.  We verify this by ensuring the mock's .parsed
+        attribute is absent (deleted in _make_text_response) and the call
+        still succeeds.
+        """
+        recipe = make_recipe("Beef Stew")
+        response = _make_text_response(RecipeList(recipes=[recipe]))
+        # Confirm .parsed is gone — accessing it would raise AttributeError
+        # on a real object, but MagicMock auto-creates attrs, so we check
+        # the text path works end-to-end instead.
+        client = make_mock_client(return_value=response)
+
+        result = extract_recipe_from_text("beef stew text", client)
+
+        assert result is not None
+        assert result.recipes[0].name == "Beef Stew"
+
+    def test_text_included_in_prompt(self):
+        """The raw text must appear in the prompt sent to Gemini."""
+        sentinel = "UNIQUE_EXTRACT_FROM_TEXT_SENTINEL"
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
+
+        extract_recipe_from_text(sentinel, client)
+
+        call_kwargs = client.models.generate_content.call_args.kwargs
+        assert sentinel in call_kwargs["contents"]
+
+    def test_correct_model_used(self):
+        """Must call gemini-2.5-flash, not an older model."""
+        client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
+
+        extract_recipe_from_text("any text", client)
+
+        call_kwargs = client.models.generate_content.call_args.kwargs
+        assert call_kwargs["model"] == "gemini-2.5-flash"

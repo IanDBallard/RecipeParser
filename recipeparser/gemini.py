@@ -213,17 +213,21 @@ Text:
 {text}
 """
     try:
+        json_schema = _schema_for_gemini(RecipeList)
         response = _call_with_retry(
             client,
             model="gemini-2.5-flash",
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_schema": RecipeList,
+                "response_json_schema": json_schema,
                 "temperature": 0.1,
             },
         )
-        return response.parsed
+        if not response.text or not response.text.strip():
+            log.error("Gemini plain-text extraction failed: empty response")
+            return None
+        return RecipeList.model_validate(json.loads(response.text))
     except Exception as e:
         log.error("Gemini plain-text extraction failed: %s", e)
         return None
@@ -289,11 +293,14 @@ Text chunk:
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_schema": RecipeList,
+                "response_json_schema": _schema_for_gemini(RecipeList),
                 "temperature": 0.1,
             },
         )
-        return response.parsed
+        if not response.text or not response.text.strip():
+            log.error("Gemini extraction failed: empty response")
+            return None
+        return RecipeList.model_validate(json.loads(response.text))
     except Exception as e:
         log.error("Gemini extraction failed: %s", e)
         return None

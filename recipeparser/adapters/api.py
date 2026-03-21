@@ -406,11 +406,11 @@ def _select_reader(filename: str, content_type: str) -> str:
     if ext == ".epub" or content_type == "application/epub+zip":
         return "epub"
     # .paprikarecipes files are ZIP archives; browsers/Node may send them as
-    # application/zip or application/octet-stream — match by extension first.
-    if ext == ".paprikarecipes" or (
-        not ext and content_type in ("application/zip", "application/octet-stream")
-        and filename.lower().endswith(".paprikarecipes")
-    ):
+    # application/zip or application/octet-stream — match by extension first,
+    # then fall back to content-type + filename suffix check.
+    if ext == ".paprikarecipes":
+        return "paprika"
+    if content_type in ("application/zip", "application/octet-stream") and filename.lower().endswith(".paprikarecipes"):
         return "paprika"
     raise ValueError(
         f"Unsupported file type: extension='{ext}', content_type='{content_type}'."
