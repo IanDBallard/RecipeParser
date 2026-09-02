@@ -8,10 +8,19 @@ Endpoints (canonical — Phase 6):
   POST /jobs/{job_id}/resume  — resume a paused job
   POST /jobs/{job_id}/cancel  — cancel a job
   POST /embed             — generate a 1536-dim embedding (returns 200 + {embedding})
+  GET  /health            — liveness probe + the auth mode the app booted with
 
 Auth:
-  HTTPBearer JWT verified against Supabase.
-  Set DISABLE_AUTH=1 + TEST_USER_ID=<uuid> to bypass in tests.
+  HTTPBearer JWT verified against Supabase; the decoded ``sub`` claim is the
+  user_id every write is attributed to.
+
+  DISABLE_AUTH=1 + TEST_USER_ID=<uuid> bypasses verification. It exists for the
+  automated test suite and explicitly opted-in local development only. The
+  bypass is deliberately strict — a UUID TEST_USER_ID is mandatory and a
+  production/staging APP_ENV refuses it outright — because a bypass that half
+  works is worse than one that fails: it silently files every ingested recipe
+  under the wrong subject, where PowerSync will never sync it to the user who
+  submitted it. GET /health reports which mode is live.
 """
 from __future__ import annotations
 
@@ -22,7 +31,7 @@ import tempfile
 import uuid
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
@@ -45,10 +54,84 @@ logger = logging.getLogger(__name__)
 # App + auth setup
 # ---------------------------------------------------------------------------
 
-_DISABLE_AUTH = os.environ.get("DISABLE_AUTH", "0") == "1"
+_TRUTHY = {"1", "true", "yes", "on"}
+
+# Deployment tiers that must never boot with JWT verification switched off.
+_PROTECTED_TIERS = {"production", "prod", "staging", "stage"}
+
+
+class AuthConfigurationError(RuntimeError):
+    """Raised when the auth bypass is requested in an unsafe configuration."""
+
+
+def _resolve_auth_mode(env: Mapping[str, str]) -> tuple[bool, str]:
+    """Resolve the auth mode from the environment.
+
+    Returns ``(bypass_engaged, test_user_id)``.
+
+    The bypass is opt-in and deliberately unforgiving. ``DISABLE_AUTH`` can
+    arrive from a shell, a launcher, a CI job or a stray ``.env`` line that
+    ``recipeparser/__init__.py`` loads on import, so anything short of a fully
+    specified bypass raises instead of quietly serving an unauthenticated API:
+
+      * ``TEST_USER_ID`` must be an explicit UUID. There is no fallback
+        identity — a placeholder subject writes rows no real user can ever
+        sync.
+      * ``APP_ENV`` / ``ENVIRONMENT`` must not name a protected tier.
+    """
+    if env.get("DISABLE_AUTH", "0").strip().lower() not in _TRUTHY:
+        return False, ""
+
+    tier = (env.get("APP_ENV") or env.get("ENVIRONMENT") or "").strip().lower()
+    if tier in _PROTECTED_TIERS:
+        raise AuthConfigurationError(
+            f"DISABLE_AUTH is set but the deployment tier is {tier!r}. The auth "
+            "bypass is for automated tests and local development only — unset "
+            "DISABLE_AUTH."
+        )
+
+    test_user_id = env.get("TEST_USER_ID", "").strip()
+    if not test_user_id:
+        raise AuthConfigurationError(
+            "DISABLE_AUTH is set but TEST_USER_ID is empty. The bypass "
+            "attributes every ingested recipe to TEST_USER_ID, so it has to be "
+            "stated explicitly rather than defaulted."
+        )
+    try:
+        uuid.UUID(test_user_id)
+    except ValueError as exc:
+        raise AuthConfigurationError(
+            f"TEST_USER_ID={test_user_id!r} is not a UUID. Supabase subjects are "
+            "UUIDs; anything else writes rows that no user can sync."
+        ) from exc
+
+    return True, test_user_id
+
+
+_DISABLE_AUTH, _TEST_USER_ID = _resolve_auth_mode(os.environ)
 _bearer = HTTPBearer(auto_error=not _DISABLE_AUTH)
 
+if _DISABLE_AUTH:
+    logger.critical(
+        "AUTH BYPASS ENGAGED: JWT verification is OFF and every request is "
+        "attributed to user %s. Never run this configuration in production.",
+        _TEST_USER_ID,
+    )
+
 app = FastAPI(title="Cayenne Ingestion API", version="1.0.0")
+
+
+@app.get("/health", status_code=200)
+def health() -> dict[str, str]:
+    """Liveness probe reporting the auth mode the app booted with.
+
+    A bypassed server is indistinguishable from a verifying one until it
+    misattributes a write, so the mode is published rather than inferred.
+    """
+    return {
+        "status": "ok",
+        "auth_mode": "bypassed" if _DISABLE_AUTH else "verifying",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -60,12 +143,11 @@ def _verify_supabase_jwt(
 ) -> dict[str, Any]:
     """Verify a Supabase-issued JWT and return the decoded payload.
 
-    When DISABLE_AUTH=1 (test mode) the token is not verified and the
-    TEST_USER_ID env var is used as the subject claim.
+    When the bypass is engaged the token is not verified and the validated
+    TEST_USER_ID resolved at import time is used as the subject claim.
     """
     if _DISABLE_AUTH:
-        user_id = os.environ.get("TEST_USER_ID", "test-user")
-        return {"sub": user_id}
+        return {"sub": _TEST_USER_ID}
 
     if credentials is None:
         raise HTTPException(

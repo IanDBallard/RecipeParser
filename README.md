@@ -178,8 +178,17 @@ The project includes a FastAPI server for high-fidelity recipe extraction and ve
 ### Starting the Server
 
 ```bash
-uvicorn recipeparser.api:app --host 0.0.0.0 --port 8000
+uvicorn recipeparser.adapters.api:app --host 0.0.0.0 --port 8000
 ```
+
+Or via the launcher, which starts uvicorn detached and exits:
+
+```bash
+python start_server.py
+```
+
+The launcher runs the verifying configuration — the same one the Cayenne client
+expects in production. `GET /health` reports `{"status":"ok","auth_mode":"verifying"}`.
 
 **Required environment variables:**
 
@@ -198,7 +207,29 @@ All API endpoints require a valid Supabase JWT in the `Authorization` header:
 Authorization: Bearer <supabase_access_token>
 ```
 
-The server verifies the token using HS256 with the `SUPABASE_JWT_SECRET`. Requests without a valid token receive HTTP 401.
+The server verifies the token against the Supabase JWKS endpoint and uses the decoded `sub` claim as the `user_id` for every write. Requests without a valid token receive HTTP 401.
+
+#### Auth bypass (tests and local development only)
+
+`DISABLE_AUTH=1` together with `TEST_USER_ID=<uuid>` skips verification and attributes every request to `TEST_USER_ID`. It exists for the automated test suite and for local work with no Supabase session.
+
+The bypass is deliberately hard to enable by accident, because a server running it looks healthy while filing every ingested recipe under the wrong subject — where PowerSync will never sync it to the user who submitted it:
+
+| Guard | Behaviour |
+|---|---|
+| `TEST_USER_ID` missing or not a UUID | App refuses to boot (`AuthConfigurationError`). There is no fallback identity. |
+| `APP_ENV` / `ENVIRONMENT` is `production`/`staging` | App refuses to boot. |
+| Bypass engaged | `logger.critical` banner at startup; `GET /health` reports `"auth_mode": "bypassed"`. |
+
+To opt in from the launcher — both flags are required, and it binds to loopback unless you pass `--host`:
+
+```bash
+python start_server.py --disable-auth --test-user-id <your-supabase-user-uuid>
+```
+
+The launcher strips any inherited `DISABLE_AUTH`/`TEST_USER_ID` from its environment first, so a stale shell export or `.env` line cannot silently unauthenticate the server.
+
+Never set `DISABLE_AUTH` in a deployed environment, in `.env`, or in `docker-compose.yml`'s `env_file`.
 
 ### Endpoints
 

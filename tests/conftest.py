@@ -138,6 +138,12 @@ if "tkinter" not in sys.modules:
 # without a real .env file present.
 os.environ.setdefault("GOOGLE_API_KEY", "dummy-key-for-tests")
 
+# The API refuses to boot with DISABLE_AUTH set but no UUID TEST_USER_ID, so
+# supply one here for every test module that imports recipeparser.adapters.api
+# (not just tests/test_api.py, whichever pytest collects first).
+if os.environ.get("DISABLE_AUTH", "0").strip().lower() in {"1", "true", "yes", "on"}:
+    os.environ.setdefault("TEST_USER_ID", "00000000-0000-0000-0000-000000000001")
+
 from recipeparser.models import RecipeExtraction  # noqa: E402 (env must be set first)
 
 
