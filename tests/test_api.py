@@ -351,6 +351,22 @@ class TestControlEndpoints:
 
 
 # ===========================================================================
+# Section 4b — GET /health
+# ===========================================================================
+
+class TestHealth:
+    def test_reports_the_live_auth_mode(self, client: TestClient) -> None:
+        """The mode has to be observable — a bypassed server otherwise looks
+        identical to a verifying one until it misattributes a write."""
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        # This suite deliberately runs with the bypass engaged.
+        assert body["auth_mode"] == "bypassed"
+
+
+# ===========================================================================
 # Section 5 — POST /embed
 # ===========================================================================
 
