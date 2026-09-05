@@ -48,3 +48,14 @@ class PipelineTransitionError(RecipeParserError):
 
 class RecategorizationError(RecipeParserError):
     """Raised when the recategorize operation fails (bad file, unreadable archive, etc.)."""
+
+
+class ExtractionParseError(RecipeParserError):
+    """Raised when Gemini's extraction reply could not be parsed on any attempt.
+
+    Distinct from a chunk that genuinely contains no recipe: that is an empty
+    result, not an error. This means the reply itself was unusable — usually
+    truncated JSON — and the chunk's recipes are lost unless something upstream
+    counts it. The message carries the reply's finish reason and first line,
+    which is what separates truncation from malformed content.
+    """

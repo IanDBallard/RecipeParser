@@ -47,6 +47,9 @@ def extract(
 
     Raises:
         ValueError: If ``chunk_text`` is empty or whitespace-only.
+        ExtractionParseError: If Gemini's reply could not be parsed on any
+            attempt.  Distinct from an empty chunk: the recipes existed and
+            were lost, so the caller must count this rather than ignore it.
     """
     if not chunk_text or not chunk_text.strip():
         raise ValueError("extract(): chunk_text must be non-empty.")
@@ -60,10 +63,6 @@ def extract(
         result = extract_recipe_from_text(chunk_text, client)
     else:
         result = extract_recipes(chunk_text, client, units=units)
-
-    if result is None:
-        log.warning("extract(): Gemini returned None — treating as empty chunk.")
-        return []
 
     recipes: List[RecipeExtraction] = result.recipes if result.recipes else []
     log.info("extract(): found %d recipe(s) in chunk.", len(recipes))

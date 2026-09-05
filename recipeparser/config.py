@@ -33,6 +33,14 @@ HTTP_TIMEOUT_SECS: int = 180
 # Maximum retries on 429 / quota errors before giving up.
 MAX_RETRIES: int = 5
 
+# A reply that will not parse is not a rate-limit signal: the transport
+# succeeded and the model simply returned truncated or malformed JSON. The
+# 2026-09-04 import showed such replies parse cleanly when asked again, so a
+# short, flat retry recovers them without adding the quota ladder's minutes to
+# every bad chunk of a large import.
+MAX_PARSE_RETRIES: int = 2
+PARSE_RETRY_DELAY_SECS: float = 1.0
+
 # Initial exponential back-off delay (seconds); doubles after each retry,
 # capped at BACKOFF_MAX_SECS.
 BACKOFF_BASE_SECS: float = 2.0

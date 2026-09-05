@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from tests.conftest import make_recipe, make_mock_client
+from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import RecipeExtraction, RecipeList
 from recipeparser.gemini import (
     extract_recipe_from_text,
@@ -233,10 +234,11 @@ class TestExtractRecipes:
         assert result.recipes[0].name == "Chocolate Cake"
         assert result.recipes[0].photo_filename == "cake.jpg"
 
-    def test_api_exception_returns_none(self):
+    def test_api_exception_propagates(self):
+        """A non-rate-limit transport exception is not a parse failure — it propagates as-is."""
         client = make_mock_client(side_effect=Exception("503 Service Unavailable"))
-        result = extract_recipes("some chunk of text", client)
-        assert result is None
+        with pytest.raises(Exception, match="503 Service Unavailable"):
+            extract_recipes("some chunk of text", client)
 
     def test_empty_recipe_list_returned_cleanly(self):
         client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
@@ -309,25 +311,25 @@ class TestExtractRecipes:
         assert result.recipes[0].ingredients[0] == "1/2 cup butter"
         assert result.recipes[0].ingredients[1] == "3/4 cup milk"
 
-    def test_empty_response_text_returns_none(self):
-        """Regression test for Bug 2: empty response.text must return None gracefully."""
+    def test_empty_response_text_raises_after_retries(self, monkeypatch):
+        """An empty response.text is treated as unparseable and retried, then raises."""
+        monkeypatch.setattr("recipeparser.gemini.time.sleep", lambda _s: None)
         mock_response = MagicMock()
         mock_response.text = ""
         client = make_mock_client(return_value=mock_response)
 
-        result = extract_recipes("any text", client)
+        with pytest.raises(ExtractionParseError):
+            extract_recipes("any text", client)
 
-        assert result is None
-
-    def test_whitespace_only_response_text_returns_none(self):
-        """Regression test for Bug 2: whitespace-only response.text must return None."""
+    def test_whitespace_only_response_text_raises_after_retries(self, monkeypatch):
+        """Whitespace-only response.text is treated as unparseable and retried, then raises."""
+        monkeypatch.setattr("recipeparser.gemini.time.sleep", lambda _s: None)
         mock_response = MagicMock()
         mock_response.text = "   \n  "
         client = make_mock_client(return_value=mock_response)
 
-        result = extract_recipes("any text", client)
-
-        assert result is None
+        with pytest.raises(ExtractionParseError):
+            extract_recipes("any text", client)
 
 
 # ---------------------------------------------------------------------------
@@ -645,33 +647,32 @@ class TestExtractRecipeFromText:
         assert len(result.recipes) == 1
         assert result.recipes[0].name == "Lemon Tart"
 
-    def test_api_exception_returns_none(self):
-        """If the API raises, the function must return None (not propagate)."""
+    def test_api_exception_propagates(self):
+        """A non-rate-limit transport exception is not a parse failure — it propagates as-is."""
         client = make_mock_client(side_effect=Exception("503 Service Unavailable"))
 
-        result = extract_recipe_from_text("some text", client)
+        with pytest.raises(Exception, match="503 Service Unavailable"):
+            extract_recipe_from_text("some text", client)
 
-        assert result is None
-
-    def test_empty_response_text_returns_none(self):
-        """Regression: empty response.text must return None, not raise."""
+    def test_empty_response_text_raises_after_retries(self, monkeypatch):
+        """An empty response.text is treated as unparseable and retried, then raises."""
+        monkeypatch.setattr("recipeparser.gemini.time.sleep", lambda _s: None)
         mock_response = MagicMock()
         mock_response.text = ""
         client = make_mock_client(return_value=mock_response)
 
-        result = extract_recipe_from_text("some text", client)
+        with pytest.raises(ExtractionParseError):
+            extract_recipe_from_text("some text", client)
 
-        assert result is None
-
-    def test_whitespace_only_response_text_returns_none(self):
-        """Regression: whitespace-only response.text must return None, not raise."""
+    def test_whitespace_only_response_text_raises_after_retries(self, monkeypatch):
+        """Whitespace-only response.text is treated as unparseable and retried, then raises."""
+        monkeypatch.setattr("recipeparser.gemini.time.sleep", lambda _s: None)
         mock_response = MagicMock()
         mock_response.text = "   \n  "
         client = make_mock_client(return_value=mock_response)
 
-        result = extract_recipe_from_text("some text", client)
-
-        assert result is None
+        with pytest.raises(ExtractionParseError):
+            extract_recipe_from_text("some text", client)
 
     def test_response_json_schema_used_not_response_schema(self):
         """Regression for Bug 2: response_json_schema must be in config, not response_schema."""
