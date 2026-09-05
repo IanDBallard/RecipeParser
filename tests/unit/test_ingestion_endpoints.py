@@ -32,15 +32,24 @@ def test_finalize_takes_a_payload(monkeypatch):
     assert sent["recipe_count"] == 3
 
 
-def test_the_pipeline_is_given_result_and_skip_callbacks():
-    """Regression: passing None here is why nothing was written until the end."""
+def test_the_pipeline_is_not_given_a_batch_writer():
+    """Regression: a batch `writer.write(results)` call after the run is what
+    made nothing get written until the whole job finished.
+
+    This used to also grep the source for "on_result=" / "on_skip=" /
+    "on_progress=" as a stand-in for proving those callbacks are live, but a
+    source-text grep is true even for `on_result=None` — exactly the
+    regression it claimed to guard. `tests/test_api.py`'s
+    `_assert_pipeline_run_wired_to_a_live_sink` (which reaches for
+    `on_result.__self__`) and `test_the_patched_write_receives_the_recipe_end_to_end`
+    (which proves a real recipe reaches the patched write) carry that coverage
+    instead. The absence check below is kept — a source grep is a reasonable
+    way to check for the absence of something.
+    """
     import inspect
 
     for endpoint in (api.submit_job, api.submit_file_job):
         source = inspect.getsource(endpoint)
-        assert "on_result=" in source
-        assert "on_skip=" in source
-        assert "on_progress=" in source
         assert "writer.write(results)" not in source
 
 

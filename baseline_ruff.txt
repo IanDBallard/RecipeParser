@@ -6,7 +6,7 @@ recipeparser\__main__.py:179:5: I001 [*] Import block is un-sorted or un-formatt
 recipeparser\__main__.py:308:9: I001 [*] Import block is un-sorted or un-formatted
 recipeparser\__main__.py:374:5: I001 [*] Import block is un-sorted or un-formatted
 recipeparser\adapters\api.py:25:1: I001 [*] Import block is un-sorted or un-formatted
-recipeparser\adapters\api.py:529:13: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\adapters\api.py:528:13: I001 [*] Import block is un-sorted or un-formatted
 recipeparser\adapters\gui.py:6:1: I001 [*] Import block is un-sorted or un-formatted
 recipeparser\adapters\gui.py:22:55: F401 [*] `recipeparser.categories.load_category_tree` imported but unused
 recipeparser\adapters\gui.py:515:37: F821 Undefined name `PipelineController`
@@ -62,7 +62,7 @@ tests\snapshots\test_stage_snapshots.py:11:1: I001 [*] Import block is un-sorted
 tests\snapshots\test_stage_snapshots.py:16:8: F401 [*] `pytest` imported but unused
 tests\test_api.py:33:1: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
 tests\test_api.py:39:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
-tests\test_api.py:292:121: E501 Line too long (121 > 120)
+tests\test_api.py:339:121: E501 Line too long (121 > 120)
 tests\test_categories.py:2:1: I001 [*] Import block is un-sorted or un-formatted
 tests\test_categories.py:3:8: F401 [*] `pytest` imported but unused
 tests\test_cli.py:2:1: I001 [*] Import block is un-sorted or un-formatted
