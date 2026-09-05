@@ -325,6 +325,32 @@ def test_paprika_photo_data_is_decoded_to_bytes(tmp_path):
     assert chunks[0].image_content_type == "image/jpeg"
 
 
+def test_line_wrapped_photo_data_is_still_decoded(tmp_path):
+    """Some exporters wrap base64 at 76 columns (MIME-style, RFC 2045); a photo
+    encoded that way must not be dropped as undecodable."""
+    import base64
+
+    jpeg = bytes(range(256)) * 4  # long enough that encodebytes actually wraps
+    wrapped = base64.encodebytes(jpeg).decode("ascii")
+    assert "\n" in wrapped  # sanity: the fixture really does wrap
+
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{
+            "name": "Wrapped Photo",
+            "ingredients": "1 cup x",
+            "directions": "Cook.",
+            "photo": "pg_1.jpg",
+            "photo_data": wrapped,
+        }],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert chunks[0].image_bytes == jpeg
+    assert chunks[0].image_content_type == "image/jpeg"
+
+
 def test_unreadable_photo_data_is_dropped_not_raised(tmp_path):
     archive = _write_paprika_archive(
         tmp_path,

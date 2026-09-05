@@ -57,7 +57,9 @@ def _decode_photo(entry: Dict[str, Any]) -> tuple[Optional[bytes], str]:
     if isinstance(raw, bytes):
         return raw, content_type
     try:
-        return base64.b64decode(raw, validate=True), content_type
+        # Some exporters wrap base64 at 76 columns (MIME-style); strip the
+        # whitespace before validating so a wrapped photo is not dropped.
+        return base64.b64decode("".join(raw.split()), validate=True), content_type
     except Exception:
         log.warning("PaprikaReader: could not decode photo_data for %r — continuing without it.", entry.get("name"))
         return None, content_type

@@ -411,31 +411,58 @@ class _FakeImageStore(ImageStore):
         return self.url
 
 
+def _assemble_reflecting_image_url(
+    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time
+):
+    """Stand-in for the real ``assemble`` stage: echoes the image_url it was
+    actually called with, so a test can prove the URL travels all the way
+    into the returned IngestResponse rather than just landing on the chunk."""
+    return _make_ingest_response("R").model_copy(update={"image_url": image_url})
+
+
 def test_chunk_image_bytes_are_stored_and_the_url_reaches_the_recipe():
-    """Spec 4.5: 466 photographs were read and dropped; they must reach the assembled recipe."""
+    """Spec 4.5: 466 photographs were read and dropped; they must reach the assembled recipe.
+
+    Drives the real ASSEMBLE-only fast path (no ``_process_chunk`` patching) so
+    this proves the URL reaches ``IngestResponse.image_url`` via one of the
+    real ``image_url=chunk.image_url`` call sites, not merely that it lands on
+    the chunk — and stays indifferent to which stage of the pipeline performs
+    the upload.
+    """
     store = _FakeImageStore()
-    chunk = Chunk(text="a recipe", input_type=InputType.URL, image_bytes=b"\xff\xd8jpegbytes")
+    chunk = Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=_make_ingest_response("R"),
+        pre_parsed_embedding=FAKE_EMBEDDING,
+        image_bytes=b"\xff\xd8jpegbytes",
+    )
 
     pipeline = _make_pipeline(image_store=store)
-    with patch.object(
-        RecipePipeline, "_process_chunk", side_effect=lambda c, s, a: [_make_ingest_response("R")]
-    ):
-        pipeline.run([chunk])
+    with patch(_PATCH_ASSEMBLE, side_effect=_assemble_reflecting_image_url):
+        results = pipeline.run([chunk])
 
     assert store.calls == [b"\xff\xd8jpegbytes"]
     assert chunk.image_url == "https://example.test/stored.jpg"
+    assert len(results) == 1
+    assert results[0].image_url == "https://example.test/stored.jpg"
 
 
 def test_a_failed_upload_still_yields_the_recipe():
     """A missing photograph is not a reason to lose a recipe."""
     store = _FakeImageStore(url=None)
-    chunk = Chunk(text="a recipe", input_type=InputType.URL, image_bytes=b"bytes")
+    chunk = Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=_make_ingest_response("R"),
+        pre_parsed_embedding=FAKE_EMBEDDING,
+        image_bytes=b"bytes",
+    )
 
     pipeline = _make_pipeline(image_store=store)
-    with patch.object(
-        RecipePipeline, "_process_chunk", side_effect=lambda c, s, a: [_make_ingest_response("R")]
-    ):
+    with patch(_PATCH_ASSEMBLE, side_effect=_assemble_reflecting_image_url):
         results = pipeline.run([chunk])
 
     assert len(results) == 1
     assert chunk.image_url is None
+    assert results[0].image_url is None
