@@ -527,6 +527,9 @@ RULES:
    - Extract numeric "amount", "unit" (null if unitless), and "name".
    - "fallback_string" is the original full line.
    - CONVERSION: If preference is "Weight" and source is "Volume", provide "converted_amount" and "converted_unit" (e.g. 1 cup -> 120g). Set "is_ai_converted" to true.
+   - amount: the numeric quantity. Use null - never 0 - when the source states no
+     amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
+     measurement of nothing.
 
 2. TOKENIZED DIRECTIONS:
    - Rewrite directions using Fat Tokens: {{{{ingredient_id|original_text}}}}

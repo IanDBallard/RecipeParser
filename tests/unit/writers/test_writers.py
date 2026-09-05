@@ -369,3 +369,27 @@ def test_image_store_returns_none_without_credentials(monkeypatch):
 
 def test_image_store_returns_none_for_empty_bytes():
     assert SupabaseImageStore(url="https://x.test", service_key="k").put(b"", "some-id") is None
+
+
+# ---------------------------------------------------------------------------
+# Test 7 — Unquantified ingredient (Task 9)
+# ---------------------------------------------------------------------------
+
+
+def test_an_unquantified_ingredient_serialises_as_null():
+    """Spec 4.8: 'to taste' must not be indistinguishable from a real zero."""
+    ingredient = StructuredIngredient(
+        id="ing_01",
+        amount=None,
+        unit=None,
+        name="Kosher salt",
+        fallback_string="Kosher salt",
+        converted_amount=None,
+        converted_unit=None,
+        is_ai_converted=False,
+    )
+
+    dumped = ingredient.model_dump()
+
+    assert dumped["amount"] is None
+    assert json.dumps([dumped]).count("null") >= 1
