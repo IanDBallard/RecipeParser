@@ -35,6 +35,7 @@ from typing import Any, Callable, Dict, Mapping, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -120,6 +121,39 @@ if _DISABLE_AUTH:
 
 app = FastAPI(title="Cayenne Ingestion API", version="1.0.0")
 
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+# The Cayenne client is a browser app served from its own origin, so every call
+# here is cross-origin and starts with a preflight OPTIONS that FastAPI answers
+# 405 to unless this middleware is installed. The client sends an Authorization
+# header and a JSON body, so both must be allowed for the real request to follow.
+#
+# Origins are configured, never wildcarded: `allow_credentials` with "*" is
+# rejected by browsers, and an ingestion endpoint that writes to a user's
+# library should not answer any page on the internet. Set CORS_ORIGINS to a
+# comma-separated list to override the development defaults below (a deployment
+# adds its own origin; a tailnet or tunnel host used for phone testing adds
+# that host, scheme and port included).
+_DEFAULT_CORS_ORIGINS = (
+    "http://localhost:5173,"   # vite dev
+    "http://localhost:4173,"   # vite preview / sirv on the built app
+    "http://localhost:4174"    # playwright's e2e build
+)
+_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ORIGINS", _DEFAULT_CORS_ORIGINS).split(",")
+    if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+logger.info("CORS enabled for: %s", ", ".join(_cors_origins))
+
 
 @app.get("/health", status_code=200)
 def health() -> dict[str, str]:
@@ -165,10 +199,14 @@ def _verify_supabase_jwt(
         jwks_url = f"{supabase_url}/auth/v1/.well-known/jwks.json"
         jwks_client = pyjwt.PyJWKClient(jwks_url)
         signing_key = jwks_client.get_signing_key_from_jwt(token)
+        # Supabase's current signing keys are ECC (ES256); older projects, and any
+        # project that chooses RSA, sign with RS256. The JWKS client selects the key
+        # by the token's `kid`, so accepting both algorithms verifies either kind and
+        # still refuses a token whose algorithm is anything else (`none` included).
         payload: dict[str, Any] = pyjwt.decode(
             token,
             signing_key.key,
-            algorithms=["RS256"],
+            algorithms=["ES256", "RS256"],
             audience="authenticated",
         )
         return payload
@@ -339,11 +377,30 @@ def embed_text(
 # Phase 6 — Canonical fire-and-forget endpoints
 # ===========================================================================
 
+def _live_writes_blocked() -> bool:
+    """True when this process is a test run that must not touch a real project.
+
+    The service key sits in .env, so an ordinary `pytest` run picked it up and wrote
+    ingestion_jobs rows into the live database: eight of them on 2026-09-04, four left
+    at status "running" because the process ended mid-job, which the Cayenne client
+    then displayed forever as jobs in progress. Nothing here needs a real project to
+    be under test, so the writes are refused rather than the credentials removed --
+    a developer who wants the opposite sets ALLOW_LIVE_WRITES_IN_TESTS=1 and means it.
+    """
+    if os.environ.get("ALLOW_LIVE_WRITES_IN_TESTS") == "1":
+        return False
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
 def _get_supabase_service_client() -> Any:
     """Return a synchronous supabase-py client using the service role key.
 
-    Returns None if credentials are not configured (test/offline mode).
+    Returns None if credentials are not configured (test/offline mode), or if this
+    is a test run that must not reach a real project (see _live_writes_blocked).
     """
+    if _live_writes_blocked():
+        logger.warning("Test run: refusing to build a Supabase client against a real project.")
+        return None
     supabase_url = os.environ.get("SUPABASE_URL", "")
     supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
     if not supabase_url or not supabase_key:
@@ -441,6 +498,9 @@ def _make_stage_callback(job_id: str) -> Callable[[str], None]:
     supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
     def _on_stage_change(stage: str) -> None:
+        if _live_writes_blocked():
+            logger.warning("Test run: skipping the stage update for job %s.", job_id)
+            return
         if not supabase_url or not supabase_key:
             logger.warning(
                 "Job %s: Supabase credentials not set — cannot update stage to '%s'.",
