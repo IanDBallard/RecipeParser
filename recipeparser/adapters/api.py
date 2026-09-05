@@ -173,6 +173,16 @@ def health() -> dict[str, str]:
 # Auth dependency
 # ---------------------------------------------------------------------------
 
+def _blank_subject(sub: Any) -> bool:
+    """True if *sub* is missing, ``None``, empty, or whitespace-only.
+
+    A blank subject must never authenticate, and must never match anything as
+    an owner — including another blank subject. `_verify_supabase_jwt` and
+    `_owned_controller` both call this so the two stay in agreement.
+    """
+    return not isinstance(sub, str) or not sub.strip()
+
+
 def _verify_supabase_jwt(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> dict[str, Any]:
@@ -217,11 +227,12 @@ def _verify_supabase_jwt(
         ) from exc
 
     # Every write in this service is attributed to `sub`. A token that clears
-    # signature verification but carries no subject (or an empty one) would
-    # otherwise create rows owned by "" — and since the ownership check in
-    # _owned_controller is a plain equality, a second sub-less token would
-    # match that same "" and be handed the first caller's job.
-    if not payload.get("sub"):
+    # signature verification but carries no subject (empty or whitespace-only
+    # included) would otherwise create rows owned by that blank value — and
+    # since the ownership check in _owned_controller is a plain equality, a
+    # second sub-less token would match the same blank value and be handed
+    # the first caller's job.
+    if _blank_subject(payload.get("sub")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has no subject claim",
@@ -818,9 +829,17 @@ def _owned_controller(job_id: str, user: dict[str, Any]) -> PipelineController:
 
     Not 403 for someone else's job: that would confirm the id exists and make
     the registry enumerable.
+
+    A blank caller subject is refused outright, independently of whether it
+    matches the stored owner: _verify_supabase_jwt already rejects a blank
+    subject before a real request can reach here, but this is a second line
+    of defence — a blank subject must never match anything, including a
+    registry entry that (via some future bug, or a pre-fix leftover row) is
+    itself owned by a blank value.
     """
+    sub = user.get("sub", "")
     entry = _active_jobs.get(job_id)
-    if entry is None or entry[0] != user.get("sub", ""):
+    if _blank_subject(sub) or entry is None or entry[0] != sub:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job '{job_id}' not found.",

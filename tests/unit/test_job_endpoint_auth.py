@@ -94,7 +94,11 @@ def _stub_jwt_decode_to_return(monkeypatch: pytest.MonkeyPatch, payload: dict) -
     monkeypatch.setattr(pyjwt, "decode", lambda *args, **kwargs: payload)
 
 
-@pytest.mark.parametrize("payload", [{}, {"sub": ""}, {"sub": None}], ids=["missing", "empty", "null"])
+@pytest.mark.parametrize(
+    "payload",
+    [{}, {"sub": ""}, {"sub": None}, {"sub": "   "}],
+    ids=["missing", "empty", "null", "whitespace"],
+)
 def test_a_verified_token_without_a_subject_is_rejected(monkeypatch, payload):
     _stub_jwt_decode_to_return(monkeypatch, payload)
     credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="a-token")
@@ -125,14 +129,34 @@ def test_disable_auth_bypass_still_returns_the_test_subject(monkeypatch):
     assert result == {"sub": "33333333-3333-3333-3333-333333333333"}
 
 
-def test_an_empty_owner_string_cannot_be_reached(client):
-    """Once _verify_supabase_jwt refuses a sub-less token, no *real* caller can
-    ever be attributed "" — so an entry that somehow ended up owned by "" (a
-    pre-fix leftover, a bad migration, ...) must still be unreachable by every
-    actual caller, each of whom necessarily carries a real, non-empty subject.
-    """
+def test_an_empty_owner_string_still_refuses_a_real_caller(client):
+    """An entry that somehow ended up owned by "" (a pre-fix leftover, a bad
+    migration, ...) must still be unreachable by an ordinary caller with a
+    real, non-empty subject — plain UUID inequality, no special-casing needed
+    here."""
     api._active_jobs["orphan"] = ("", PipelineController())
     api.app.dependency_overrides[api._verify_supabase_jwt] = _as(OWNER)
+    try:
+        response = client.get("/jobs/orphan")
+    finally:
+        api.app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize("blank", ["", "   "], ids=["empty", "whitespace"])
+def test_a_blank_caller_subject_cannot_match_a_blank_owner(client, blank):
+    """_owned_controller's second line of defence: a blank subject must never
+    match anything, including a registry entry whose stored owner is the same
+    blank value. Without the guard, `blank != blank` is False and
+    _owned_controller would hand the caller the job — this is the exact trap
+    _verify_supabase_jwt's guard exists to make unreachable in practice,
+    checked here independently at the ownership layer. Owner and caller use
+    the identical blank string so the case actually exercises the equality
+    trap rather than an ordinary mismatch.
+    """
+    api._active_jobs["orphan"] = (blank, PipelineController())
+    api.app.dependency_overrides[api._verify_supabase_jwt] = _as(blank)
     try:
         response = client.get("/jobs/orphan")
     finally:
