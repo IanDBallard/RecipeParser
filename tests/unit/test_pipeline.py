@@ -7,6 +7,7 @@ Gate command: pytest tests/unit/test_pipeline.py -v
 from __future__ import annotations
 
 import threading
+import time
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
@@ -295,3 +296,95 @@ class TestPipelineRun:
         assert controller.status == PipelineStatus.IDLE, (
             f"Expected IDLE after cancelled run, got {controller.status}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test: on_result / on_skip streaming callbacks (Task 3)
+# ---------------------------------------------------------------------------
+
+def test_on_result_fires_per_recipe_and_on_skip_names_the_failed_chunk():
+    """Spec 4.2, 4.3: results stream out as they finish and failures are reported, not swallowed."""
+    good = Chunk(text="good", input_type=InputType.URL, label="Good One")
+    bad = Chunk(text="bad", input_type=InputType.URL, label="Bad One")
+    results_seen: List[IngestResponse] = []
+    skips_seen: List[tuple] = []
+
+    pipeline = _make_pipeline()
+    with patch.object(
+        RecipePipeline,
+        "_process_chunk",
+        side_effect=lambda chunk, stages, axes: (
+            [_make_ingest_response("Good One")] if chunk.text == "good" else _raise(RuntimeError("boom"))
+        ),
+    ):
+        returned = pipeline.run(
+            [good, bad],
+            on_result=results_seen.append,
+            on_skip=lambda chunk, reason, index: skips_seen.append((chunk.label, reason, index)),
+        )
+
+    assert [r.title for r in results_seen] == ["Good One"]
+    assert [r.title for r in returned] == ["Good One"]
+    assert len(skips_seen) == 1
+    assert skips_seen[0][0] == "Bad One"
+    assert "boom" in skips_seen[0][1]
+    # `bad` sits at index 1 of the [good, bad] list passed to run().
+    assert skips_seen[0][2] == 1
+
+
+def test_a_raising_on_result_does_not_abort_the_run():
+    """Unlike on_progress: one failed write must not discard the rest of an 827-recipe import."""
+    chunks = [Chunk(text=f"c{i}", input_type=InputType.URL) for i in range(3)]
+
+    pipeline = _make_pipeline()
+    with patch.object(
+        RecipePipeline,
+        "_process_chunk",
+        side_effect=lambda chunk, stages, axes: [_make_ingest_response(chunk.text)],
+    ):
+        returned = pipeline.run(chunks, on_result=lambda _r: (_ for _ in ()).throw(RuntimeError("write failed")))
+
+    assert len(returned) == 3
+
+
+def test_on_skip_reports_submission_position_not_completion_order():
+    """
+    Ruling R5: the consumer keys a lost chunk by its position in the input
+    batch — only Paprika chunks carry a label (Task 2); EPUB/PDF chunks are
+    always label=None, so the index is the only identification a book chunk
+    has.  Chunks complete via ThreadPoolExecutor + as_completed, which is not
+    submission order, so the index must be captured at submission time, not
+    read off a counter in the collecting loop.
+    """
+    chunks = [
+        Chunk(text="slow-good-0", input_type=InputType.URL),
+        Chunk(text="bad-1", input_type=InputType.URL),
+        Chunk(text="slow-good-2", input_type=InputType.URL),
+    ]
+    skips_seen: List[tuple] = []
+
+    def _side_effect(chunk, stages, axes):
+        if chunk.text == "bad-1":
+            raise RuntimeError("boom")
+        # Slow successes finish after the fast failure, so completion order
+        # is [bad-1, slow-good-0, slow-good-2] while submission order is
+        # [slow-good-0, bad-1, slow-good-2].
+        time.sleep(0.2)
+        return [_make_ingest_response(chunk.text)]
+
+    pipeline = _make_pipeline()
+    with patch.object(RecipePipeline, "_process_chunk", side_effect=_side_effect):
+        pipeline.run(
+            chunks,
+            on_skip=lambda chunk, reason, index: skips_seen.append((reason, index)),
+        )
+
+    assert len(skips_seen) == 1
+    # "bad-1" was submitted at index 1 — a counter of completions-so-far or
+    # skips-so-far would both wrongly read 0 here, since this is the first
+    # (and only) chunk to complete and the only chunk to skip.
+    assert skips_seen[0][1] == 1
+
+
+def _raise(exc: Exception):
+    raise exc

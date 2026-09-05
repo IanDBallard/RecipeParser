@@ -103,6 +103,9 @@ class RecipePipeline:
         chunks: List[Chunk],
         on_progress: Optional[Callable[[str, int, int], None]] = None,
         user_id: str = "",
+        *,
+        on_result: Optional[Callable[[IngestResponse], None]] = None,
+        on_skip: Optional[Callable[[Chunk, str, int], None]] = None,
     ) -> List[IngestResponse]:
         """
         Process all chunks and return successfully assembled IngestResponse objects.
@@ -113,6 +116,20 @@ class RecipePipeline:
                          fired after every chunk (success or failure).
             user_id:     The authenticated user's UUID, forwarded to the
                          CategorySource for taxonomy loading.
+            on_result:   Optional callback fired once per assembled recipe, in
+                         completion order, from this thread.  Lets a caller
+                         persist results as they arrive instead of after the
+                         whole batch.
+            on_skip:     Optional callback ``(chunk, reason, index) -> None``
+                         fired for every chunk that produced no result because
+                         of a failure.  ``index`` is the chunk's zero-based
+                         position in the ``chunks`` list passed to this call —
+                         its submission order, not its completion order —
+                         because only Paprika chunks carry a ``label``; EPUB
+                         and PDF chunks are always ``label=None``, so the
+                         index is the only identification a lost book chunk
+                         has.  A chunk that simply contained no recipe is not
+                         a skip.
 
         Returns:
             All successfully processed IngestResponse objects.  Chunks that
@@ -141,13 +158,28 @@ class RecipePipeline:
             stages = self._get_stages(chunk)
             return self._process_chunk(chunk, stages, user_axes)
 
+        def _report_skip(chunk: Chunk, reason: str, index: int) -> None:
+            """Tell the caller a chunk produced nothing, and never let that itself fail the run."""
+            if on_skip is None:
+                return
+            try:
+                on_skip(chunk, reason, index)
+            except Exception:
+                log.exception("RecipePipeline: on_skip callback failed — continuing.")
+
         with ThreadPoolExecutor(max_workers=self._cap) as executor:
+            # Capture each chunk's submission position here — completion order
+            # (via as_completed below) is not submission order, and that
+            # position is the only identification a labelless (EPUB/PDF)
+            # chunk has.
             future_to_chunk = {
-                executor.submit(_worker, chunk): chunk
-                for chunk in chunks
+                executor.submit(_worker, chunk): (chunk, index)
+                for index, chunk in enumerate(chunks)
             }
 
             for future in as_completed(future_to_chunk):
+                chunk, index = future_to_chunk[future]
+
                 # Cooperative pause/cancel check between chunk completions.
                 if not self._controller.check_pause_point():
                     log.info("RecipePipeline: cancelled — stopping after %d/%d chunks.", completed, total)
@@ -159,10 +191,24 @@ class RecipePipeline:
                 try:
                     results = future.result(timeout=SEGMENT_TIMEOUT_SECS)
                     all_results.extend(results)
+                    if on_result is not None:
+                        for result in results:
+                            try:
+                                on_result(result)
+                            except Exception:
+                                # Deliberately NOT re-raised, unlike on_progress below. That
+                                # callback guards a stale stage label, which is indistinguishable
+                                # from a zombie job. This one is a single recipe's write, and
+                                # aborting an 827-recipe import because one row failed is worse
+                                # than losing that row and saying so — which _report_skip does.
+                                log.exception("RecipePipeline: on_result callback failed for one recipe.")
+                                _report_skip(chunk, "result callback failed", index)
                 except TimeoutError:
                     log.warning("RecipePipeline: chunk timed out after %ds — skipping.", SEGMENT_TIMEOUT_SECS)
+                    _report_skip(chunk, f"timed out after {SEGMENT_TIMEOUT_SECS}s", index)
                 except Exception as exc:
                     log.error("RecipePipeline: chunk worker raised unexpectedly — skipping. Error: %s", exc)
+                    _report_skip(chunk, f"{type(exc).__name__}: {exc}", index)
                 finally:
                     completed += 1
                     if on_progress is not None:
