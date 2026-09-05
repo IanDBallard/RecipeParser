@@ -9,6 +9,18 @@ holds the deferred ledger the findings were filed into. They are copied here so
 this branch is self-contained: the code being changed is in this repository, and
 nobody reading a commit should have to go and find the reasoning in another one.
 
+## Deploy prerequisite — do not skip
+
+**Cayenne migration 009 must be applied to the Supabase project *before* this
+API is deployed.** `_create_ingestion_job`'s INSERT and `JobSink.finalize_payload`
+both write the `skipped_count` and `skipped` columns that migration 009 creates.
+PostgREST rejects an INSERT that names a column which does not exist yet, and
+that INSERT's failure is deliberately swallowed so the job still runs — which
+means an early deploy does not degrade gracefully. It gives **every** import no
+`ingestion_jobs` row at all, and the client only ever polls that row, so it
+shows nothing, forever, for every job. See `SPEC-ingestion-repair-design.md`
+§6.3 for the full order of operations.
+
 | File | What it is |
 |---|---|
 | `SPEC-ingestion-repair-design.md` | The design. Sections 4 and 7 govern the work in this repository. |

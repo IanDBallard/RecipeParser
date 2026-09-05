@@ -1,7 +1,7 @@
 # Ingestion Fixes and Library Repair Design
 
 **Date:** 2026-09-05
-**Status:** v1, approved in brainstorming on 2026-09-05. Sections 1 and 2 of the in-chat design were approved before this document was written.
+**Status:** v1, approved in brainstorming on 2026-09-05. Sections 1 and 2 of the in-chat design were approved before this document was written. §6.3's deploy order corrected 2026-09-05 by the whole-branch review of `feat/ingestion-fixes`: migrations 009/010 must be applied *before* the deploy, not after.
 **Scope:** the seven `RecipeParser` findings recorded in `SpecificationDocumentation/EXECUTION_PLAN.md` under "The ingestion API", one cross-repo data-shape change, and a one-time repair of the live library.
 **Repositories:** `RecipeParser` (`IanDBallard/RecipeParser`, HEAD `667f5ef`) and this one (HEAD `8573259`). The spec lives here because this repository holds the deferred ledger the findings were filed into, per commit `8a1c11e`.
 **Citations:** every `file:line` was read at those two HEADs. Both working trees are clean apart from this repository's untracked `cayenne-app/` and `spike-sveltekit/` build leftovers, which are not cited.
@@ -181,8 +181,10 @@ Every step defaults to a dry run and requires an explicit `--live` flag. Before 
 
 ### 6.3 Order of operations
 
-1. Merge and deploy the fixes (unit one).
-2. Apply migrations 009 and 010.
+The migrations go first. `_create_ingestion_job`'s INSERT and `JobSink.finalize_payload` both name the `skipped_count` and `skipped` columns that migration 009 creates, and PostgREST rejects an INSERT that names a column which does not yet exist. That INSERT's failure is deliberately swallowed (the job still runs even without a row), so deploying the fixes before 009 is applied does not merely leave a stale terminal state — it gives every import **no `ingestion_jobs` row at all**, and the client, which only ever polls that row, shows nothing, forever, for every job.
+
+1. Apply migrations 009 and 010.
+2. Merge and deploy the fixes (unit one).
 3. Snapshot the recipes.
 4. Run the diff; the user approves the missing list.
 5. Build a trimmed `.paprikarecipes` containing only the approved entries and submit it to the running API as a real authenticated `POST /jobs/file`. This is the acceptance test: it exercises the retry, the photo upload, incremental writes, `progress_pct` and `skipped_count` on the shipped path.

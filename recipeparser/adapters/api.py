@@ -474,7 +474,19 @@ def _create_ingestion_job(
         }).execute()
         logger.info("Job %s: ingestion_jobs row created (user=%s).", job_id, user_id)
     except Exception:
-        logger.exception("Job %s: failed to INSERT ingestion_jobs row — job will still run.", job_id)
+        # Not raised — a raise here would break the endpoint contract — but this
+        # is not a recoverable condition: the client only ever polls this row, so
+        # with no row it will show nothing for this job, forever. The first thing
+        # to check is a schema mismatch: this INSERT (and JobSink.finalize_payload)
+        # write `skipped_count` / `skipped`, columns added by Cayenne migration 009,
+        # and PostgREST rejects an INSERT naming a column that does not exist yet.
+        logger.error(
+            "Job %s: COULD NOT CREATE ingestion_jobs ROW — the client will never "
+            "see this job. First suspect: a schema mismatch, e.g. missing "
+            "skipped_count/skipped columns (Cayenne migration 009 not applied).",
+            job_id,
+            exc_info=True,
+        )
 
 
 def _finalize_ingestion_job(job_id: str, payload: dict[str, Any]) -> None:
