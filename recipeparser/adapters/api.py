@@ -210,12 +210,23 @@ def _verify_supabase_jwt(
             algorithms=["ES256", "RS256"],
             audience="authenticated",
         )
-        return payload
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {exc}",
         ) from exc
+
+    # Every write in this service is attributed to `sub`. A token that clears
+    # signature verification but carries no subject (or an empty one) would
+    # otherwise create rows owned by "" — and since the ownership check in
+    # _owned_controller is a plain equality, a second sub-less token would
+    # match that same "" and be handed the first caller's job.
+    if not payload.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has no subject claim",
+        )
+    return payload
 
 
 # ---------------------------------------------------------------------------
