@@ -6,7 +6,7 @@ recipeparser\__main__.py:179:5: I001 [*] Import block is un-sorted or un-formatt
 recipeparser\__main__.py:308:9: I001 [*] Import block is un-sorted or un-formatted
 recipeparser\__main__.py:374:5: I001 [*] Import block is un-sorted or un-formatted
 recipeparser\adapters\api.py:25:1: I001 [*] Import block is un-sorted or un-formatted
-recipeparser\adapters\api.py:530:13: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\adapters\api.py:529:13: I001 [*] Import block is un-sorted or un-formatted
 recipeparser\adapters\gui.py:6:1: I001 [*] Import block is un-sorted or un-formatted
 recipeparser\adapters\gui.py:22:55: F401 [*] `recipeparser.categories.load_category_tree` imported but unused
 recipeparser\adapters\gui.py:515:37: F821 Undefined name `PipelineController`

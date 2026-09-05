@@ -110,12 +110,11 @@ def _resolve_auth_mode(env: Mapping[str, str]) -> tuple[bool, str]:
     return True, test_user_id
 
 
-
-# The old variable name, spelled as a concatenation rather than a literal so
-# that a tree-wide grep for it (tests/unit/test_service_key_name.py) finds no
-# hits: this is the one place in the codebase allowed to know the name ever
-# existed, and only to detect and reject it — it never reads its value.
-_LEGACY_SERVICE_KEY_ENV = "SUPABASE_SERVICE" + "_KEY"
+# The one place in the codebase allowed to name the old variable: it exists
+# only to detect and reject a half-configured deployment, never to read the
+# value. tests/unit/test_service_key_name.py's tree-wide scan allowlists this
+# module by name for exactly that reason — see the comment there.
+_LEGACY_SERVICE_KEY_ENV = "SUPABASE_SERVICE_KEY"
 
 
 def check_service_key_name() -> None:
