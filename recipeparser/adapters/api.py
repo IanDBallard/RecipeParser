@@ -39,6 +39,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from recipeparser.adapters.job_sink import JobSink
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.core.pipeline import RecipePipeline
@@ -47,7 +48,6 @@ from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
 from recipeparser.io.writers.image_store import SupabaseImageStore
-from recipeparser.io.writers.supabase import SupabaseWriter
 import recipeparser.gemini as _gemini_mod
 
 logger = logging.getLogger(__name__)
@@ -418,6 +418,8 @@ def _create_ingestion_job(
             "stage": "IDLE",
             "progress_pct": 0,
             "recipe_count": 0,
+            "skipped_count": 0,
+            "skipped": [],
             "source_hint": source_hint,
             "error_message": None,
             "created_at": now,
@@ -428,37 +430,24 @@ def _create_ingestion_job(
         logger.exception("Job %s: failed to INSERT ingestion_jobs row — job will still run.", job_id)
 
 
-def _finalize_ingestion_job(
-    job_id: str,
-    success: bool,
-    recipe_count: int = 0,
-    error_message: Optional[str] = None,
-) -> None:
-    """UPDATE ingestion_jobs to terminal state (done or error).
+def _finalize_ingestion_job(job_id: str, payload: dict[str, Any]) -> None:
+    """UPDATE ingestion_jobs to the terminal state the JobSink built.
 
-    Called at the end of _run() in both submit_job and submit_file_job.
-    Failures are logged but NOT re-raised.
+    The payload comes from JobSink.finalize_payload, which is where the rules
+    about counts and progress live.  Failures are logged but NOT re-raised.
     """
-    import datetime
+    if _live_writes_blocked():
+        logger.warning("Test run: skipping the finalize for job %s.", job_id)
+        return
     sb = _get_supabase_service_client()
     if sb is None:
         logger.warning("Job %s: Supabase credentials not set — skipping ingestion_jobs finalize.", job_id)
         return
-    now = datetime.datetime.utcnow().isoformat() + "Z"
-    update_payload: dict[str, Any] = {
-        "status": "done" if success else "error",
-        "stage": "DONE" if success else "ERROR",
-        "progress_pct": 100 if success else 0,
-        "recipe_count": recipe_count,
-        "updated_at": now,
-    }
-    if error_message:
-        update_payload["error_message"] = error_message
     try:
-        sb.table("ingestion_jobs").update(update_payload).eq("id", job_id).execute()
+        sb.table("ingestion_jobs").update(payload).eq("id", job_id).execute()
         logger.info(
-            "Job %s: finalized — status=%s, recipe_count=%d.",
-            job_id, update_payload["status"], recipe_count,
+            "Job %s: finalized — status=%s, recipes=%s, skipped=%s.",
+            job_id, payload.get("status"), payload.get("recipe_count"), payload.get("skipped_count"),
         )
     except Exception:
         logger.exception("Job %s: failed to finalize ingestion_jobs row.", job_id)
@@ -507,6 +496,31 @@ def _make_stage_callback(job_id: str) -> Callable[[str], None]:
             raise
 
     return _on_stage_change
+
+
+def _make_progress_writer(job_id: str) -> Callable[[int], None]:
+    """Write one whole-percent progress update to the job row.
+
+    Unlike the stage callback this does not re-raise: a missed percentage is a
+    bar that lags, not a job whose state is unknowable.
+    """
+    def _write(pct: int) -> None:
+        if _live_writes_blocked():
+            return
+        sb = _get_supabase_service_client()
+        if sb is None:
+            return
+        try:
+            import datetime  # noqa: PLC0415
+
+            sb.table("ingestion_jobs").update({
+                "progress_pct": pct,
+                "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
+            }).eq("id", job_id).execute()
+        except Exception:
+            logger.exception("Job %s: failed to write progress %d%%.", job_id, pct)
+
+    return _write
 
 
 # Process-level registry: job_id → PipelineController
@@ -577,6 +591,7 @@ async def submit_job(
     _active_jobs[job_id] = controller
 
     async def _run() -> None:
+        sink = None
         try:
             client = _get_client()
             source_text: str
@@ -611,10 +626,16 @@ async def submit_job(
                 image_url=stored_image_url,
             )
 
-            # Wire category source + writer
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
-            writer = SupabaseWriter(user_id=user_id, category_ids=category_ids)
+            sink = JobSink(job_id=job_id, user_id=user_id, category_ids=category_ids)
+            write_progress = _make_progress_writer(job_id)
+
+            def _on_progress(stage: str, completed: int, total: int) -> None:
+                before = len(sink.progress_updates)
+                sink.on_progress(stage, completed, total)
+                if len(sink.progress_updates) > before:
+                    write_progress(sink.progress_updates[-1])
 
             pipeline = RecipePipeline(
                 client=client,
@@ -622,15 +643,31 @@ async def submit_job(
                 category_source=category_source,
                 uom_system=body.uom_system,
                 measure_preference=body.measure_preference,
+                image_store=SupabaseImageStore(),
             )
-            results = await asyncio.to_thread(pipeline.run, [chunk], None, user_id)
-            await asyncio.to_thread(writer.write, results)
-            logger.info("Job %s completed successfully (%d recipe(s)).", job_id, len(results))
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, True, len(results))
+            await asyncio.to_thread(
+                lambda: pipeline.run(
+                    [chunk],
+                    on_progress=_on_progress,
+                    user_id=user_id,
+                    on_result=sink.on_result,
+                    on_skip=sink.on_skip,
+                )
+            )
+            logger.info(
+                "Job %s completed — %d recipe(s), %d skipped.",
+                job_id, sink.recipe_count, sink.skipped_count,
+            )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, sink.finalize_payload(True))
         except Exception as exc:
             logger.error("Job %s failed: %s", job_id, exc, exc_info=True)
             controller.transition("error")
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, False, 0, str(exc))
+            payload = (
+                sink.finalize_payload(False, str(exc))
+                if sink is not None
+                else {"status": "error", "stage": "ERROR", "error_message": str(exc)}
+            )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:
             _active_jobs.pop(job_id, None)
 
@@ -676,6 +713,7 @@ async def submit_file_job(
         # NOTE: Do NOT call controller.transition("start") here.
         # RecipePipeline.run() calls it internally (IDLE → RUNNING).
         # Calling it here first would cause an invalid double-transition.
+        sink = None
         try:
             client = _get_client()
 
@@ -702,10 +740,16 @@ async def submit_file_job(
             finally:
                 os.unlink(tmp_path)
 
-            # Wire category source + writer
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
-            writer = SupabaseWriter(user_id=user_id, category_ids=category_ids)
+            sink = JobSink(job_id=job_id, user_id=user_id, category_ids=category_ids)
+            write_progress = _make_progress_writer(job_id)
+
+            def _on_progress(stage: str, completed: int, total: int) -> None:
+                before = len(sink.progress_updates)
+                sink.on_progress(stage, completed, total)
+                if len(sink.progress_updates) > before:
+                    write_progress(sink.progress_updates[-1])
 
             # RecipePipeline.run() transitions IDLE→RUNNING internally,
             # processes all chunks (with per-chunk error isolation), then
@@ -716,14 +760,22 @@ async def submit_file_job(
                 category_source=category_source,
                 uom_system=uom_system,
                 measure_preference=measure_preference,
+                image_store=SupabaseImageStore(),
             )
-            results = await asyncio.to_thread(pipeline.run, chunks, None, user_id)
-            await asyncio.to_thread(writer.write, results)
+            await asyncio.to_thread(
+                lambda: pipeline.run(
+                    chunks,
+                    on_progress=_on_progress,
+                    user_id=user_id,
+                    on_result=sink.on_result,
+                    on_skip=sink.on_skip,
+                )
+            )
             logger.info(
-                "File job %s completed successfully (%d recipe(s)).",
-                job_id, len(results),
+                "Job %s completed — %d recipe(s), %d skipped.",
+                job_id, sink.recipe_count, sink.skipped_count,
             )
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, True, len(results))
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, sink.finalize_payload(True))
         except Exception as exc:
             logger.error("File job %s failed: %s", job_id, exc, exc_info=True)
             # Transition to IDLE via "error" event.  The FSM allows this from
@@ -731,7 +783,12 @@ async def submit_file_job(
             # started (e.g. reader raised before pipeline.run()), the controller
             # is still IDLE and the transition is a no-op (logs a warning).
             controller.transition("error")
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, False, 0, str(exc))
+            payload = (
+                sink.finalize_payload(False, str(exc))
+                if sink is not None
+                else {"status": "error", "stage": "ERROR", "error_message": str(exc)}
+            )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:
             _active_jobs.pop(job_id, None)
 

@@ -40,10 +40,10 @@ from recipeparser.core.fsm import PipelineController, PipelineStatus  # noqa: E4
 # ---------------------------------------------------------------------------
 # Mock targets
 # ---------------------------------------------------------------------------
-# Phase 6: api.py instantiates RecipePipeline and SupabaseWriter inline.
+# Phase 6: api.py instantiates RecipePipeline inline and hands it a JobSink
+# (Task 6) so recipes are written as they land rather than after the batch.
 # Patch the classes where they are imported (in the api module namespace).
 _PIPELINE = "recipeparser.adapters.api.RecipePipeline"
-_WRITE    = "recipeparser.adapters.api.SupabaseWriter"
 _CLIENT   = "recipeparser.adapters.api._get_client"
 _EMBED    = "recipeparser.gemini.get_embeddings"
 # Also patch the category source so it doesn't hit Supabase in tests.
@@ -78,9 +78,15 @@ def _make_recipe() -> MagicMock:
 # Section 1 — POST /jobs
 # ===========================================================================
 
-def _patch_pipeline_and_writer() -> tuple[Any, Any, Any, Any]:
-    """Return context managers that patch RecipePipeline, SupabaseWriter,
-    SupabaseCategorySource, and _get_client so no real I/O occurs.
+def _patch_pipeline_and_writer() -> tuple[Any, Any, Any]:
+    """Return context managers that patch RecipePipeline, SupabaseCategorySource,
+    and _get_client so no real I/O occurs.
+
+    Persistence is no longer a separate writer call: RecipePipeline.run() is
+    handed a JobSink (Task 6) and writes recipes via its on_result callback as
+    they land. Since RecipePipeline itself is mocked here, that callback is
+    never actually invoked — tests that need to prove the wiring assert on
+    the kwargs RecipePipeline.run() was called with instead.
 
     Usage::
 
@@ -98,15 +104,11 @@ def _patch_pipeline_and_writer() -> tuple[Any, Any, Any, Any]:
     mock_pipeline_cls = stack.enter_context(_patch(_PIPELINE))
     mock_pipeline_cls.return_value.run.return_value = [_make_recipe()]
 
-    # SupabaseWriter mock: instance.write() is a no-op
-    mock_writer_cls = stack.enter_context(_patch(_WRITE))
-    mock_writer_cls.return_value.write.return_value = None
-
     # SupabaseCategorySource mock: load_category_ids() returns empty dict
     mock_cat_src = stack.enter_context(_patch(_CAT_SRC))
     mock_cat_src.return_value.load_category_ids.return_value = {}
 
-    return stack, mock_client, mock_pipeline_cls, mock_writer_cls
+    return stack, mock_client, mock_pipeline_cls
 
 
 class TestPostJobs:
@@ -193,7 +195,8 @@ class TestPostJobsFile:
     def test_paprikarecipes_flow_b_writes_pre_parsed_directly(self) -> None:
         """PAPRIKA_CAYENNE chunks (text="" + pre_parsed_embedding) must be routed
         through RecipePipeline which handles them via the cheap ASSEMBLE-only path
-        ($0 — no Gemini calls).  SupabaseWriter.write() must be called with the result.
+        ($0 — no Gemini calls). RecipePipeline.run() must be handed the JobSink's
+        on_result/on_skip callbacks so results are written as they land (Task 6).
 
         In the Phase 6 architecture, RecipePipeline._get_stages() routes
         PAPRIKA_CAYENNE chunks internally — the pipeline IS instantiated, but
@@ -222,7 +225,7 @@ class TestPostJobsFile:
         mock_chunk.pre_parsed = mock_pre_parsed
         mock_chunk.pre_parsed_embedding = [0.1] * 1536
 
-        stack, _mock_client, mock_pipeline_cls, mock_writer_cls = _patch_pipeline_and_writer()
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
         # Use TestClient as a context manager so the ASGI event loop is fully
         # drained (all asyncio.create_task background tasks complete) before
         # the with-block exits and we assert on the mocks.
@@ -238,7 +241,7 @@ class TestPostJobsFile:
             job_id = resp.json()["job_id"]
 
             # Poll until the background task completes: the task's finally-block
-            # calls _active_jobs.pop(job_id), so absence means write() has run.
+            # calls _active_jobs.pop(job_id), so absence means the run has finished.
             # Timeout after 5 s to avoid hanging CI on unexpected failures.
             deadline = time.monotonic() + 5.0
             while job_id in _active_jobs and time.monotonic() < deadline:
@@ -248,8 +251,13 @@ class TestPostJobsFile:
         # active above, so the mocks were used by the background task.
         # RecipePipeline must be instantiated (it handles Flow B routing internally)
         mock_pipeline_cls.assert_called_once()
-        # SupabaseWriter.write() must be called exactly once with the pipeline results
-        mock_writer_cls.return_value.write.assert_called_once()
+        # RecipePipeline.run() must be wired to the JobSink's callbacks — that
+        # wiring is what makes each recipe get written as it lands instead of
+        # in one batch at the end (Task 6).
+        run_kwargs = mock_pipeline_cls.return_value.run.call_args.kwargs
+        assert "on_result" in run_kwargs
+        assert "on_skip" in run_kwargs
+        assert "on_progress" in run_kwargs
 
     def test_file_response_has_only_job_id(self, client: TestClient) -> None:
         with _patch_pipeline_and_writer()[0], \
