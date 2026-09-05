@@ -69,6 +69,13 @@ class Chunk:
         The 1536-dim embedding stored in ``_cayenne_meta``.  When present
         alongside ``pre_parsed``, the pipeline also skips EMBED — achieving
         $0 cost for Cayenne-native restores.
+    label:
+        Human-readable identifier for this chunk, used to name it if it is
+        dropped.  A Paprika entry's name, an EPUB chapter title, a PDF page
+        range — whatever the source actually provides.  None when the source
+        names nothing: what a book chunk contained is unknown until extraction
+        succeeds, and a dropped chunk is one where it did not.  No stage reads
+        this field; it exists for reporting.
     """
 
     text: str
@@ -78,3 +85,4 @@ class Chunk:
     image_bytes: Optional[bytes] = None
     pre_parsed: Optional[Union["CayenneRecipe", "IngestResponse"]] = None
     pre_parsed_embedding: Optional[List[float]] = field(default=None)
+    label: Optional[str] = None

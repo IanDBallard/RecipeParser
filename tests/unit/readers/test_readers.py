@@ -15,6 +15,7 @@ import json
 import os
 import tempfile
 import zipfile
+from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
 
@@ -49,6 +50,21 @@ def _make_paprikarecipes(entries: List[Dict[str, Any]]) -> str:
     tmp.write(buf.read())
     tmp.close()
     return tmp.name
+
+
+def _write_paprika_archive(tmp_path: Path, entries: List[Dict[str, Any]]) -> Path:
+    """
+    Build a .paprikarecipes archive under ``tmp_path`` from a list of recipe dicts.
+
+    Each dict is gzip-compressed and stored as a .paprikarecipe entry inside
+    the ZIP, matching what PaprikaReader.read_entries expects.
+    """
+    archive = tmp_path / "export.paprikarecipes"
+    with zipfile.ZipFile(archive, "w") as zf:
+        for i, entry in enumerate(entries):
+            compressed = gzip.compress(json.dumps(entry).encode())
+            zf.writestr(f"recipe_{i}.paprikarecipe", compressed)
+    return archive
 
 
 # Minimal valid IngestResponse payload (matches recipeparser/models.py)
@@ -262,3 +278,20 @@ def test_paprika_reader_corrupt_cayenne_meta_falls_back_to_legacy() -> None:
     assert "sugar" in chunk.text
     assert chunk.pre_parsed is None
     assert chunk.pre_parsed_embedding is None
+
+
+# ---------------------------------------------------------------------------
+# PaprikaReader — chunk labeling
+# ---------------------------------------------------------------------------
+
+
+def test_paprika_reader_labels_each_chunk_with_the_entry_name(tmp_path):
+    """Spec 4.2: a dropped chunk must be nameable, and Paprika supplies real names."""
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{"name": "Sticky Toffee Pudding", "ingredients": "1 cup dates", "directions": "Bake."}],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert [c.label for c in chunks] == ["Sticky Toffee Pudding"]

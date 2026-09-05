@@ -111,6 +111,7 @@ class PaprikaReader(RecipeReader):
                         pre_parsed=pre_parsed,
                         pre_parsed_embedding=embedding,
                         image_bytes=entry.get("photo_data"),
+                        label=entry.get("name") or None,
                     )
                 )
             else:
@@ -126,6 +127,7 @@ class PaprikaReader(RecipeReader):
                         text=text,
                         input_type=InputType.PAPRIKA_LEGACY,
                         image_bytes=entry.get("photo_data"),
+                        label=name or None,
                     )
                 )
 

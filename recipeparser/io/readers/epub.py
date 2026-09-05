@@ -66,6 +66,9 @@ class EpubReader(RecipeReader):
                         text=part,
                         input_type=InputType.EPUB,
                         source_url=book_source,
+                        # Chapter titles aren't retained through extract_chapters_with_image_markers;
+                        # a null label is honest, an invented one is not.
+                        label=None,
                     )
                 )
 
