@@ -527,9 +527,10 @@ def _make_progress_writer(job_id: str) -> Callable[[int], None]:
     return _write
 
 
-# Process-level registry: job_id → PipelineController
-# Allows pause/resume/cancel from the control endpoints.
-_active_jobs: Dict[str, PipelineController] = {}
+# Process-level registry: job_id → (user_id, PipelineController)
+# The user id is kept so the control endpoints can refuse a job the caller does
+# not own; without it any caller who reached the API could cancel any import.
+_active_jobs: Dict[str, tuple[str, PipelineController]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -592,7 +593,7 @@ async def submit_job(
     user_id: str = user.get("sub", "")
     job_id = str(uuid.uuid4())
     controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
-    _active_jobs[job_id] = controller
+    _active_jobs[job_id] = (user_id, controller)
 
     async def _run() -> None:
         sink = None
@@ -711,7 +712,7 @@ async def submit_file_job(
     user_id: str = user.get("sub", "")
     job_id = str(uuid.uuid4())
     controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
-    _active_jobs[job_id] = controller
+    _active_jobs[job_id] = (user_id, controller)
 
     async def _run() -> None:
         # NOTE: Do NOT call controller.transition("start") here.
@@ -801,23 +802,36 @@ async def submit_file_job(
     return AsyncJobResponse(job_id=job_id)
 
 
+def _owned_controller(job_id: str, user: dict[str, Any]) -> PipelineController:
+    """Return the caller's own job, or 404.
+
+    Not 403 for someone else's job: that would confirm the id exists and make
+    the registry enumerable.
+    """
+    entry = _active_jobs.get(job_id)
+    if entry is None or entry[0] != user.get("sub", ""):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job '{job_id}' not found.",
+        )
+    return entry[1]
+
+
 # ---------------------------------------------------------------------------
 # GET /jobs/{job_id}  — status polling
 # ---------------------------------------------------------------------------
 
 @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
-def get_job_status(job_id: str) -> JobStatusResponse:
-    """Return the current FSM status of a running job.
+def get_job_status(
+    job_id: str,
+    user: dict[str, Any] = Depends(_verify_supabase_jwt),
+) -> JobStatusResponse:
+    """Return the current FSM status of the caller's running job.
 
     Returns 404 if the job is not in the active registry (already completed
-    or never existed).
+    or never existed) or is not owned by the caller.
     """
-    controller = _active_jobs.get(job_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
+    controller = _owned_controller(job_id, user)
     return JobStatusResponse(job_id=job_id, status=controller.status.value)
 
 
@@ -826,39 +840,24 @@ def get_job_status(job_id: str) -> JobStatusResponse:
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs/{job_id}/pause", status_code=200)
-def pause_job(job_id: str) -> dict[str, str]:
-    """Request a pause on a running job."""
-    controller = _active_jobs.get(job_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
+def pause_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> dict[str, str]:
+    """Request a pause on the caller's running job."""
+    controller = _owned_controller(job_id, user)
     controller.request_pause()
     return {"job_id": job_id, "status": controller.status.value}
 
 
 @app.post("/jobs/{job_id}/resume", status_code=200)
-def resume_job(job_id: str) -> dict[str, str]:
-    """Resume a paused job."""
-    controller = _active_jobs.get(job_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
+def resume_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> dict[str, str]:
+    """Resume the caller's paused job."""
+    controller = _owned_controller(job_id, user)
     controller.request_resume()
     return {"job_id": job_id, "status": controller.status.value}
 
 
 @app.post("/jobs/{job_id}/cancel", status_code=200)
-def cancel_job(job_id: str) -> dict[str, str]:
-    """Cancel a running or paused job."""
-    controller = _active_jobs.get(job_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
+def cancel_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> dict[str, str]:
+    """Cancel the caller's running or paused job."""
+    controller = _owned_controller(job_id, user)
     controller.request_cancel()
     return {"job_id": job_id, "status": controller.status.value}

@@ -329,7 +329,7 @@ class TestGetJobStatus:
         job_id = str(uuid.uuid4())
         controller = PipelineController()
         controller.transition("start")  # IDLE → RUNNING
-        _active_jobs[job_id] = controller
+        _active_jobs[job_id] = (os.environ["TEST_USER_ID"], controller)
 
         resp = client.get(f"/jobs/{job_id}")
         assert resp.status_code == 200
@@ -338,7 +338,7 @@ class TestGetJobStatus:
         job_id = str(uuid.uuid4())
         controller = PipelineController()
         controller.transition("start")  # IDLE → RUNNING
-        _active_jobs[job_id] = controller
+        _active_jobs[job_id] = (os.environ["TEST_USER_ID"], controller)
 
         resp = client.get(f"/jobs/{job_id}")
         body = resp.json()
@@ -355,7 +355,7 @@ class TestControlEndpoints:
         job_id = str(uuid.uuid4())
         controller = PipelineController()
         controller.transition("start")  # IDLE → RUNNING
-        _active_jobs[job_id] = controller
+        _active_jobs[job_id] = (os.environ["TEST_USER_ID"], controller)
         return job_id, controller
 
     # ── pause ────────────────────────────────────────────────────────────────
