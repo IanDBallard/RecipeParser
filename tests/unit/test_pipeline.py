@@ -17,7 +17,7 @@ from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.core.rate_limiter import GlobalRateLimiter
-from recipeparser.core.ports import CategorySource
+from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.models import (
     CayenneRefinement,
     IngestResponse,
@@ -93,7 +93,10 @@ class _FakeCategorySource(CategorySource):
         return {"Italian": "uuid-italian"}
 
 
-def _make_pipeline(controller: Optional[PipelineController] = None) -> RecipePipeline:
+def _make_pipeline(
+    controller: Optional[PipelineController] = None,
+    image_store: Optional[ImageStore] = None,
+) -> RecipePipeline:
     if controller is None:
         controller = PipelineController()
     GlobalRateLimiter().reset()
@@ -102,6 +105,7 @@ def _make_pipeline(controller: Optional[PipelineController] = None) -> RecipePip
         controller=controller,
         category_source=_FakeCategorySource(),
         rpm=9999,  # effectively unlimited for unit tests
+        image_store=image_store,
     )
 
 
@@ -388,3 +392,50 @@ def test_on_skip_reports_submission_position_not_completion_order():
 
 def _raise(exc: Exception):
     raise exc
+
+
+# ---------------------------------------------------------------------------
+# Test: image_store (Task 4)
+# ---------------------------------------------------------------------------
+
+
+class _FakeImageStore(ImageStore):
+    """Records what it was asked to store; returns a predictable URL."""
+
+    def __init__(self, url: Optional[str] = "https://example.test/stored.jpg") -> None:
+        self.url = url
+        self.calls: List[bytes] = []
+
+    def put(self, image_bytes: bytes, recipe_id: str, content_type: str = "image/jpeg") -> Optional[str]:
+        self.calls.append(image_bytes)
+        return self.url
+
+
+def test_chunk_image_bytes_are_stored_and_the_url_reaches_the_recipe():
+    """Spec 4.5: 466 photographs were read and dropped; they must reach the assembled recipe."""
+    store = _FakeImageStore()
+    chunk = Chunk(text="a recipe", input_type=InputType.URL, image_bytes=b"\xff\xd8jpegbytes")
+
+    pipeline = _make_pipeline(image_store=store)
+    with patch.object(
+        RecipePipeline, "_process_chunk", side_effect=lambda c, s, a: [_make_ingest_response("R")]
+    ):
+        pipeline.run([chunk])
+
+    assert store.calls == [b"\xff\xd8jpegbytes"]
+    assert chunk.image_url == "https://example.test/stored.jpg"
+
+
+def test_a_failed_upload_still_yields_the_recipe():
+    """A missing photograph is not a reason to lose a recipe."""
+    store = _FakeImageStore(url=None)
+    chunk = Chunk(text="a recipe", input_type=InputType.URL, image_bytes=b"bytes")
+
+    pipeline = _make_pipeline(image_store=store)
+    with patch.object(
+        RecipePipeline, "_process_chunk", side_effect=lambda c, s, a: [_make_ingest_response("R")]
+    ):
+        results = pipeline.run([chunk])
+
+    assert len(results) == 1
+    assert chunk.image_url is None

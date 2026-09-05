@@ -295,3 +295,42 @@ def test_paprika_reader_labels_each_chunk_with_the_entry_name(tmp_path):
     chunks = PaprikaReader().read(str(archive))
 
     assert [c.label for c in chunks] == ["Sticky Toffee Pudding"]
+
+
+# ---------------------------------------------------------------------------
+# PaprikaReader — photo_data decoding (Task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_paprika_photo_data_is_decoded_to_bytes(tmp_path):
+    """photo_data is base64 text; image_bytes is typed bytes. Uploading the string
+    unchanged would store base64 as a JPEG."""
+    import base64
+
+    jpeg = b"\xff\xd8\xff\xe0 not really a jpeg but it is bytes"
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{
+            "name": "Photographed Thing",
+            "ingredients": "1 cup x",
+            "directions": "Cook.",
+            "photo": "pg_1.jpg",
+            "photo_data": base64.b64encode(jpeg).decode("ascii"),
+        }],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert chunks[0].image_bytes == jpeg
+    assert chunks[0].image_content_type == "image/jpeg"
+
+
+def test_unreadable_photo_data_is_dropped_not_raised(tmp_path):
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{"name": "Bad Photo", "ingredients": "x", "directions": "y", "photo_data": "!!!not base64!!!"}],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert chunks[0].image_bytes is None

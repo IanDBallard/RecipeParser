@@ -25,6 +25,7 @@ Usage::
 
 from __future__ import annotations
 
+import base64
 import gzip
 import json
 import logging
@@ -36,6 +37,30 @@ from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
+
+_PHOTO_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+
+
+def _decode_photo(entry: Dict[str, Any]) -> tuple[Optional[bytes], str]:
+    """Decode a Paprika entry's embedded photo.
+
+    ``photo_data`` is base64 text, not bytes — assigning it straight to
+    Chunk.image_bytes (typed bytes) is how 466 photographs became unusable. A
+    photo that will not decode is dropped: a recipe without a picture, never a
+    failed import.
+    """
+    raw = entry.get("photo_data")
+    if not raw:
+        return None, "image/jpeg"
+    ext = str(entry.get("photo") or "").rsplit(".", 1)[-1].lower()
+    content_type = _PHOTO_TYPES.get(ext, "image/jpeg")
+    if isinstance(raw, bytes):
+        return raw, content_type
+    try:
+        return base64.b64decode(raw, validate=True), content_type
+    except Exception:
+        log.warning("PaprikaReader: could not decode photo_data for %r — continuing without it.", entry.get("name"))
+        return None, content_type
 
 
 class PaprikaReader(RecipeReader):
@@ -104,13 +129,15 @@ class PaprikaReader(RecipeReader):
                     embedding = None  # orphan embedding must not attach to a legacy chunk
 
             if pre_parsed is not None:
+                photo_bytes, photo_type = _decode_photo(entry)
                 chunks.append(
                     Chunk(
                         text="",
                         input_type=InputType.PAPRIKA_CAYENNE,
                         pre_parsed=pre_parsed,
                         pre_parsed_embedding=embedding,
-                        image_bytes=entry.get("photo_data"),
+                        image_bytes=photo_bytes,
+                        image_content_type=photo_type,
                         label=entry.get("name") or None,
                     )
                 )
@@ -122,11 +149,13 @@ class PaprikaReader(RecipeReader):
                 directions = entry.get("directions", "")
                 text = f"{name}\n\nIngredients:\n{ingredients}\n\nDirections:\n{directions}"
 
+                photo_bytes, photo_type = _decode_photo(entry)
                 chunks.append(
                     Chunk(
                         text=text,
                         input_type=InputType.PAPRIKA_LEGACY,
-                        image_bytes=entry.get("photo_data"),
+                        image_bytes=photo_bytes,
+                        image_content_type=photo_type,
                         label=name or None,
                     )
                 )

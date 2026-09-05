@@ -24,6 +24,7 @@ import pytest
 from recipeparser.core.models import InputType
 from recipeparser.io.readers.paprika import PaprikaReader
 from recipeparser.io.writers.cayenne_zip import CayenneZipWriter
+from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.paprika_zip import PaprikaWriter
 from recipeparser.io.writers.supabase import SupabaseWriter
 from recipeparser.models import IngestResponse, StructuredIngredient, TokenizedDirection
@@ -351,3 +352,20 @@ class TestRoundTripCayenneZipToPaprikaReaderIsZeroCost:
         assert chunk.text == "", (
             f"Flow B chunk.text must be empty string, got {chunk.text!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test 6 — SupabaseImageStore (Task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_image_store_returns_none_without_credentials(monkeypatch):
+    """No credentials is a recipe without a picture, never a raised exception."""
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+
+    assert SupabaseImageStore().put(b"bytes", "some-id") is None
+
+
+def test_image_store_returns_none_for_empty_bytes():
+    assert SupabaseImageStore(url="https://x.test", service_key="k").put(b"", "some-id") is None

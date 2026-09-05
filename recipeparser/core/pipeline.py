@@ -17,6 +17,7 @@ TID rule: this module lives in ``core/`` and therefore MUST NOT import from
 from __future__ import annotations
 
 import logging
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
 
@@ -28,7 +29,7 @@ from recipeparser.core.stages.categorize import categorize
 from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
-from recipeparser.core.ports import CategorySource
+from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse
 
 log = logging.getLogger(__name__)
@@ -70,6 +71,7 @@ class RecipePipeline:
         measure_preference: str = "Volume",
         concurrency: int = MAX_CONCURRENT_API_CALLS,
         rpm: Optional[int] = None,
+        image_store: Optional[ImageStore] = None,
     ) -> None:
         """
         Args:
@@ -81,6 +83,9 @@ class RecipePipeline:
             concurrency:        Maximum number of parallel chunk workers.
             rpm:                Optional RPM override for the GlobalRateLimiter.
                                 Only honoured on the first instantiation of the singleton.
+            image_store:        Optional ImageStore for chunks that carry raw
+                                image bytes.  Without one those bytes are
+                                dropped, which is what shipped before.
         """
         self._client = client
         self._controller = controller
@@ -88,6 +93,7 @@ class RecipePipeline:
         self._uom_system = uom_system
         self._measure_preference = measure_preference
         self._cap = max(1, concurrency)
+        self._image_store = image_store
         # Initialise (or retrieve) the process-level rate limiter.
         if rpm is not None:
             self._limiter = GlobalRateLimiter(rpm=rpm)
@@ -155,6 +161,13 @@ class RecipePipeline:
 
         def _worker(chunk: Chunk) -> List[IngestResponse]:
             """Process a single chunk inside a thread-pool worker."""
+            # A reader may have pulled a photograph out of the archive; store it
+            # before ASSEMBLE so the assembled recipe carries a URL rather than
+            # raw bytes.
+            if chunk.image_bytes and not chunk.image_url and self._image_store is not None:
+                chunk.image_url = self._image_store.put(
+                    chunk.image_bytes, str(uuid.uuid4()), chunk.image_content_type
+                )
             stages = self._get_stages(chunk)
             return self._process_chunk(chunk, stages, user_axes)
 

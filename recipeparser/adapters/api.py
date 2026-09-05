@@ -46,6 +46,7 @@ from recipeparser.io.category_sources.supabase_source import SupabaseCategorySou
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
+from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.supabase import SupabaseWriter
 import recipeparser.gemini as _gemini_mod
 
@@ -292,41 +293,22 @@ def html_to_text(markdown: str) -> str:
 
 
 async def _upload_image_to_storage(image_url: str, recipe_id: str) -> Optional[str]:
-    """Download *image_url* and upload it to Supabase Storage.
+    """Download *image_url* and store it, returning the public URL or None.
 
-    Returns the public storage URL on success, or ``None`` on any failure
-    (network error, storage error, etc.).  Failures are logged but never
-    propagate — image upload must never block recipe ingestion.
+    A thin wrapper over the same ImageStore the pipeline uses: this path exists
+    for URL submissions, which arrive with an address rather than bytes. Failures
+    are logged but never raised — a recipe without a picture, not a failed job.
     """
     try:
-        supabase_url = os.environ.get("SUPABASE_URL", "")
-        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-        if not supabase_url or not supabase_key:
-            logger.warning("Supabase credentials not set; skipping image upload")
-            return None
-
-        async with httpx.AsyncClient(timeout=15) as http:
-            img_resp = await http.get(image_url)
-            img_resp.raise_for_status()
-            img_bytes = img_resp.content
-            content_type = img_resp.headers.get("content-type", "image/jpeg")
-
-        # Derive a simple extension from content-type
-        ext = content_type.split("/")[-1].split(";")[0].strip() or "jpg"
-        storage_path = f"recipe-images/{recipe_id}.{ext}"
-
-        from supabase import create_client  # type: ignore[import-not-found]
-        sb = create_client(supabase_url, supabase_key)
-        sb.storage.from_("recipe-images").upload(
-            storage_path,
-            img_bytes,
-            {"content-type": content_type, "upsert": "true"},
-        )
-        public_url: str = sb.storage.from_("recipe-images").get_public_url(storage_path)
-        return public_url
-    except Exception as exc:
-        logger.warning("Image upload failed for %s: %s", image_url, exc)
+        async with httpx.AsyncClient(timeout=30) as http:
+            response = await http.get(image_url)
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+            data = response.content
+    except Exception:
+        logger.exception("Could not fetch %s for recipe %s — continuing without an image.", image_url, recipe_id)
         return None
+    return await asyncio.to_thread(SupabaseImageStore().put, data, recipe_id, content_type)
 
 
 # ---------------------------------------------------------------------------
