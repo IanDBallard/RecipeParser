@@ -392,4 +392,4 @@ def test_an_unquantified_ingredient_serialises_as_null():
     dumped = ingredient.model_dump()
 
     assert dumped["amount"] is None
-    assert json.dumps([dumped]).count("null") >= 1
+    assert '"amount": null' in json.dumps(dumped)
