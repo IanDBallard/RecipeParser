@@ -27,7 +27,12 @@ WriteFn = Callable[..., Any]
 
 
 def _utc_now() -> str:
-    return datetime.datetime.utcnow().isoformat() + "Z"
+    # datetime.utcnow() is deprecated (and scheduled for removal); the
+    # timezone-aware replacement's isoformat() already ends in "+00:00", so
+    # appending "Z" to that would yield the malformed "+00:00Z" — strftime
+    # sidesteps it and still lands a valid ISO-8601 UTC instant in the
+    # ingestion_jobs.updated_at timestamptz column.
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
 
 class JobSink:
