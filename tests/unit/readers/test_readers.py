@@ -325,6 +325,30 @@ def test_paprika_photo_data_is_decoded_to_bytes(tmp_path):
     assert chunks[0].image_content_type == "image/jpeg"
 
 
+def test_paprika_png_photo_extension_maps_to_png_content_type(tmp_path):
+    """image/jpeg is also _PHOTO_TYPES's fallback for an unrecognised extension,
+    so a .jpg-only test cannot tell "derived from the filename" from "took the
+    default". A .png entry must map to image/png, not silently fall back."""
+    import base64
+
+    png = b"\x89PNG\r\n\x1a\n not really a png but it is bytes"
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{
+            "name": "Photographed Thing",
+            "ingredients": "1 cup x",
+            "directions": "Cook.",
+            "photo": "pg_1.png",
+            "photo_data": base64.b64encode(png).decode("ascii"),
+        }],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert chunks[0].image_bytes == png
+    assert chunks[0].image_content_type == "image/png"
+
+
 def test_line_wrapped_photo_data_is_still_decoded(tmp_path):
     """Some exporters wrap base64 at 76 columns (MIME-style, RFC 2045); a photo
     encoded that way must not be dropped as undecodable."""

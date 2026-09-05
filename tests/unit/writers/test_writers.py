@@ -379,6 +379,56 @@ def test_image_store_returns_none_for_empty_bytes():
     assert SupabaseImageStore(url="https://x.test", service_key="k").put(b"", "some-id") is None
 
 
+def test_image_store_uploads_and_returns_public_url():
+    """Happy path: neither of the two tests above reaches this far. Asserts
+    the object path built from bucket + recipe_id + extension, the
+    content-type/upsert options passed to the client, and that put() returns
+    the public URL the client hands back.
+
+    supabase.create_client is imported lazily inside put(), so it is patched
+    where it is looked up: the `supabase` module's own attribute.
+    """
+    mock_client = MagicMock()
+    mock_client.storage.from_.return_value.get_public_url.return_value = (
+        "https://fake.supabase.co/storage/v1/object/public/recipe-images/some-id.jpg"
+    )
+
+    with patch("supabase.create_client", return_value=mock_client) as mock_create:
+        store = SupabaseImageStore(url="https://fake.supabase.co", service_key="fake-service-key")
+        result = store.put(b"bytes", "some-id", "image/jpeg")
+
+    mock_create.assert_called_once_with("https://fake.supabase.co", "fake-service-key")
+    mock_client.storage.from_.assert_any_call("recipe-images")
+
+    upload_call = mock_client.storage.from_.return_value.upload.call_args
+    assert upload_call.args[0] == "recipe-images/some-id.jpg"
+    assert upload_call.args[1] == b"bytes"
+    assert upload_call.args[2] == {"content-type": "image/jpeg", "upsert": "true"}
+
+    assert result == "https://fake.supabase.co/storage/v1/object/public/recipe-images/some-id.jpg"
+
+
+def test_image_store_maps_a_non_jpeg_content_type_to_its_extension():
+    """.jpg is also _EXTENSIONS's fallback for an unrecognised content type, so
+    a .jpg-only test cannot tell "derived from content_type" from "took the
+    default". A image/png content type must produce a .png object path and
+    be passed through to the client unchanged."""
+    mock_client = MagicMock()
+    mock_client.storage.from_.return_value.get_public_url.return_value = (
+        "https://fake.supabase.co/storage/v1/object/public/recipe-images/some-id.png"
+    )
+
+    with patch("supabase.create_client", return_value=mock_client):
+        store = SupabaseImageStore(url="https://fake.supabase.co", service_key="fake-service-key")
+        result = store.put(b"bytes", "some-id", "image/png")
+
+    upload_call = mock_client.storage.from_.return_value.upload.call_args
+    assert upload_call.args[0] == "recipe-images/some-id.png"
+    assert upload_call.args[2] == {"content-type": "image/png", "upsert": "true"}
+
+    assert result == "https://fake.supabase.co/storage/v1/object/public/recipe-images/some-id.png"
+
+
 # ---------------------------------------------------------------------------
 # Test 7 — Unquantified ingredient (Task 9)
 # ---------------------------------------------------------------------------
