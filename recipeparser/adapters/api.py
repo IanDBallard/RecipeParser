@@ -502,20 +502,24 @@ def _make_progress_writer(job_id: str) -> Callable[[int], None]:
     """Write one whole-percent progress update to the job row.
 
     Unlike the stage callback this does not re-raise: a missed percentage is a
-    bar that lags, not a job whose state is unknowable.
+    bar that lags, not a job whose state is unknowable. Because of that, the
+    *entire* body — including building the Supabase client — runs inside the
+    try/except: RecipePipeline.run's on_progress callback deliberately
+    re-raises, so any exception that escaped this function would kill the
+    whole import over nothing worse than a stale progress bar.
     """
     def _write(pct: int) -> None:
         if _live_writes_blocked():
             return
-        sb = _get_supabase_service_client()
-        if sb is None:
-            return
         try:
             import datetime  # noqa: PLC0415
 
+            sb = _get_supabase_service_client()
+            if sb is None:
+                return
             sb.table("ingestion_jobs").update({
                 "progress_pct": pct,
-                "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
             }).eq("id", job_id).execute()
         except Exception:
             logger.exception("Job %s: failed to write progress %d%%.", job_id, pct)

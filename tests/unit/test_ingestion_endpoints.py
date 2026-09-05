@@ -36,8 +36,24 @@ def test_the_pipeline_is_given_result_and_skip_callbacks():
     """Regression: passing None here is why nothing was written until the end."""
     import inspect
 
-    source = inspect.getsource(api.submit_file_job)
-    assert "on_result=" in source
-    assert "on_skip=" in source
-    assert "on_progress=" in source
-    assert "writer.write(results)" not in source
+    for endpoint in (api.submit_job, api.submit_file_job):
+        source = inspect.getsource(endpoint)
+        assert "on_result=" in source
+        assert "on_skip=" in source
+        assert "on_progress=" in source
+        assert "writer.write(results)" not in source
+
+
+def test_a_broken_progress_writer_does_not_kill_the_job(monkeypatch):
+    """RecipePipeline.run's on_progress re-raises, so a missed percentage must
+    stay a lagging bar, not a dead import — building the Supabase client
+    (which can itself raise) has to happen inside the try, not before it.
+    """
+    def _boom():
+        raise RuntimeError("supabase client construction failed")
+
+    monkeypatch.setattr(api, "_get_supabase_service_client", _boom)
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+
+    write_progress = api._make_progress_writer("job-1")
+    write_progress(42)  # must not raise
