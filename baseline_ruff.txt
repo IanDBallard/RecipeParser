@@ -1,0 +1,127 @@
+recipeparser\__main__.py:7:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\__main__.py:15:1: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+recipeparser\__main__.py:122:5: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\__main__.py:142:5: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\__main__.py:179:5: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\__main__.py:308:9: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\__main__.py:374:5: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\adapters\api.py:25:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\adapters\api.py:194:5: F841 Local variable `supabase_key` is assigned to but never used
+recipeparser\adapters\api.py:511:13: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\adapters\gui.py:6:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\adapters\gui.py:22:55: F401 [*] `recipeparser.categories.load_category_tree` imported but unused
+recipeparser\adapters\gui.py:515:37: F821 Undefined name `PipelineController`
+recipeparser\adapters\gui.py:541:121: E501 Line too long (123 > 120)
+recipeparser\adapters\gui.py:732:17: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\api.py:11:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\api.py:12:8: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+recipeparser\categories.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\core\pipeline.py:17:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\epub.py:3:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+recipeparser\export.py:2:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+recipeparser\export.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\gemini.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\gemini.py:487:121: E501 Line too long (167 > 120)
+recipeparser\io\category_sources\__init__.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\io\category_sources\yaml_source.py:30:32: F401 [*] `typing.Optional` imported but unused
+recipeparser\io\readers\epub.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\io\writers\paprika_zip.py:22:37: F401 [*] `typing.Optional` imported but unused
+recipeparser\models.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\pdf.py:3:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+recipeparser\recategorize.py:17:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\supabase_writer.py:2:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+recipeparser\supabase_writer.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+recipeparser\toc.py:16:5: F401 [*] `recipeparser.config.MIN_TOC_MATCH_RATIO` imported but unused
+recipeparser\toc.py:17:5: F401 [*] `recipeparser.config.MIN_TOC_RECIPE_RATIO` imported but unused
+recipeparser\toc.py:22:33: F401 [*] `recipeparser.models.TocEntry` imported but unused
+recipeparser\toc.py:31:121: E501 Line too long (132 > 120)
+recipeparser\toc.py:49:121: E501 Line too long (144 > 120)
+tests\conftest.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\fixtures.py:17:5: I001 [*] Import block is un-sorted or un-formatted
+tests\fixtures.py:53:5: I001 [*] Import block is un-sorted or un-formatted
+tests\live_api_test.py:84:5: I001 [*] Import block is un-sorted or un-formatted
+tests\live_api_test.py:399:5: I001 [*] Import block is un-sorted or un-formatted
+tests\live_api_test.py:400:12: F401 [*] `tempfile` imported but unused
+tests\live_api_test.py:401:12: F401 [*] `os` imported but unused
+tests\live_api_test.py:468:5: I001 [*] Import block is un-sorted or un-formatted
+tests\live_api_test.py:566:5: I001 [*] Import block is un-sorted or un-formatted
+tests\live_api_test.py:568:12: F401 [*] `io` imported but unused
+tests\live_api_test.py:643:5: I001 [*] Import block is un-sorted or un-formatted
+tests\live_api_test.py:645:12: F401 [*] `io` imported but unused
+tests\live_cli_test.py:8:1: I001 [*] Import block is un-sorted or un-formatted
+tests\live_cli_test.py:36:1: E402 Module level import not at top of file
+tests\live_gui_e2e.py:45:1: E402 Module level import not at top of file
+tests\live_gui_e2e.py:142:17: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\live_gui_test.py:10:1: I001 [*] Import block is un-sorted or un-formatted
+tests\live_gui_test.py:11:1: E401 [*] Multiple imports on one line
+tests\live_gui_test.py:58:5: E401 [*] Multiple imports on one line
+tests\live_gui_test.py:58:5: I001 [*] Import block is un-sorted or un-formatted
+tests\smoke_test_exe.py:25:1: I001 [*] Import block is un-sorted or un-formatted
+tests\smoke_test_exe.py:26:8: F401 [*] `re` imported but unused
+tests\smoke_test_exe.py:120:22: F541 [*] f-string without any placeholders
+tests\snapshots\test_stage_snapshots.py:11:1: I001 [*] Import block is un-sorted or un-formatted
+tests\snapshots\test_stage_snapshots.py:16:8: F401 [*] `pytest` imported but unused
+tests\test_api.py:33:1: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\test_api.py:235:121: E501 Line too long (121 > 120)
+tests\test_categories.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_categories.py:3:8: F401 [*] `pytest` imported but unused
+tests\test_cli.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_cli.py:3:8: F401 [*] `sys` imported but unused
+tests\test_cli.py:6:27: F401 [*] `unittest.mock.MagicMock` imported but unused
+tests\test_cli.py:246:5: E401 [*] Multiple imports on one line
+tests\test_cli.py:246:5: I001 [*] Import block is un-sorted or un-formatted
+tests\test_cli.py:261:9: F841 Local variable `merged` is assigned to but never used
+tests\test_cli.py:352:121: E501 Line too long (130 > 120)
+tests\test_cli.py:389:121: E501 Line too long (130 > 120)
+tests\test_epub.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_epub.py:3:8: F401 [*] `pytest` imported but unused
+tests\test_export.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_export.py:7:8: F401 [*] `pytest` imported but unused
+tests\test_gemini.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_gemini.py:2:8: F401 [*] `json` imported but unused
+tests\test_gemini.py:495:9: I001 [*] Import block is un-sorted or un-formatted
+tests\test_gemini.py:495:16: F401 [*] `fitz` imported but unused
+tests\test_gemini.py:518:9: I001 [*] Import block is un-sorted or un-formatted
+tests\test_gemini.py:519:43: F401 [*] `google.genai.types` imported but unused
+tests\test_gemini_cayenne.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_gemini_cayenne.py:8:39: F401 [*] `google.genai.types` imported but unused
+tests\test_gui.py:9:8: F401 [*] `pytest` imported but unused
+tests\test_gui.py:11:1: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\test_merge_exports.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_paprika_db.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_paprika_db.py:79:9: E401 [*] Multiple imports on one line
+tests\test_paprika_db.py:79:9: I001 [*] Import block is un-sorted or un-formatted
+tests\test_pipeline_controller.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_pipeline_controller.py:6:21: F401 [*] `pathlib.Path` imported but unused
+tests\test_recategorize.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_toc.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\test_utils.py:2:8: F401 [*] `pytest` imported but unused
+tests\test_utils.py:128:121: E501 Line too long (123 > 120)
+tests\unit\readers\test_readers.py:10:1: I001 [*] Import block is un-sorted or un-formatted
+tests\unit\readers\test_readers.py:24:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+tests\unit\readers\test_readers.py:25:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+tests\unit\stages\test_stages.py:10:1: I001 [*] Import block is un-sorted or un-formatted
+tests\unit\test_auth_mode.py:11:8: F401 [*] `os` imported but unused
+tests\unit\test_auth_mode.py:19:1: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\unit\test_auth_mode.py:19:1: I001 [*] Import block is un-sorted or un-formatted
+tests\unit\test_cli_adapter.py:2:1: I001 [*] Import block is un-sorted or un-formatted
+tests\unit\test_cli_adapter.py:6:45: F401 [*] `unittest.mock.call` imported but unused
+tests\unit\test_cli_adapter.py:27:9: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\unit\test_cli_adapter.py:34:9: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\unit\test_cli_adapter.py:41:9: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\unit\test_cli_adapter.py:50:9: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\unit\test_cli_adapter.py:69:9: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\unit\test_cli_adapter.py:149:9: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\unit\test_pipeline.py:7:1: I001 [*] Import block is un-sorted or un-formatted
+tests\unit\test_pipeline.py:9:8: F401 [*] `threading` imported but unused
+tests\unit\test_pipeline.py:13:8: F401 [*] `pytest` imported but unused
+tests\unit\test_select_reader.py:15:1: I001 [*] Import block is un-sorted or un-formatted
+tests\unit\test_select_reader.py:19:1: TID251 `recipeparser.adapters` is banned: core/ modules cannot import from adapters/ — violates hexagonal architecture
+tests\unit\writers\test_writers.py:20:38: F401 [*] `unittest.mock.call` imported but unused
+tests\unit\writers\test_writers.py:22:8: F401 [*] `pytest` imported but unused
+tests\unit\writers\test_writers.py:25:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+tests\unit\writers\test_writers.py:26:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+tests\unit\writers\test_writers.py:27:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+tests\unit\writers\test_writers.py:28:1: TID251 `recipeparser.io` is banned: core/ modules cannot import from io/ — violates hexagonal architecture
+Found 125 errors.
+[*] 89 fixable with the `--fix` option (2 hidden fixes can be enabled with the `--unsafe-fixes` option).

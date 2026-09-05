@@ -19,7 +19,11 @@
 - `SUPABASE_SERVICE_ROLE_KEY` is the only accepted service-key variable name after Task 8.
 - Line length 120 (`ruff`, `pyproject.toml:62`).
 - The test suite must not touch the live Supabase project. `_live_writes_blocked()` (`api.py:380`) exists for this; never bypass it in a test.
-- Run the whole suite with `pytest tests -q` before every commit; it is fast and there are no live calls in it.
+- Run the whole suite with `pytest tests -q` before every commit; it is fast and there are no live calls in it. The baseline on `feat/ingestion-fixes` is **500 passed**.
+- **`ruff` is not clean on this repository and never has been in its current configuration.** The baseline is 125 findings, recorded in `baseline_ruff.txt` on the branch — mostly `I001` import sorting and `F401` unused imports, plus 23 `TID251` hexagonal-boundary violations in the legacy shim modules (`recipeparser/api.py`, `epub.py`, `pdf.py`, `export.py`, `supabase_writer.py`, `__main__.py`). The gate is **no new findings**, not zero: `ruff check recipeparser tests --output-format=concise | diff baseline_ruff.txt -`. Do not opportunistically fix the pre-existing ones; that is a separate change and it would bury the diff of this one.
+- `TID251` is the lint rule enforcing the boundary in the constraint above. If your change trips it, the fix is a port, not a `noqa`.
+- `mypy` also does not pass cleanly (`baseline_mypy.txt`, 251 lines, plus errors from an unrelated third-party package under Python 3.13). Same rule: no new findings attributable to your change.
+- A worktree needs a `.env` or thirteen `tests/test_api.py` cases fail with 401 — the auth bypass reaches them through `.env`, and `test_api.py`'s own `setdefault` only wins if nothing imported the app first. The branch's `.env` carries `DISABLE_AUTH=1` and a UUID `TEST_USER_ID` and **deliberately no Supabase credentials**, so the tree cannot reach the live project at all. Do not add them.
 - Existing callers of `RecipePipeline.run` — `adapters/cli.py:136`, `adapters/gui.py`, `tests/unit/test_pipeline.py` — pass no new arguments and must keep working unchanged. Every new parameter is keyword-optional with a `None` default.
 
 ---
@@ -1735,7 +1739,19 @@ Note the first test excludes itself by construction only if it lives outside the
 Run: `pytest tests/unit/test_service_key_name.py -v`
 Expected: FAIL — `ImportError: cannot import name 'check_service_key_name'`, and the scan finds two modules.
 
-- [ ] **Step 3: Rename the reads**
+- [ ] **Step 3: Rename the reads, and delete the dead one**
+
+`SUPABASE_SERVICE_ROLE_KEY` is canonical because `adapters/api.py` genuinely reads it at `:303`, `:405` and `:498`. A fourth read at `:194` is a **dead assignment** — `ruff` flags it `F841`, and `_verify_supabase_jwt` verifies against the JWKS endpoint, not the service key. Delete that line rather than leaving it:
+
+```python
+    token = credentials.credentials
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    # (the SUPABASE_SERVICE_ROLE_KEY read that was here is gone: JWT verification
+    #  uses the JWKS endpoint, and the variable was never referenced)
+```
+
+That removes one entry from `baseline_ruff.txt`; regenerate the baseline in this task's commit with
+`python -m ruff check recipeparser tests --output-format=concise > baseline_ruff.txt`.
 
 `recipeparser/io/category_sources/supabase_source.py`: line 63 becomes
 
@@ -1915,10 +1931,15 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 Run: `pytest tests -q`
 Expected: PASS, no skips you did not expect.
 
-- [ ] **Step 2: Lint and type-check**
+- [ ] **Step 2: Lint and type-check against the baselines, not against zero**
 
-Run: `ruff check recipeparser tests` then `mypy recipeparser`
-Expected: clean, or no new findings against `baseline_mypy.txt`.
+Run: `python -m ruff check recipeparser tests --output-format=concise | diff baseline_ruff.txt -`
+Expected: the only differences are lines Task 8 legitimately removed. Any **added** line is a new finding and must be fixed before the PR.
+
+Run: `python -m mypy recipeparser`
+Expected: no new errors beyond `baseline_mypy.txt` and the unrelated third-party ones.
+
+Note for whoever reads this later: `gui.py:515` carries a pre-existing `F821 Undefined name PipelineController` — a live `NameError` waiting in the GUI, unrelated to this work and deliberately left alone. It deserves its own issue.
 
 - [ ] **Step 3: Push and open the PR**
 
