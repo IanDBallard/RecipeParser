@@ -6,12 +6,12 @@ ARCHITECTURAL INVARIANT:
   The client app NEVER receives recipe JSON in an HTTP response and NEVER writes
   ingested recipes to Supabase itself. Recipes reach the client via PowerSync sync.
 
-This module uses the SUPABASE_SERVICE_KEY (service-role key) which bypasses RLS.
+This module uses the SUPABASE_SERVICE_ROLE_KEY (service-role key) which bypasses RLS.
 It must NEVER be called from the mobile client — only from the FastAPI backend.
 
 Required env vars:
-  SUPABASE_URL         — e.g. https://<ref>.supabase.co
-  SUPABASE_SERVICE_KEY — service-role key (never the anon key)
+  SUPABASE_URL              — e.g. https://<ref>.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY — service-role key (never the anon key)
 """
 
 import json
@@ -33,10 +33,10 @@ log = logging.getLogger(__name__)
 def _get_creds() -> Tuple[str, str]:
     """Return (supabase_url, service_key). Raises RuntimeError if not configured."""
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    key = os.getenv("SUPABASE_SERVICE_KEY", "")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     if not url or not key:
         raise RuntimeError(
-            "SUPABASE_URL or SUPABASE_SERVICE_KEY not set — "
+            "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set — "
             "cannot write recipe to Supabase."
         )
     return url, key

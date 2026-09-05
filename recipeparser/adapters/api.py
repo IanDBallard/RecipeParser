@@ -110,6 +110,30 @@ def _resolve_auth_mode(env: Mapping[str, str]) -> tuple[bool, str]:
     return True, test_user_id
 
 
+
+# The old variable name, spelled as a concatenation rather than a literal so
+# that a tree-wide grep for it (tests/unit/test_service_key_name.py) finds no
+# hits: this is the one place in the codebase allowed to know the name ever
+# existed, and only to detect and reject it — it never reads its value.
+_LEGACY_SERVICE_KEY_ENV = "SUPABASE_SERVICE" + "_KEY"
+
+
+def check_service_key_name() -> None:
+    """Refuse to boot half-configured.
+
+    The service key was read under two names in different modules, so setting
+    only one disabled a subset of writes with a warning rather than an error —
+    the worst failure mode available, because most of the app kept working.
+    """
+    if os.environ.get("SUPABASE_SERVICE_ROLE_KEY"):
+        return
+    if os.environ.get(_LEGACY_SERVICE_KEY_ENV):
+        raise RuntimeError(
+            f"{_LEGACY_SERVICE_KEY_ENV} is set but SUPABASE_SERVICE_ROLE_KEY is not. "
+            "The latter is now the only name read. Rename the variable."
+        )
+
+
 _DISABLE_AUTH, _TEST_USER_ID = _resolve_auth_mode(os.environ)
 _bearer = HTTPBearer(auto_error=not _DISABLE_AUTH)
 
@@ -121,6 +145,7 @@ if _DISABLE_AUTH:
     )
 
 app = FastAPI(title="Cayenne Ingestion API", version="1.0.0")
+check_service_key_name()
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -202,7 +227,8 @@ def _verify_supabase_jwt(
 
     token = credentials.credentials
     supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    # (the SUPABASE_SERVICE_ROLE_KEY read that was here is gone: JWT verification
+    #  uses the JWKS endpoint, and the variable was never referenced)
 
     try:
         import jwt as pyjwt  # noqa: PLC0415

@@ -103,7 +103,7 @@ class TestSupabaseWriterInsertsAllRecipes:
 
         # Patch the env vars so _get_creds() succeeds without a real .env
         monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
-        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "fake-service-key")
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
 
         mock_response = MagicMock()
         mock_response.status_code = 201
@@ -153,7 +153,7 @@ class TestSupabaseWriterInsertsRecipeCategories:
         recipe = _make_recipe("Pasta Carbonara")
 
         monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
-        monkeypatch.setenv("SUPABASE_SERVICE_KEY", "fake-service-key")
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
 
         mock_response = MagicMock()
         mock_response.status_code = 201

@@ -4,10 +4,10 @@ import sys
 
 # Get credentials from environment
 supabase_url = os.environ.get('SUPABASE_URL', '').rstrip('/')
-service_key = os.environ.get('SUPABASE_SERVICE_KEY', '')
+service_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 
 if not supabase_url or not service_key:
-    print("Error: SUPABASE_URL or SUPABASE_SERVICE_KEY not found in environment.")
+    print("Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not found in environment.")
     sys.exit(1)
 
 headers = {

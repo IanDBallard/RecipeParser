@@ -22,12 +22,12 @@ Axis mapping strategy (mirrors the 4-layer faceted model):
   - Their direct children → tags under that axis (Level 2)
   - Deeper nesting (Level 3-4) is flattened into the nearest Level-2 axis
 
-This source uses the SUPABASE_SERVICE_KEY to bypass RLS so it can read any
-user's categories.  It must NEVER be called from the mobile client.
+This source uses the SUPABASE_SERVICE_ROLE_KEY to bypass RLS so it can read
+any user's categories.  It must NEVER be called from the mobile client.
 
 Required env vars (read from environment at call time — not at import):
-  SUPABASE_URL         — e.g. https://<ref>.supabase.co
-  SUPABASE_SERVICE_KEY — service-role key (never the anon key)
+  SUPABASE_URL              — e.g. https://<ref>.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY — service-role key (never the anon key)
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ class SupabaseCategorySource(CategorySource):
                       ``https://<ref>.supabase.co``).  Falls back to the
                       ``SUPABASE_URL`` env var if not provided.
         service_key:  Service-role key.  Falls back to the
-                      ``SUPABASE_SERVICE_KEY`` env var if not provided.
+                      ``SUPABASE_SERVICE_ROLE_KEY`` env var if not provided.
     """
 
     def __init__(
@@ -60,7 +60,7 @@ class SupabaseCategorySource(CategorySource):
         service_key: Optional[str] = None,
     ) -> None:
         self._url = (supabase_url or os.getenv("SUPABASE_URL") or "").rstrip("/")
-        self._key = service_key or os.getenv("SUPABASE_SERVICE_KEY", "")
+        self._key = service_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
     # ------------------------------------------------------------------
     # CategorySource interface
@@ -127,7 +127,7 @@ class SupabaseCategorySource(CategorySource):
         """
         if not self._url or not self._key:
             log.warning(
-                "SupabaseCategorySource: SUPABASE_URL or SUPABASE_SERVICE_KEY "
+                "SupabaseCategorySource: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY "
                 "not configured — returning empty axes."
             )
             return []

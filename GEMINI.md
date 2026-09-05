@@ -40,7 +40,7 @@ This project is a production-grade tool designed to extract recipes from EPUB an
     LLM_PROVIDER=gemini
     EMBEDDING_PROVIDER=gemini        # reuses GOOGLE_API_KEY — no second key needed
     SUPABASE_URL=https://your-project.supabase.co
-    SUPABASE_SERVICE_KEY=eyJ...      # service role key (CLI/GUI image upload)
+    SUPABASE_SERVICE_ROLE_KEY=eyJ... # service role key (CLI/GUI image upload)
     ```
 
 ### Running the Application
