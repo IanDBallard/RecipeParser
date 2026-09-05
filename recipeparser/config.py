@@ -4,6 +4,7 @@ Central configuration constants for the recipeparser package.
 All tuneable values live here so that CLI arguments, environment variable
 overrides, or future config-file loading only need to touch one place.
 """
+import os
 from typing import Optional
 
 # ---------------------------------------------------------------------------
@@ -107,3 +108,28 @@ RATE_LIMIT_AUTO_RESUME_SECS: int = 43_200
 
 # Subdirectory name (relative to output_dir) where checkpoint JSON files are stored.
 CHECKPOINT_SUBDIR: str = ".recipeparser_checkpoints"
+
+# ---------------------------------------------------------------------------
+# Live-write guard
+# ---------------------------------------------------------------------------
+#
+# Lives here rather than in adapters/ or io/ because both a write path in
+# recipeparser/io/writers/supabase.py and a client-factory path in
+# recipeparser/adapters/api.py need to call it, and io/ must never import
+# from adapters/ (hexagonal architecture — see the ruff banned-api rule).
+# This module is neutral ground both are already allowed to import from.
+
+
+def live_writes_blocked() -> bool:
+    """True when this process is a test run that must not touch a real project.
+
+    The service key sits in .env, so an ordinary `pytest` run picked it up and wrote
+    ingestion_jobs rows into the live database: eight of them on 2026-09-04, four left
+    at status "running" because the process ended mid-job, which the Cayenne client
+    then displayed forever as jobs in progress. Nothing here needs a real project to
+    be under test, so the writes are refused rather than the credentials removed --
+    a developer who wants the opposite sets ALLOW_LIVE_WRITES_IN_TESTS=1 and means it.
+    """
+    if os.environ.get("ALLOW_LIVE_WRITES_IN_TESTS") == "1":
+        return False
+    return "PYTEST_CURRENT_TEST" in os.environ

@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import httpx
 from dotenv import load_dotenv
 
+from recipeparser.config import live_writes_blocked
 from recipeparser.io.writers import RecipeWriter
 from recipeparser.models import IngestResponse
 
@@ -171,8 +172,16 @@ def write_recipe_to_supabase(
         The UUID string of the inserted recipe row.
 
     Raises:
-        RuntimeError: If env vars are missing or the Supabase insert fails.
+        RuntimeError: If env vars are missing, this is a test run that must not
+            reach a real project (see ``recipeparser.config.live_writes_blocked``),
+            or the Supabase insert fails.
     """
+    if live_writes_blocked():
+        raise RuntimeError(
+            "Live writes blocked: this process is under pytest and "
+            "ALLOW_LIVE_WRITES_IN_TESTS is not set to '1' — refusing to write "
+            "to a real Supabase project. See recipeparser.config.live_writes_blocked."
+        )
     supabase_url, service_key = _get_creds()
     rid = recipe_id or str(uuid.uuid4())
 

@@ -91,15 +91,30 @@ def _patch_pipeline_and_writer() -> tuple[Any, Any, Any]:
     kwargs RecipePipeline.run() was called with instead.
 
     NOTE: invoking the real on_result/on_skip from here to prove persistence
-    end-to-end was tried and abandoned — JobSink.__init__'s `write` parameter
-    defaults to `write_recipe_to_supabase` bound as a direct function-object
-    reference at job_sink.py's *import* time (confirmed via
-    `JobSink.__init__.__defaults__`). Patching that name afterwards, at any of
-    `recipeparser.io.writers.supabase.write_recipe_to_supabase` or
-    `recipeparser.adapters.job_sink.write_recipe_to_supabase`, does not change
-    the value already frozen into the default — the real network-calling
-    function still runs. Asserting the identity/liveness of the callbacks
-    RecipePipeline.run() was actually handed is the reliable check.
+    end-to-end was originally tried and abandoned, because `JobSink.__init__`'s
+    `write` parameter used to default to `write_recipe_to_supabase` bound as a
+    direct function-object reference at job_sink.py's *import* time (confirmed
+    via `JobSink.__init__.__defaults__`) — patching that name afterwards, at
+    either `recipeparser.io.writers.supabase.write_recipe_to_supabase` or
+    `recipeparser.adapters.job_sink.write_recipe_to_supabase`, did not change
+    the value already frozen into the default, so the real network-calling
+    function still ran.
+
+    That has since been fixed (whole-branch review, 2026-09-05): both endpoints
+    now import `write_recipe_to_supabase` into api.py's own namespace and pass
+    it explicitly — `JobSink(..., write=write_recipe_to_supabase)` — as a plain
+    keyword argument evaluated each time `_run()` executes, not a def-time
+    default. `recipeparser.adapters.api.write_recipe_to_supabase` is therefore
+    the name to patch, and `test_the_patched_write_receives_the_recipe_end_to_end`
+    below exercises the write end-to-end through it. (`JobSink.__init__`'s own
+    default still freezes the same reference at job_sink.py's import time —
+    harmless, since nothing outside test fakes constructs a `JobSink` without
+    passing `write=` explicitly, but a reason to keep patching the api.py name
+    rather than the job_sink.py default.)
+
+    Asserting the identity/liveness of the callbacks RecipePipeline.run() was
+    actually handed (`_assert_pipeline_run_wired_to_a_live_sink`) remains the
+    right check for the tests that only care about wiring, not persistence.
 
     Usage::
 
@@ -192,6 +207,38 @@ class TestPostJobs:
 
         mock_pipeline_cls.assert_called_once()
         _assert_pipeline_run_wired_to_a_live_sink(mock_pipeline_cls)
+
+    def test_the_patched_write_receives_the_recipe_end_to_end(self) -> None:
+        """Persistence, proven end-to-end rather than by wiring inspection.
+
+        RecipePipeline.run's mock now actually calls the on_result it was
+        handed (JobSink.on_result), which calls the module-level
+        `write_recipe_to_supabase` name in api.py's namespace. Patching that
+        name — not JobSink.__init__'s frozen default — is what makes this
+        interceptable; see the NOTE on `_patch_pipeline_and_writer` above.
+        """
+        recipe = _make_recipe()
+
+        def _run_side_effect(_chunks: Any, **kwargs: Any) -> list[Any]:
+            kwargs["on_result"](recipe)
+            return [recipe]
+
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
+        mock_pipeline_cls.return_value.run.side_effect = _run_side_effect
+
+        with stack, \
+             patch("recipeparser.adapters.api.write_recipe_to_supabase") as mock_write, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"text": "Boil water. Add pasta."})
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+        mock_write.assert_called_once()
+        assert mock_write.call_args.args[0] is recipe
 
 
 # ===========================================================================

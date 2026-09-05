@@ -104,6 +104,10 @@ class TestSupabaseWriterInsertsAllRecipes:
         # Patch the env vars so _get_creds() succeeds without a real .env
         monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
         monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+        # httpx.post is mocked below, so no network call ever leaves this
+        # process — the live-write guard exists to stop a *real* Supabase
+        # write from a pytest run, which this isn't.
+        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
 
         mock_response = MagicMock()
         mock_response.status_code = 201
@@ -154,6 +158,10 @@ class TestSupabaseWriterInsertsRecipeCategories:
 
         monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
         monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+        # httpx.post is mocked below, so no network call ever leaves this
+        # process — the live-write guard exists to stop a *real* Supabase
+        # write from a pytest run, which this isn't.
+        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
 
         mock_response = MagicMock()
         mock_response.status_code = 201

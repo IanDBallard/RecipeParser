@@ -40,6 +40,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from recipeparser.adapters.job_sink import JobSink
+from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.core.pipeline import RecipePipeline
@@ -48,6 +49,7 @@ from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
 from recipeparser.io.writers.image_store import SupabaseImageStore
+from recipeparser.io.writers.supabase import write_recipe_to_supabase
 import recipeparser.gemini as _gemini_mod
 
 logger = logging.getLogger(__name__)
@@ -406,21 +408,6 @@ def embed_text(
 # Phase 6 — Canonical fire-and-forget endpoints
 # ===========================================================================
 
-def _live_writes_blocked() -> bool:
-    """True when this process is a test run that must not touch a real project.
-
-    The service key sits in .env, so an ordinary `pytest` run picked it up and wrote
-    ingestion_jobs rows into the live database: eight of them on 2026-09-04, four left
-    at status "running" because the process ended mid-job, which the Cayenne client
-    then displayed forever as jobs in progress. Nothing here needs a real project to
-    be under test, so the writes are refused rather than the credentials removed --
-    a developer who wants the opposite sets ALLOW_LIVE_WRITES_IN_TESTS=1 and means it.
-    """
-    if os.environ.get("ALLOW_LIVE_WRITES_IN_TESTS") == "1":
-        return False
-    return "PYTEST_CURRENT_TEST" in os.environ
-
-
 def _get_supabase_service_client() -> Any:
     """Return a synchronous supabase-py client using the service role key.
 
@@ -692,7 +679,12 @@ async def submit_job(
 
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
-            sink = JobSink(job_id=job_id, user_id=user_id, category_ids=category_ids)
+            sink = JobSink(
+                job_id=job_id,
+                user_id=user_id,
+                category_ids=category_ids,
+                write=write_recipe_to_supabase,
+            )
             write_progress = _make_progress_writer(job_id)
 
             def _on_progress(stage: str, completed: int, total: int) -> None:
@@ -806,7 +798,12 @@ async def submit_file_job(
 
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
-            sink = JobSink(job_id=job_id, user_id=user_id, category_ids=category_ids)
+            sink = JobSink(
+                job_id=job_id,
+                user_id=user_id,
+                category_ids=category_ids,
+                write=write_recipe_to_supabase,
+            )
             write_progress = _make_progress_writer(job_id)
 
             def _on_progress(stage: str, completed: int, total: int) -> None:
