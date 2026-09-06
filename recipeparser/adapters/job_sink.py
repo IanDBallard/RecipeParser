@@ -102,21 +102,41 @@ class JobSink:
 
     # ── terminal state ────────────────────────────────────────────────────────
 
-    def finalize_payload(self, success: bool, error_message: Optional[str] = None) -> Dict[str, Any]:
+    def finalize_payload(
+        self,
+        success: bool,
+        error_message: Optional[str] = None,
+        cancelled: bool = False,
+    ) -> Dict[str, Any]:
         """The ingestion_jobs UPDATE for a finished job.
 
-        progress_pct is present only on success. Writing 0 on failure told the
-        client a job that died at 60% had never started.
+        progress_pct is present only on an uncancelled success. Writing 0 on
+        failure told the client a job that died at 60% had never started, and a
+        cancelled job is the same case: it keeps whatever the last update wrote.
+
+        ``stage`` stays "DONE" for a cancelled run. stage says how far the
+        pipeline got; status says how it ended. A "CANCELLED" stage value would
+        break the client's IngestionStage union and its label map (spec 5.1).
+
+        A run that raised is an error whatever was requested of it: ``success``
+        is checked first so a cancel racing an exception cannot relabel the
+        failure as a tidy stop.
         """
+        if not success:
+            status = "error"
+        elif cancelled:
+            status = "cancelled"
+        else:
+            status = "done"
         payload: Dict[str, Any] = {
-            "status": "done" if success else "error",
+            "status": status,
             "stage": "DONE" if success else "ERROR",
             "recipe_count": self.recipe_count,
             "skipped_count": self.skipped_count,
             "skipped": self.skipped,
             "updated_at": self._now(),
         }
-        if success:
+        if success and not cancelled:
             payload["progress_pct"] = 100
         if error_message:
             payload["error_message"] = error_message

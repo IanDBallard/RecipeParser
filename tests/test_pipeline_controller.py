@@ -657,3 +657,46 @@ class TestStageChangeCallback:
         """A lambda satisfies the StageChangeCallback Protocol (runtime_checkable)."""
         cb = lambda s: None  # noqa: E731
         assert isinstance(cb, StageChangeCallback)
+
+
+# ---------------------------------------------------------------------------
+# cancel_requested — the fact that must outlive the FSM
+# ---------------------------------------------------------------------------
+
+class TestCancelRequestedFlag:
+
+    def test_a_new_controller_has_not_been_cancelled(self):
+        ctrl = PipelineController()
+        assert ctrl.cancel_requested is False
+
+    def test_request_cancel_from_running_sets_the_flag(self):
+        ctrl = PipelineController()
+        ctrl.transition("start")
+        ctrl.request_cancel()
+        assert ctrl.cancel_requested is True
+
+    def test_the_flag_survives_the_wind_down_to_idle(self):
+        """The whole point: RecipePipeline.run transitions "done" after breaking
+        out of its loop, so by the time the API builds the terminal payload the
+        status is IDLE and says nothing. The flag must still say cancelled."""
+        ctrl = PipelineController()
+        ctrl.transition("start")
+        ctrl.request_cancel()
+        ctrl.transition("done")
+        assert ctrl.status == PipelineStatus.IDLE
+        assert ctrl.cancel_requested is True
+
+    def test_a_refused_cancel_does_not_set_the_flag(self):
+        """request_cancel from IDLE returns False and changes nothing; a job
+        that was never cancellable must not finalize as cancelled."""
+        ctrl = PipelineController()
+        assert ctrl.request_cancel() is False
+        assert ctrl.cancel_requested is False
+
+    def test_a_paused_job_cancelled_while_blocked_sets_the_flag(self):
+        ctrl = PipelineController()
+        ctrl.transition("start")
+        ctrl.transition("pause")
+        ctrl.transition("paused")
+        ctrl.request_cancel()
+        assert ctrl.cancel_requested is True

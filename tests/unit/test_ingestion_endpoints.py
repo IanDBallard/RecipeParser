@@ -66,3 +66,58 @@ def test_a_broken_progress_writer_does_not_kill_the_job(monkeypatch):
 
     write_progress = api._make_progress_writer("job-1")
     write_progress(42)  # must not raise
+
+
+def test_total_chunks_is_written_to_the_job_row(monkeypatch):
+    """The row is inserted before the source is read, so the count arrives as
+    an UPDATE once the reader has returned."""
+    sent = {}
+    matched = {}
+
+    class _Table:
+        def update(self, payload):
+            sent.update(payload)
+            return self
+
+        def eq(self, column, value):
+            matched[column] = value
+            return self
+
+        def execute(self):
+            return None
+
+    client = MagicMock()
+    client.table.return_value = _Table()
+    monkeypatch.setattr(api, "_get_supabase_service_client", lambda: client)
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+
+    api._update_total_chunks("job-1", 827)
+
+    assert sent["total_chunks"] == 827
+    assert matched["id"] == "job-1"
+
+
+def test_a_failed_total_chunks_write_does_not_raise(monkeypatch):
+    """Third deliberate exception to fail-loud: a missing denominator is a
+    notice that omits "of 827", not a job whose state is unknowable. Building
+    the client is inside the try because create_client can itself raise -- and
+    because a deploy that ran before Cayenne migration 011 must cost one number,
+    not the import.
+    """
+    def _boom():
+        raise RuntimeError("supabase client construction failed")
+
+    monkeypatch.setattr(api, "_get_supabase_service_client", _boom)
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+
+    api._update_total_chunks("job-1", 5)  # must not raise
+
+
+def test_total_chunks_is_not_written_during_a_test_run(monkeypatch):
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: True)
+    called = []
+    monkeypatch.setattr(api, "_get_supabase_service_client", lambda: called.append(1))
+
+    api._update_total_chunks("job-1", 5)
+
+    assert called == []

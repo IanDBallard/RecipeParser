@@ -519,3 +519,120 @@ class TestExtractImageUrl:
         assert result is not None
         assert not result.endswith("))")
         assert result.endswith(")")
+
+
+# ===========================================================================
+# Cancellation reaches the terminal payload
+# ===========================================================================
+
+class TestCancelledJobsFinalizeAsCancelled:
+    """A cancelled import used to report a clean success — the FSM was back at
+    IDLE by finalize time. These prove the flag survives the whole round trip
+    through the endpoint, not just through the controller."""
+
+    def _finalized(self, monkeypatch: Any) -> dict[str, Any]:
+        """Capture the single payload _finalize_ingestion_job is handed.
+
+        Patched by dotted string rather than by importing the module: an
+        `import recipeparser.adapters.api` here trips TID251, the hexagonal
+        boundary rule, and the house rule is that TID251 is fixed rather than
+        silenced with a noqa.
+        """
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(
+            "recipeparser.adapters.api._finalize_ingestion_job",
+            lambda job_id, payload: captured.update(payload),
+        )
+        return captured
+
+    def _drain(self, tc: TestClient, payload: dict[str, Any]) -> str:
+        resp = tc.post("/jobs", json=payload)
+        assert resp.status_code == 202
+        job_id = resp.json()["job_id"]
+        deadline = time.monotonic() + 5.0
+        while job_id in _active_jobs and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return job_id
+
+    def test_a_cancelled_url_job_writes_status_cancelled(self, monkeypatch: Any) -> None:
+        captured = self._finalized(monkeypatch)
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
+
+        def _run_side_effect(_chunks: Any, **kwargs: Any) -> list[Any]:
+            # Stand in for the user pressing Cancel mid-run: the controller for
+            # this job is the only one in the registry at this point.
+            for _user_id, controller in list(_active_jobs.values()):
+                controller.transition("start")
+                controller.request_cancel()
+                controller.transition("done")
+            return []
+
+        mock_pipeline_cls.return_value.run.side_effect = _run_side_effect
+
+        with stack, TestClient(app, raise_server_exceptions=False) as tc:
+            self._drain(tc, {"text": "Boil water. Add pasta."})
+
+        assert captured["status"] == "cancelled"
+        assert captured["stage"] == "DONE"
+        assert "progress_pct" not in captured
+
+    def test_an_uncancelled_url_job_still_writes_done(self, monkeypatch: Any) -> None:
+        captured = self._finalized(monkeypatch)
+        stack, _mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
+
+        with stack, TestClient(app, raise_server_exceptions=False) as tc:
+            self._drain(tc, {"text": "Boil water. Add pasta."})
+
+        assert captured["status"] == "done"
+        assert captured["progress_pct"] == 100
+
+
+# ===========================================================================
+# total_chunks — the denominator, written after the reader returns
+# ===========================================================================
+
+class TestTotalChunks:
+
+    def _captured(self, monkeypatch: Any) -> list[tuple[str, int]]:
+        calls: list[tuple[str, int]] = []
+        monkeypatch.setattr(
+            "recipeparser.adapters.api._update_total_chunks",
+            lambda job_id, total: calls.append((job_id, total)),
+        )
+        return calls
+
+    def _drain(self, tc: TestClient, job_id: str) -> None:
+        deadline = time.monotonic() + 5.0
+        while job_id in _active_jobs and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+    def test_a_url_job_records_one_chunk(self, monkeypatch: Any) -> None:
+        calls = self._captured(monkeypatch)
+        stack, _mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
+
+        with stack, TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"text": "Boil water. Add pasta."})
+            job_id = resp.json()["job_id"]
+            self._drain(tc, job_id)
+
+        assert calls == [(job_id, 1)]
+
+    def test_a_file_job_records_what_the_reader_returned(self, monkeypatch: Any) -> None:
+        calls = self._captured(monkeypatch)
+        chunks = [MagicMock() for _ in range(3)]
+        for chunk in chunks:
+            chunk.text = "pasta"
+        stack, _mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
+
+        with stack, \
+             patch("recipeparser.adapters.api._PdfReader") as mock_reader_cls, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            mock_reader_cls.return_value.read.return_value = chunks
+            resp = tc.post(
+                "/jobs/file",
+                files={"file": ("recipe.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+            )
+            job_id = resp.json()["job_id"]
+            self._drain(tc, job_id)
+
+        assert calls == [(job_id, 3)]

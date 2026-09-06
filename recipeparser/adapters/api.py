@@ -573,6 +573,39 @@ def _make_progress_writer(job_id: str) -> Callable[[int], None]:
     return _write
 
 
+def _update_total_chunks(job_id: str, total: int) -> None:
+    """Record how many chunks this job will attempt.
+
+    The ingestion_jobs row is inserted before the background task is scheduled
+    and the source is only read inside _run(), so the INSERT cannot carry this
+    number — it arrives as an UPDATE once the reader has returned and before
+    the pipeline starts. The column is nullable for exactly that window.
+
+    Like the progress writer and unlike everything else here, this logs and
+    returns rather than re-raising (§11.4's third deliberate exception): a
+    missing denominator is a notice that omits "of 827", not a job whose state
+    is unknowable. The entire body — including building the client, which can
+    itself raise — is inside the try, which is also what keeps a deploy that
+    ran before Cayenne migration 011 costing one number instead of the import.
+    """
+    if _live_writes_blocked():
+        logger.warning("Test run: skipping the total_chunks update for job %s.", job_id)
+        return
+    try:
+        import datetime  # noqa: PLC0415
+
+        sb = _get_supabase_service_client()
+        if sb is None:
+            return
+        sb.table("ingestion_jobs").update({
+            "total_chunks": total,
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+        }).eq("id", job_id).execute()
+        logger.info("Job %s: total_chunks = %d.", job_id, total)
+    except Exception:
+        logger.exception("Job %s: failed to write total_chunks=%d.", job_id, total)
+
+
 # Process-level registry: job_id → (user_id, PipelineController)
 # The user id is kept so the control endpoints can refuse a job the caller does
 # not own; without it any caller who reached the API could cancel any import.
@@ -670,12 +703,16 @@ async def submit_job(
             # Both URL-scraped and raw-text paths use InputType.URL so the
             # pipeline routes them through the full EXTRACT→REFINE→…→ASSEMBLE
             # sequence.  source_url is None for raw-text submissions.
-            chunk = Chunk(
-                text=source_text,
-                input_type=InputType.URL,
-                source_url=source_url,
-                image_url=stored_image_url,
-            )
+            # A list of one, so the total_chunks write below and the run() call
+            # take the same shape here as they do in the file endpoint.
+            chunks = [
+                Chunk(
+                    text=source_text,
+                    input_type=InputType.URL,
+                    source_url=source_url,
+                    image_url=stored_image_url,
+                )
+            ]
 
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
@@ -701,9 +738,10 @@ async def submit_job(
                 measure_preference=body.measure_preference,
                 image_store=SupabaseImageStore(),
             )
+            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks))
             await asyncio.to_thread(
                 lambda: pipeline.run(
-                    [chunk],
+                    chunks,
                     on_progress=_on_progress,
                     user_id=user_id,
                     on_result=sink.on_result,
@@ -714,7 +752,13 @@ async def submit_job(
                 "Job %s completed — %d recipe(s), %d skipped.",
                 job_id, sink.recipe_count, sink.skipped_count,
             )
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, sink.finalize_payload(True))
+            await asyncio.to_thread(
+                _finalize_ingestion_job,
+                job_id,
+                # The controller is back at IDLE by now, so the flag is the only
+                # thing that still knows the user pressed Cancel (spec 5.1).
+                sink.finalize_payload(True, cancelled=controller.cancel_requested),
+            )
         except Exception as exc:
             logger.error("Job %s failed: %s", job_id, exc, exc_info=True)
             controller.transition("error")
@@ -823,6 +867,7 @@ async def submit_file_job(
                 measure_preference=measure_preference,
                 image_store=SupabaseImageStore(),
             )
+            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks))
             await asyncio.to_thread(
                 lambda: pipeline.run(
                     chunks,
@@ -836,7 +881,13 @@ async def submit_file_job(
                 "Job %s completed — %d recipe(s), %d skipped.",
                 job_id, sink.recipe_count, sink.skipped_count,
             )
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, sink.finalize_payload(True))
+            await asyncio.to_thread(
+                _finalize_ingestion_job,
+                job_id,
+                # The controller is back at IDLE by now, so the flag is the only
+                # thing that still knows the user pressed Cancel (spec 5.1).
+                sink.finalize_payload(True, cancelled=controller.cancel_requested),
+            )
         except Exception as exc:
             logger.error("File job %s failed: %s", job_id, exc, exc_info=True)
             # Transition to IDLE via "error" event.  The FSM allows this from
