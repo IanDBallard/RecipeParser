@@ -194,13 +194,15 @@ def write_recipe_to_supabase(
         "base_servings": recipe.base_servings,
         "source_url": recipe.source_url,
         "image_url": recipe.image_url,
-        # jsonb columns — send as JSON strings via PostgREST
-        "structured_ingredients": json.dumps(
-            [ing.model_dump() for ing in recipe.structured_ingredients]
-        ),
-        "tokenized_directions": json.dumps(
-            [d.model_dump() for d in recipe.tokenized_directions]
-        ),
+        # jsonb columns — send the list itself. json.dumps()ing it here handed
+        # Postgres a JSON *string* containing an array, and that is what jsonb
+        # stored: on 2026-09-06 jsonb_typeof reported 'string' for all 786 rows
+        # in the live library, with no arrays in the table at all. It went
+        # unnoticed because the Cayenne client compensates (kitchenRecipe.ts's
+        # parseArrayColumn parses twice). PostgREST takes a real list for jsonb,
+        # exactly as it already does for the pgvector embedding below.
+        "structured_ingredients": [ing.model_dump() for ing in recipe.structured_ingredients],
+        "tokenized_directions": [d.model_dump() for d in recipe.tokenized_directions],
         # vector(1536) — PostgREST accepts a JSON array for pgvector columns
         "embedding": recipe.embedding,
     }
