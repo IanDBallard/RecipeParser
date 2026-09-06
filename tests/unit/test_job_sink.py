@@ -146,3 +146,64 @@ def test_finalize_reports_a_hundred_and_the_counts_on_success():
     assert payload["skipped"] == [{"label": "Lost", "index": 0, "reason": "MAX_TOKENS"}]
     assert payload["status"] == "done"
     assert payload["updated_at"] == "fixed-ts"
+
+
+def test_a_cancelled_run_finalizes_as_cancelled_keeping_what_it_wrote():
+    """The recipes a cancelled import already wrote are really there, so the
+    count is real; the percentage is whatever the last update wrote, because a
+    job stopped at 60% neither reached 100 nor never started."""
+    sink = _sink()
+    sink.on_result(_Recipe("A"))
+    sink.on_result(_Recipe("B"))
+
+    payload = sink.finalize_payload(success=True, cancelled=True)
+
+    assert payload["status"] == "cancelled"
+    assert payload["recipe_count"] == 2
+    assert "progress_pct" not in payload
+
+
+def test_a_cancelled_run_keeps_stage_done():
+    """stage says how far the pipeline got; status says how it ended. A
+    'CANCELLED' stage would break the client's IngestionStage union."""
+    sink = _sink()
+
+    payload = sink.finalize_payload(success=True, cancelled=True)
+
+    assert payload["stage"] == "DONE"
+
+
+def test_a_run_that_raised_is_an_error_even_if_cancel_was_requested():
+    """A cancel request racing an exception must not relabel the failure."""
+    sink = _sink()
+
+    payload = sink.finalize_payload(success=False, error_message="reader exploded", cancelled=True)
+
+    assert payload["status"] == "error"
+    assert payload["stage"] == "ERROR"
+    assert payload["error_message"] == "reader exploded"
+
+
+def test_an_uncancelled_success_is_unchanged():
+    sink = _sink()
+    sink.on_result(_Recipe("A"))
+
+    payload = sink.finalize_payload(success=True)
+
+    assert payload["status"] == "done"
+    assert payload["stage"] == "DONE"
+    assert payload["progress_pct"] == 100
+
+
+def test_a_cancelled_run_reports_only_the_chunks_it_actually_attempted():
+    """Spec S4: un-attempted chunks are counted by the denominator, not
+    itemised. 'You stopped it' is one fact, not seven hundred rows -- and the
+    skipped list is for losses worth recovering."""
+    sink = _sink()
+    sink.on_result(_Recipe("A"))
+    sink.on_skip(Chunk(text="t", input_type=InputType.URL, label="Lost"), "MAX_TOKENS", 1)
+
+    payload = sink.finalize_payload(success=True, cancelled=True)
+
+    assert payload["skipped_count"] == 1
+    assert payload["skipped"] == [{"label": "Lost", "index": 1, "reason": "MAX_TOKENS"}]
