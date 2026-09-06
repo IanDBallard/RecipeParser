@@ -146,6 +146,13 @@ class PipelineController:
     ) -> None:
         self._lock = threading.Lock()
         self.status: PipelineStatus = PipelineStatus.IDLE
+        # Set by request_cancel() and never cleared — including by the
+        # CANCELLING -> done -> IDLE wind-down RecipePipeline.run performs after
+        # it breaks out of its loop. By the time the API builds the terminal
+        # payload the status is IDLE and indistinguishable from a clean finish,
+        # so the status cannot carry this and a flag has to. One controller is
+        # constructed per job, so its lifetime is the job's; there is no reset.
+        self.cancel_requested: bool = False
         self._consecutive_429s: int = 0
         self._output_dir: Optional[Path] = Path(output_dir) if output_dir else None
         # Typed progress callback — fired by notify_progress()
@@ -258,6 +265,13 @@ class PipelineController:
         """Cancel the pipeline (from any cancellable state)."""
         ok = self.transition("cancel")
         if ok:
+            # Only on a transition that actually happened: request_cancel from
+            # IDLE returns False and must leave a never-cancellable job clean.
+            # The write takes _lock in its own block rather than wrapping the
+            # transition above — threading.Lock is not reentrant, and
+            # transition() acquires it itself.
+            with self._lock:
+                self.cancel_requested = True
             self._cancel_auto_resume_timer()
             self._resume_event.set()  # unblock worker so it can exit
         return ok

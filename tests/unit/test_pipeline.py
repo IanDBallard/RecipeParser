@@ -302,6 +302,79 @@ class TestPipelineRun:
         )
 
 
+    def test_a_cancelled_run_leaves_the_flag_set_for_the_terminal_payload(self):
+        """End to end through run(): the API reads controller.cancel_requested
+        after run() returns, and run() ends by transitioning back to IDLE."""
+        from recipeparser.core.fsm import PipelineStatus
+
+        controller = PipelineController()
+        chunks = [
+            Chunk(
+                text="",
+                input_type=InputType.PAPRIKA_CAYENNE,
+                pre_parsed=_make_ingest_response(f"Recipe {i}"),
+                pre_parsed_embedding=FAKE_EMBEDDING,
+            )
+            for i in range(5)
+        ]
+
+        def _cancel_on_first(*args, **kwargs):
+            controller.request_cancel()
+            return _make_ingest_response("Recipe 0")
+
+        with patch(_PATCH_ASSEMBLE, side_effect=_cancel_on_first):
+            pipeline = _make_pipeline(controller=controller)
+            pipeline.run(chunks)
+
+        assert controller.status == PipelineStatus.IDLE
+        assert controller.cancel_requested is True
+
+    def test_an_uncancelled_run_leaves_the_flag_clear(self):
+        controller = PipelineController()
+        chunks = [
+            Chunk(
+                text="",
+                input_type=InputType.PAPRIKA_CAYENNE,
+                pre_parsed=_make_ingest_response("Recipe 0"),
+                pre_parsed_embedding=FAKE_EMBEDDING,
+            )
+        ]
+        with patch(_PATCH_ASSEMBLE, side_effect=lambda *a, **k: _make_ingest_response("Recipe 0")):
+            pipeline = _make_pipeline(controller=controller)
+            pipeline.run(chunks)
+
+        assert controller.cancel_requested is False
+
+    def test_a_cancelled_run_does_not_itemise_the_chunks_it_never_attempted(self):
+        """Spec S4. The chunks abandoned by the break are cancelled futures, not
+        skips: they are counted by total_chunks, not named in the skipped list."""
+        controller = PipelineController()
+        chunks = [
+            Chunk(
+                text="",
+                input_type=InputType.PAPRIKA_CAYENNE,
+                pre_parsed=_make_ingest_response(f"Recipe {i}"),
+                pre_parsed_embedding=FAKE_EMBEDDING,
+            )
+            for i in range(10)
+        ]
+        skips: List[str] = []
+
+        def _cancel_on_first(*args, **kwargs):
+            controller.request_cancel()
+            return _make_ingest_response("Recipe 0")
+
+        with patch(_PATCH_ASSEMBLE, side_effect=_cancel_on_first):
+            pipeline = _make_pipeline(controller=controller)
+            results = pipeline.run(
+                chunks,
+                on_skip=lambda chunk, reason, index: skips.append(reason),
+            )
+
+        assert len(results) < 10
+        assert skips == []
+
+
 # ---------------------------------------------------------------------------
 # Test: on_result / on_skip streaming callbacks (Task 3)
 # ---------------------------------------------------------------------------
