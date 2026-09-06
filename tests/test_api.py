@@ -585,3 +585,54 @@ class TestCancelledJobsFinalizeAsCancelled:
 
         assert captured["status"] == "done"
         assert captured["progress_pct"] == 100
+
+
+# ===========================================================================
+# total_chunks — the denominator, written after the reader returns
+# ===========================================================================
+
+class TestTotalChunks:
+
+    def _captured(self, monkeypatch: Any) -> list[tuple[str, int]]:
+        calls: list[tuple[str, int]] = []
+        monkeypatch.setattr(
+            "recipeparser.adapters.api._update_total_chunks",
+            lambda job_id, total: calls.append((job_id, total)),
+        )
+        return calls
+
+    def _drain(self, tc: TestClient, job_id: str) -> None:
+        deadline = time.monotonic() + 5.0
+        while job_id in _active_jobs and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+    def test_a_url_job_records_one_chunk(self, monkeypatch: Any) -> None:
+        calls = self._captured(monkeypatch)
+        stack, _mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
+
+        with stack, TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"text": "Boil water. Add pasta."})
+            job_id = resp.json()["job_id"]
+            self._drain(tc, job_id)
+
+        assert calls == [(job_id, 1)]
+
+    def test_a_file_job_records_what_the_reader_returned(self, monkeypatch: Any) -> None:
+        calls = self._captured(monkeypatch)
+        chunks = [MagicMock() for _ in range(3)]
+        for chunk in chunks:
+            chunk.text = "pasta"
+        stack, _mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
+
+        with stack, \
+             patch("recipeparser.adapters.api._PdfReader") as mock_reader_cls, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            mock_reader_cls.return_value.read.return_value = chunks
+            resp = tc.post(
+                "/jobs/file",
+                files={"file": ("recipe.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+            )
+            job_id = resp.json()["job_id"]
+            self._drain(tc, job_id)
+
+        assert calls == [(job_id, 3)]
