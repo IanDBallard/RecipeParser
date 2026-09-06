@@ -26,7 +26,7 @@ from recipeparser.io.readers.paprika import PaprikaReader
 from recipeparser.io.writers.cayenne_zip import CayenneZipWriter
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.paprika_zip import PaprikaWriter
-from recipeparser.io.writers.supabase import SupabaseWriter
+from recipeparser.io.writers.supabase import SupabaseWriter, write_recipe_to_supabase
 from recipeparser.models import IngestResponse, StructuredIngredient, TokenizedDirection
 
 # ---------------------------------------------------------------------------
@@ -451,3 +451,49 @@ def test_an_unquantified_ingredient_serialises_as_null():
 
     assert dumped["amount"] is None
     assert '"amount": null' in json.dumps(dumped)
+
+
+# ---------------------------------------------------------------------------
+# jsonb columns must reach Postgres as arrays, not as strings
+# ---------------------------------------------------------------------------
+
+def test_the_jsonb_columns_are_sent_as_arrays_not_strings(monkeypatch):
+    """A jsonb column handed a JSON *string* stores a JSON string, not an array.
+
+    Every row in the live library was written that way: on 2026-09-06
+    jsonb_typeof(structured_ingredients) reported 'string' for all 786 rows,
+    with no arrays in the table at all. Nothing looked broken because the
+    Cayenne client compensates — kitchenRecipe.ts's parseArrayColumn parses,
+    sees a string, and parses again — so this survived unnoticed and every
+    import kept adding to it.
+
+    PostgREST accepts a real list for a jsonb column, exactly as it already
+    does for the pgvector `embedding` two lines below in the same payload.
+    """
+    monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+    # httpx.post is mocked, so nothing leaves this process.
+    monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+
+    mock_response = MagicMock()
+    mock_response.status_code = 201
+
+    with patch("recipeparser.io.writers.supabase.httpx.post", return_value=mock_response) as mock_post:
+        write_recipe_to_supabase(_make_recipe("Pasta Carbonara"), "user-uuid-1")
+
+    payload = next(
+        c.kwargs["json"] for c in mock_post.call_args_list
+        if "/rest/v1/recipes" in str(c)
+    )
+
+    assert isinstance(payload["structured_ingredients"], list), (
+        "structured_ingredients was sent as "
+        f"{type(payload['structured_ingredients']).__name__}, which Postgres stores as a JSON string"
+    )
+    assert isinstance(payload["tokenized_directions"], list), (
+        "tokenized_directions was sent as "
+        f"{type(payload['tokenized_directions']).__name__}, which Postgres stores as a JSON string"
+    )
+    # Elements survive as objects, not as re-encoded text.
+    assert payload["structured_ingredients"][0]["name"] == "all-purpose flour"
+    assert payload["tokenized_directions"][0]["step"] == 1
