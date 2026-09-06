@@ -714,7 +714,13 @@ async def submit_job(
                 "Job %s completed — %d recipe(s), %d skipped.",
                 job_id, sink.recipe_count, sink.skipped_count,
             )
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, sink.finalize_payload(True))
+            await asyncio.to_thread(
+                _finalize_ingestion_job,
+                job_id,
+                # The controller is back at IDLE by now, so the flag is the only
+                # thing that still knows the user pressed Cancel (spec 5.1).
+                sink.finalize_payload(True, cancelled=controller.cancel_requested),
+            )
         except Exception as exc:
             logger.error("Job %s failed: %s", job_id, exc, exc_info=True)
             controller.transition("error")
@@ -836,7 +842,13 @@ async def submit_file_job(
                 "Job %s completed — %d recipe(s), %d skipped.",
                 job_id, sink.recipe_count, sink.skipped_count,
             )
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, sink.finalize_payload(True))
+            await asyncio.to_thread(
+                _finalize_ingestion_job,
+                job_id,
+                # The controller is back at IDLE by now, so the flag is the only
+                # thing that still knows the user pressed Cancel (spec 5.1).
+                sink.finalize_payload(True, cancelled=controller.cancel_requested),
+            )
         except Exception as exc:
             logger.error("File job %s failed: %s", job_id, exc, exc_info=True)
             # Transition to IDLE via "error" event.  The FSM allows this from
