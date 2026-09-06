@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-06
 **Status:** approved design, awaiting implementation plan
-**Base:** master, after PR #13 (ingestion fixes) merges
+**Base:** master at ac7891d (PR #13, ingestion fixes, merged 2026-09-06)
 
 ## 1. Problem
 
@@ -313,7 +313,7 @@ the routing tests touch them, with every stage patched.
 
 ## 10. Sequencing
 
-Implement after PR #13 merges so replies are recorded once against the code
-that ships. Within the plan, the corpus (§4) and GoldenClient (§5) come
+PR #13 merged on 2026-09-06, so replies can be recorded now against the
+code that ships. Within the plan, the corpus (§4) and GoldenClient (§5) come
 first; the four test families (§6) depend only on those two and can be built
 in parallel.
