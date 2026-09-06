@@ -86,10 +86,10 @@ def _cleanup_storage_image(image_url: str) -> None:
     load_dotenv()
 
     supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    service_key = os.getenv("SUPABASE_SERVICE_KEY", "")
+    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
     if not supabase_url or not service_key:
-        console.print("  [yellow]⚠ Cleanup skipped: SUPABASE_URL/SUPABASE_SERVICE_KEY not set[/yellow]")
+        console.print("  [yellow]⚠ Cleanup skipped: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set[/yellow]")
         return
 
     # Extract the storage path from the public URL.

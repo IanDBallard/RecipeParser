@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import (
     CayenneRefinement,
     RecipeExtraction,
@@ -84,11 +85,17 @@ class TestExtract:
         with pytest.raises(ValueError, match="non-empty"):
             extract("   \n\t  ", client=MagicMock())
 
-    def test_returns_empty_list_when_gemini_returns_none(self) -> None:
+    def test_raises_extraction_parse_error_when_gemini_reply_never_parses(self) -> None:
+        """gemini.extract_recipes now raises ExtractionParseError instead of returning
+        None when every attempt is unparseable; the stage must not swallow it as an
+        empty chunk — those twenty lost recipes are the reason this task exists."""
         from recipeparser.core.stages.extract import extract
-        with patch("recipeparser.core.stages.extract.extract_recipes", return_value=None):
-            result = extract("Some text about cooking.", client=MagicMock())
-        assert result == []
+        with patch(
+            "recipeparser.core.stages.extract.extract_recipes",
+            side_effect=ExtractionParseError("Gemini extraction: 3 attempts all unparseable"),
+        ):
+            with pytest.raises(ExtractionParseError):
+                extract("Some text about cooking.", client=MagicMock())
 
     def test_returns_list_of_recipe_extractions(self) -> None:
         from recipeparser.core.stages.extract import extract

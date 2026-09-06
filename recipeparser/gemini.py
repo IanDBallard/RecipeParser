@@ -5,9 +5,16 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Type
 
-from pydantic import BaseModel, create_model, Field
+from pydantic import BaseModel, create_model, Field, ValidationError
 
-from recipeparser.config import BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, MAX_RETRIES
+from recipeparser.config import (
+    BACKOFF_BASE_SECS,
+    BACKOFF_MAX_SECS,
+    MAX_PARSE_RETRIES,
+    MAX_RETRIES,
+    PARSE_RETRY_DELAY_SECS,
+)
+from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import RecipeList, CayenneRefinement
 
 log = logging.getLogger(__name__)
@@ -69,6 +76,49 @@ def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
                 delay = min(delay * 2, BACKOFF_MAX_SECS)
             else:
                 raise
+
+
+def _finish_reason(response: object) -> str:
+    """Best-effort finish reason from a genai response; empty when absent."""
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return ""
+    return str(getattr(candidates[0], "finish_reason", "") or "")
+
+
+def _generate_and_parse(client, model: str, contents: str, config: dict, *, what: str) -> RecipeList:
+    """Call Gemini and parse the reply, retrying a reply that will not parse.
+
+    ``_call_with_retry`` covers transport and quota failures. It cannot cover a
+    200 response whose body is truncated JSON, because nothing raised — which is
+    why such a reply was previously swallowed and its recipes lost. The parse
+    therefore happens inside this loop, not after it.
+
+    Raises:
+        ExtractionParseError: every attempt returned something unparseable.
+    """
+    last_error = "no attempt made"
+    for attempt in range(1, MAX_PARSE_RETRIES + 2):
+        response = _call_with_retry(client, model=model, contents=contents, config=config)
+        text = (getattr(response, "text", "") or "").strip()
+        if text:
+            try:
+                return RecipeList.model_validate(json.loads(text))
+            except (json.JSONDecodeError, ValidationError) as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+        else:
+            last_error = "empty response"
+        log.warning(
+            "%s: unparseable reply (attempt %d/%d) — finish_reason=%s, first line=%r",
+            what, attempt, MAX_PARSE_RETRIES + 1, _finish_reason(response),
+            text.splitlines()[0][:200] if text else "",
+        )
+        if attempt <= MAX_PARSE_RETRIES:
+            time.sleep(PARSE_RETRY_DELAY_SECS)
+    raise ExtractionParseError(
+        f"{what}: {MAX_PARSE_RETRIES + 1} attempts all unparseable "
+        f"(finish_reason={_finish_reason(response)}); last error: {last_error}"
+    )
 
 
 def verify_connectivity(client) -> bool:
@@ -192,11 +242,14 @@ _UNITS_RULES = {
 def extract_recipe_from_text(
     text: str,
     client,
-) -> Optional[RecipeList]:
+) -> RecipeList:
     """
     Extract a single recipe from plain text (e.g. from a Paprika import or
     pasted recipe).  Uses a simpler, more direct prompt than extract_recipes
     which is tuned for EPUB/PDF book chunks.
+
+    Raises:
+        ExtractionParseError: every attempt's reply could not be parsed.
     """
     prompt = f"""
 You are a culinary data extractor. The following text is a recipe. Extract it.
@@ -212,41 +265,37 @@ Rules:
 Text:
 {text}
 """
-    try:
-        json_schema = _schema_for_gemini(RecipeList)
-        response = _call_with_retry(
-            client,
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": json_schema,
-                "temperature": 0.1,
-            },
-        )
-        if not response.text or not response.text.strip():
-            log.error("Gemini plain-text extraction failed: empty response")
-            return None
-        return RecipeList.model_validate(json.loads(response.text))
-    except Exception as e:
-        log.error("Gemini plain-text extraction failed: %s", e)
-        return None
+    return _generate_and_parse(
+        client,
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": _schema_for_gemini(RecipeList),
+            "temperature": 0.1,
+        },
+        what="Gemini plain-text extraction",
+    )
 
 
 def extract_recipes(
     text_chunk: str,
     client,
     units: str = "book",
-) -> Optional[RecipeList]:
+) -> RecipeList:
     """
     Call Gemini with the extraction prompt and return a parsed RecipeList.
-    Applies retry/back-off for rate-limit errors; returns None on failure.
+    Applies retry/back-off for rate-limit errors and for a reply that will
+    not parse.
 
     ``units`` controls how dual-measurement ingredient lines are handled:
       "metric"   — keep only gram/ml values  (e.g. "250g flour")
       "us"       — keep only US cup/tbsp values
       "imperial" — keep only oz/lb values (falls back to metric for dual lines)
       "book"     — preserve whatever the book uses (default)
+
+    Raises:
+        ExtractionParseError: every attempt's reply could not be parsed.
     """
     units_rule = _UNITS_RULES.get(units.lower(), "")
     units_section = f"\n{units_rule}" if units_rule else ""
@@ -286,24 +335,17 @@ Text chunk:
 {text_chunk}
 """
 
-    try:
-        response = _call_with_retry(
-            client,
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": _schema_for_gemini(RecipeList),
-                "temperature": 0.1,
-            },
-        )
-        if not response.text or not response.text.strip():
-            log.error("Gemini extraction failed: empty response")
-            return None
-        return RecipeList.model_validate(json.loads(response.text))
-    except Exception as e:
-        log.error("Gemini extraction failed: %s", e)
-        return None
+    return _generate_and_parse(
+        client,
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": _schema_for_gemini(RecipeList),
+            "temperature": 0.1,
+        },
+        what="Gemini extraction",
+    )
 
 
 def extract_text_via_vision(doc, client) -> str:
@@ -485,6 +527,9 @@ RULES:
    - Extract numeric "amount", "unit" (null if unitless), and "name".
    - "fallback_string" is the original full line.
    - CONVERSION: If preference is "Weight" and source is "Volume", provide "converted_amount" and "converted_unit" (e.g. 1 cup -> 120g). Set "is_ai_converted" to true.
+   - amount: the numeric quantity. Use null - never 0 - when the source states no
+     amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
+     measurement of nothing.
 
 2. TOKENIZED DIRECTIONS:
    - Rewrite directions using Fat Tokens: {{{{ingredient_id|original_text}}}}

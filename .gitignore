@@ -43,3 +43,6 @@ Thumbs.db
 
 # Windows reserved device name accidentally created in repo root
 /nul
+
+# Claude Code worktrees
+.claude/worktrees/

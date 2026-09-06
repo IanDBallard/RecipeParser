@@ -61,6 +61,9 @@ class Chunk:
         Raw image bytes for Paprika entries that carry an embedded photo.
         The pipeline uploads these to Supabase Storage before calling the
         ASSEMBLE stage.
+    image_content_type:
+        MIME type of ``image_bytes``, taken from the source's own filename
+        where it gives one.
     pre_parsed:
         Fully-assembled IngestResponse deserialized from ``_cayenne_meta``.
         Set only for PAPRIKA_CAYENNE chunks.  When present, the pipeline
@@ -69,6 +72,13 @@ class Chunk:
         The 1536-dim embedding stored in ``_cayenne_meta``.  When present
         alongside ``pre_parsed``, the pipeline also skips EMBED — achieving
         $0 cost for Cayenne-native restores.
+    label:
+        Human-readable identifier for this chunk, used to name it if it is
+        dropped.  A Paprika entry's name, an EPUB chapter title, a PDF page
+        range — whatever the source actually provides.  None when the source
+        names nothing: what a book chunk contained is unknown until extraction
+        succeeds, and a dropped chunk is one where it did not.  No stage reads
+        this field; it exists for reporting.
     """
 
     text: str
@@ -76,5 +86,7 @@ class Chunk:
     source_url: Optional[str] = None
     image_url: Optional[str] = None
     image_bytes: Optional[bytes] = None
+    image_content_type: str = "image/jpeg"
     pre_parsed: Optional[Union["CayenneRecipe", "IngestResponse"]] = None
     pre_parsed_embedding: Optional[List[float]] = field(default=None)
+    label: Optional[str] = None

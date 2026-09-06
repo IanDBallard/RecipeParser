@@ -6,12 +6,12 @@ ARCHITECTURAL INVARIANT:
   The client app NEVER receives recipe JSON in an HTTP response and NEVER writes
   ingested recipes to Supabase itself. Recipes reach the client via PowerSync sync.
 
-This module uses the SUPABASE_SERVICE_KEY (service-role key) which bypasses RLS.
+This module uses the SUPABASE_SERVICE_ROLE_KEY (service-role key) which bypasses RLS.
 It must NEVER be called from the mobile client — only from the FastAPI backend.
 
 Required env vars:
-  SUPABASE_URL         — e.g. https://<ref>.supabase.co
-  SUPABASE_SERVICE_KEY — service-role key (never the anon key)
+  SUPABASE_URL              — e.g. https://<ref>.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY — service-role key (never the anon key)
 """
 
 import json
@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import httpx
 from dotenv import load_dotenv
 
+from recipeparser.config import live_writes_blocked
 from recipeparser.io.writers import RecipeWriter
 from recipeparser.models import IngestResponse
 
@@ -33,10 +34,10 @@ log = logging.getLogger(__name__)
 def _get_creds() -> Tuple[str, str]:
     """Return (supabase_url, service_key). Raises RuntimeError if not configured."""
     url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    key = os.getenv("SUPABASE_SERVICE_KEY", "")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     if not url or not key:
         raise RuntimeError(
-            "SUPABASE_URL or SUPABASE_SERVICE_KEY not set — "
+            "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set — "
             "cannot write recipe to Supabase."
         )
     return url, key
@@ -171,8 +172,16 @@ def write_recipe_to_supabase(
         The UUID string of the inserted recipe row.
 
     Raises:
-        RuntimeError: If env vars are missing or the Supabase insert fails.
+        RuntimeError: If env vars are missing, this is a test run that must not
+            reach a real project (see ``recipeparser.config.live_writes_blocked``),
+            or the Supabase insert fails.
     """
+    if live_writes_blocked():
+        raise RuntimeError(
+            "Live writes blocked: this process is under pytest and "
+            "ALLOW_LIVE_WRITES_IN_TESTS is not set to '1' — refusing to write "
+            "to a real Supabase project. See recipeparser.config.live_writes_blocked."
+        )
     supabase_url, service_key = _get_creds()
     rid = recipe_id or str(uuid.uuid4())
 

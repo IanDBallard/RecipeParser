@@ -252,7 +252,7 @@ EMBEDDING_PROVIDER=gemini     # reuses GOOGLE_API_KEY — no second API key need
 
 # For CLI/GUI image upload + category source
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=eyJ...   # service role key
+SUPABASE_SERVICE_ROLE_KEY=eyJ... # service role key
 ```
 
 ---

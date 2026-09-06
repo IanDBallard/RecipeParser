@@ -64,6 +64,10 @@ class PdfReader(RecipeReader):
                         text=text,
                         input_type=InputType.PDF,
                         source_url=book_source,
+                        # load_pdf() drops the page number for empty/skipped pages before
+                        # returning raw_chunks, so no true page range is in scope here;
+                        # a null label is honest, an invented one is not.
+                        label=None,
                     )
                 )
 

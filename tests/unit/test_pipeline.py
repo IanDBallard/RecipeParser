@@ -7,6 +7,7 @@ Gate command: pytest tests/unit/test_pipeline.py -v
 from __future__ import annotations
 
 import threading
+import time
 from typing import Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
@@ -16,7 +17,7 @@ from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.core.rate_limiter import GlobalRateLimiter
-from recipeparser.core.ports import CategorySource
+from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.models import (
     CayenneRefinement,
     IngestResponse,
@@ -92,7 +93,10 @@ class _FakeCategorySource(CategorySource):
         return {"Italian": "uuid-italian"}
 
 
-def _make_pipeline(controller: Optional[PipelineController] = None) -> RecipePipeline:
+def _make_pipeline(
+    controller: Optional[PipelineController] = None,
+    image_store: Optional[ImageStore] = None,
+) -> RecipePipeline:
     if controller is None:
         controller = PipelineController()
     GlobalRateLimiter().reset()
@@ -101,6 +105,7 @@ def _make_pipeline(controller: Optional[PipelineController] = None) -> RecipePip
         controller=controller,
         category_source=_FakeCategorySource(),
         rpm=9999,  # effectively unlimited for unit tests
+        image_store=image_store,
     )
 
 
@@ -295,3 +300,169 @@ class TestPipelineRun:
         assert controller.status == PipelineStatus.IDLE, (
             f"Expected IDLE after cancelled run, got {controller.status}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test: on_result / on_skip streaming callbacks (Task 3)
+# ---------------------------------------------------------------------------
+
+def test_on_result_fires_per_recipe_and_on_skip_names_the_failed_chunk():
+    """Spec 4.2, 4.3: results stream out as they finish and failures are reported, not swallowed."""
+    good = Chunk(text="good", input_type=InputType.URL, label="Good One")
+    bad = Chunk(text="bad", input_type=InputType.URL, label="Bad One")
+    results_seen: List[IngestResponse] = []
+    skips_seen: List[tuple] = []
+
+    pipeline = _make_pipeline()
+    with patch.object(
+        RecipePipeline,
+        "_process_chunk",
+        side_effect=lambda chunk, stages, axes: (
+            [_make_ingest_response("Good One")] if chunk.text == "good" else _raise(RuntimeError("boom"))
+        ),
+    ):
+        returned = pipeline.run(
+            [good, bad],
+            on_result=results_seen.append,
+            on_skip=lambda chunk, reason, index: skips_seen.append((chunk.label, reason, index)),
+        )
+
+    assert [r.title for r in results_seen] == ["Good One"]
+    assert [r.title for r in returned] == ["Good One"]
+    assert len(skips_seen) == 1
+    assert skips_seen[0][0] == "Bad One"
+    assert "boom" in skips_seen[0][1]
+    # `bad` sits at index 1 of the [good, bad] list passed to run().
+    assert skips_seen[0][2] == 1
+
+
+def test_a_raising_on_result_does_not_abort_the_run():
+    """Unlike on_progress: one failed write must not discard the rest of an 827-recipe import."""
+    chunks = [Chunk(text=f"c{i}", input_type=InputType.URL) for i in range(3)]
+
+    pipeline = _make_pipeline()
+    with patch.object(
+        RecipePipeline,
+        "_process_chunk",
+        side_effect=lambda chunk, stages, axes: [_make_ingest_response(chunk.text)],
+    ):
+        returned = pipeline.run(chunks, on_result=lambda _r: (_ for _ in ()).throw(RuntimeError("write failed")))
+
+    assert len(returned) == 3
+
+
+def test_on_skip_reports_submission_position_not_completion_order():
+    """
+    Ruling R5: the consumer keys a lost chunk by its position in the input
+    batch — only Paprika chunks carry a label (Task 2); EPUB/PDF chunks are
+    always label=None, so the index is the only identification a book chunk
+    has.  Chunks complete via ThreadPoolExecutor + as_completed, which is not
+    submission order, so the index must be captured at submission time, not
+    read off a counter in the collecting loop.
+    """
+    chunks = [
+        Chunk(text="slow-good-0", input_type=InputType.URL),
+        Chunk(text="bad-1", input_type=InputType.URL),
+        Chunk(text="slow-good-2", input_type=InputType.URL),
+    ]
+    skips_seen: List[tuple] = []
+
+    def _side_effect(chunk, stages, axes):
+        if chunk.text == "bad-1":
+            raise RuntimeError("boom")
+        # Slow successes finish after the fast failure, so completion order
+        # is [bad-1, slow-good-0, slow-good-2] while submission order is
+        # [slow-good-0, bad-1, slow-good-2].
+        time.sleep(0.2)
+        return [_make_ingest_response(chunk.text)]
+
+    pipeline = _make_pipeline()
+    with patch.object(RecipePipeline, "_process_chunk", side_effect=_side_effect):
+        pipeline.run(
+            chunks,
+            on_skip=lambda chunk, reason, index: skips_seen.append((reason, index)),
+        )
+
+    assert len(skips_seen) == 1
+    # "bad-1" was submitted at index 1 — a counter of completions-so-far or
+    # skips-so-far would both wrongly read 0 here, since this is the first
+    # (and only) chunk to complete and the only chunk to skip.
+    assert skips_seen[0][1] == 1
+
+
+def _raise(exc: Exception):
+    raise exc
+
+
+# ---------------------------------------------------------------------------
+# Test: image_store (Task 4)
+# ---------------------------------------------------------------------------
+
+
+class _FakeImageStore(ImageStore):
+    """Records what it was asked to store; returns a predictable URL."""
+
+    def __init__(self, url: Optional[str] = "https://example.test/stored.jpg") -> None:
+        self.url = url
+        self.calls: List[bytes] = []
+
+    def put(self, image_bytes: bytes, recipe_id: str, content_type: str = "image/jpeg") -> Optional[str]:
+        self.calls.append(image_bytes)
+        return self.url
+
+
+def _assemble_reflecting_image_url(
+    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time
+):
+    """Stand-in for the real ``assemble`` stage: echoes the image_url it was
+    actually called with, so a test can prove the URL travels all the way
+    into the returned IngestResponse rather than just landing on the chunk."""
+    return _make_ingest_response("R").model_copy(update={"image_url": image_url})
+
+
+def test_chunk_image_bytes_are_stored_and_the_url_reaches_the_recipe():
+    """Spec 4.5: 466 photographs were read and dropped; they must reach the assembled recipe.
+
+    Drives the real ASSEMBLE-only fast path (no ``_process_chunk`` patching) so
+    this proves the URL reaches ``IngestResponse.image_url`` via one of the
+    real ``image_url=chunk.image_url`` call sites, not merely that it lands on
+    the chunk — and stays indifferent to which stage of the pipeline performs
+    the upload.
+    """
+    store = _FakeImageStore()
+    chunk = Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=_make_ingest_response("R"),
+        pre_parsed_embedding=FAKE_EMBEDDING,
+        image_bytes=b"\xff\xd8jpegbytes",
+    )
+
+    pipeline = _make_pipeline(image_store=store)
+    with patch(_PATCH_ASSEMBLE, side_effect=_assemble_reflecting_image_url):
+        results = pipeline.run([chunk])
+
+    assert store.calls == [b"\xff\xd8jpegbytes"]
+    assert chunk.image_url == "https://example.test/stored.jpg"
+    assert len(results) == 1
+    assert results[0].image_url == "https://example.test/stored.jpg"
+
+
+def test_a_failed_upload_still_yields_the_recipe():
+    """A missing photograph is not a reason to lose a recipe."""
+    store = _FakeImageStore(url=None)
+    chunk = Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=_make_ingest_response("R"),
+        pre_parsed_embedding=FAKE_EMBEDDING,
+        image_bytes=b"bytes",
+    )
+
+    pipeline = _make_pipeline(image_store=store)
+    with patch(_PATCH_ASSEMBLE, side_effect=_assemble_reflecting_image_url):
+        results = pipeline.run([chunk])
+
+    assert len(results) == 1
+    assert chunk.image_url is None
+    assert results[0].image_url is None

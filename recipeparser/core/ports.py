@@ -15,7 +15,7 @@ TID rule: this module MUST NOT import from ``recipeparser.io`` or
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 class CategorySource(ABC):
@@ -73,3 +73,21 @@ class CategorySource(ABC):
             Returns ``{}`` for sources that don't support Supabase writes.
         """
         ...
+
+
+class ImageStore(ABC):
+    """Somewhere a recipe's hero image can be put, addressed by a public URL.
+
+    A port so the pipeline can store the photograph a reader pulled out of an
+    archive without importing recipeparser.io — the same reason CategorySource
+    exists.  The Supabase implementation lives in recipeparser.io.writers.
+    """
+
+    @abstractmethod
+    def put(self, image_bytes: bytes, recipe_id: str, content_type: str = "image/jpeg") -> Optional[str]:
+        """Store *image_bytes* and return its public URL.
+
+        Returns None on any failure.  Implementations must not raise: a
+        photograph that cannot be stored is a recipe without a picture, never a
+        recipe that fails to import.
+        """

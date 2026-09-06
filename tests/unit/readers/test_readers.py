@@ -15,6 +15,7 @@ import json
 import os
 import tempfile
 import zipfile
+from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
 
@@ -49,6 +50,21 @@ def _make_paprikarecipes(entries: List[Dict[str, Any]]) -> str:
     tmp.write(buf.read())
     tmp.close()
     return tmp.name
+
+
+def _write_paprika_archive(tmp_path: Path, entries: List[Dict[str, Any]]) -> Path:
+    """
+    Build a .paprikarecipes archive under ``tmp_path`` from a list of recipe dicts.
+
+    Each dict is gzip-compressed and stored as a .paprikarecipe entry inside
+    the ZIP, matching what PaprikaReader.read_entries expects.
+    """
+    archive = tmp_path / "export.paprikarecipes"
+    with zipfile.ZipFile(archive, "w") as zf:
+        for i, entry in enumerate(entries):
+            compressed = gzip.compress(json.dumps(entry).encode())
+            zf.writestr(f"recipe_{i}.paprikarecipe", compressed)
+    return archive
 
 
 # Minimal valid IngestResponse payload (matches recipeparser/models.py)
@@ -262,3 +278,109 @@ def test_paprika_reader_corrupt_cayenne_meta_falls_back_to_legacy() -> None:
     assert "sugar" in chunk.text
     assert chunk.pre_parsed is None
     assert chunk.pre_parsed_embedding is None
+
+
+# ---------------------------------------------------------------------------
+# PaprikaReader — chunk labeling
+# ---------------------------------------------------------------------------
+
+
+def test_paprika_reader_labels_each_chunk_with_the_entry_name(tmp_path):
+    """Spec 4.2: a dropped chunk must be nameable, and Paprika supplies real names."""
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{"name": "Sticky Toffee Pudding", "ingredients": "1 cup dates", "directions": "Bake."}],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert [c.label for c in chunks] == ["Sticky Toffee Pudding"]
+
+
+# ---------------------------------------------------------------------------
+# PaprikaReader — photo_data decoding (Task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_paprika_photo_data_is_decoded_to_bytes(tmp_path):
+    """photo_data is base64 text; image_bytes is typed bytes. Uploading the string
+    unchanged would store base64 as a JPEG."""
+    import base64
+
+    jpeg = b"\xff\xd8\xff\xe0 not really a jpeg but it is bytes"
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{
+            "name": "Photographed Thing",
+            "ingredients": "1 cup x",
+            "directions": "Cook.",
+            "photo": "pg_1.jpg",
+            "photo_data": base64.b64encode(jpeg).decode("ascii"),
+        }],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert chunks[0].image_bytes == jpeg
+    assert chunks[0].image_content_type == "image/jpeg"
+
+
+def test_paprika_png_photo_extension_maps_to_png_content_type(tmp_path):
+    """image/jpeg is also _PHOTO_TYPES's fallback for an unrecognised extension,
+    so a .jpg-only test cannot tell "derived from the filename" from "took the
+    default". A .png entry must map to image/png, not silently fall back."""
+    import base64
+
+    png = b"\x89PNG\r\n\x1a\n not really a png but it is bytes"
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{
+            "name": "Photographed Thing",
+            "ingredients": "1 cup x",
+            "directions": "Cook.",
+            "photo": "pg_1.png",
+            "photo_data": base64.b64encode(png).decode("ascii"),
+        }],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert chunks[0].image_bytes == png
+    assert chunks[0].image_content_type == "image/png"
+
+
+def test_line_wrapped_photo_data_is_still_decoded(tmp_path):
+    """Some exporters wrap base64 at 76 columns (MIME-style, RFC 2045); a photo
+    encoded that way must not be dropped as undecodable."""
+    import base64
+
+    jpeg = bytes(range(256)) * 4  # long enough that encodebytes actually wraps
+    wrapped = base64.encodebytes(jpeg).decode("ascii")
+    assert "\n" in wrapped  # sanity: the fixture really does wrap
+
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{
+            "name": "Wrapped Photo",
+            "ingredients": "1 cup x",
+            "directions": "Cook.",
+            "photo": "pg_1.jpg",
+            "photo_data": wrapped,
+        }],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert chunks[0].image_bytes == jpeg
+    assert chunks[0].image_content_type == "image/jpeg"
+
+
+def test_unreadable_photo_data_is_dropped_not_raised(tmp_path):
+    archive = _write_paprika_archive(
+        tmp_path,
+        [{"name": "Bad Photo", "ingredients": "x", "directions": "y", "photo_data": "!!!not base64!!!"}],
+    )
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert chunks[0].image_bytes is None

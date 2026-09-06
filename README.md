@@ -197,7 +197,7 @@ expects in production. `GET /health` reports `{"status":"ok","auth_mode":"verify
 | `GOOGLE_API_KEY` | Google AI Studio key for Gemini API calls |
 | `SUPABASE_JWT_SECRET` | JWT secret from Supabase dashboard → Project Settings → API → JWT Secret |
 | `SUPABASE_URL` | Your Supabase project URL, e.g. `https://<ref>.supabase.co` — required for image uploads to the `recipe-images` bucket |
-| `SUPABASE_SERVICE_KEY` | Supabase **service-role** key (never the anon key) — required for image uploads. Never ship this in the mobile app. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service-role** key (never the anon key) — required for image uploads. Never ship this in the mobile app. |
 
 ### Authentication
 

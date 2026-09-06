@@ -96,7 +96,10 @@ class TocRecipeClassification(BaseModel):
 
 class StructuredIngredient(BaseModel):
     id: str = Field(description="Unique ID for cross-linking, e.g., \"ing_01\"")
-    amount: float = Field(description="Numeric quantity, e.g., 1.5. 0 if none.")
+    amount: Optional[float] = Field(
+        default=None,
+        description="Numeric quantity, e.g. 1.5. null when the source states no amount ('salt to taste').",
+    )
     unit: Optional[str] = Field(default=None, description="Unit of measure, e.g., \"cups\".")
     name: str = Field(description="Core name, e.g., \"flour\".")
     fallback_string: str = Field(description="Full original string, e.g., \"1 1/2 cups flour\".")

@@ -39,6 +39,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from recipeparser.adapters.job_sink import JobSink
+from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.core.pipeline import RecipePipeline
@@ -46,7 +48,8 @@ from recipeparser.io.category_sources.supabase_source import SupabaseCategorySou
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
-from recipeparser.io.writers.supabase import SupabaseWriter
+from recipeparser.io.writers.image_store import SupabaseImageStore
+from recipeparser.io.writers.supabase import write_recipe_to_supabase
 import recipeparser.gemini as _gemini_mod
 
 logger = logging.getLogger(__name__)
@@ -109,6 +112,29 @@ def _resolve_auth_mode(env: Mapping[str, str]) -> tuple[bool, str]:
     return True, test_user_id
 
 
+# The one place in the codebase allowed to name the old variable: it exists
+# only to detect and reject a half-configured deployment, never to read the
+# value. tests/unit/test_service_key_name.py's tree-wide scan allowlists this
+# module by name for exactly that reason — see the comment there.
+_LEGACY_SERVICE_KEY_ENV = "SUPABASE_SERVICE_KEY"
+
+
+def check_service_key_name() -> None:
+    """Refuse to boot half-configured.
+
+    The service key was read under two names in different modules, so setting
+    only one disabled a subset of writes with a warning rather than an error —
+    the worst failure mode available, because most of the app kept working.
+    """
+    if os.environ.get("SUPABASE_SERVICE_ROLE_KEY"):
+        return
+    if os.environ.get(_LEGACY_SERVICE_KEY_ENV):
+        raise RuntimeError(
+            f"{_LEGACY_SERVICE_KEY_ENV} is set but SUPABASE_SERVICE_ROLE_KEY is not. "
+            "The latter is now the only name read. Rename the variable."
+        )
+
+
 _DISABLE_AUTH, _TEST_USER_ID = _resolve_auth_mode(os.environ)
 _bearer = HTTPBearer(auto_error=not _DISABLE_AUTH)
 
@@ -120,6 +146,7 @@ if _DISABLE_AUTH:
     )
 
 app = FastAPI(title="Cayenne Ingestion API", version="1.0.0")
+check_service_key_name()
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -172,6 +199,16 @@ def health() -> dict[str, str]:
 # Auth dependency
 # ---------------------------------------------------------------------------
 
+def _blank_subject(sub: Any) -> bool:
+    """True if *sub* is missing, ``None``, empty, or whitespace-only.
+
+    A blank subject must never authenticate, and must never match anything as
+    an owner — including another blank subject. `_verify_supabase_jwt` and
+    `_owned_controller` both call this so the two stay in agreement.
+    """
+    return not isinstance(sub, str) or not sub.strip()
+
+
 def _verify_supabase_jwt(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> dict[str, Any]:
@@ -191,7 +228,8 @@ def _verify_supabase_jwt(
 
     token = credentials.credentials
     supabase_url = os.environ.get("SUPABASE_URL", "")
-    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    # (the SUPABASE_SERVICE_ROLE_KEY read that was here is gone: JWT verification
+    #  uses the JWKS endpoint, and the variable was never referenced)
 
     try:
         import jwt as pyjwt  # noqa: PLC0415
@@ -209,12 +247,24 @@ def _verify_supabase_jwt(
             algorithms=["ES256", "RS256"],
             audience="authenticated",
         )
-        return payload
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {exc}",
         ) from exc
+
+    # Every write in this service is attributed to `sub`. A token that clears
+    # signature verification but carries no subject (empty or whitespace-only
+    # included) would otherwise create rows owned by that blank value — and
+    # since the ownership check in _owned_controller is a plain equality, a
+    # second sub-less token would match the same blank value and be handed
+    # the first caller's job.
+    if _blank_subject(payload.get("sub")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has no subject claim",
+        )
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -292,41 +342,22 @@ def html_to_text(markdown: str) -> str:
 
 
 async def _upload_image_to_storage(image_url: str, recipe_id: str) -> Optional[str]:
-    """Download *image_url* and upload it to Supabase Storage.
+    """Download *image_url* and store it, returning the public URL or None.
 
-    Returns the public storage URL on success, or ``None`` on any failure
-    (network error, storage error, etc.).  Failures are logged but never
-    propagate — image upload must never block recipe ingestion.
+    A thin wrapper over the same ImageStore the pipeline uses: this path exists
+    for URL submissions, which arrive with an address rather than bytes. Failures
+    are logged but never raised — a recipe without a picture, not a failed job.
     """
     try:
-        supabase_url = os.environ.get("SUPABASE_URL", "")
-        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-        if not supabase_url or not supabase_key:
-            logger.warning("Supabase credentials not set; skipping image upload")
-            return None
-
-        async with httpx.AsyncClient(timeout=15) as http:
-            img_resp = await http.get(image_url)
-            img_resp.raise_for_status()
-            img_bytes = img_resp.content
-            content_type = img_resp.headers.get("content-type", "image/jpeg")
-
-        # Derive a simple extension from content-type
-        ext = content_type.split("/")[-1].split(";")[0].strip() or "jpg"
-        storage_path = f"recipe-images/{recipe_id}.{ext}"
-
-        from supabase import create_client  # type: ignore[import-not-found]
-        sb = create_client(supabase_url, supabase_key)
-        sb.storage.from_("recipe-images").upload(
-            storage_path,
-            img_bytes,
-            {"content-type": content_type, "upsert": "true"},
-        )
-        public_url: str = sb.storage.from_("recipe-images").get_public_url(storage_path)
-        return public_url
-    except Exception as exc:
-        logger.warning("Image upload failed for %s: %s", image_url, exc)
+        async with httpx.AsyncClient(timeout=30) as http:
+            response = await http.get(image_url)
+            response.raise_for_status()
+            content_type = response.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+            data = response.content
+    except Exception:
+        logger.exception("Could not fetch %s for recipe %s — continuing without an image.", image_url, recipe_id)
         return None
+    return await asyncio.to_thread(SupabaseImageStore().put, data, recipe_id, content_type)
 
 
 # ---------------------------------------------------------------------------
@@ -377,21 +408,6 @@ def embed_text(
 # Phase 6 — Canonical fire-and-forget endpoints
 # ===========================================================================
 
-def _live_writes_blocked() -> bool:
-    """True when this process is a test run that must not touch a real project.
-
-    The service key sits in .env, so an ordinary `pytest` run picked it up and wrote
-    ingestion_jobs rows into the live database: eight of them on 2026-09-04, four left
-    at status "running" because the process ended mid-job, which the Cayenne client
-    then displayed forever as jobs in progress. Nothing here needs a real project to
-    be under test, so the writes are refused rather than the credentials removed --
-    a developer who wants the opposite sets ALLOW_LIVE_WRITES_IN_TESTS=1 and means it.
-    """
-    if os.environ.get("ALLOW_LIVE_WRITES_IN_TESTS") == "1":
-        return False
-    return "PYTEST_CURRENT_TEST" in os.environ
-
-
 def _get_supabase_service_client() -> Any:
     """Return a synchronous supabase-py client using the service role key.
 
@@ -436,6 +452,8 @@ def _create_ingestion_job(
             "stage": "IDLE",
             "progress_pct": 0,
             "recipe_count": 0,
+            "skipped_count": 0,
+            "skipped": [],
             "source_hint": source_hint,
             "error_message": None,
             "created_at": now,
@@ -443,40 +461,39 @@ def _create_ingestion_job(
         }).execute()
         logger.info("Job %s: ingestion_jobs row created (user=%s).", job_id, user_id)
     except Exception:
-        logger.exception("Job %s: failed to INSERT ingestion_jobs row — job will still run.", job_id)
+        # Not raised — a raise here would break the endpoint contract — but this
+        # is not a recoverable condition: the client only ever polls this row, so
+        # with no row it will show nothing for this job, forever. The first thing
+        # to check is a schema mismatch: this INSERT (and JobSink.finalize_payload)
+        # write `skipped_count` / `skipped`, columns added by Cayenne migration 009,
+        # and PostgREST rejects an INSERT naming a column that does not exist yet.
+        logger.error(
+            "Job %s: COULD NOT CREATE ingestion_jobs ROW — the client will never "
+            "see this job. First suspect: a schema mismatch, e.g. missing "
+            "skipped_count/skipped columns (Cayenne migration 009 not applied).",
+            job_id,
+            exc_info=True,
+        )
 
 
-def _finalize_ingestion_job(
-    job_id: str,
-    success: bool,
-    recipe_count: int = 0,
-    error_message: Optional[str] = None,
-) -> None:
-    """UPDATE ingestion_jobs to terminal state (done or error).
+def _finalize_ingestion_job(job_id: str, payload: dict[str, Any]) -> None:
+    """UPDATE ingestion_jobs to the terminal state the JobSink built.
 
-    Called at the end of _run() in both submit_job and submit_file_job.
-    Failures are logged but NOT re-raised.
+    The payload comes from JobSink.finalize_payload, which is where the rules
+    about counts and progress live.  Failures are logged but NOT re-raised.
     """
-    import datetime
+    if _live_writes_blocked():
+        logger.warning("Test run: skipping the finalize for job %s.", job_id)
+        return
     sb = _get_supabase_service_client()
     if sb is None:
         logger.warning("Job %s: Supabase credentials not set — skipping ingestion_jobs finalize.", job_id)
         return
-    now = datetime.datetime.utcnow().isoformat() + "Z"
-    update_payload: dict[str, Any] = {
-        "status": "done" if success else "error",
-        "stage": "DONE" if success else "ERROR",
-        "progress_pct": 100 if success else 0,
-        "recipe_count": recipe_count,
-        "updated_at": now,
-    }
-    if error_message:
-        update_payload["error_message"] = error_message
     try:
-        sb.table("ingestion_jobs").update(update_payload).eq("id", job_id).execute()
+        sb.table("ingestion_jobs").update(payload).eq("id", job_id).execute()
         logger.info(
-            "Job %s: finalized — status=%s, recipe_count=%d.",
-            job_id, update_payload["status"], recipe_count,
+            "Job %s: finalized — status=%s, recipes=%s, skipped=%s.",
+            job_id, payload.get("status"), payload.get("recipe_count"), payload.get("skipped_count"),
         )
     except Exception:
         logger.exception("Job %s: failed to finalize ingestion_jobs row.", job_id)
@@ -527,9 +544,39 @@ def _make_stage_callback(job_id: str) -> Callable[[str], None]:
     return _on_stage_change
 
 
-# Process-level registry: job_id → PipelineController
-# Allows pause/resume/cancel from the control endpoints.
-_active_jobs: Dict[str, PipelineController] = {}
+def _make_progress_writer(job_id: str) -> Callable[[int], None]:
+    """Write one whole-percent progress update to the job row.
+
+    Unlike the stage callback this does not re-raise: a missed percentage is a
+    bar that lags, not a job whose state is unknowable. Because of that, the
+    *entire* body — including building the Supabase client — runs inside the
+    try/except: RecipePipeline.run's on_progress callback deliberately
+    re-raises, so any exception that escaped this function would kill the
+    whole import over nothing worse than a stale progress bar.
+    """
+    def _write(pct: int) -> None:
+        if _live_writes_blocked():
+            return
+        try:
+            import datetime  # noqa: PLC0415
+
+            sb = _get_supabase_service_client()
+            if sb is None:
+                return
+            sb.table("ingestion_jobs").update({
+                "progress_pct": pct,
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+            }).eq("id", job_id).execute()
+        except Exception:
+            logger.exception("Job %s: failed to write progress %d%%.", job_id, pct)
+
+    return _write
+
+
+# Process-level registry: job_id → (user_id, PipelineController)
+# The user id is kept so the control endpoints can refuse a job the caller does
+# not own; without it any caller who reached the API could cancel any import.
+_active_jobs: Dict[str, tuple[str, PipelineController]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -592,9 +639,10 @@ async def submit_job(
     user_id: str = user.get("sub", "")
     job_id = str(uuid.uuid4())
     controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
-    _active_jobs[job_id] = controller
+    _active_jobs[job_id] = (user_id, controller)
 
     async def _run() -> None:
+        sink = None
         try:
             client = _get_client()
             source_text: str
@@ -629,10 +677,21 @@ async def submit_job(
                 image_url=stored_image_url,
             )
 
-            # Wire category source + writer
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
-            writer = SupabaseWriter(user_id=user_id, category_ids=category_ids)
+            sink = JobSink(
+                job_id=job_id,
+                user_id=user_id,
+                category_ids=category_ids,
+                write=write_recipe_to_supabase,
+            )
+            write_progress = _make_progress_writer(job_id)
+
+            def _on_progress(stage: str, completed: int, total: int) -> None:
+                before = len(sink.progress_updates)
+                sink.on_progress(stage, completed, total)
+                if len(sink.progress_updates) > before:
+                    write_progress(sink.progress_updates[-1])
 
             pipeline = RecipePipeline(
                 client=client,
@@ -640,15 +699,31 @@ async def submit_job(
                 category_source=category_source,
                 uom_system=body.uom_system,
                 measure_preference=body.measure_preference,
+                image_store=SupabaseImageStore(),
             )
-            results = await asyncio.to_thread(pipeline.run, [chunk], None, user_id)
-            await asyncio.to_thread(writer.write, results)
-            logger.info("Job %s completed successfully (%d recipe(s)).", job_id, len(results))
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, True, len(results))
+            await asyncio.to_thread(
+                lambda: pipeline.run(
+                    [chunk],
+                    on_progress=_on_progress,
+                    user_id=user_id,
+                    on_result=sink.on_result,
+                    on_skip=sink.on_skip,
+                )
+            )
+            logger.info(
+                "Job %s completed — %d recipe(s), %d skipped.",
+                job_id, sink.recipe_count, sink.skipped_count,
+            )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, sink.finalize_payload(True))
         except Exception as exc:
             logger.error("Job %s failed: %s", job_id, exc, exc_info=True)
             controller.transition("error")
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, False, 0, str(exc))
+            payload = (
+                sink.finalize_payload(False, str(exc))
+                if sink is not None
+                else {"status": "error", "stage": "ERROR", "error_message": str(exc)}
+            )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:
             _active_jobs.pop(job_id, None)
 
@@ -688,12 +763,13 @@ async def submit_file_job(
     user_id: str = user.get("sub", "")
     job_id = str(uuid.uuid4())
     controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
-    _active_jobs[job_id] = controller
+    _active_jobs[job_id] = (user_id, controller)
 
     async def _run() -> None:
         # NOTE: Do NOT call controller.transition("start") here.
         # RecipePipeline.run() calls it internally (IDLE → RUNNING).
         # Calling it here first would cause an invalid double-transition.
+        sink = None
         try:
             client = _get_client()
 
@@ -720,10 +796,21 @@ async def submit_file_job(
             finally:
                 os.unlink(tmp_path)
 
-            # Wire category source + writer
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
-            writer = SupabaseWriter(user_id=user_id, category_ids=category_ids)
+            sink = JobSink(
+                job_id=job_id,
+                user_id=user_id,
+                category_ids=category_ids,
+                write=write_recipe_to_supabase,
+            )
+            write_progress = _make_progress_writer(job_id)
+
+            def _on_progress(stage: str, completed: int, total: int) -> None:
+                before = len(sink.progress_updates)
+                sink.on_progress(stage, completed, total)
+                if len(sink.progress_updates) > before:
+                    write_progress(sink.progress_updates[-1])
 
             # RecipePipeline.run() transitions IDLE→RUNNING internally,
             # processes all chunks (with per-chunk error isolation), then
@@ -734,14 +821,22 @@ async def submit_file_job(
                 category_source=category_source,
                 uom_system=uom_system,
                 measure_preference=measure_preference,
+                image_store=SupabaseImageStore(),
             )
-            results = await asyncio.to_thread(pipeline.run, chunks, None, user_id)
-            await asyncio.to_thread(writer.write, results)
+            await asyncio.to_thread(
+                lambda: pipeline.run(
+                    chunks,
+                    on_progress=_on_progress,
+                    user_id=user_id,
+                    on_result=sink.on_result,
+                    on_skip=sink.on_skip,
+                )
+            )
             logger.info(
-                "File job %s completed successfully (%d recipe(s)).",
-                job_id, len(results),
+                "Job %s completed — %d recipe(s), %d skipped.",
+                job_id, sink.recipe_count, sink.skipped_count,
             )
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, True, len(results))
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, sink.finalize_payload(True))
         except Exception as exc:
             logger.error("File job %s failed: %s", job_id, exc, exc_info=True)
             # Transition to IDLE via "error" event.  The FSM allows this from
@@ -749,7 +844,12 @@ async def submit_file_job(
             # started (e.g. reader raised before pipeline.run()), the controller
             # is still IDLE and the transition is a no-op (logs a warning).
             controller.transition("error")
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, False, 0, str(exc))
+            payload = (
+                sink.finalize_payload(False, str(exc))
+                if sink is not None
+                else {"status": "error", "stage": "ERROR", "error_message": str(exc)}
+            )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:
             _active_jobs.pop(job_id, None)
 
@@ -758,23 +858,44 @@ async def submit_file_job(
     return AsyncJobResponse(job_id=job_id)
 
 
+def _owned_controller(job_id: str, user: dict[str, Any]) -> PipelineController:
+    """Return the caller's own job, or 404.
+
+    Not 403 for someone else's job: that would confirm the id exists and make
+    the registry enumerable.
+
+    A blank caller subject is refused outright, independently of whether it
+    matches the stored owner: _verify_supabase_jwt already rejects a blank
+    subject before a real request can reach here, but this is a second line
+    of defence — a blank subject must never match anything, including a
+    registry entry that (via some future bug, or a pre-fix leftover row) is
+    itself owned by a blank value.
+    """
+    sub = user.get("sub", "")
+    entry = _active_jobs.get(job_id)
+    if _blank_subject(sub) or entry is None or entry[0] != sub:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job '{job_id}' not found.",
+        )
+    return entry[1]
+
+
 # ---------------------------------------------------------------------------
 # GET /jobs/{job_id}  — status polling
 # ---------------------------------------------------------------------------
 
 @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
-def get_job_status(job_id: str) -> JobStatusResponse:
-    """Return the current FSM status of a running job.
+def get_job_status(
+    job_id: str,
+    user: dict[str, Any] = Depends(_verify_supabase_jwt),
+) -> JobStatusResponse:
+    """Return the current FSM status of the caller's running job.
 
     Returns 404 if the job is not in the active registry (already completed
-    or never existed).
+    or never existed) or is not owned by the caller.
     """
-    controller = _active_jobs.get(job_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
+    controller = _owned_controller(job_id, user)
     return JobStatusResponse(job_id=job_id, status=controller.status.value)
 
 
@@ -783,39 +904,24 @@ def get_job_status(job_id: str) -> JobStatusResponse:
 # ---------------------------------------------------------------------------
 
 @app.post("/jobs/{job_id}/pause", status_code=200)
-def pause_job(job_id: str) -> dict[str, str]:
-    """Request a pause on a running job."""
-    controller = _active_jobs.get(job_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
+def pause_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> dict[str, str]:
+    """Request a pause on the caller's running job."""
+    controller = _owned_controller(job_id, user)
     controller.request_pause()
     return {"job_id": job_id, "status": controller.status.value}
 
 
 @app.post("/jobs/{job_id}/resume", status_code=200)
-def resume_job(job_id: str) -> dict[str, str]:
-    """Resume a paused job."""
-    controller = _active_jobs.get(job_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
+def resume_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> dict[str, str]:
+    """Resume the caller's paused job."""
+    controller = _owned_controller(job_id, user)
     controller.request_resume()
     return {"job_id": job_id, "status": controller.status.value}
 
 
 @app.post("/jobs/{job_id}/cancel", status_code=200)
-def cancel_job(job_id: str) -> dict[str, str]:
-    """Cancel a running or paused job."""
-    controller = _active_jobs.get(job_id)
-    if controller is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job '{job_id}' not found.",
-        )
+def cancel_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> dict[str, str]:
+    """Cancel the caller's running or paused job."""
+    controller = _owned_controller(job_id, user)
     controller.request_cancel()
     return {"job_id": job_id, "status": controller.status.value}
