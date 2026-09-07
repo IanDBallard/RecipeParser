@@ -497,3 +497,64 @@ def test_the_jsonb_columns_are_sent_as_arrays_not_strings(monkeypatch):
     # Elements survive as objects, not as re-encoded text.
     assert payload["structured_ingredients"][0]["name"] == "all-purpose flour"
     assert payload["tokenized_directions"][0]["step"] == 1
+
+
+# ---------------------------------------------------------------------------
+# The six Paprika metadata columns (design 6.3)
+# ---------------------------------------------------------------------------
+
+#: A recipe that states all six. model_copy rather than attribute assignment,
+#: matching how this suite already builds variants of the shared fixture.
+_RATED = {
+    "source": "Bon Appetit",
+    "notes": "Chill the dough.",
+    "rating": 4,
+    "nutritional_info": "520 kcal",
+    "description": "A cold-weather pie.",
+    "difficulty": "Moderate",
+}
+
+
+def _recipes_payload(mock_post):
+    """The row posted to /rest/v1/recipes, ignoring the category junction calls."""
+    return next(
+        c.kwargs["json"] for c in mock_post.call_args_list
+        if "/rest/v1/recipes" in str(c)
+    )
+
+
+def _fake_supabase(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+    # httpx.post is mocked by the caller, so nothing leaves this process.
+    monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+    response = MagicMock()
+    response.status_code = 201
+    return response
+
+
+def test_the_supabase_row_carries_all_six(monkeypatch):
+    response = _fake_supabase(monkeypatch)
+
+    with patch("recipeparser.io.writers.supabase.httpx.post", return_value=response) as mock_post:
+        write_recipe_to_supabase(
+            _make_recipe("Chicken Pie").model_copy(update=_RATED), "user-uuid-1"
+        )
+
+    payload = _recipes_payload(mock_post)
+    assert payload["source"] == "Bon Appetit"
+    assert payload["notes"] == "Chill the dough."
+    assert payload["rating"] == 4
+    assert payload["nutritional_info"] == "520 kcal"
+    assert payload["description"] == "A cold-weather pie."
+    assert payload["difficulty"] == "Moderate"
+
+
+def test_an_unrated_recipe_writes_null_not_zero(monkeypatch):
+    """The column's check constraint rejects 0; unrated is null."""
+    response = _fake_supabase(monkeypatch)
+
+    with patch("recipeparser.io.writers.supabase.httpx.post", return_value=response) as mock_post:
+        write_recipe_to_supabase(_make_recipe("Plain"), "user-uuid-1")
+
+    assert _recipes_payload(mock_post)["rating"] is None
