@@ -12,14 +12,19 @@ from __future__ import annotations
 import argparse
 import base64
 import gzip
-import io
 import json
-import os
 import sys
 import zipfile
 from pathlib import Path
 
 CORPUS = Path(__file__).resolve().parents[1] / "tests" / "goldens" / "corpus"
+
+#: Project Gutenberg ebook id this corpus was built from — Apicius, "Cookery
+#: and Dining in Imperial Rome". Pinned so a rebuild reproduces the exact book
+#: credited in corpus/README.md instead of whatever a relevance search ranks
+#: first on the day it is run. See fetch_and_trim_gutenberg() for how this was
+#: originally found and why a search is kept only as a fallback.
+GUTENBERG_BOOK_ID = 29728
 
 # ---------------------------------------------------------------------------
 # Hand-rebuilt sources.  Layout features only; no author, no book name; two
@@ -77,16 +82,16 @@ PHASES_BAKERS_CHAPTERS = [
 <h2>Ingredients</h2>
 <p>PHASE 1 &mdash; Levain</p>
 <ul>
-<li>28g whole wheat flour</li>
-<li>28g water</li>
-<li>6g ripe starter</li>
+<li>28g (1 oz) whole wheat flour</li>
+<li>28g (2 tablespoons) water</li>
+<li>6g (1 teaspoon) ripe starter</li>
 </ul>
 <p>PHASE 2 &mdash; Final Dough</p>
 <ul>
-<li>450g bread flour</li>
-<li>50g whole wheat flour</li>
-<li>360g water</li>
-<li>10g fine salt</li>
+<li>450g (1 lb) bread flour</li>
+<li>50g (1/3 cup) whole wheat flour</li>
+<li>360g (1 1/2 cups) water</li>
+<li>10g (2 teaspoons) fine salt</li>
 </ul>
 <h2>Method</h2>
 <p>PHASE 1</p>
@@ -318,23 +323,48 @@ def fetch_and_trim_gutenberg() -> dict:
     a real two-file TOC rather than a hand-written stub.
     """
     import requests
-    from ebooklib import epub, ITEM_DOCUMENT
+    from ebooklib import ITEM_DOCUMENT, epub
 
+    # Pin the exact book this corpus was built from (Apicius, "Cookery and
+    # Dining in Imperial Rome") so a rebuild reproduces the book credited in
+    # corpus/README.md rather than whatever a relevance search ranks first
+    # today. `params={"ids": ...}` is a stable, unambiguous lookup.
+    #
+    # NOTE on how this id was found (the one deliberate deviation from the
+    # brief's verbatim script): gutendex's "topic" query param matches
+    # subjects/bookshelves exactly/by substring; "topic": "cookery" returns 0
+    # results against the live API (verified 2026-09-07), so the brief's
+    # script would fail before ever reaching a candidate. "search" (full-text
+    # relevance search) with the same literal string "cookery" returns 68
+    # results led by real cookbooks, of which #29728 was picked and is now
+    # pinned above. Relevance search is kept below only as a fallback for the
+    # rare case the pinned id stops resolving (e.g. the book is ever pulled
+    # from Project Gutenberg) — a fallback run prints a warning, because
+    # taking that path means corpus/README.md's provenance row must be
+    # updated to match whatever book comes back.
     index = requests.get(
         "https://gutendex.com/books",
-        # NOTE: gutendex's "topic" query param matches subjects/bookshelves
-        # exactly/by substring; "topic": "cookery" returns 0 results against
-        # the live API (verified 2026-09-07), so the whole fetch would fail
-        # before ever reaching a candidate. "search" (full-text relevance
-        # search) with the same literal string "cookery" returns 68 results
-        # led by real cookbooks (e.g. #29728 "Cookery and Dining in Imperial
-        # Rome"). This is the one deliberate deviation from the brief's
-        # verbatim script: the query parameter name, not the search term.
-        params={"search": "cookery", "languages": "en"},
+        params={"ids": str(GUTENBERG_BOOK_ID)},
         timeout=60,
     )
     index.raise_for_status()
-    for book_meta in index.json()["results"]:
+    results = index.json()["results"]
+    if not results:
+        print(
+            f"WARNING: pinned Gutenberg id {GUTENBERG_BOOK_ID} no longer resolves; "
+            "falling back to a relevance search. If this path is taken, "
+            "corpus/README.md's gutenberg-multi.epub row MUST be updated to match "
+            "the provenance printed below."
+        )
+        index = requests.get(
+            "https://gutendex.com/books",
+            params={"search": "cookery", "languages": "en"},
+            timeout=60,
+        )
+        index.raise_for_status()
+        results = index.json()["results"]
+
+    for book_meta in results:
         url = next(
             (u for mime, u in book_meta["formats"].items()
              if mime.startswith("application/epub+zip")),
@@ -347,7 +377,10 @@ def fetch_and_trim_gutenberg() -> dict:
         scratch = CORPUS / "_gutenberg_raw.epub"
         scratch.write_bytes(payload.content)
         source = epub.read_epub(str(scratch))
-        docs = [i for i in source.get_items_of_type(ITEM_DOCUMENT) if i.get_name().endswith((".xhtml", ".html", ".htm"))]
+        docs = [
+            i for i in source.get_items_of_type(ITEM_DOCUMENT)
+            if i.get_name().endswith((".xhtml", ".html", ".htm"))
+        ]
         if len(docs) < 7:
             scratch.unlink()
             continue

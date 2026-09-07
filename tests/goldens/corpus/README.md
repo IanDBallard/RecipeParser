@@ -15,7 +15,7 @@ so a reviewer can see how each was made.
 | `text-pages.pdf` | Built in code from the trimmed Gutenberg text above; same licence. | Four pages, one embedded 1x1 JPEG. | PDF preflight pass; page chunks with image markers; PDF text layer |
 | `scanned.pdf` | Built in code by rendering the first two pages of `text-pages.pdf` to images; same licence. | Image-only; no text layer at all. | Preflight failure; vision OCR fallback |
 | `saved-page.html` | Hand-rebuilt recipe page. No real site, no attribution. | Written from scratch: nav, article, ingredients, directions, footer. | `UrlReader` with `requests.get` patched; `utils.html_to_text` |
-| `legacy-photo.paprikarecipes` | Built in code from one Gutenberg recipe plus a 1x1 JPEG; same licence. | One entry, no `_cayenne_meta`. | Paprika legacy reader with `photo_data`, which PR #13 touches |
+| `legacy-photo.paprikarecipes` | Hand-authored recipe text plus a 1x1 JPEG. No author, no book name, no borrowed licence — not derived from the Gutenberg book above. | One entry, no `_cayenne_meta`. | Paprika legacy reader with `photo_data`, which PR #13 touches |
 
 ## Regenerating expected output
 
