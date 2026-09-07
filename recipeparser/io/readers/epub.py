@@ -159,29 +159,41 @@ def extract_chapters_with_image_markers(
 
 def split_large_chunk(text: str, max_chars: int = MAX_CHUNK_CHARS) -> List[str]:
     """
-    Split a text chunk that exceeds max_chars at paragraph boundaries so that
-    we never send a single oversized request to the LLM.
+    Split a text chunk that exceeds max_chars at paragraph boundaries, falling
+    back to single-line boundaries for any paragraph that is still too large
+    on its own, so that we rarely send an oversized request to the LLM. A
+    part with no paragraph or line break left to split on is returned intact.
     """
     if len(text) <= max_chars:
         return [text]
 
+    def pack(units: List[str], sep: str) -> List[str]:
+        grouped: List[str] = []
+        current: List[str] = []
+        current_len = 0
+        sep_len = len(sep)
+
+        for unit in units:
+            unit_len = len(unit) + sep_len
+            if current_len + unit_len > max_chars and current:
+                grouped.append(sep.join(current))
+                current = [unit]
+                current_len = unit_len
+            else:
+                current.append(unit)
+                current_len += unit_len
+
+        if current:
+            grouped.append(sep.join(current))
+
+        return grouped
+
     parts = []
-    paragraphs = text.split("\n\n")
-    current: List[str] = []
-    current_len = 0
-
-    for para in paragraphs:
-        para_len = len(para) + 2  # account for the "\n\n" separator
-        if current_len + para_len > max_chars and current:
-            parts.append("\n\n".join(current))
-            current = [para]
-            current_len = para_len
+    for para_part in pack(text.split("\n\n"), "\n\n"):
+        if len(para_part) > max_chars:
+            parts.extend(pack(para_part.split("\n"), "\n"))
         else:
-            current.append(para)
-            current_len += para_len
-
-    if current:
-        parts.append("\n\n".join(current))
+            parts.append(para_part)
 
     return parts
 
