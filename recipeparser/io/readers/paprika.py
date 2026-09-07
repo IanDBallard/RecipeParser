@@ -181,6 +181,12 @@ class PaprikaReader(RecipeReader):
                         meta=SourceMeta(
                             prep_time=entry.get("prep_time"),
                             cook_time=entry.get("cook_time"),
+                            source=entry.get("source"),
+                            notes=entry.get("notes"),
+                            rating=entry.get("rating"),
+                            nutritional_info=entry.get("nutritional_info"),
+                            description=entry.get("description"),
+                            difficulty=entry.get("difficulty"),
                         ),
                     )
                 )

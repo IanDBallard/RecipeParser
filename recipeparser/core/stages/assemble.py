@@ -80,6 +80,14 @@ def assemble(
         structured_ingredients=recipe.structured_ingredients,
         tokenized_directions=recipe.tokenized_directions,
         embedding=embedding,
+        # No extracted fallback: only a Paprika entry states these, and nothing
+        # infers them from a book or a web page.
+        source=meta.source if meta else None,
+        notes=meta.notes if meta else None,
+        rating=meta.rating if meta else None,
+        nutritional_info=meta.nutritional_info if meta else None,
+        description=meta.description if meta else None,
+        difficulty=meta.difficulty if meta else None,
     )
 
     log.info(
