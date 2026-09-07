@@ -1,0 +1,29 @@
+{
+  "chunks": [
+    {
+      "image_bytes_len": 0,
+      "image_bytes_sha256": null,
+      "image_content_type": "image/jpeg",
+      "image_url": null,
+      "input_type": "EPUB",
+      "label": null,
+      "pre_parsed_embedding_len": null,
+      "pre_parsed_title": null,
+      "source_url": "Dual Units",
+      "text": "Buttermilk Scones\nIngredients\n2 cups/250g plain flour\n1 tablespoon/12g baking powder\n1/2 teaspoon/3g fine salt\n5 tablespoons/70g cold butter, cubed\n3/4 cup/180ml buttermilk\nMethod\nHeat the oven to 425F. Line a tray with parchment.\nRub the butter into the flour, baking powder and salt until it looks like coarse crumbs.\nStir in the buttermilk until a shaggy dough forms. Do not overwork it.\nPat out to 1 inch thick, cut rounds, and bake for 12 to 14 minutes.\nServes 8. Prep 15 mins. Cook 14 mins."
+    },
+    {
+      "image_bytes_len": 0,
+      "image_bytes_sha256": null,
+      "image_content_type": "image/jpeg",
+      "image_url": null,
+      "input_type": "EPUB",
+      "label": null,
+      "pre_parsed_embedding_len": null,
+      "pre_parsed_title": null,
+      "source_url": "Dual Units",
+      "text": "Brown Butter Shortbread\nIngredients\n14 tablespoons/200g butter\n1/2 cup/100g caster sugar\n2 cups/250g plain flour\n1/4 teaspoon/1.5g fine salt\nMethod\nBrown the butter in a pale pan until it smells of hazelnuts, then cool until thick.\nBeat in the sugar, then the flour and salt, to a stiff paste.\nPress into a tin, dock all over, and bake at 325F for 40 minutes.\nCut while warm and cool in the tin.\nServes 12. Prep 20 mins. Cook 40 mins."
+    }
+  ],
+  "qualifying_images": []
+}

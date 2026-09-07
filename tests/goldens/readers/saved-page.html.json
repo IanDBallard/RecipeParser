@@ -1,0 +1,17 @@
+{
+  "chunks": [
+    {
+      "image_bytes_len": 0,
+      "image_bytes_sha256": null,
+      "image_content_type": "image/jpeg",
+      "image_url": null,
+      "input_type": "URL",
+      "label": null,
+      "pre_parsed_embedding_len": null,
+      "pre_parsed_title": null,
+      "source_url": "https://example.invalid/tomato-soup",
+      "text": "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><title>Weeknight Tomato Soup</title></head>\n<body>\n<nav><a href=\"/\">Home</a> <a href=\"/recipes\">Recipes</a></nav>\n<article>\n<h1>Weeknight Tomato Soup</h1>\n<p class=\"meta\">Serves 4 &middot; Prep 10 mins &middot; Cook 25 mins</p>\n<h2>Ingredients</h2>\n<ul>\n<li>2 tablespoons olive oil</li>\n<li>1 onion, sliced thin</li>\n<li>3 cloves garlic, crushed</li>\n<li>1 (28 ounce) can whole peeled tomatoes</li>\n<li>2 cups vegetable stock</li>\n<li>Salt and black pepper to taste</li>\n</ul>\n<h2>Directions</h2>\n<ol>\n<li>Warm the oil and soften the onion for 8 minutes without colouring it.</li>\n<li>Add the garlic and cook for 1 minute more.</li>\n<li>Tip in the tomatoes and stock, crushing the tomatoes with a spoon.</li>\n<li>Simmer for 15 minutes, blend smooth, and season.</li>\n</ol>\n</article>\n<footer><p>&copy; 2026 Example Kitchen</p></footer>\n</body>\n</html>\n"
+    }
+  ],
+  "qualifying_images": []
+}

@@ -77,6 +77,8 @@ select = ["E", "F", "I", "TID"]
 [tool.ruff.lint.per-file-ignores]
 "recipeparser/io/**" = ["TID"]
 "recipeparser/adapters/**" = ["TID"]
+# Reader goldens exercise recipeparser.io.readers directly by design (spec §6.1).
+"tests/goldens/test_readers_golden.py" = ["TID"]
 
 [tool.mypy]
 python_version = "3.9"
