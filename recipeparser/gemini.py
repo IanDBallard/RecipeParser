@@ -168,13 +168,9 @@ def needs_table_normalisation(text: str) -> bool:
     )
 
 
-def normalise_baker_table(text_chunk: str, client) -> str:
-    """
-    Pre-process a chunk containing multi-column baker's percentage tables by
-    asking Gemini to reformat them into readable per-ingredient lines.
-    Returns the reformatted text, or the original text unchanged if the call fails.
-    """
-    prompt = f"""The following text is from a recipe book and contains one or more ingredient tables
+def build_table_prompt(text_chunk: str) -> str:
+    """The prompt that reformats a multi-column baker's percentage table."""
+    return f"""The following text is from a recipe book and contains one or more ingredient tables
 where each ingredient name, its weight, its volume measure, and its baker's percentage
 appear on separate lines rather than in columns.
 
@@ -187,6 +183,15 @@ Preserve all [IMAGE: ...] markers exactly as they appear.
 
 Text:
 {text_chunk}"""
+
+
+def normalise_baker_table(text_chunk: str, client) -> str:
+    """
+    Pre-process a chunk containing multi-column baker's percentage tables by
+    asking Gemini to reformat them into readable per-ingredient lines.
+    Returns the reformatted text, or the original text unchanged if the call fails.
+    """
+    prompt = build_table_prompt(text_chunk)
 
     try:
         response = _call_with_retry(
@@ -239,19 +244,9 @@ _UNITS_RULES = {
 }
 
 
-def extract_recipe_from_text(
-    text: str,
-    client,
-) -> RecipeList:
-    """
-    Extract a single recipe from plain text (e.g. from a Paprika import or
-    pasted recipe).  Uses a simpler, more direct prompt than extract_recipes
-    which is tuned for EPUB/PDF book chunks.
-
-    Raises:
-        ExtractionParseError: every attempt's reply could not be parsed.
-    """
-    prompt = f"""
+def build_plain_text_prompt(text: str) -> str:
+    """The prompt for a single recipe in plain text (Paprika import, pasted recipe)."""
+    return f"""
 You are a culinary data extractor. The following text is a recipe. Extract it.
 
 Rules:
@@ -265,6 +260,21 @@ Rules:
 Text:
 {text}
 """
+
+
+def extract_recipe_from_text(
+    text: str,
+    client,
+) -> RecipeList:
+    """
+    Extract a single recipe from plain text (e.g. from a Paprika import or
+    pasted recipe).  Uses a simpler, more direct prompt than extract_recipes
+    which is tuned for EPUB/PDF book chunks.
+
+    Raises:
+        ExtractionParseError: every attempt's reply could not be parsed.
+    """
+    prompt = build_plain_text_prompt(text)
     return _generate_and_parse(
         client,
         model="gemini-2.5-flash",
@@ -278,29 +288,11 @@ Text:
     )
 
 
-def extract_recipes(
-    text_chunk: str,
-    client,
-    units: str = "book",
-) -> RecipeList:
-    """
-    Call Gemini with the extraction prompt and return a parsed RecipeList.
-    Applies retry/back-off for rate-limit errors and for a reply that will
-    not parse.
-
-    ``units`` controls how dual-measurement ingredient lines are handled:
-      "metric"   — keep only gram/ml values  (e.g. "250g flour")
-      "us"       — keep only US cup/tbsp values
-      "imperial" — keep only oz/lb values (falls back to metric for dual lines)
-      "book"     — preserve whatever the book uses (default)
-
-    Raises:
-        ExtractionParseError: every attempt's reply could not be parsed.
-    """
+def build_extract_prompt(text_chunk: str, units: str = "book") -> str:
+    """The prompt for a book chunk that may hold several recipes."""
     units_rule = _UNITS_RULES.get(units.lower(), "")
     units_section = f"\n{units_rule}" if units_rule else ""
-
-    prompt = f"""
+    return f"""
 You are a culinary data extractor. Review the following text from an EPUB recipe book.
 Extract ALL distinct recipes found in the text.
 
@@ -334,6 +326,28 @@ Rules:
 Text chunk:
 {text_chunk}
 """
+
+
+def extract_recipes(
+    text_chunk: str,
+    client,
+    units: str = "book",
+) -> RecipeList:
+    """
+    Call Gemini with the extraction prompt and return a parsed RecipeList.
+    Applies retry/back-off for rate-limit errors and for a reply that will
+    not parse.
+
+    ``units`` controls how dual-measurement ingredient lines are handled:
+      "metric"   — keep only gram/ml values  (e.g. "250g flour")
+      "us"       — keep only US cup/tbsp values
+      "imperial" — keep only oz/lb values (falls back to metric for dual lines)
+      "book"     — preserve whatever the book uses (default)
+
+    Raises:
+        ExtractionParseError: every attempt's reply could not be parsed.
+    """
+    prompt = build_extract_prompt(text_chunk, units)
 
     return _generate_and_parse(
         client,
@@ -493,32 +507,15 @@ def _format_axes_for_prompt(user_axes: Dict[str, List[str]]) -> str:
     return "\n".join(lines)
 
 
-def refine_recipe_for_cayenne(
+def build_refine_prompt(
     raw_recipe: object,
-    client,
-    uom_system: str = "US",
-    measure_preference: str = "Volume",
+    uom_system: str,
+    measure_preference: str,
     user_axes: Optional[Dict[str, List[str]]] = None,
-) -> Optional[CayenneRefinement]:
-    """
-    Post-processing pass to convert raw text recipe into high-fidelity Cayenne data.
-
-    Combines Fat Token generation, UOM conversion, and multipolar categorization
-    into a single LLM call (Pass 2).
-
-    Args:
-        raw_recipe:        The raw RecipeExtraction object from Pass 1.
-        client:            Initialised Gemini client.
-        uom_system:        "US", "Metric", or "Imperial".
-        measure_preference: "Volume" or "Weight".
-        user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
-                           When None or empty, grid_categories will be {} in the result.
-    """
-    axes = user_axes or {}
-    categorization_section = _format_axes_for_prompt(axes)
-    schema = _build_dynamic_grid_schema(axes)
-
-    prompt = f"""
+) -> str:
+    """The Pass-2 prompt: structured ingredients, fat tokens, and categorisation."""
+    categorization_section = _format_axes_for_prompt(user_axes or {})
+    return f"""
 You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
 
 RULES:
@@ -542,6 +539,33 @@ Measure Preference: {measure_preference}
 RAW RECIPE:
 {raw_recipe}
 """
+
+
+def refine_recipe_for_cayenne(
+    raw_recipe: object,
+    client,
+    uom_system: str = "US",
+    measure_preference: str = "Volume",
+    user_axes: Optional[Dict[str, List[str]]] = None,
+) -> Optional[CayenneRefinement]:
+    """
+    Post-processing pass to convert raw text recipe into high-fidelity Cayenne data.
+
+    Combines Fat Token generation, UOM conversion, and multipolar categorization
+    into a single LLM call (Pass 2).
+
+    Args:
+        raw_recipe:        The raw RecipeExtraction object from Pass 1.
+        client:            Initialised Gemini client.
+        uom_system:        "US", "Metric", or "Imperial".
+        measure_preference: "Volume" or "Weight".
+        user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
+                           When None or empty, grid_categories will be {} in the result.
+    """
+    axes = user_axes or {}
+    schema = _build_dynamic_grid_schema(axes)
+
+    prompt = build_refine_prompt(raw_recipe, uom_system, measure_preference, axes)
     try:
         # Use response_json_schema with additionalProperties stripped — Gemini API
         # rejects response_schema when Pydantic emits additionalProperties (Dict types).

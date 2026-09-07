@@ -163,14 +163,8 @@ def extract_toc_pdf(pdf_path: str, raw_chunks: List[str], client) -> List[Tuple[
     return []
 
 
-def _parse_toc_from_text_fallback(
-    chunks: List[str],
-    client,
-) -> List[Tuple[str, Optional[int]]]:
-    """Parse TOC from text via AI when programmatic TOC is empty/shallow."""
-    if not chunks:
-        return []
-
+def build_toc_parse_prompt(chunks: List[str]) -> str:
+    """The prompt that reads a contents page when the programmatic TOC is thin."""
     text = "\n\n".join(chunks)
     if len(text) > 20_000:
         text = text[:20_000] + "\n[... truncated ...]"
@@ -182,7 +176,18 @@ Output JSON: {"entries": [{"title": "...", "page": <int or null>}, ...]}
 Use page: null when no page number is given.
 Include only substantive entries (skip "Contents", "Index", etc. if they are standalone headers)."""
 
-    prompt += f"\n\nText:\n{text}"
+    return prompt + f"\n\nText:\n{text}"
+
+
+def _parse_toc_from_text_fallback(
+    chunks: List[str],
+    client,
+) -> List[Tuple[str, Optional[int]]]:
+    """Parse TOC from text via AI when programmatic TOC is empty/shallow."""
+    if not chunks:
+        return []
+
+    prompt = build_toc_parse_prompt(chunks)
 
     try:
         response = _call_with_retry(
@@ -207,6 +212,22 @@ Include only substantive entries (skip "Contents", "Index", etc. if they are sta
 # Recipe-name classification and filter
 # ---------------------------------------------------------------------------
 
+def build_toc_classify_prompt(titles: List[str]) -> str:
+    """The prompt that separates recipe titles from section headers."""
+    prompt = """Given this list of table-of-contents entries from a cookbook, identify which ones are
+specific recipe or dish names (e.g. "Chocolate Chip Cookies", "Beef Stew", "Roast Chicken")
+vs section/chapter headers (e.g. "Soups", "Desserts", "Introduction", "Breakfast").
+
+Return JSON: {"recipe_indices": [0, 1, 3, 5, ...]} — the 0-based indices of entries that are recipe titles.
+Section headers like "Soups", "Desserts" should NOT be included. Only include entries that look like
+specific dish/recipe names."""
+
+    prompt += "\n\nEntries (one per line):\n"
+    for index, title in enumerate(titles):
+        prompt += f"{index}. {title}\n"
+    return prompt
+
+
 def _classify_toc_recipe_indices(
     entries: List[Tuple[str, Optional[int]]],
     client,
@@ -218,17 +239,7 @@ def _classify_toc_recipe_indices(
     if not entries:
         return None
     titles = [e[0] for e in entries]
-    prompt = """Given this list of table-of-contents entries from a cookbook, identify which ones are
-specific recipe or dish names (e.g. "Chocolate Chip Cookies", "Beef Stew", "Roast Chicken")
-vs section/chapter headers (e.g. "Soups", "Desserts", "Introduction", "Breakfast").
-
-Return JSON: {"recipe_indices": [0, 1, 3, 5, ...]} — the 0-based indices of entries that are recipe titles.
-Section headers like "Soups", "Desserts" should NOT be included. Only include entries that look like
-specific dish/recipe names."""
-
-    prompt += "\n\nEntries (one per line):\n"
-    for i, t in enumerate(titles):
-        prompt += f"{i}. {t}\n"
+    prompt = build_toc_classify_prompt(titles)
 
     try:
         response = _call_with_retry(
