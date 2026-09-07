@@ -19,6 +19,7 @@ from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.models import (
+    CayenneRecipe,
     CayenneRefinement,
     IngestResponse,
     StructuredIngredient,
@@ -572,3 +573,35 @@ def test_a_legacy_paprika_chunks_meta_reaches_assemble():
         pipeline.run([chunk])
 
     assert _CAPTURED_META["meta"] is meta
+
+
+def test_flow_b_restores_the_six_metadata_fields():
+    """Design 6.3 - a Cayenne archive round-trips the new fields."""
+    pre_parsed = CayenneRecipe(
+        title="Chicken Pie",
+        structured_ingredients=[],
+        tokenized_directions=[],
+        source="Bon Appetit",
+        notes="Chill the dough.",
+        rating=4,
+        nutritional_info="520 kcal",
+        description="A cold-weather pie.",
+        difficulty="Moderate",
+    )
+    chunk = Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=pre_parsed,
+        pre_parsed_embedding=FAKE_EMBEDDING,
+    )
+
+    # The real assemble(), not a stand-in: the point is that the six survive the
+    # last hop into the IngestResponse, and a stand-in would prove nothing about it.
+    result = _make_pipeline().run([chunk])[0]
+
+    assert result.source == "Bon Appetit"
+    assert result.notes == "Chill the dough."
+    assert result.rating == 4
+    assert result.nutritional_info == "520 kcal"
+    assert result.description == "A cold-weather pie."
+    assert result.difficulty == "Moderate"

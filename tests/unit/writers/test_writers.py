@@ -614,3 +614,20 @@ def test_an_absent_text_field_writes_an_empty_string(tmp_path: Path):
 
     assert entry["source"] == ""
     assert entry["notes"] == ""
+
+
+def test_a_cayenne_archive_round_trips_every_new_field(tmp_path: Path):
+    """Design 6.4 - write, read back, and the six survive with no Gemini call."""
+    out = tmp_path / "export.paprikarecipes"
+    CayenneZipWriter(out).write([_make_recipe("Chicken Pie").model_copy(update=_RATED)])
+
+    chunk = PaprikaReader().read(str(out))[0]
+
+    assert chunk.input_type == InputType.PAPRIKA_CAYENNE
+    assert chunk.pre_parsed is not None
+    assert chunk.pre_parsed.source == "Bon Appetit"
+    assert chunk.pre_parsed.notes == "Chill the dough."
+    assert chunk.pre_parsed.rating == 4
+    assert chunk.pre_parsed.nutritional_info == "520 kcal"
+    assert chunk.pre_parsed.description == "A cold-weather pie."
+    assert chunk.pre_parsed.difficulty == "Moderate"
