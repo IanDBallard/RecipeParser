@@ -33,7 +33,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from recipeparser.core.models import Chunk, InputType
+from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
@@ -149,16 +149,39 @@ class PaprikaReader(RecipeReader):
                 name = entry.get("name", "")
                 ingredients = entry.get("ingredients", "")
                 directions = entry.get("directions", "")
-                text = f"{name}\n\nIngredients:\n{ingredients}\n\nDirections:\n{directions}"
+
+                # Servings is free text in Paprika ("Serves 4", "8 to 12", "1 or 2
+                # loaves"), so it goes to the extractor as a line of the recipe and
+                # refine turns it into a numeric base_servings, exactly as it already
+                # does for a book. No servings parser lives in this repository.
+                servings = str(entry.get("servings") or "").strip()
+                servings_line = f"Servings: {servings}\n\n" if servings else ""
+                text = (
+                    f"{name}\n\n{servings_line}"
+                    f"Ingredients:\n{ingredients}\n\n"
+                    f"Directions:\n{directions}"
+                )
 
                 photo_bytes, photo_type = _decode_photo(entry)
+                # Only when there is no embedded photo: the pipeline uploads bytes in
+                # preference, and the uploaded copy is the one the recipe should carry.
+                image_url = None
+                if photo_bytes is None:
+                    image_url = str(entry.get("image_url") or "").strip() or None
+
                 chunks.append(
                     Chunk(
                         text=text,
                         input_type=InputType.PAPRIKA_LEGACY,
+                        source_url=str(entry.get("source_url") or "").strip() or None,
+                        image_url=image_url,
                         image_bytes=photo_bytes,
                         image_content_type=photo_type,
                         label=name or None,
+                        meta=SourceMeta(
+                            prep_time=entry.get("prep_time"),
+                            cook_time=entry.get("cook_time"),
+                        ),
                     )
                 )
 
