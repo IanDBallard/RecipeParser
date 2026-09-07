@@ -58,8 +58,16 @@ def _assert_golden(name: str, actual: dict, update: bool) -> None:
 
 
 @pytest.mark.parametrize("fixture", EPUB_FIXTURES)
-@pytest.mark.filterwarnings("ignore::UserWarning")
-@pytest.mark.filterwarnings("ignore::FutureWarning")
+# Narrow, message-matched ignores for ebooklib's own noise only — not
+# ``ignore::UserWarning`` wholesale, which would also swallow the
+# ``prompt_sha256 mismatch`` UserWarning golden_client.py raises on purpose.
+@pytest.mark.filterwarnings(
+    "ignore:In the future version we will turn default option ignore_ncx:UserWarning"
+)
+@pytest.mark.filterwarnings(
+    "ignore:This search incorrectly ignores the root element, "
+    "and will be fixed in a future version.:FutureWarning"
+)
 def test_epub_reader_golden(fixture, tmp_path, update_goldens):
     source = str(corpus_path(fixture))
     chunks = EpubReader().read(source)

@@ -175,11 +175,36 @@ SAVED_PAGE_HTML = """<!doctype html>
 """
 
 # A 1x1 red JPEG — small, real, and enough to exercise photo_data end to end.
+# Used only by build_legacy_photo(): PaprikaReader never gates photo_data by
+# size, so this fixture doesn't need a bigger image to exercise that path.
 TINY_JPEG = base64.b64decode(
     "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a"
     "HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA"
     "AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=="
 )
+
+
+def _make_hero_jpeg() -> bytes:
+    """A real, deterministically-generated JPEG comfortably over
+    MIN_PHOTO_BYTES (config.py, 20_000 bytes).
+
+    EpubReader and PdfReader both skip embedded images smaller than
+    MIN_PHOTO_BYTES as decorative separators (see epub.py's
+    extract_all_images() and pdf.py's page image extraction) — TINY_JPEG
+    above is only 160 bytes, so any fixture relying on it to exercise a real
+    "hero image" marker never actually would. Random pixel noise (not a flat
+    colour) is used so JPEG compression can't shrink the output back under
+    the threshold; the seed is pinned so a rebuild reproduces the same bytes.
+    """
+    import random
+
+    import fitz
+
+    rng = random.Random(20260907)
+    size = 120
+    samples = bytes(rng.getrandbits(8) for _ in range(size * size * 3))
+    pixmap = fitz.Pixmap(fitz.csRGB, size, size, samples, False)
+    return pixmap.tobytes("jpeg")
 
 
 def _write_epub(path: Path, title: str, chapters, images) -> None:
@@ -221,11 +246,12 @@ def _write_epub(path: Path, title: str, chapters, images) -> None:
 
 
 def build_dual_units() -> None:
+    hero = _make_hero_jpeg()
     _write_epub(
         CORPUS / "dual-units.epub",
         "Dual Units",
         DUAL_UNITS_CHAPTERS,
-        {"scones.jpg": TINY_JPEG, "shortbread.jpg": TINY_JPEG},
+        {"scones.jpg": hero, "shortbread.jpg": hero},
     )
 
 
@@ -293,7 +319,7 @@ def build_text_pages(pages: list[str]) -> None:
         flat = re.sub(r"\s+", " ", body).strip()
         page.insert_textbox(fitz.Rect(54, 54, 558, 738), flat[:2500], fontsize=10, fontname="helv")
         if index == 1:
-            page.insert_image(fitz.Rect(400, 600, 500, 700), stream=TINY_JPEG)
+            page.insert_image(fitz.Rect(400, 600, 500, 700), stream=_make_hero_jpeg())
     doc.set_metadata({"title": "Text Pages", "author": "Golden Corpus"})
     doc.save(str(CORPUS / "text-pages.pdf"), garbage=4, deflate=True)
     doc.close()
