@@ -9,6 +9,7 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 import logging
 from typing import Dict, List, Optional
 
+from recipeparser.core.models import SourceMeta
 from recipeparser.models import CayenneRefinement, IngestResponse
 
 log = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ def assemble(
     grid_categories: Dict[str, List[str]],
     prep_time: Optional[str] = None,
     cook_time: Optional[str] = None,
+    meta: Optional[SourceMeta] = None,
 ) -> IngestResponse:
     """
     Assemble the final IngestResponse from stage outputs.
@@ -43,6 +45,9 @@ def assemble(
         grid_categories: The validated axis→tags dict from the CATEGORIZE stage.
         prep_time:       Prep time string from the EXTRACT stage (or None).
         cook_time:       Cook time string from the EXTRACT stage (or None).
+        meta:            Fields the source stated for itself (Paprika only). A value
+                         here wins over the extracted one; a field absent from meta
+                         falls back to the argument rather than blanking it.
 
     Returns:
         A fully-populated ``IngestResponse`` ready for persistence.
@@ -54,6 +59,14 @@ def assemble(
         for tags in grid_categories.values()
         for tag in tags
     ]
+
+    # The source's own statement beats the extractor's reading of it. A field the
+    # source left blank falls through to the extracted value rather than erasing it:
+    # a Paprika entry with only a cook time must not cost us the prep time Gemini
+    # found in the directions.
+    if meta is not None:
+        prep_time = meta.prep_time or prep_time
+        cook_time = meta.cook_time or cook_time
 
     result = IngestResponse(
         title=recipe.title,

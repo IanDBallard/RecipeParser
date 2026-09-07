@@ -38,6 +38,54 @@ class InputType(Enum):
 
 
 @dataclass
+class SourceMeta:
+    """
+    Fields a source supplies directly, rather than the extractor inferring them.
+
+    Only a Paprika entry fills these in today: its JSON carries the recipe's own
+    prep and cook times, its source, notes, rating and the rest, all of which the
+    text blob handed to the extractor throws away.  A value here is authoritative
+    and beats the extracted one (see ``assemble()``).
+
+    Normalisation happens once, here, so every construction site gets it.  Paprika
+    writes ``""`` for a field the recipe never filled in and ``0`` for an unrated
+    recipe; both mean absent, and both become ``None``.  A stored ``0`` would read
+    as a real zero-star rating to every client downstream.
+    """
+
+    prep_time: Optional[str] = None
+    cook_time: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+    rating: Optional[int] = None
+    nutritional_info: Optional[str] = None
+    description: Optional[str] = None
+    difficulty: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "prep_time",
+            "cook_time",
+            "source",
+            "notes",
+            "nutritional_info",
+            "description",
+            "difficulty",
+        ):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            stripped = str(value).strip()
+            setattr(self, name, stripped or None)
+
+        try:
+            rating = int(self.rating) if self.rating is not None else None
+        except (TypeError, ValueError):
+            rating = None
+        self.rating = rating or None
+
+
+@dataclass
 class Chunk:
     """
     A single unit of work for the RecipePipeline.
@@ -79,6 +127,10 @@ class Chunk:
         names nothing: what a book chunk contained is unknown until extraction
         succeeds, and a dropped chunk is one where it did not.  No stage reads
         this field; it exists for reporting.
+    meta:
+        Fields the source stated for itself rather than the extractor inferring
+        them.  Set by ``PaprikaReader``; None for every other reader, whose
+        sources carry no such metadata.
     """
 
     text: str
@@ -90,3 +142,4 @@ class Chunk:
     pre_parsed: Optional[Union["CayenneRecipe", "IngestResponse"]] = None
     pre_parsed_embedding: Optional[List[float]] = field(default=None)
     label: Optional[str] = None
+    meta: Optional[SourceMeta] = None
