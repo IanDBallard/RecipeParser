@@ -4,6 +4,29 @@ import types
 import os
 from unittest.mock import MagicMock
 
+
+def pytest_addoption(parser):
+    """Register the golden-suite flags.
+
+    These MUST live here, not in tests/goldens/conftest.py: pytest only honours
+    pytest_addoption in an *initial* conftest (one under rootdir or a testpath).
+    A nested conftest's hook is silently ignored and config.getoption then
+    raises ValueError.
+    """
+    parser.addoption(
+        "--record-gemini",
+        action="store_true",
+        default=False,
+        help="Call the real Gemini API and record replies under tests/goldens/gemini/.",
+    )
+    parser.addoption(
+        "--update-goldens",
+        action="store_true",
+        default=False,
+        help="Rewrite expected files under tests/goldens/readers/ and tests/goldens/e2e/.",
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Headless tkinter / customtkinter stubs
 # Injected into sys.modules BEFORE any test module imports recipeparser.gui so
