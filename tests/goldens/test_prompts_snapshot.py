@@ -6,10 +6,19 @@ in the next task) are what make prompt drift a reviewable diff.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from recipeparser import gemini, toc
-from recipeparser.models import RecipeExtraction
+from recipeparser.models import (
+    CayenneRefinement,
+    RecipeExtraction,
+    RecipeList,
+    TocList,
+    TocRecipeClassification,
+)
 from tests.goldens.conftest import FIXED_AXES
 
 PLACEHOLDER_BODY = "PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does."
@@ -97,3 +106,61 @@ class TestBuildersMatchTheCallSites:
     def test_toc_parse_truncates_a_long_body(self):
         rendered = toc.build_toc_parse_prompt(["x" * 30_000])
         assert "[... truncated ...]" in rendered
+
+
+class TestPromptSnapshots:
+    @pytest.mark.parametrize("units", ["book", "metric", "us", "imperial"])
+    def test_extract_prompt(self, snapshot: SnapshotAssertion, units):
+        assert gemini.build_extract_prompt(PLACEHOLDER_BODY, units) == snapshot(name=f"extract-{units}")
+
+    def test_plain_text_prompt(self, snapshot: SnapshotAssertion):
+        assert gemini.build_plain_text_prompt(PLACEHOLDER_BODY) == snapshot
+
+    def test_table_prompt(self, snapshot: SnapshotAssertion):
+        assert gemini.build_table_prompt(PLACEHOLDER_BODY) == snapshot
+
+    def test_refine_prompt_without_axes(self, snapshot: SnapshotAssertion):
+        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "US", "Volume", {}) == snapshot
+
+    def test_refine_prompt_with_axes(self, snapshot: SnapshotAssertion):
+        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "US", "Volume", FIXED_AXES) == snapshot
+
+    def test_refine_prompt_weight_preference(self, snapshot: SnapshotAssertion):
+        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "Metric", "Weight", FIXED_AXES) == snapshot
+
+    def test_toc_parse_prompt(self, snapshot: SnapshotAssertion):
+        assert toc.build_toc_parse_prompt(["Contents", "Soups .... 3"]) == snapshot
+
+    def test_toc_classify_prompt(self, snapshot: SnapshotAssertion):
+        assert toc.build_toc_classify_prompt(["Soups", "Boiled Custard"]) == snapshot
+
+
+class TestSchemaSnapshots:
+    """The only guard that additionalProperties cannot creep back into a schema."""
+
+    def test_recipe_list_schema(self, snapshot: SnapshotAssertion):
+        assert gemini._schema_for_gemini(RecipeList) == snapshot
+
+    def test_cayenne_refinement_schema(self, snapshot: SnapshotAssertion):
+        assert gemini._schema_for_gemini(CayenneRefinement) == snapshot
+
+    def test_dynamic_grid_schema(self, snapshot: SnapshotAssertion):
+        model = gemini._build_dynamic_grid_schema(FIXED_AXES)
+        assert gemini._schema_for_gemini(model) == snapshot
+
+    def test_toc_list_schema(self, snapshot: SnapshotAssertion):
+        assert gemini._schema_for_gemini(TocList) == snapshot
+
+    def test_toc_classification_schema(self, snapshot: SnapshotAssertion):
+        assert gemini._schema_for_gemini(TocRecipeClassification) == snapshot
+
+    @pytest.mark.parametrize(
+        "model", [RecipeList, CayenneRefinement, TocList, TocRecipeClassification]
+    )
+    def test_no_schema_carries_additional_properties(self, model):
+        rendered = json.dumps(gemini._schema_for_gemini(model))
+        assert "additionalProperties" not in rendered
+
+    def test_the_dynamic_grid_schema_carries_no_additional_properties(self):
+        model = gemini._build_dynamic_grid_schema(FIXED_AXES)
+        assert "additionalProperties" not in json.dumps(gemini._schema_for_gemini(model))

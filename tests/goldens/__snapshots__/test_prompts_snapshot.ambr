@@ -1,0 +1,840 @@
+# serializer version: 1
+# name: TestPromptSnapshots.test_extract_prompt[book][extract-book]
+  '''
+  
+  You are a culinary data extractor. Review the following text from an EPUB recipe book.
+  Extract ALL distinct recipes found in the text.
+  
+  Rules:
+  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
+    photo_filename — it is the confirmed finished-dish photo for this recipe.
+  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
+    to photo_filename: the image most likely to be the hero/finished-dish photo.
+    The hero image can appear in any of these positions:
+      a) immediately BEFORE the recipe title or ingredient list, OR
+      b) immediately AFTER the last ingredient and BEFORE the first method step.
+    Both positions are common depending on the book's layout.
+    IGNORE images that appear embedded WITHIN the numbered method steps — those are
+    instructional process shots, not the finished dish.
+    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
+    mid-method (e.g. appears after "Step 2" or "Step 3" text).
+    If no hero image is identifiable, leave photo_filename null.
+  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
+    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
+    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
+      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
+                    "**Phase 2**", "56g whole wheat flour", "56g water"]
+      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
+    The bold label must be its own separate list item, followed by that phase's
+    ingredients or steps as normal list items.
+    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
+  - If a field is entirely absent from the text, leave it null.
+  - Do not invent or infer values that are not present in the text.
+  
+  Text chunk:
+  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_extract_prompt[imperial][extract-imperial]
+  '''
+  
+  You are a culinary data extractor. Review the following text from an EPUB recipe book.
+  Extract ALL distinct recipes found in the text.
+  
+  Rules:
+  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
+    photo_filename — it is the confirmed finished-dish photo for this recipe.
+  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
+    to photo_filename: the image most likely to be the hero/finished-dish photo.
+    The hero image can appear in any of these positions:
+      a) immediately BEFORE the recipe title or ingredient list, OR
+      b) immediately AFTER the last ingredient and BEFORE the first method step.
+    Both positions are common depending on the book's layout.
+    IGNORE images that appear embedded WITHIN the numbered method steps — those are
+    instructional process shots, not the finished dish.
+    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
+    mid-method (e.g. appears after "Step 2" or "Step 3" text).
+    If no hero image is identifiable, leave photo_filename null.
+  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
+    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
+    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
+      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
+                    "**Phase 2**", "56g whole wheat flour", "56g water"]
+      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
+    The bold label must be its own separate list item, followed by that phase's
+    ingredients or steps as normal list items.
+    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
+  - If a field is entirely absent from the text, leave it null.
+  - Do not invent or infer values that are not present in the text.
+  - Where ingredients are given with dual measurements (e.g. "2 cups/250g flour"), keep the metric (gram/ml) part. Where ounces or pounds appear, keep those as-is.
+  
+  Text chunk:
+  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_extract_prompt[metric][extract-metric]
+  '''
+  
+  You are a culinary data extractor. Review the following text from an EPUB recipe book.
+  Extract ALL distinct recipes found in the text.
+  
+  Rules:
+  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
+    photo_filename — it is the confirmed finished-dish photo for this recipe.
+  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
+    to photo_filename: the image most likely to be the hero/finished-dish photo.
+    The hero image can appear in any of these positions:
+      a) immediately BEFORE the recipe title or ingredient list, OR
+      b) immediately AFTER the last ingredient and BEFORE the first method step.
+    Both positions are common depending on the book's layout.
+    IGNORE images that appear embedded WITHIN the numbered method steps — those are
+    instructional process shots, not the finished dish.
+    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
+    mid-method (e.g. appears after "Step 2" or "Step 3" text).
+    If no hero image is identifiable, leave photo_filename null.
+  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
+    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
+    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
+      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
+                    "**Phase 2**", "56g whole wheat flour", "56g water"]
+      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
+    The bold label must be its own separate list item, followed by that phase's
+    ingredients or steps as normal list items.
+    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
+  - If a field is entirely absent from the text, leave it null.
+  - Do not invent or infer values that are not present in the text.
+  - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the metric (gram or ml) part and discard the US volume part. Output just "250g flour", "200g butter", etc.
+  
+  Text chunk:
+  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_extract_prompt[us][extract-us]
+  '''
+  
+  You are a culinary data extractor. Review the following text from an EPUB recipe book.
+  Extract ALL distinct recipes found in the text.
+  
+  Rules:
+  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
+    photo_filename — it is the confirmed finished-dish photo for this recipe.
+  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
+    to photo_filename: the image most likely to be the hero/finished-dish photo.
+    The hero image can appear in any of these positions:
+      a) immediately BEFORE the recipe title or ingredient list, OR
+      b) immediately AFTER the last ingredient and BEFORE the first method step.
+    Both positions are common depending on the book's layout.
+    IGNORE images that appear embedded WITHIN the numbered method steps — those are
+    instructional process shots, not the finished dish.
+    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
+    mid-method (e.g. appears after "Step 2" or "Step 3" text).
+    If no hero image is identifiable, leave photo_filename null.
+  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
+    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
+    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
+      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
+                    "**Phase 2**", "56g whole wheat flour", "56g water"]
+      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
+    The bold label must be its own separate list item, followed by that phase's
+    ingredients or steps as normal list items.
+    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
+  - If a field is entirely absent from the text, leave it null.
+  - Do not invent or infer values that are not present in the text.
+  - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the US measure part and discard the metric part. Output just "2 cups flour", "14 tablespoons butter", etc.
+  
+  Text chunk:
+  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_plain_text_prompt
+  '''
+  
+  You are a culinary data extractor. The following text is a recipe. Extract it.
+  
+  Rules:
+  - Extract the recipe title, servings, prep time, cook time, ingredients, and directions.
+  - Ingredients: one item per list entry. Convert unicode fractions (½, ¼, ¾) to plain text (1/2, 1/4, 3/4).
+  - Directions: one step per list entry.
+  - If a field is absent from the text, leave it null.
+  - Do not invent or infer values not present in the text.
+  - photo_filename: always null (no images in plain text).
+  
+  Text:
+  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_refine_prompt_weight_preference
+  '''
+  
+  You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
+  
+  RULES:
+  1. STRUCTURED INGREDIENTS:
+     - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
+     - Extract numeric "amount", "unit" (null if unitless), and "name".
+     - "fallback_string" is the original full line.
+     - CONVERSION: If preference is "Weight" and source is "Volume", provide "converted_amount" and "converted_unit" (e.g. 1 cup -> 120g). Set "is_ai_converted" to true.
+     - amount: the numeric quantity. Use null - never 0 - when the source states no
+       amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
+       measurement of nothing.
+  
+  2. TOKENIZED DIRECTIONS:
+     - Rewrite directions using Fat Tokens: {{ingredient_id|original_text}}
+     - Example: "Mix the flour" -> "Mix the {{ing_01|flour}}"
+  
+  3. CATEGORIZATION (grid_categories):
+     Classify this recipe using the user's taxonomy axes below. For each axis, select 0-2 tags that best describe the recipe. Return [] for any axis that does not apply. NEVER invent tags outside the provided lists.
+     - Cuisine: ["American", "British", "French", "Italian"]
+     - Meal Type: ["Breakfast", "Dessert", "Dinner", "Bread"]
+  CONTEXT:
+  UOM System: Metric
+  Measure Preference: Weight
+  
+  RAW RECIPE:
+  name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_refine_prompt_with_axes
+  '''
+  
+  You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
+  
+  RULES:
+  1. STRUCTURED INGREDIENTS:
+     - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
+     - Extract numeric "amount", "unit" (null if unitless), and "name".
+     - "fallback_string" is the original full line.
+     - CONVERSION: If preference is "Weight" and source is "Volume", provide "converted_amount" and "converted_unit" (e.g. 1 cup -> 120g). Set "is_ai_converted" to true.
+     - amount: the numeric quantity. Use null - never 0 - when the source states no
+       amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
+       measurement of nothing.
+  
+  2. TOKENIZED DIRECTIONS:
+     - Rewrite directions using Fat Tokens: {{ingredient_id|original_text}}
+     - Example: "Mix the flour" -> "Mix the {{ing_01|flour}}"
+  
+  3. CATEGORIZATION (grid_categories):
+     Classify this recipe using the user's taxonomy axes below. For each axis, select 0-2 tags that best describe the recipe. Return [] for any axis that does not apply. NEVER invent tags outside the provided lists.
+     - Cuisine: ["American", "British", "French", "Italian"]
+     - Meal Type: ["Breakfast", "Dessert", "Dinner", "Bread"]
+  CONTEXT:
+  UOM System: US
+  Measure Preference: Volume
+  
+  RAW RECIPE:
+  name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_refine_prompt_without_axes
+  '''
+  
+  You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
+  
+  RULES:
+  1. STRUCTURED INGREDIENTS:
+     - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
+     - Extract numeric "amount", "unit" (null if unitless), and "name".
+     - "fallback_string" is the original full line.
+     - CONVERSION: If preference is "Weight" and source is "Volume", provide "converted_amount" and "converted_unit" (e.g. 1 cup -> 120g). Set "is_ai_converted" to true.
+     - amount: the numeric quantity. Use null - never 0 - when the source states no
+       amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
+       measurement of nothing.
+  
+  2. TOKENIZED DIRECTIONS:
+     - Rewrite directions using Fat Tokens: {{ingredient_id|original_text}}
+     - Example: "Mix the flour" -> "Mix the {{ing_01|flour}}"
+  
+  CONTEXT:
+  UOM System: US
+  Measure Preference: Volume
+  
+  RAW RECIPE:
+  name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_table_prompt
+  '''
+  The following text is from a recipe book and contains one or more ingredient tables
+  where each ingredient name, its weight, its volume measure, and its baker's percentage
+  appear on separate lines rather than in columns.
+  
+  Reformat ONLY the ingredient table sections so that each ingredient appears on a single
+  line in the format: "IngredientName: weight (volume) — baker's%"
+  
+  Do NOT change any recipe titles, headings, method steps, notes, or any other text.
+  Do NOT add or remove any ingredients or values.
+  Preserve all [IMAGE: ...] markers exactly as they appear.
+  
+  Text:
+  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
+  '''
+# ---
+# name: TestPromptSnapshots.test_toc_classify_prompt
+  '''
+  Given this list of table-of-contents entries from a cookbook, identify which ones are
+  specific recipe or dish names (e.g. "Chocolate Chip Cookies", "Beef Stew", "Roast Chicken")
+  vs section/chapter headers (e.g. "Soups", "Desserts", "Introduction", "Breakfast").
+  
+  Return JSON: {"recipe_indices": [0, 1, 3, 5, ...]} — the 0-based indices of entries that are recipe titles.
+  Section headers like "Soups", "Desserts" should NOT be included. Only include entries that look like
+  specific dish/recipe names.
+  
+  Entries (one per line):
+  0. Soups
+  1. Boiled Custard
+  
+  '''
+# ---
+# name: TestPromptSnapshots.test_toc_parse_prompt
+  '''
+  This text is from the table-of-contents or contents page of a recipe book.
+  Extract the list of recipe/section titles in order. Include page numbers if they appear.
+  
+  Output JSON: {"entries": [{"title": "...", "page": <int or null>}, ...]}
+  Use page: null when no page number is given.
+  Include only substantive entries (skip "Contents", "Index", etc. if they are standalone headers).
+  
+  Text:
+  Contents
+  
+  Soups .... 3
+  '''
+# ---
+# name: TestSchemaSnapshots.test_cayenne_refinement_schema
+  dict({
+    '$defs': dict({
+      'StructuredIngredient': dict({
+        'properties': dict({
+          'amount': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Numeric quantity, e.g. 1.5. null when the source states no amount ('salt to taste').",
+            'title': 'Amount',
+          }),
+          'converted_amount': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Converted amount (e.g. Volume -> Weight)',
+            'title': 'Converted Amount',
+          }),
+          'converted_unit': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Converted unit, e.g., "g"',
+            'title': 'Converted Unit',
+          }),
+          'fallback_string': dict({
+            'description': 'Full original string, e.g., "1 1/2 cups flour".',
+            'title': 'Fallback String',
+            'type': 'string',
+          }),
+          'id': dict({
+            'description': 'Unique ID for cross-linking, e.g., "ing_01"',
+            'title': 'Id',
+            'type': 'string',
+          }),
+          'is_ai_converted': dict({
+            'default': False,
+            'description': 'True if AI calculated the conversion.',
+            'title': 'Is Ai Converted',
+            'type': 'boolean',
+          }),
+          'name': dict({
+            'description': 'Core name, e.g., "flour".',
+            'title': 'Name',
+            'type': 'string',
+          }),
+          'unit': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Unit of measure, e.g., "cups".',
+            'title': 'Unit',
+          }),
+        }),
+        'required': list([
+          'id',
+          'name',
+          'fallback_string',
+        ]),
+        'title': 'StructuredIngredient',
+        'type': 'object',
+      }),
+      'TokenizedDirection': dict({
+        'properties': dict({
+          'step': dict({
+            'description': '1-based step number.',
+            'title': 'Step',
+            'type': 'integer',
+          }),
+          'text': dict({
+            'description': 'Direction text with Fat Tokens {{id|fallback}}.',
+            'title': 'Text',
+            'type': 'string',
+          }),
+        }),
+        'required': list([
+          'step',
+          'text',
+        ]),
+        'title': 'TokenizedDirection',
+        'type': 'object',
+      }),
+    }),
+    'description': 'Internal refinement pass output.',
+    'properties': dict({
+      'base_servings': dict({
+        'anyOf': list([
+          dict({
+            'type': 'integer',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'title': 'Base Servings',
+      }),
+      'grid_categories': dict({
+        'description': "Multipolar categorization result. Keys are axis names (e.g. 'Cuisine'), values are lists of 0-2 matching tags from that axis. Return [] for any axis that does not apply — never hallucinate tags.",
+        'title': 'Grid Categories',
+        'type': 'object',
+      }),
+      'structured_ingredients': dict({
+        'items': dict({
+          '$ref': '#/$defs/StructuredIngredient',
+        }),
+        'title': 'Structured Ingredients',
+        'type': 'array',
+      }),
+      'title': dict({
+        'title': 'Title',
+        'type': 'string',
+      }),
+      'tokenized_directions': dict({
+        'items': dict({
+          '$ref': '#/$defs/TokenizedDirection',
+        }),
+        'title': 'Tokenized Directions',
+        'type': 'array',
+      }),
+    }),
+    'required': list([
+      'title',
+      'base_servings',
+      'structured_ingredients',
+      'tokenized_directions',
+    ]),
+    'title': 'CayenneRefinement',
+    'type': 'object',
+  })
+# ---
+# name: TestSchemaSnapshots.test_dynamic_grid_schema
+  dict({
+    '$defs': dict({
+      'GridCategories': dict({
+        'properties': dict({
+          'Cuisine': dict({
+            'description': 'Tags for the \'Cuisine\' axis. Choose 0-2 tags from this exact list: ["American", "British", "French", "Italian"]. Return [] if none apply — do NOT invent tags outside this list.',
+            'items': dict({
+              'type': 'string',
+            }),
+            'title': 'Cuisine',
+            'type': 'array',
+          }),
+          'Meal Type': dict({
+            'description': 'Tags for the \'Meal Type\' axis. Choose 0-2 tags from this exact list: ["Breakfast", "Dessert", "Dinner", "Bread"]. Return [] if none apply — do NOT invent tags outside this list.',
+            'items': dict({
+              'type': 'string',
+            }),
+            'title': 'Meal Type',
+            'type': 'array',
+          }),
+        }),
+        'title': 'GridCategories',
+        'type': 'object',
+      }),
+      'StructuredIngredient': dict({
+        'properties': dict({
+          'amount': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Numeric quantity, e.g. 1.5. null when the source states no amount ('salt to taste').",
+            'title': 'Amount',
+          }),
+          'converted_amount': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Converted amount (e.g. Volume -> Weight)',
+            'title': 'Converted Amount',
+          }),
+          'converted_unit': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Converted unit, e.g., "g"',
+            'title': 'Converted Unit',
+          }),
+          'fallback_string': dict({
+            'description': 'Full original string, e.g., "1 1/2 cups flour".',
+            'title': 'Fallback String',
+            'type': 'string',
+          }),
+          'id': dict({
+            'description': 'Unique ID for cross-linking, e.g., "ing_01"',
+            'title': 'Id',
+            'type': 'string',
+          }),
+          'is_ai_converted': dict({
+            'default': False,
+            'description': 'True if AI calculated the conversion.',
+            'title': 'Is Ai Converted',
+            'type': 'boolean',
+          }),
+          'name': dict({
+            'description': 'Core name, e.g., "flour".',
+            'title': 'Name',
+            'type': 'string',
+          }),
+          'unit': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Unit of measure, e.g., "cups".',
+            'title': 'Unit',
+          }),
+        }),
+        'required': list([
+          'id',
+          'name',
+          'fallback_string',
+        ]),
+        'title': 'StructuredIngredient',
+        'type': 'object',
+      }),
+      'TokenizedDirection': dict({
+        'properties': dict({
+          'step': dict({
+            'description': '1-based step number.',
+            'title': 'Step',
+            'type': 'integer',
+          }),
+          'text': dict({
+            'description': 'Direction text with Fat Tokens {{id|fallback}}.',
+            'title': 'Text',
+            'type': 'string',
+          }),
+        }),
+        'required': list([
+          'step',
+          'text',
+        ]),
+        'title': 'TokenizedDirection',
+        'type': 'object',
+      }),
+    }),
+    'properties': dict({
+      'base_servings': dict({
+        'anyOf': list([
+          dict({
+            'type': 'integer',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'title': 'Base Servings',
+      }),
+      'grid_categories': dict({
+        '$ref': '#/$defs/GridCategories',
+        'description': "Multipolar categorization. For each axis, pick 0-2 matching tags from the provided list. Return [] for axes that don't apply.",
+      }),
+      'structured_ingredients': dict({
+        'items': dict({
+          '$ref': '#/$defs/StructuredIngredient',
+        }),
+        'title': 'Structured Ingredients',
+        'type': 'array',
+      }),
+      'title': dict({
+        'title': 'Title',
+        'type': 'string',
+      }),
+      'tokenized_directions': dict({
+        'items': dict({
+          '$ref': '#/$defs/TokenizedDirection',
+        }),
+        'title': 'Tokenized Directions',
+        'type': 'array',
+      }),
+    }),
+    'required': list([
+      'title',
+      'base_servings',
+      'structured_ingredients',
+      'tokenized_directions',
+    ]),
+    'title': 'CayenneRefinementWithGrid',
+    'type': 'object',
+  })
+# ---
+# name: TestSchemaSnapshots.test_recipe_list_schema
+  dict({
+    '$defs': dict({
+      'RecipeExtraction': dict({
+        'properties': dict({
+          'categories': dict({
+            'description': 'Paprika taxonomy categories assigned by the categorisation pass.',
+            'items': dict({
+              'type': 'string',
+            }),
+            'title': 'Categories',
+            'type': 'array',
+          }),
+          'cook_time': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Cook time (e.g., '30 mins').",
+            'title': 'Cook Time',
+          }),
+          'directions': dict({
+            'description': 'List of step-by-step cooking instructions.',
+            'items': dict({
+              'type': 'string',
+            }),
+            'title': 'Directions',
+            'type': 'array',
+          }),
+          'ingredients': dict({
+            'description': 'List of ingredients. Convert unicode fractions to text fractions (e.g. ½ -> 1/2).',
+            'items': dict({
+              'type': 'string',
+            }),
+            'title': 'Ingredients',
+            'type': 'array',
+          }),
+          'name': dict({
+            'description': 'The name or title of the recipe.',
+            'title': 'Name',
+            'type': 'string',
+          }),
+          'notes': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Any additional notes or headnotes from the author.',
+            'title': 'Notes',
+          }),
+          'photo_filename': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'The filename of the hero/finished-dish photo for this recipe. If a [HERO IMAGE: filename] marker is present, always use that filename. Otherwise look for an [IMAGE: filename] marker that appears just before the recipe title/ingredients, or just after the last ingredient and before the first method step. Ignore images embedded within numbered method steps — those are process shots. If no suitable hero image is present, leave blank.',
+            'title': 'Photo Filename',
+          }),
+          'prep_time': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Preparation time (e.g., '15 mins').",
+            'title': 'Prep Time',
+          }),
+          'servings': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Number of servings (e.g., '4 servings', '2-4').",
+            'title': 'Servings',
+          }),
+        }),
+        'required': list([
+          'name',
+          'ingredients',
+          'directions',
+        ]),
+        'title': 'RecipeExtraction',
+        'type': 'object',
+      }),
+    }),
+    'properties': dict({
+      'recipes': dict({
+        'description': 'A list of all distinct recipes found in the text chunk.',
+        'items': dict({
+          '$ref': '#/$defs/RecipeExtraction',
+        }),
+        'title': 'Recipes',
+        'type': 'array',
+      }),
+    }),
+    'required': list([
+      'recipes',
+    ]),
+    'title': 'RecipeList',
+    'type': 'object',
+  })
+# ---
+# name: TestSchemaSnapshots.test_toc_classification_schema
+  dict({
+    'description': 'Result of classifying which TOC entries are recipe titles vs section headers.',
+    'properties': dict({
+      'recipe_indices': dict({
+        'description': '0-based indices of TOC entries that are specific recipe/dish names, not section headers.',
+        'items': dict({
+          'type': 'integer',
+        }),
+        'title': 'Recipe Indices',
+        'type': 'array',
+      }),
+    }),
+    'required': list([
+      'recipe_indices',
+    ]),
+    'title': 'TocRecipeClassification',
+    'type': 'object',
+  })
+# ---
+# name: TestSchemaSnapshots.test_toc_list_schema
+  dict({
+    '$defs': dict({
+      'TocEntry': dict({
+        'description': 'Single TOC entry: recipe title and optional page/section reference.',
+        'properties': dict({
+          'page': dict({
+            'anyOf': list([
+              dict({
+                'type': 'integer',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Page number (1-based) if known; null otherwise.',
+            'title': 'Page',
+          }),
+          'title': dict({
+            'description': 'The recipe or section title.',
+            'title': 'Title',
+            'type': 'string',
+          }),
+        }),
+        'required': list([
+          'title',
+        ]),
+        'title': 'TocEntry',
+        'type': 'object',
+      }),
+    }),
+    'description': 'Parsed table of contents from a cookbook.',
+    'properties': dict({
+      'entries': dict({
+        'description': 'Ordered list of TOC entries (recipe titles and optional page numbers).',
+        'items': dict({
+          '$ref': '#/$defs/TocEntry',
+        }),
+        'title': 'Entries',
+        'type': 'array',
+      }),
+    }),
+    'required': list([
+      'entries',
+    ]),
+    'title': 'TocList',
+    'type': 'object',
+  })
+# ---
