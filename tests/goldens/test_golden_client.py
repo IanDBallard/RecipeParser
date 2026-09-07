@@ -1,6 +1,7 @@
 """Unit tests for the GoldenClient keying rules (spec §5.2)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import warnings
 
@@ -131,6 +132,16 @@ class TestKeys:
         assert gc.record_key("extract", "chunk", 1)[1] == "extract-01.json"
 
 
+def _prompt_sha256(prompt) -> str:
+    """The full prompt_sha256 GoldenClient._generate compares against on replay.
+
+    Matches ``hashlib.sha256(text_part(contents)...)`` in golden_client.py exactly
+    (the whole prompt, not the body substring ``body_sha8`` hashes), so recordings
+    written with this value replay without triggering the drift warning.
+    """
+    return hashlib.sha256(gc.text_part(prompt).encode("utf-8")).hexdigest()
+
+
 def _write_recording(root, fixture, stage, body, ordinal, response_text, sha=None):
     directory, filename = gc.record_key(stage, body, ordinal)
     target = root / fixture / directory
@@ -154,7 +165,8 @@ class TestReplay:
     def test_it_serves_the_recorded_reply(self, tmp_path, monkeypatch):
         prompt = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
         body = gc.prompt_body(prompt, "extract")
-        _write_recording(tmp_path, "f.epub", "extract", body, 0, '{"recipes": []}')
+        sha = _prompt_sha256(prompt)
+        _write_recording(tmp_path, "f.epub", "extract", body, 0, '{"recipes": []}', sha=sha)
 
         client = GoldenClient(fixture_id="f.epub", root=tmp_path)
         response = client.models.generate_content(
@@ -165,8 +177,9 @@ class TestReplay:
     def test_a_second_call_for_one_body_serves_the_next_ordinal(self, tmp_path, monkeypatch):
         prompt = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
         body = gc.prompt_body(prompt, "extract")
-        _write_recording(tmp_path, "f.epub", "extract", body, 0, "truncated {")
-        _write_recording(tmp_path, "f.epub", "extract", body, 1, '{"recipes": []}')
+        sha = _prompt_sha256(prompt)
+        _write_recording(tmp_path, "f.epub", "extract", body, 0, "truncated {", sha=sha)
+        _write_recording(tmp_path, "f.epub", "extract", body, 1, '{"recipes": []}', sha=sha)
 
         client = GoldenClient(fixture_id="f.epub", root=tmp_path)
         first = client.models.generate_content(model="m", contents=prompt, config={})
@@ -196,10 +209,12 @@ class TestReplay:
     def test_the_parse_retry_replays_end_to_end(self, tmp_path, monkeypatch):
         prompt = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
         body = gc.prompt_body(prompt, "extract")
-        _write_recording(tmp_path, "f.epub", "extract", body, 0, "{ truncated")
+        sha = _prompt_sha256(prompt)
+        _write_recording(tmp_path, "f.epub", "extract", body, 0, "{ truncated", sha=sha)
         _write_recording(
             tmp_path, "f.epub", "extract", body, 1,
             '{"recipes": [{"name": "Scones", "ingredients": ["1 cup flour"], "directions": ["Bake."]}]}',
+            sha=sha,
         )
         monkeypatch.setattr(gemini.time, "sleep", lambda *_: None)
 
