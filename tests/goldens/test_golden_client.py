@@ -69,8 +69,9 @@ class TestSniffStage:
         )
         assert gc.sniff_stage(contents) == "toc-classify"
 
-    def test_connectivity_prompt_sniffs_as_connectivity(self):
-        assert gc.sniff_stage("Reply with the single word OK.") == "connectivity"
+    def test_connectivity_prompt_sniffs_as_connectivity(self, monkeypatch):
+        contents = _sent_prompt(monkeypatch, lambda c: gemini.verify_connectivity(c))
+        assert gc.sniff_stage(contents) == "connectivity"
 
     def test_vision_prompt_sniffs_as_vision(self):
         contents = [object(), "You are an OCR assistant. The image is a page from a recipe document."]
