@@ -1,12 +1,16 @@
 """Unit tests for the GoldenClient keying rules (spec §5.2)."""
 from __future__ import annotations
 
+import json
+import warnings
+
 import pytest
 
 from recipeparser import gemini, toc
 from recipeparser.models import RecipeExtraction
 from tests.goldens import golden_client as gc
 from tests.goldens.conftest import FIXED_AXES
+from tests.goldens.golden_client import GoldenClient, MissingRecordingError
 
 
 def _sent_prompt(monkeypatch, call) -> object:
@@ -125,3 +129,118 @@ class TestKeys:
 
     def test_the_parse_retry_lands_on_the_next_ordinal(self):
         assert gc.record_key("extract", "chunk", 1)[1] == "extract-01.json"
+
+
+def _write_recording(root, fixture, stage, body, ordinal, response_text, sha=None):
+    directory, filename = gc.record_key(stage, body, ordinal)
+    target = root / fixture / directory
+    target.mkdir(parents=True, exist_ok=True)
+    target.joinpath(filename).write_text(
+        json.dumps(
+            {
+                "stage": stage,
+                "ordinal": ordinal,
+                "model": "gemini-2.5-flash",
+                "config": {"temperature": 0.1},
+                "prompt_sha256": sha or "0" * 64,
+                "response_text": response_text,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+class TestReplay:
+    def test_it_serves_the_recorded_reply(self, tmp_path, monkeypatch):
+        prompt = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
+        body = gc.prompt_body(prompt, "extract")
+        _write_recording(tmp_path, "f.epub", "extract", body, 0, '{"recipes": []}')
+
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt, config={}
+        )
+        assert response.text == '{"recipes": []}'
+
+    def test_a_second_call_for_one_body_serves_the_next_ordinal(self, tmp_path, monkeypatch):
+        prompt = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
+        body = gc.prompt_body(prompt, "extract")
+        _write_recording(tmp_path, "f.epub", "extract", body, 0, "truncated {")
+        _write_recording(tmp_path, "f.epub", "extract", body, 1, '{"recipes": []}')
+
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        first = client.models.generate_content(model="m", contents=prompt, config={})
+        second = client.models.generate_content(model="m", contents=prompt, config={})
+        assert first.text == "truncated {"
+        assert second.text == '{"recipes": []}'
+
+    def test_a_missing_recording_names_the_path_it_wanted(self, tmp_path, monkeypatch):
+        prompt = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        with pytest.raises(MissingRecordingError) as excinfo:
+            client.models.generate_content(model="m", contents=prompt, config={})
+        assert "extract-00.json" in str(excinfo.value)
+
+    def test_a_prompt_hash_mismatch_warns_but_still_serves(self, tmp_path, monkeypatch):
+        prompt = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
+        body = gc.prompt_body(prompt, "extract")
+        _write_recording(tmp_path, "f.epub", "extract", body, 0, "ok", sha="f" * 64)
+
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            response = client.models.generate_content(model="m", contents=prompt, config={})
+        assert response.text == "ok"
+        assert any("prompt_sha256" in str(w.message) for w in caught)
+
+    def test_the_parse_retry_replays_end_to_end(self, tmp_path, monkeypatch):
+        prompt = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
+        body = gc.prompt_body(prompt, "extract")
+        _write_recording(tmp_path, "f.epub", "extract", body, 0, "{ truncated")
+        _write_recording(
+            tmp_path, "f.epub", "extract", body, 1,
+            '{"recipes": [{"name": "Scones", "ingredients": ["1 cup flour"], "directions": ["Bake."]}]}',
+        )
+        monkeypatch.setattr(gemini.time, "sleep", lambda *_: None)
+
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        result = gemini.extract_recipes("MY CHUNK", client)
+        assert [r.name for r in result.recipes] == ["Scones"]
+
+
+class TestEmbeddings:
+    def test_it_returns_a_deterministic_1536_vector(self, tmp_path):
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        first = client.models.embed_content(model="m", contents="soup", config=None)
+        second = client.models.embed_content(model="m", contents="soup", config=None)
+        assert len(first.embeddings[0].values) == 1536
+        assert first.embeddings[0].values == second.embeddings[0].values
+
+    def test_different_text_gives_a_different_vector(self, tmp_path):
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        soup = client.models.embed_content(model="m", contents="soup", config=None)
+        cake = client.models.embed_content(model="m", contents="cake", config=None)
+        assert soup.embeddings[0].values != cake.embeddings[0].values
+
+    def test_it_never_touches_the_recordings(self, tmp_path):
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        client.models.embed_content(model="m", contents="soup", config=None)
+        assert not (tmp_path / "f.epub").exists()
+
+
+class TestRecordModeGuard:
+    def test_the_dummy_key_is_refused(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GOOGLE_API_KEY", "dummy-key-for-tests")
+        with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
+            GoldenClient(fixture_id="f.epub", root=tmp_path, record=True)
+
+    def test_an_absent_key_is_refused(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        with pytest.raises(RuntimeError, match="GOOGLE_API_KEY"):
+            GoldenClient(fixture_id="f.epub", root=tmp_path, record=True)
+
+
+def test_the_fixture_hands_back_a_replay_client(golden_client, tmp_path):
+    client = golden_client("dual-units.epub")
+    assert client.fixture_id == "dual-units.epub"
+    assert client.record is False
