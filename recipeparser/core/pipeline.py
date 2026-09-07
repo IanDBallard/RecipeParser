@@ -301,6 +301,7 @@ class RecipePipeline:
                 grid_categories=pr.grid_categories or {},
                 prep_time=pr.prep_time,
                 cook_time=pr.cook_time,
+                meta=chunk.meta,
             )
             return [result]
 
@@ -324,6 +325,7 @@ class RecipePipeline:
                 grid_categories=pr.grid_categories or {},
                 prep_time=pr.prep_time,
                 cook_time=pr.cook_time,
+                meta=chunk.meta,
             )
             return [result]
 
@@ -376,6 +378,7 @@ class RecipePipeline:
                 grid_categories=grid_cats,
                 prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
                 cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
+                meta=chunk.meta,
             )
             results.append(result)
 

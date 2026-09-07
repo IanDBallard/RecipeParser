@@ -480,3 +480,56 @@ class TestProgressCallback:
         ctrl = PipelineController(on_progress=bad_cb)
         with pytest.raises(RuntimeError, match="adapter bug"):
             ctrl.notify_progress("EXTRACTING", 1, 5)
+
+
+class TestAssembleSourceMeta:
+    """Design 5.3 - a value the source stated beats one the extractor guessed."""
+
+    def test_meta_wins_over_the_extracted_times(self) -> None:
+        from recipeparser.core.models import SourceMeta
+        from recipeparser.core.stages.assemble import assemble
+        result = assemble(
+            recipe=_make_refinement(),
+            embedding=[0.0] * 1536,
+            source_url=None,
+            image_url=None,
+            grid_categories={},
+            prep_time="guessed prep",
+            cook_time="guessed cook",
+            meta=SourceMeta(prep_time="20 min", cook_time="1 hr"),
+        )
+        assert result.prep_time == "20 min"
+        assert result.cook_time == "1 hr"
+
+    def test_the_extracted_value_is_the_fallback_when_meta_is_none(self) -> None:
+        from recipeparser.core.stages.assemble import assemble
+        result = assemble(
+            recipe=_make_refinement(),
+            embedding=[0.0] * 1536,
+            source_url=None,
+            image_url=None,
+            grid_categories={},
+            prep_time="15 min",
+            cook_time="45 min",
+            meta=None,
+        )
+        assert result.prep_time == "15 min"
+        assert result.cook_time == "45 min"
+
+    def test_a_field_absent_from_meta_falls_back_rather_than_blanking(self) -> None:
+        # A Paprika entry with a cook time but no prep time must not erase the
+        # prep time the extractor found in the directions.
+        from recipeparser.core.models import SourceMeta
+        from recipeparser.core.stages.assemble import assemble
+        result = assemble(
+            recipe=_make_refinement(),
+            embedding=[0.0] * 1536,
+            source_url=None,
+            image_url=None,
+            grid_categories={},
+            prep_time="15 min",
+            cook_time="45 min",
+            meta=SourceMeta(cook_time="1 hr"),
+        )
+        assert result.prep_time == "15 min"
+        assert result.cook_time == "1 hr"
