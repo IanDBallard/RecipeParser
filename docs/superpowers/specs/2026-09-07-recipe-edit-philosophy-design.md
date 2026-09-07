@@ -64,8 +64,6 @@ user-owned after ingest.
 | `tokenized_directions` | jsonb | existing |
 | `embedding` | vector(1536) | existing; no longer synced to the client |
 | `derived_rev` | integer, default 0 | the `body_rev` the derived columns were built from |
-| `refined_from_hash` | text, nullable | sha256 over canonical `ingredient_lines` + `direction_steps` at last REFINE |
-| `embedded_from_hash` | text, nullable | sha256 over canonical `title` + `ingredient_lines` at last EMBED |
 | `derived_error` | text, nullable | last regen failure, cleared on success |
 | `derived_attempts` | integer, default 0 | failures against `derived_attempts_rev` |
 | `derived_attempts_rev` | integer, default 0 | the `body_rev` the attempts count against |
@@ -75,25 +73,18 @@ user-owned after ingest.
 A recipe is **stale** exactly when `derived_rev < body_rev`. There is no stale
 flag and no enqueue trigger.
 
-A null hash means "run this stage next time".
+Any body change re-derives everything: REFINE then EMBED. There is no
+per-stage change detection. A title-only fix costs one REFINE call, which is
+accepted for the simplicity it buys.
 
-### 3.4 Canonical hash input
-
-Computed in Python only (`recipeparser/core/regen.py`):
-
-- `refine_hash = sha256(json.dumps([ingredient_lines, direction_steps], ensure_ascii=False, separators=(",", ":")))`
-- `embed_hash  = sha256(json.dumps([title, ingredient_lines], ensure_ascii=False, separators=(",", ":")))`
-
-Backfill leaves both null rather than reproducing this in SQL.
-
-### 3.5 Sync rules
+### 3.4 Sync rules
 
 Add to the `recipes` query: `ingredient_lines`, `direction_steps`, `body_rev`,
 `derived_rev`, `amount_overrides`, `derived_error`. Remove `embedding`. The
-hash, attempt, claim and `updated_at` columns stay server-only. The client
-SQLite schema (`AppSchema`) mirrors the synced columns.
+attempt, claim and `updated_at` columns stay server-only. The client SQLite
+schema (`AppSchema`) mirrors the synced columns.
 
-### 3.6 Rendering invariant
+### 3.5 Rendering invariant
 
 Fat tokens are rendered by looking up the ingredient id in the current
 `structured_ingredients` (with `amount_overrides` applied). The baked fallback
@@ -175,9 +166,9 @@ tokenized directions resolved by id.
 - Poll interval 10 s. At most 2 concurrent regens per process (semaphore).
 
 ### 5.2 Code layout
-- `recipeparser/core/regen.py` — pure: `plan(row) -> RegenPlan` (which stages
-  to run), hash functions, `build_extraction(row) -> RecipeExtraction`,
-  `build_update(plan, refinement, embedding) -> dict`. No I/O imports.
+- `recipeparser/core/regen.py` — pure: `build_extraction(row) ->
+  RecipeExtraction`, `build_update(refinement, embedding, read_rev) -> dict`.
+  No I/O imports.
 - `recipeparser/adapters/regen_worker.py` — polling loop, Supabase reads and
   writes (service-role client), Gemini client, lease handling. The only module
   that knows table names.
@@ -200,30 +191,25 @@ previous claim is null or expired. No row locks are held across Gemini calls,
 so client uploads to the same row are never blocked. The 20-second quiet window
 is the debounce: a burst of edits produces one regen.
 
-### 5.4 Stage selection
+### 5.4 Stages
 Read `profiles.uom_system` and `profiles.measure_preference` for the owner
-(defaults US / Volume when absent).
+(defaults US / Volume when absent). Then, for every claimed row:
 
-- If `refine_hash(row) != refined_from_hash` (or the stored hash is null):
-  run REFINE via `refine(build_extraction(row), client, uom_system=…,
-  measure_preference=…, user_axes=…)`. Discard `grid_categories` (D3).
-  Otherwise reuse the stored structured ingredients and tokenized directions.
-- If `embed_hash(row) != embedded_from_hash` (or null) **or REFINE ran**:
-  run EMBED using the existing `embed()` (title + fallback strings), so old and
-  new vectors remain comparable. Changing the embedding input is a separate
-  decision; this worker is how it would be rolled out.
+1. REFINE via `refine(build_extraction(row), client, uom_system=…,
+   measure_preference=…, user_axes=…)`. Discard `grid_categories` (D3).
+2. EMBED using the existing `embed()` (title + fallback strings), so old and
+   new vectors remain comparable. Changing the embedding input is a separate
+   decision; this worker is how it would be rolled out.
 
-A title-only edit costs one embedding call. A direction edit costs one REFINE
-and one embed.
+Every body edit costs one REFINE call and one embedding call.
 
 ### 5.5 Write-back
 One conditional update, guarded by `where id = :id and body_rev = :read_rev`:
 
-- `structured_ingredients`, `tokenized_directions` (if REFINE ran)
-- `embedding` (if EMBED ran)
-- `refined_from_hash`, `embedded_from_hash` (for stages that ran)
+- `structured_ingredients`, `tokenized_directions`, `embedding`
 - `derived_rev = :read_rev`
-- `amount_overrides = '{}'` **only if REFINE ran**
+- `amount_overrides = '{}'` (the new structured entries already reflect the
+  rewritten lines)
 - `derived_error = null`, `derived_attempts = 0`, `claimed_at = null`
 
 Zero rows updated means the user edited again during the run. The result is
@@ -247,7 +233,7 @@ After three failures on the same revision the row drops out of the poll until
 
 ### 5.7 Ingestion writer changes
 `SupabaseWriter.write_recipe` additionally writes `ingredient_lines` and
-`direction_steps` from the extraction's raw strings, both hashes,
+`direction_steps` from the extraction's raw strings,
 `body_rev = 0`, `derived_rev = 0`, `amount_overrides = {}`. For the Paprika
 fast path (`_cayenne_meta`, Gemini bypassed) lines come from each structured
 entry's `fallback_string` and steps from tokenized text with tokens replaced by
@@ -305,8 +291,6 @@ alter table recipes
   add column direction_steps      jsonb not null default '[]',
   add column body_rev             integer not null default 0,
   add column derived_rev          integer not null default 0,
-  add column refined_from_hash    text,
-  add column embedded_from_hash   text,
   add column amount_overrides     jsonb not null default '{}',
   add column derived_error        text,
   add column derived_attempts     integer not null default 0,
@@ -344,8 +328,8 @@ update recipes set
     '[]');
 ```
 
-Hashes stay null: the first edit of a legacy recipe runs a full REFINE even if
-only the title changed. One-time cost per recipe.
+Backfilled rows are not stale (`body_rev = derived_rev = 0`), so the worker
+ignores them until their first edit.
 
 ### 7.3 Deploy order
 1. Migration + backfill (all defaults; nothing reads the columns yet).
@@ -359,9 +343,9 @@ edited recipes simply stay stale, which the client already renders.
 ## 8. Testing
 
 ### RecipeParser
-- `core/regen.py`: hash determinism; plan selection for title-only, lines-only,
-  steps-only, null-hash, and unchanged rows; `build_extraction` round-trips raw
-  columns; `build_update` clears `amount_overrides` only when REFINE ran.
+- `core/regen.py`: `build_extraction` round-trips raw columns (headers kept
+  as lines, empty arrays tolerated); `build_update` carries `read_rev` into
+  `derived_rev`, empties `amount_overrides`, and clears the error fields.
 - `core/stages/refine.py`: `line_index` validation (in range, unique, headers
   skipped).
 - `adapters/regen_worker.py` (mocked Supabase + Gemini): claims respect the
