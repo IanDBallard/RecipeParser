@@ -558,3 +558,59 @@ def test_an_unrated_recipe_writes_null_not_zero(monkeypatch):
         write_recipe_to_supabase(_make_recipe("Plain"), "user-uuid-1")
 
     assert _recipes_payload(mock_post)["rating"] is None
+
+
+def _read_one_entry(archive: Path) -> dict:
+    """Decompress the single .paprikarecipe entry in a written archive."""
+    with zipfile.ZipFile(archive, "r") as zf:
+        entries = [n for n in zf.namelist() if n.endswith(".paprikarecipe")]
+        assert len(entries) == 1, f"expected one entry, found {entries}"
+        return json.loads(gzip.decompress(zf.read(entries[0])))
+
+
+def test_the_paprika_writer_carries_the_six(tmp_path: Path):
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_make_recipe("Chicken Pie").model_copy(update=_RATED)])
+
+    entry = _read_one_entry(out)
+
+    assert entry["source"] == "Bon Appetit"
+    assert entry["notes"] == "Chill the dough."
+    assert entry["rating"] == 4
+    assert entry["nutritional_info"] == "520 kcal"
+    assert entry["description"] == "A cold-weather pie."
+    assert entry["difficulty"] == "Moderate"
+
+
+def test_the_cayenne_writer_carries_them_at_both_levels(tmp_path: Path):
+    out = tmp_path / "export.paprikarecipes"
+    CayenneZipWriter(out).write([_make_recipe("Chicken Pie").model_copy(update=_RATED)])
+
+    entry = _read_one_entry(out)
+
+    assert entry["source"] == "Bon Appetit"
+    assert entry["rating"] == 4
+    assert entry["_cayenne_meta"]["source"] == "Bon Appetit"
+    assert entry["_cayenne_meta"]["rating"] == 4
+    assert entry["_cayenne_meta"]["difficulty"] == "Moderate"
+
+
+def test_an_unrated_recipe_writes_zero_at_the_paprika_level(tmp_path: Path):
+    """Paprika's rating is an integer; the null lives in _cayenne_meta instead."""
+    out = tmp_path / "export.paprikarecipes"
+    CayenneZipWriter(out).write([_make_recipe("Plain")])
+
+    entry = _read_one_entry(out)
+
+    assert entry["rating"] == 0
+    assert entry["_cayenne_meta"]["rating"] is None
+
+
+def test_an_absent_text_field_writes_an_empty_string(tmp_path: Path):
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_make_recipe("Plain")])
+
+    entry = _read_one_entry(out)
+
+    assert entry["source"] == ""
+    assert entry["notes"] == ""
