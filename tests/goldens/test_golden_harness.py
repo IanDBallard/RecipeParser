@@ -1,8 +1,6 @@
 """Meta tests for the golden harness itself — no Gemini, no corpus content."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from tests.goldens import paths
 
 
@@ -38,3 +36,33 @@ def test_fixed_axes_are_the_two_axes_the_spec_names():
 
     assert sorted(FIXED_AXES) == ["Cuisine", "Meal Type"]
     assert all(isinstance(v, list) and v for v in FIXED_AXES.values())
+
+
+def _readme_fixture_names() -> set[str]:
+    """Filenames in the first column of the README's provenance table."""
+    import re
+
+    text = (paths.CORPUS_DIR / "README.md").read_text(encoding="utf-8")
+    names: set[str] = set()
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        first = line.split("|")[1].strip()
+        m = re.fullmatch(r"`([^`]+)`", first)
+        if m:
+            names.add(m.group(1))
+    return names
+
+
+def test_every_corpus_file_has_a_readme_entry():
+    on_disk = {p.name for p in paths.CORPUS_DIR.iterdir() if p.name != "README.md"}
+    assert on_disk == _readme_fixture_names()
+
+
+def test_the_readme_documents_exactly_the_declared_fixtures():
+    assert _readme_fixture_names() == set(paths.CORPUS_FIXTURES)
+
+
+def test_the_corpus_stays_under_two_megabytes():
+    total = sum(p.stat().st_size for p in paths.CORPUS_DIR.iterdir())
+    assert total < 2 * 1024 * 1024, f"corpus is {total} bytes"
