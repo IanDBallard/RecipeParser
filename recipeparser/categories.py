@@ -7,6 +7,8 @@ from typing import List, TYPE_CHECKING
 
 import yaml
 
+from recipeparser.config import GEMINI_MODEL
+from recipeparser.gemini import _finalize_config, _log_usage_metadata
 from recipeparser.paths import get_categories_file
 
 if TYPE_CHECKING:
@@ -147,10 +149,11 @@ Notes: {recipe.notes or ""}
 """
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents=prompt,
-            config={"temperature": 0},
+            config=_finalize_config({"temperature": 0}),
         )
+        _log_usage_metadata(response, "Categorisation")
         text = response.text.strip()
         text = re.sub(r"^```[a-z]*\n?", "", text)
         text = re.sub(r"\n?```$", "", text)

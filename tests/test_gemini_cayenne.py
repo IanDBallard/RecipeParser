@@ -1,6 +1,7 @@
 """Tests for Cayenne-specific Gemini functions (embeddings, refinement)."""
 import pytest
 from unittest.mock import MagicMock
+from recipeparser.config import GEMINI_MODEL
 from recipeparser.gemini import get_embeddings, refine_recipe_for_cayenne
 from recipeparser.models import CayenneRefinement, StructuredIngredient, TokenizedDirection
 
@@ -62,7 +63,7 @@ def test_refine_recipe_for_cayenne_success():
     assert result.title == expected_refined.title
     assert result.base_servings == expected_refined.base_servings
     args, kwargs = mock_client.models.generate_content.call_args
-    assert kwargs["model"] == "gemini-2.5-flash"
+    assert kwargs["model"] == GEMINI_MODEL
     assert "response_json_schema" in kwargs["config"]
     assert "additionalProperties" not in str(kwargs["config"]["response_json_schema"])
     assert "Raw Recipe Text" in kwargs["contents"]
