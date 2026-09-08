@@ -136,7 +136,12 @@ def _finalize_config(config: dict) -> dict:
     """
     return {
         **config,
-        "http_options": {"timeout": _HTTP_TIMEOUT_MS},
+        # Merge into any http_options the caller already set rather than
+        # replacing it: an api_version pin, custom headers or a base_url
+        # override would otherwise be dropped silently on the way to the SDK.
+        # The timeout is applied last on purpose — merging must not become a
+        # way to opt out of the bound this function exists to enforce.
+        "http_options": {**config.get("http_options", {}), "timeout": _HTTP_TIMEOUT_MS},
         "thinking_config": {"thinking_budget": THINKING_BUDGET},
     }
 
