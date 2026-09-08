@@ -23,6 +23,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `build_plain_text_prompt`, `build_toc_parse_prompt`,
   `build_toc_classify_prompt`). Behaviour is unchanged; the prompts are now
   snapshot-tested.
+- **Generation model moved to `GEMINI_MODEL` and now defaults to
+  `gemini-3.1-flash-lite`** (`recipeparser/config.py`) — `gemini-2.5-flash`
+  retires 2026-10-16. The model name was previously a literal repeated at
+  nine call sites (`gemini.py`, `toc.py`, `categories.py`); it is now one
+  constant, overridable via the `GEMINI_MODEL` env var without a code
+  change. The embedding model gets the same treatment as
+  `GEMINI_EMBEDDING_MODEL`, unchanged in value — it is not implicated in the
+  retirement.
+- **Thinking disabled by default on every Gemini call**
+  (`GEMINI_THINKING_BUDGET`, defaults to `0`) — every call in this package is
+  a bounded extraction/refinement/classification task with one correct
+  answer, not open-ended reasoning, and thinking tokens bill at the output
+  rate for no benefit here.
+- **Every Gemini reply's `usage_metadata` is now logged**
+  (`_log_usage_metadata` in `recipeparser/gemini.py`) — prompt, candidate,
+  thinking and total token counts, tagged by call site (extraction,
+  refinement, categorisation, TOC parsing, vision OCR, embeddings). Ingestion
+  cost was previously only estimable from prompt length; real per-call
+  numbers now reach the log.
 
 ---
 

@@ -11,6 +11,7 @@ import re
 from typing import List, Optional, Tuple
 
 from recipeparser.config import (
+    GEMINI_MODEL,
     MAX_CHUNK_CHARS,
     MIN_TOC_ENTRIES,
     MIN_TOC_MATCH_RATIO,
@@ -192,13 +193,14 @@ def _parse_toc_from_text_fallback(
     try:
         response = _call_with_retry(
             client,
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
                 "response_schema": TocList,
                 "temperature": 0,
             },
+            what="TOC parsing",
         )
         parsed = response.parsed
         if parsed and parsed.entries:
@@ -244,13 +246,14 @@ def _classify_toc_recipe_indices(
     try:
         response = _call_with_retry(
             client,
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
                 "response_schema": TocRecipeClassification,
                 "temperature": 0,
             },
+            what="Recipe-name classification",
         )
         parsed = response.parsed
         if parsed and parsed.recipe_indices is not None:

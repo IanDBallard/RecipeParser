@@ -16,7 +16,7 @@ from typing import Optional
 MIN_PHOTO_BYTES: int = 20_000
 
 # Maximum characters per text chunk sent to the LLM.
-# gemini-2.5-flash has a large context window, but very long chapters inflate
+# GEMINI_MODEL has a large context window, but very long chapters inflate
 # latency. ~30 k chars ≈ ~7-8 k tokens.
 MAX_CHUNK_CHARS: int = 30_000
 
@@ -27,6 +27,25 @@ HERO_INJECT_MAX_STUB_CHARS: int = 120
 # ---------------------------------------------------------------------------
 # Gemini API
 # ---------------------------------------------------------------------------
+
+# The generation model behind every extraction, refinement, categorisation,
+# TOC and vision-OCR call. gemini-2.5-flash retires 2026-10-16; this points
+# at its GA successor. Override with GEMINI_MODEL to test another model
+# without a code change.
+GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+
+# The embedding model behind /embed and the recipe-embedding pipeline stage.
+# Not implicated in gemini-2.5-flash's retirement — tracked separately.
+GEMINI_EMBEDDING_MODEL: str = os.environ.get(
+    "GEMINI_EMBEDDING_MODEL", "models/gemini-embedding-001"
+)
+
+# Every call this package makes is a bounded extraction, refinement or
+# classification task with one correct JSON (or plain-text) answer, not
+# open-ended reasoning — thinking tokens buy nothing here and bill at the
+# output rate. Disabled by default; set GEMINI_THINKING_BUDGET to a positive
+# token count to re-enable it for a specific investigation.
+THINKING_BUDGET: int = int(os.environ.get("GEMINI_THINKING_BUDGET", "0"))
 
 # Per-call HTTP timeout passed to generate_content (seconds).
 HTTP_TIMEOUT_SECS: int = 180

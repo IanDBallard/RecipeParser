@@ -18,10 +18,13 @@ from pydantic import BaseModel, create_model, Field, ValidationError
 from recipeparser.config import (
     BACKOFF_BASE_SECS,
     BACKOFF_MAX_SECS,
+    GEMINI_EMBEDDING_MODEL,
+    GEMINI_MODEL,
     HTTP_TIMEOUT_SECS,
     MAX_PARSE_RETRIES,
     MAX_RETRIES,
     PARSE_RETRY_DELAY_SECS,
+    THINKING_BUDGET,
 )
 from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import RecipeList, CayenneRefinement
@@ -115,14 +118,21 @@ def _is_transient_server_error(exc: Exception) -> bool:
 _HTTP_TIMEOUT_MS = HTTP_TIMEOUT_SECS * 1000
 
 
-def _with_http_timeout(config: dict) -> dict:
-    """Return a copy of ``config`` with the per-call HTTP timeout applied.
+def _finalize_config(config: dict) -> dict:
+    """Return a copy of ``config`` with the per-call HTTP timeout and the
+    thinking budget applied.
 
     Passed per-call (not at client construction) because ``_call_with_retry``
     only ever receives an already-constructed ``client`` — this is the one
-    place in the call path that can attach it, and ``generate_content``
+    place in the call path that can attach them, and ``generate_content``
     validates a plain ``config`` dict into ``GenerateContentConfig``, whose
-    ``http_options.timeout`` bounds the underlying HTTP request.
+    ``http_options.timeout`` bounds the underlying HTTP request and whose
+    ``thinking_config.thinking_budget`` bounds reasoning-token spend.
+
+    Every call this module makes is a bounded extraction, refinement, or
+    classification task with one correct answer, not open-ended reasoning, so
+    THINKING_BUDGET defaults to 0 — thinking tokens bill at the output rate
+    and buy nothing here.
     """
     return {
         **config,
@@ -132,10 +142,34 @@ def _with_http_timeout(config: dict) -> dict:
         # The timeout is applied last on purpose — merging must not become a
         # way to opt out of the bound this function exists to enforce.
         "http_options": {**config.get("http_options", {}), "timeout": _HTTP_TIMEOUT_MS},
+        "thinking_config": {"thinking_budget": THINKING_BUDGET},
     }
 
 
-def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
+def _log_usage_metadata(response: object, what: str) -> None:
+    """Best-effort log of the token accounting a Gemini reply carries.
+
+    Nothing in this module previously looked at ``usage_metadata``, so every
+    cost estimate for the ingestion pipeline was a guess from prompt length
+    alone. This puts the real per-call numbers — including any thinking
+    tokens, when THINKING_BUDGET allows them — into the log instead.
+    """
+    usage = getattr(response, "usage_metadata", None)
+    if usage is None:
+        return
+    log.info(
+        "%s usage: prompt=%s candidates=%s thoughts=%s total=%s",
+        what,
+        getattr(usage, "prompt_token_count", None),
+        getattr(usage, "candidates_token_count", None),
+        getattr(usage, "thoughts_token_count", None),
+        getattr(usage, "total_token_count", None),
+    )
+
+
+def _call_with_retry(
+    client, model: str, contents: str, config: dict, *, what: str = "Gemini call"
+) -> object:
     """
     Wrapper around client.models.generate_content that retries on rate-limit
     errors and transient server errors with exponential back-off, and raises
@@ -150,11 +184,13 @@ def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
     delay = BACKOFF_BASE_SECS
     for attempt in range(1, MAX_RETRIES + 2):
         try:
-            return client.models.generate_content(
+            response = client.models.generate_content(
                 model=model,
                 contents=contents,
-                config=_with_http_timeout(config),
+                config=_finalize_config(config),
             )
+            _log_usage_metadata(response, what)
+            return response
         except Exception as exc:
             retryable = _is_rate_limit_error(exc) or _is_transient_server_error(exc)
             if retryable and attempt <= MAX_RETRIES:
@@ -192,7 +228,7 @@ def _generate_and_parse(client, model: str, contents: str, config: dict, *, what
     """
     last_error = "no attempt made"
     for attempt in range(1, MAX_PARSE_RETRIES + 2):
-        response = _call_with_retry(client, model=model, contents=contents, config=config)
+        response = _call_with_retry(client, model=model, contents=contents, config=config, what=what)
         text = (getattr(response, "text", "") or "").strip()
         if text:
             try:
@@ -226,10 +262,11 @@ def verify_connectivity(client) -> bool:
         # dead key should fail in one attempt rather than burn the five-retry
         # back-off ladder.
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents="Reply with the single word OK.",
-            config=_with_http_timeout({"max_output_tokens": 5, "temperature": 0}),
+            config=_finalize_config({"max_output_tokens": 5, "temperature": 0}),
         )
+        _log_usage_metadata(response, "Connectivity check")
         log.info("Gemini connectivity check passed (response: %s).", response.text.strip())
         return True
     except Exception as e:
@@ -242,11 +279,11 @@ def get_embeddings(text: str, client) -> List[float]:
     from google.genai import types as genai_types
     try:
         response = client.models.embed_content(
-            model="models/gemini-embedding-001",
+            model=GEMINI_EMBEDDING_MODEL,
             contents=text,
             # Bounded like every generate_content call: EmbedContentConfig
             # carries its own http_options, so the timeout goes on the typed
-            # config rather than through _with_http_timeout's dict merge.
+            # config rather than through _finalize_config's dict merge.
             # This is the EMBED stage of every run — an unbounded call here
             # hangs an ordinary import.
             config=genai_types.EmbedContentConfig(
@@ -254,6 +291,7 @@ def get_embeddings(text: str, client) -> List[float]:
                 http_options={"timeout": _HTTP_TIMEOUT_MS},
             ),
         )
+        _log_usage_metadata(response, "Embedding")
         return response.embeddings[0].values
     except Exception as e:
         log.error("Embedding generation failed: %s", e)
@@ -301,9 +339,10 @@ def normalise_baker_table(text_chunk: str, client) -> str:
     try:
         response = _call_with_retry(
             client,
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents=prompt,
             config={"temperature": 0},
+            what="Table normalisation",
         )
         normalised = response.text.strip()
         if normalised:
@@ -382,7 +421,7 @@ def extract_recipe_from_text(
     prompt = build_plain_text_prompt(text)
     return _generate_and_parse(
         client,
-        model="gemini-2.5-flash",
+        model=GEMINI_MODEL,
         contents=prompt,
         config={
             "response_mime_type": "application/json",
@@ -456,7 +495,7 @@ def extract_recipes(
 
     return _generate_and_parse(
         client,
-        model="gemini-2.5-flash",
+        model=GEMINI_MODEL,
         contents=prompt,
         config={
             "response_mime_type": "application/json",
@@ -505,12 +544,13 @@ def extract_text_via_vision(doc, client) -> str:
         try:
             response = _call_with_retry(
                 client,
-                model="gemini-2.5-flash",
+                model=GEMINI_MODEL,
                 contents=[
                     genai_types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
                     VISION_PROMPT,
                 ],
                 config={"temperature": 0},
+                what=f"Vision OCR page {page_num + 1}/{doc.page_count}",
             )
             page_text = (response.text or "").strip()
             if page_text:
@@ -688,13 +728,14 @@ def refine_recipe_for_cayenne(
         json_schema = _schema_for_gemini(schema)
         response = _call_with_retry(
             client,
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
                 "response_json_schema": json_schema,
                 "temperature": 0.1,
             },
+            what="Cayenne refinement",
         )
         # response_json_schema does not auto-parse; we get raw JSON text.
         if not response.text or not response.text.strip():

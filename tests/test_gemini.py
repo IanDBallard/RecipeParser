@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from tests.conftest import make_recipe, make_mock_client
+from recipeparser.config import GEMINI_MODEL
 from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import RecipeExtraction, RecipeList
 from recipeparser.gemini import (
@@ -268,7 +269,7 @@ class TestExtractRecipes:
         extract_recipes("any text", client)
 
         call_kwargs = client.models.generate_content.call_args
-        assert call_kwargs.kwargs["model"] == "gemini-2.5-flash"
+        assert call_kwargs.kwargs["model"] == GEMINI_MODEL
         config = call_kwargs.kwargs["config"]
         assert config["response_mime_type"] == "application/json"
         assert config["temperature"] == 0.1
@@ -718,10 +719,10 @@ class TestExtractRecipeFromText:
         assert sentinel in call_kwargs["contents"]
 
     def test_correct_model_used(self):
-        """Must call gemini-2.5-flash, not an older model."""
+        """Must call the configured GEMINI_MODEL, not a hardcoded literal."""
         client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
 
         extract_recipe_from_text("any text", client)
 
         call_kwargs = client.models.generate_content.call_args.kwargs
-        assert call_kwargs["model"] == "gemini-2.5-flash"
+        assert call_kwargs["model"] == GEMINI_MODEL
