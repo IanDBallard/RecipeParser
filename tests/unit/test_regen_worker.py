@@ -4,8 +4,6 @@ import logging
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
-import pytest
-
 from recipeparser.models import CayenneRefinement, StructuredIngredient, TokenizedDirection
 
 
@@ -15,7 +13,9 @@ class _Result:
 
 
 class _Query:
-    """Records a chained supabase-py query and returns canned data on execute()."""
+    """Records a chained supabase-py query and returns canned data on execute() —
+    or raises the exception the fake was told to simulate for this table/rpc,
+    standing in for a real postgrest-py APIError / network failure."""
     def __init__(self, fake, table):
         self.fake, self.table, self.ops = fake, table, []
     def __getattr__(self, name):
@@ -25,13 +25,21 @@ class _Query:
         return _op
     def execute(self):
         self.fake.queries.append(self)
+        exc = self.fake.raises.get(self.table)
+        if exc is not None:
+            raise exc
         return _Result(self.fake.responses.get(self.table, []))
 
 
 class FakeSupabase:
-    def __init__(self, responses: Dict[str, Any] = None, rpc_responses: Dict[str, Any] = None):
+    def __init__(self, responses: Dict[str, Any] = None, rpc_responses: Dict[str, Any] = None,
+                 raises: Dict[str, Exception] = None):
         self.responses = responses or {}
         self.rpc_responses = rpc_responses or {}
+        # table name (or "rpc:<name>") -> exception to raise from that query's execute().
+        # Simulates infrastructure failures (APIError, network drop) distinct from an
+        # application-level exception raised by refine_fn/embed_fn.
+        self.raises = raises or {}
         self.queries: List[_Query] = []
         self.rpcs: List[tuple] = []
     def table(self, name):
@@ -43,8 +51,8 @@ class FakeSupabase:
         return q
 
 
-def _row(rev=3):
-    return {"id": "r1", "user_id": "u1", "title": "Cake",
+def _row(rev=3, rid="r1"):
+    return {"id": rid, "user_id": "u1", "title": "Cake",
             "ingredient_lines": ["1 cup flour"], "direction_steps": ["Mix."], "body_rev": rev}
 
 
@@ -126,6 +134,39 @@ def test_exception_records_failure():
     assert w.run_once() == 1
     assert ("regen_failed", {"p_id": "r1", "p_msg": "bad tokens"}) in fake.rpcs
     assert _ops(fake, "recipes") == []                    # no write-back attempted
+
+
+def test_batch_mixed_outcomes_do_not_abandon_other_rows():
+    # Two claimed rows in one batch: the first fails REFINE, the second succeeds.
+    # A per-row exception must not abort the rest of the claimed batch — each row
+    # is isolated, so run_once() still reports both rows processed, r1 lands a
+    # regen_failed call, and r2 still gets its guarded write-back.
+    fake = FakeSupabase(
+        rpc_responses={"claim_stale_recipes": [_row(rev=3, rid="r1"), _row(rev=5, rid="r2")]},
+        responses={"recipes": [{"id": "r2"}]},
+    )
+    refine_fn = MagicMock(side_effect=[ValueError("bad tofu"), _refinement()])
+    w = _worker(fake, refine_fn=refine_fn)
+    assert w.run_once() == 2
+    assert ("regen_failed", {"p_id": "r1", "p_msg": "bad tofu"}) in fake.rpcs
+    recipe_ops = _ops(fake, "recipes")
+    assert len(recipe_ops) == 1                            # only the surviving row wrote back
+    assert ("eq", ("id", "r2"), {}) in recipe_ops[0]
+    assert ("eq", ("body_rev", 5), {}) in recipe_ops[0]
+
+
+def test_infrastructure_failure_on_write_back_is_caught_and_recorded():
+    # .execute() itself raising (an APIError / network failure from the real
+    # postgrest-py client) must be caught the same way an application-level
+    # refine_fn exception is — recorded via regen_failed, not left to crash the run.
+    fake = FakeSupabase(
+        rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
+        responses={"recipes": [{"id": "r1"}]},
+        raises={"recipes": RuntimeError("db unreachable")},
+    )
+    w = _worker(fake)
+    assert w.run_once() == 1
+    assert ("regen_failed", {"p_id": "r1", "p_msg": "db unreachable"}) in fake.rpcs
 
 
 def test_run_workers_loops_until_stopped():
