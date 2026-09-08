@@ -32,6 +32,7 @@
           "fallback_string": "1 quart milk",
           "id": "ing_01",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "milk",
           "unit": "quart"
         },
@@ -42,6 +43,7 @@
           "fallback_string": "4 eggs",
           "id": "ing_02",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "eggs",
           "unit": null
         },
@@ -52,6 +54,7 @@
           "fallback_string": "1/2 cup sugar",
           "id": "ing_03",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "sugar",
           "unit": "cup"
         },
@@ -62,6 +65,7 @@
           "fallback_string": "1 teaspoon vanilla",
           "id": "ing_04",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "vanilla",
           "unit": "teaspoon"
         }

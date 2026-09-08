@@ -668,6 +668,9 @@ RULES:
    - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
    - Extract numeric "amount", "unit" (null if unitless), and "name".
    - "fallback_string" is the original full line.
+   - "line_index" is the 0-based position of the source line in the RAW RECIPE
+     ingredients list. Every ingredient line gets exactly one entry with its
+     index. A section header line (e.g. "For the sauce:") gets no entry.
    - CONVERSION: If preference is "Weight" and source is "Volume", provide "converted_amount" and "converted_unit" (e.g. 1 cup -> 120g). Set "is_ai_converted" to true.
    - amount: the numeric quantity. Use null - never 0 - when the source states no
      amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real

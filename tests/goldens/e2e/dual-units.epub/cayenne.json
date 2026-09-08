@@ -37,6 +37,7 @@
             "fallback_string": "14 tablespoons/200g butter",
             "id": "ing_01",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "butter",
             "unit": "tablespoons"
           },
@@ -47,6 +48,7 @@
             "fallback_string": "1/2 cup/100g caster sugar",
             "id": "ing_02",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "caster sugar",
             "unit": "cup"
           },
@@ -57,6 +59,7 @@
             "fallback_string": "2 cups/250g plain flour",
             "id": "ing_03",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "plain flour",
             "unit": "cups"
           },
@@ -67,6 +70,7 @@
             "fallback_string": "1/4 teaspoon/1.5g fine salt",
             "id": "ing_04",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "fine salt",
             "unit": "teaspoon"
           }
@@ -152,6 +156,7 @@
             "fallback_string": "2 cups/250g plain flour",
             "id": "ing_01",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "plain flour",
             "unit": "cups"
           },
@@ -162,6 +167,7 @@
             "fallback_string": "1 tablespoon/12g baking powder",
             "id": "ing_02",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "baking powder",
             "unit": "tablespoon"
           },
@@ -172,6 +178,7 @@
             "fallback_string": "1/2 teaspoon/3g fine salt",
             "id": "ing_03",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "fine salt",
             "unit": "teaspoon"
           },
@@ -182,6 +189,7 @@
             "fallback_string": "5 tablespoons/70g cold butter, cubed",
             "id": "ing_04",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "cold butter",
             "unit": "tablespoons"
           },
@@ -192,6 +200,7 @@
             "fallback_string": "3/4 cup/180ml buttermilk",
             "id": "ing_05",
             "is_ai_converted": false,
+            "line_index": null,
             "name": "buttermilk",
             "unit": "cup"
           }

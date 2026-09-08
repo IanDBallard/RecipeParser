@@ -32,6 +32,7 @@
           "fallback_string": "**PHASE 1 — Levain**",
           "id": "heading_01",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "PHASE 1 — Levain",
           "unit": null
         },
@@ -42,6 +43,7 @@
           "fallback_string": "28g (1 oz) whole wheat flour",
           "id": "ing_01",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "whole wheat flour",
           "unit": "oz"
         },
@@ -52,6 +54,7 @@
           "fallback_string": "28g (2 tablespoons) water",
           "id": "ing_02",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "water",
           "unit": "tablespoons"
         },
@@ -62,6 +65,7 @@
           "fallback_string": "6g (1 teaspoon) ripe starter",
           "id": "ing_03",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "ripe starter",
           "unit": "teaspoon"
         },
@@ -72,6 +76,7 @@
           "fallback_string": "**PHASE 2 — Final Dough**",
           "id": "heading_02",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "PHASE 2 — Final Dough",
           "unit": null
         },
@@ -82,6 +87,7 @@
           "fallback_string": "450g (1 lb) bread flour",
           "id": "ing_04",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "bread flour",
           "unit": "lb"
         },
@@ -92,6 +98,7 @@
           "fallback_string": "50g (1/3 cup) whole wheat flour",
           "id": "ing_05",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "whole wheat flour",
           "unit": "cup"
         },
@@ -102,6 +109,7 @@
           "fallback_string": "360g (1 1/2 cups) water",
           "id": "ing_06",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "water",
           "unit": "cups"
         },
@@ -112,6 +120,7 @@
           "fallback_string": "10g (2 teaspoons) fine salt",
           "id": "ing_07",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "fine salt",
           "unit": "teaspoons"
         }
@@ -176,6 +185,7 @@
           "fallback_string": "Bread flour: 500g (4 cups)",
           "id": "ing_01",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Bread flour",
           "unit": "cups"
         },
@@ -186,6 +196,7 @@
           "fallback_string": "Water: 325g (1 1/3 cups)",
           "id": "ing_02",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Water",
           "unit": "cups"
         },
@@ -196,6 +207,7 @@
           "fallback_string": "Salt: 10g (1 3/4 tsp)",
           "id": "ing_03",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Salt",
           "unit": "tsp"
         },
@@ -206,6 +218,7 @@
           "fallback_string": "Instant yeast: 7g (2 1/4 tsp)",
           "id": "ing_04",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Instant yeast",
           "unit": "tsp"
         },
@@ -216,6 +229,7 @@
           "fallback_string": "Butter: 30g (2 tbsp)",
           "id": "ing_05",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Butter",
           "unit": "tbsp"
         }

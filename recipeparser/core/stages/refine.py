@@ -38,6 +38,31 @@ def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
                 )
 
 
+def _validate_line_index(refinement: CayenneRefinement, raw: RecipeExtraction) -> None:
+    """
+    Every non-null ``line_index`` must point inside ``raw.ingredients`` and no
+    two entries may claim the same line.  Raises ValueError on the first
+    violation.  ``None`` is permitted (the client then falls back to bumping
+    body_rev on an amount edit — spec 4.3).
+    """
+    n_lines = len(raw.ingredients)
+    seen: Dict[int, str] = {}
+    for ing in refinement.structured_ingredients:
+        idx = ing.line_index
+        if idx is None:
+            continue
+        if idx < 0 or idx >= n_lines:
+            raise ValueError(
+                f"refine(): ingredient '{ing.id}' has line_index {idx} but the raw "
+                f"recipe has {n_lines} ingredient line(s)."
+            )
+        if idx in seen:
+            raise ValueError(
+                f"refine(): line_index {idx} is claimed twice ('{seen[idx]}' and '{ing.id}')."
+            )
+        seen[idx] = ing.id
+
+
 def refine(
     raw: RecipeExtraction,
     client: Any,
@@ -85,6 +110,7 @@ def refine(
         )
 
     _validate_fat_tokens(result)
+    _validate_line_index(result, raw)
     log.info(
         "refine(): '%s' → %d ingredients, %d steps.",
         result.title,

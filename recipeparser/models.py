@@ -106,6 +106,14 @@ class StructuredIngredient(BaseModel):
     converted_amount: Optional[float] = Field(default=None, description="Converted amount (e.g. Volume -> Weight)")
     converted_unit: Optional[str] = Field(default=None, description="Converted unit, e.g., \"g\"")
     is_ai_converted: bool = Field(default=False, description="True if AI calculated the conversion.")
+    line_index: Optional[int] = Field(
+        default=None,
+        description=(
+            "0-based index of the raw ingredient line this entry was parsed from. "
+            "Every ingredient line yields exactly one entry; section-header lines "
+            "yield none. null only when the entry is not tied to a single line."
+        ),
+    )
 
 
 class TokenizedDirection(BaseModel):
