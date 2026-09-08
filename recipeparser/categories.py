@@ -8,7 +8,6 @@ from typing import List, TYPE_CHECKING
 import yaml
 
 from recipeparser.config import GEMINI_MODEL
-from recipeparser.gemini import _finalize_config, _log_usage_metadata
 from recipeparser.paths import get_categories_file
 
 if TYPE_CHECKING:
@@ -148,12 +147,22 @@ First ingredients: {ingredient_sample}
 Notes: {recipe.notes or ""}
 """
     try:
-        response = client.models.generate_content(
+        # Routed through gemini._call_with_retry rather than calling the client
+        # directly: that is the one path carrying the HTTP timeout, the
+        # thinking-budget cap, the back-off ladder, and usage-metadata
+        # logging. A bulk `--recategorize` run should survive a transient 503
+        # rather than silently dropping that recipe into the fallback bucket.
+        # Imported here, not at module scope, to keep categories.py
+        # importable without pulling in the Gemini module.
+        from recipeparser.gemini import _call_with_retry
+
+        response = _call_with_retry(
+            client,
             model=GEMINI_MODEL,
             contents=prompt,
-            config=_finalize_config({"temperature": 0}),
+            config={"temperature": 0},
+            what="Categorisation",
         )
-        _log_usage_metadata(response, "Categorisation")
         text = response.text.strip()
         text = re.sub(r"^```[a-z]*\n?", "", text)
         text = re.sub(r"\n?```$", "", text)

@@ -605,3 +605,30 @@ def test_flow_b_restores_the_six_metadata_fields():
     assert result.nutritional_info == "520 kcal"
     assert result.description == "A cold-weather pie."
     assert result.difficulty == "Moderate"
+
+
+def test_a_worker_timeouterror_is_reported_accurately_not_as_a_segment_timeout():
+    """A worker that raises TimeoutError must be reported for what it is.
+
+    The executor loop used to wrap ``future.result(timeout=SEGMENT_TIMEOUT_SECS)``
+    in ``except TimeoutError``, which could never fire from the timeout itself:
+    ``as_completed()`` only yields futures that have already finished, so
+    ``result()`` never blocks. The handler did catch a TimeoutError raised by
+    the worker's own code, and reported it as "timed out after 300s" — naming a
+    per-chunk bound the pipeline never actually enforced. The skip reason should
+    say what really happened.
+    """
+    skips = []
+    chunk = Chunk(text="some text", input_type=InputType.URL)
+
+    with patch(_PATCH_EXTRACT, side_effect=TimeoutError("upstream read timed out")):
+        pipeline = _make_pipeline()
+        pipeline.run([chunk], on_skip=lambda *args: skips.append(args))
+
+    assert len(skips) == 1, f"expected exactly one skip, got {skips}"
+    reason = " ".join(str(a) for a in skips[0])
+    assert "TimeoutError" in reason, f"skip reason should name the real error: {reason!r}"
+    assert "upstream read timed out" in reason, f"skip reason should carry the message: {reason!r}"
+    assert "300" not in reason, (
+        f"skip reason invents a 300s per-chunk bound the pipeline never enforced: {reason!r}"
+    )

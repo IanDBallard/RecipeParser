@@ -37,8 +37,6 @@ log = logging.getLogger(__name__)
 # Maximum number of concurrent Gemini API calls.
 MAX_CONCURRENT_API_CALLS: int = 4
 
-# Per-chunk timeout in seconds (prevents a single hung chunk from blocking forever).
-SEGMENT_TIMEOUT_SECS: int = 300
 
 
 class RecipePipeline:
@@ -202,7 +200,14 @@ class RecipePipeline:
                     break
 
                 try:
-                    results = future.result(timeout=SEGMENT_TIMEOUT_SECS)
+                    # No timeout here on purpose. as_completed() only yields
+                    # futures that have already finished, so result() never
+                    # blocks and a timeout= would be unreachable — it read as a
+                    # per-chunk bound this loop does not enforce. A thread
+                    # cannot be cancelled anyway: the executor's __exit__ waits
+                    # on shutdown regardless. The real bound is per call, in
+                    # gemini._call_with_retry's HTTP timeout.
+                    results = future.result()
                     all_results.extend(results)
                     if on_result is not None:
                         for result in results:
@@ -216,9 +221,6 @@ class RecipePipeline:
                                 # than losing that row and saying so — which _report_skip does.
                                 log.exception("RecipePipeline: on_result callback failed for one recipe.")
                                 _report_skip(chunk, "result callback failed", index)
-                except TimeoutError:
-                    log.warning("RecipePipeline: chunk timed out after %ds — skipping.", SEGMENT_TIMEOUT_SECS)
-                    _report_skip(chunk, f"timed out after {SEGMENT_TIMEOUT_SECS}s", index)
                 except Exception as exc:
                     log.error("RecipePipeline: chunk worker raised unexpectedly — skipping. Error: %s", exc)
                     _report_skip(chunk, f"{type(exc).__name__}: {exc}", index)

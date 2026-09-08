@@ -130,6 +130,17 @@ def _assert_golden(fixture: str, name: str, actual: dict, update: bool) -> None:
 @pytest.mark.filterwarnings(
     r"ignore:prompt_sha256 mismatch for .*extract-\d+\.json:UserWarning"
 )
+# The refine prompt gained a phase-preservation rule (see
+# gemini.build_refine_prompt). Only phases-bakers.epub was re-recorded against
+# it — that is the fixture the rule exists for, and re-recording the other 517
+# refine replies would have cost 517 paid API calls to obtain replies whose
+# content the rule does not change. Those recordings therefore no longer match
+# their prompt's sha256. Replay is unaffected: recordings key off the prompt
+# BODY (the raw recipe), which the rule does not touch. Scoped to refine-NN by
+# filename so extract/table/vision drift still warns.
+@pytest.mark.filterwarnings(
+    r"ignore:prompt_sha256 mismatch for .*refine-\d+\.json:UserWarning"
+)
 def test_e2e_golden(fixture, golden_client, tmp_path, update_goldens):
     GlobalRateLimiter().reset()
     progress: List[tuple] = []
@@ -180,6 +191,17 @@ def test_e2e_golden(fixture, golden_client, tmp_path, update_goldens):
 @pytest.mark.filterwarnings(
     r"ignore:prompt_sha256 mismatch for .*extract-\d+\.json:UserWarning"
 )
+# The refine prompt gained a phase-preservation rule (see
+# gemini.build_refine_prompt). Only phases-bakers.epub was re-recorded against
+# it — that is the fixture the rule exists for, and re-recording the other 517
+# refine replies would have cost 517 paid API calls to obtain replies whose
+# content the rule does not change. Those recordings therefore no longer match
+# their prompt's sha256. Replay is unaffected: recordings key off the prompt
+# BODY (the raw recipe), which the rule does not touch. Scoped to refine-NN by
+# filename so extract/table/vision drift still warns.
+@pytest.mark.filterwarnings(
+    r"ignore:prompt_sha256 mismatch for .*refine-\d+\.json:UserWarning"
+)
 def test_the_result_is_the_same_at_pool_size_one(fixture, golden_client, update_goldens):
     """Order independence, asserted rather than assumed."""
     if update_goldens:
@@ -211,6 +233,17 @@ def test_the_result_is_the_same_at_pool_size_one(fixture, golden_client, update_
 # too, so the same known, body-key-safe extract-stage mismatch applies.
 @pytest.mark.filterwarnings(
     r"ignore:prompt_sha256 mismatch for .*extract-\d+\.json:UserWarning"
+)
+# The refine prompt gained a phase-preservation rule (see
+# gemini.build_refine_prompt). Only phases-bakers.epub was re-recorded against
+# it — that is the fixture the rule exists for, and re-recording the other 517
+# refine replies would have cost 517 paid API calls to obtain replies whose
+# content the rule does not change. Those recordings therefore no longer match
+# their prompt's sha256. Replay is unaffected: recordings key off the prompt
+# BODY (the raw recipe), which the rule does not touch. Scoped to refine-NN by
+# filename so extract/table/vision drift still warns.
+@pytest.mark.filterwarnings(
+    r"ignore:prompt_sha256 mismatch for .*refine-\d+\.json:UserWarning"
 )
 def test_the_cayenne_archive_round_trips_back_through_the_reader(golden_client, tmp_path):
     """Flow B: what CayenneZipWriter writes, PaprikaReader must restore for free."""

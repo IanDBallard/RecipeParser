@@ -1,4 +1,11 @@
-"""All Gemini API calls with retry, timeout, and rate-limit back-off."""
+"""Gemini API calls.
+
+Every call that goes through ``_call_with_retry`` carries the HTTP timeout,
+rate-limit back-off, and transient-server-error retry. ``get_embeddings`` and
+``verify_connectivity`` call the client directly and carry the timeout only —
+an embedding has no parse step worth retrying, and the connectivity probe is
+meant to return a fast verdict rather than retry a dead key five times.
+"""
 import json
 import logging
 import re
@@ -245,6 +252,10 @@ def verify_connectivity(client) -> bool:
     Returns True if the API is reachable, False otherwise.
     """
     try:
+        # Timeout but deliberately NOT _call_with_retry: this is a preflight
+        # probe whose value is a fast verdict before real work starts, so a
+        # dead key should fail in one attempt rather than burn the five-retry
+        # back-off ladder.
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents="Reply with the single word OK.",
@@ -265,7 +276,15 @@ def get_embeddings(text: str, client) -> List[float]:
         response = client.models.embed_content(
             model=GEMINI_EMBEDDING_MODEL,
             contents=text,
-            config=genai_types.EmbedContentConfig(output_dimensionality=1536),
+            # Bounded like every generate_content call: EmbedContentConfig
+            # carries its own http_options, so the timeout goes on the typed
+            # config rather than through _finalize_config's dict merge.
+            # This is the EMBED stage of every run — an unbounded call here
+            # hangs an ordinary import.
+            config=genai_types.EmbedContentConfig(
+                output_dimensionality=1536,
+                http_options={"timeout": _HTTP_TIMEOUT_MS},
+            ),
         )
         _log_usage_metadata(response, "Embedding")
         return response.embeddings[0].values
@@ -652,6 +671,17 @@ RULES:
 2. TOKENIZED DIRECTIONS:
    - Rewrite directions using Fat Tokens: {{{{ingredient_id|original_text}}}}
    - Example: "Mix the flour" -> "Mix the {{{{ing_01|flour}}}}"
+
+3. PHASES:
+   - If the raw recipe groups its ingredients or directions into phases,
+     stages, or days (a bold heading entry such as "**Phase 1**", "**Day 1**",
+     "**Soaker**"), keep every one of those headings as its own entry, in
+     place, in both lists.
+   - A heading is not an ingredient: give it no amount, no unit, and no fat
+     tokens. Carry the heading text through as the entry's fallback_string
+     (ingredients) or text (directions).
+   - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
+     be able to tell where one session ends and the next begins.
 {categorization_section}
 CONTEXT:
 UOM System: {uom_system}
