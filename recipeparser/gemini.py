@@ -10,6 +10,7 @@ from pydantic import BaseModel, create_model, Field, ValidationError
 from recipeparser.config import (
     BACKOFF_BASE_SECS,
     BACKOFF_MAX_SECS,
+    HTTP_TIMEOUT_SECS,
     MAX_PARSE_RETRIES,
     MAX_RETRIES,
     PARSE_RETRY_DELAY_SECS,
@@ -51,10 +52,39 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in msg or "quota" in msg or "resource_exhausted" in msg
 
 
+# google-genai's GenerateContentConfig.http_options.timeout is in MILLISECONDS
+# (confirmed against installed google-genai==1.68.0: HttpOptions.timeout's
+# docstring says "Timeout for the request in milliseconds", and
+# google.genai._api_client.get_timeout_in_seconds divides it by 1000.0 before
+# handing it to httpx). HTTP_TIMEOUT_SECS is expressed in seconds, so it must
+# be multiplied by 1000 here — passing it unconverted would give every real
+# call an unusable ~0.18s timeout.
+_HTTP_TIMEOUT_MS = HTTP_TIMEOUT_SECS * 1000
+
+
+def _with_http_timeout(config: dict) -> dict:
+    """Return a copy of ``config`` with the per-call HTTP timeout applied.
+
+    Passed per-call (not at client construction) because ``_call_with_retry``
+    only ever receives an already-constructed ``client`` — this is the one
+    place in the call path that can attach it, and ``generate_content``
+    validates a plain ``config`` dict into ``GenerateContentConfig``, whose
+    ``http_options.timeout`` bounds the underlying HTTP request.
+    """
+    return {**config, "http_options": {"timeout": _HTTP_TIMEOUT_MS}}
+
+
 def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
     """
     Wrapper around client.models.generate_content that retries on rate-limit
     errors with exponential back-off, and raises for all other errors.
+
+    A transport-level timeout is deliberately NOT treated as a rate-limit
+    error: ``_is_rate_limit_error`` only matches "429"/"quota"/
+    "resource_exhausted" in the exception message, which a timeout's message
+    never contains, so it raises immediately on the first attempt instead of
+    burning the 5x exponential back-off ladder on a call that already waited
+    the full HTTP_TIMEOUT_SECS.
     """
     delay = BACKOFF_BASE_SECS
     for attempt in range(1, MAX_RETRIES + 2):
@@ -62,7 +92,7 @@ def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
             return client.models.generate_content(
                 model=model,
                 contents=contents,
-                config=config,
+                config=_with_http_timeout(config),
             )
         except Exception as exc:
             if _is_rate_limit_error(exc) and attempt <= MAX_RETRIES:
