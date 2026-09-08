@@ -7,6 +7,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [7.0.0] — 2026-09-08
+
+### ⚠️ Model migration — action may be required
+- **Generation model moved to `GEMINI_MODEL` and now defaults to
+  `gemini-3.1-flash-lite`** (`recipeparser/config.py`) — `gemini-2.5-flash`
+  retires **2026-10-16**, and anyone still deployed on v6.0.0 will start
+  failing calls after that date. The model name was previously a literal
+  repeated at nine call sites (`gemini.py`, `toc.py`, `categories.py`); it
+  is now one constant, overridable via the `GEMINI_MODEL` env var without a
+  code change. The embedding model gets the same treatment as
+  `GEMINI_EMBEDDING_MODEL`, unchanged in value — it is not implicated in the
+  retirement. **Upgrading to v7.0.0 is the fix; no other action needed
+  unless you were pinning `GEMINI_MODEL` yourself.**
+
 ### Added
 - Golden test suite (`tests/goldens/`): a seven-file real-input corpus, recorded
   Gemini replies replayed offline, and goldens for readers, prompts, schemas,
@@ -23,14 +39,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `build_plain_text_prompt`, `build_toc_parse_prompt`,
   `build_toc_classify_prompt`). Behaviour is unchanged; the prompts are now
   snapshot-tested.
-- **Generation model moved to `GEMINI_MODEL` and now defaults to
-  `gemini-3.1-flash-lite`** (`recipeparser/config.py`) — `gemini-2.5-flash`
-  retires 2026-10-16. The model name was previously a literal repeated at
-  nine call sites (`gemini.py`, `toc.py`, `categories.py`); it is now one
-  constant, overridable via the `GEMINI_MODEL` env var without a code
-  change. The embedding model gets the same treatment as
-  `GEMINI_EMBEDDING_MODEL`, unchanged in value — it is not implicated in the
-  retirement.
 - **Thinking disabled by default on every Gemini call**
   (`GEMINI_THINKING_BUDGET`, defaults to `0`) — every call in this package is
   a bounded extraction/refinement/classification task with one correct
