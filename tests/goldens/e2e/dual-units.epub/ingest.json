@@ -6,9 +6,18 @@
         "British",
         "Dessert"
       ],
+      "cook_max_minutes": 40,
+      "cook_min_minutes": 40,
+      "cook_note": null,
       "cook_time": "40 mins",
       "description": null,
       "difficulty": null,
+      "direction_steps": [
+        "Brown the butter in a pale pan until it smells of hazelnuts, then cool until thick.",
+        "Beat in the sugar, then the flour and salt, to a stiff paste.",
+        "Press into a tin, dock all over, and bake at 325F for 40 minutes.",
+        "Cut while warm and cool in the tin."
+      ],
       "embedding": {
         "len": 1536,
         "sha256": "edeafa1291e5ec89b7ad14780aeee9b197a34b6e98ef043854385a58a7b50aec"
@@ -22,10 +31,22 @@
         ]
       },
       "image_url": null,
+      "ingredient_lines": [
+        "14 tablespoons/200g butter",
+        "1/2 cup/100g caster sugar",
+        "2 cups/250g plain flour",
+        "1/4 teaspoon/1.5g fine salt"
+      ],
       "notes": null,
       "nutritional_info": null,
+      "prep_max_minutes": 20,
+      "prep_min_minutes": 20,
+      "prep_note": null,
       "prep_time": "20 mins",
       "rating": null,
+      "servings_max": 12,
+      "servings_min": 12,
+      "servings_note": null,
       "source": null,
       "source_url": "Dual Units",
       "structured_ingredients": [
@@ -100,9 +121,18 @@
         "British",
         "Bread"
       ],
+      "cook_max_minutes": 14,
+      "cook_min_minutes": 14,
+      "cook_note": null,
       "cook_time": "14 mins",
       "description": null,
       "difficulty": null,
+      "direction_steps": [
+        "Heat the oven to 425F. Line a tray with parchment.",
+        "Rub the butter into the flour, baking powder and salt until it looks like coarse crumbs.",
+        "Stir in the buttermilk until a shaggy dough forms. Do not overwork it.",
+        "Pat out to 1 inch thick, cut rounds, and bake for 12 to 14 minutes."
+      ],
       "embedding": {
         "len": 1536,
         "sha256": "f951e17453a0b5eb581fc43153e180288b16174af95f00717fd153250b7a22a2"
@@ -116,10 +146,23 @@
         ]
       },
       "image_url": null,
+      "ingredient_lines": [
+        "2 cups/250g plain flour",
+        "1 tablespoon/12g baking powder",
+        "1/2 teaspoon/3g fine salt",
+        "5 tablespoons/70g cold butter, cubed",
+        "3/4 cup/180ml buttermilk"
+      ],
       "notes": null,
       "nutritional_info": null,
+      "prep_max_minutes": 15,
+      "prep_min_minutes": 15,
+      "prep_note": null,
       "prep_time": "15 mins",
       "rating": null,
+      "servings_max": 8,
+      "servings_min": 8,
+      "servings_note": null,
       "source": null,
       "source_url": "Dual Units",
       "structured_ingredients": [

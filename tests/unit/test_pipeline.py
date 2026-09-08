@@ -22,6 +22,7 @@ from recipeparser.models import (
     CayenneRecipe,
     CayenneRefinement,
     IngestResponse,
+    RecipeExtraction,
     StructuredIngredient,
     TokenizedDirection,
 )
@@ -486,7 +487,8 @@ class _FakeImageStore(ImageStore):
 
 
 def _assemble_reflecting_image_url(
-    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta=None
+    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta=None,
+    ingredient_lines=None, direction_steps=None, servings_text=None
 ):
     """Stand-in for the real ``assemble`` stage: echoes the image_url it was
     actually called with, so a test can prove the URL travels all the way
@@ -546,7 +548,8 @@ _CAPTURED_META: dict = {}
 
 
 def _assemble_capturing_meta(
-    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta
+    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta,
+    ingredient_lines=None, direction_steps=None, servings_text=None
 ):
     """Stand-in for assemble() that records the meta it was handed."""
     _CAPTURED_META["meta"] = meta
@@ -565,7 +568,9 @@ def test_a_legacy_paprika_chunks_meta_reaches_assemble():
 
     pipeline = _make_pipeline()
     # extract() only has to return one non-empty item: refine is patched over it.
-    with patch(_PATCH_EXTRACT, return_value=[_make_refinement("Pie")]), \
+    with patch(_PATCH_EXTRACT, return_value=[
+        RecipeExtraction(name="Pie", ingredients=["x"], directions=["y"])
+    ]), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Pie")), \
          patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING), \

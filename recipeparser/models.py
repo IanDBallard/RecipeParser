@@ -163,6 +163,21 @@ class CayenneRecipe(BaseModel):
         default=None, description="A short blurb, shown above the directions."
     )
     difficulty: Optional[str] = Field(default=None, description="Free text, e.g. 'Easy', 'Moderate'.")
+    # Raw, user-owned body (spec 3.2). Empty lists on legacy objects; the writer
+    # and regen worker derive them from the structured data when empty.
+    ingredient_lines: List[str] = Field(default_factory=list)
+    direction_steps: List[str] = Field(default_factory=list)
+    # Structured durations and servings (spec 3.6). prep_time/cook_time text stay
+    # for Paprika export and until the client reads these.
+    prep_min_minutes: Optional[int] = None
+    prep_max_minutes: Optional[int] = None
+    prep_note: Optional[str] = None
+    cook_min_minutes: Optional[int] = None
+    cook_max_minutes: Optional[int] = None
+    cook_note: Optional[str] = None
+    servings_min: Optional[int] = None
+    servings_max: Optional[int] = None
+    servings_note: Optional[str] = None
     categories: List[str] = Field(
         default_factory=list,
         description=(

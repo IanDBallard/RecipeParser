@@ -6,9 +6,15 @@
       'Italian',
       'Dessert',
     ]),
+    'cook_max_minutes': None,
+    'cook_min_minutes': None,
+    'cook_note': None,
     'cook_time': None,
     'description': None,
     'difficulty': None,
+    'direction_steps': list([
+      'Mix 1.5 cups flour until smooth.',
+    ]),
     'embedding': '<vector len=3>',
     'grid_categories': dict({
       'Cuisine': list([
@@ -19,10 +25,19 @@
       ]),
     }),
     'image_url': None,
+    'ingredient_lines': list([
+      '1.5 cups flour',
+    ]),
     'notes': None,
     'nutritional_info': None,
+    'prep_max_minutes': None,
+    'prep_min_minutes': None,
+    'prep_note': None,
     'prep_time': None,
     'rating': None,
+    'servings_max': None,
+    'servings_min': None,
+    'servings_note': None,
     'source': None,
     'source_url': 'https://example.com/cake',
     'structured_ingredients': list([

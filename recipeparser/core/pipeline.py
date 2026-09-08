@@ -304,6 +304,9 @@ class RecipePipeline:
                 prep_time=pr.prep_time,
                 cook_time=pr.cook_time,
                 meta=chunk.meta or _source_meta_from(pr),
+                ingredient_lines=list(getattr(pr, "ingredient_lines", []) or []),
+                direction_steps=list(getattr(pr, "direction_steps", []) or []),
+                servings_text=None,
             )
             return [result]
 
@@ -328,6 +331,9 @@ class RecipePipeline:
                 prep_time=pr.prep_time,
                 cook_time=pr.cook_time,
                 meta=chunk.meta or _source_meta_from(pr),
+                ingredient_lines=list(getattr(pr, "ingredient_lines", []) or []),
+                direction_steps=list(getattr(pr, "direction_steps", []) or []),
+                servings_text=None,
             )
             return [result]
 
@@ -381,6 +387,9 @@ class RecipePipeline:
                 prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
                 cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
                 meta=chunk.meta,
+                ingredient_lines=list(raw.ingredients),
+                direction_steps=list(raw.directions),
+                servings_text=getattr(raw, "servings", None),
             )
             results.append(result)
 
