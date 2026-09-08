@@ -64,8 +64,11 @@ MAX_CONCURRENT_CAP: int = 10
 # to stay under free-tier 5 requests/minute.
 FREE_TIER_DELAY_SECS: float = 12.0
 
-# Wall-clock seconds to wait for a single segment/categorisation future.
-SEGMENT_TIMEOUT_SECS: int = 300
+# No SEGMENT_TIMEOUT_SECS here any more. It named a per-chunk wall-clock bound
+# the pipeline never enforced: as_completed() only yields finished futures, so
+# the future.result(timeout=...) it fed could not block, and a running thread
+# cannot be cancelled in any case. The bound that does exist is per API call —
+# HTTP_TIMEOUT_SECS above, applied in gemini._call_with_retry.
 
 # ---------------------------------------------------------------------------
 # TOC extraction and chunking (Phase 2)
