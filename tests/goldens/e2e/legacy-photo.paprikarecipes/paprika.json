@@ -1,0 +1,32 @@
+{
+  "entries": {
+    "Boiled Custard.paprikarecipe": {
+      "categories": [
+        "Dessert"
+      ],
+      "cook_time": "",
+      "created": "<fixed>",
+      "description": "",
+      "difficulty": "",
+      "directions": "Scald the milk.\nBeat the eggs and sugar together.\nPour the hot milk over the eggs, stirring.\nCook over water until it coats a spoon.\nCool, then stir in the vanilla.",
+      "hash": "<fixed>",
+      "image_url": "",
+      "ingredients": "1 quart milk\n4 eggs\n1/2 cup sugar\n1 teaspoon vanilla",
+      "name": "Boiled Custard",
+      "notes": "",
+      "nutritional_info": "",
+      "photo_hash": "",
+      "photo_large": null,
+      "prep_time": "",
+      "rating": 0,
+      "servings": "",
+      "source": "",
+      "source_url": "",
+      "total_time": "",
+      "uid": "<fixed>"
+    }
+  },
+  "names": [
+    "Boiled Custard.paprikarecipe"
+  ]
+}

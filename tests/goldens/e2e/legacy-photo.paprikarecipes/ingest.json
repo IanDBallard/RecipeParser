@@ -1,0 +1,88 @@
+{
+  "recipes": [
+    {
+      "base_servings": null,
+      "categories": [
+        "Dessert"
+      ],
+      "cook_time": null,
+      "embedding": {
+        "len": 1536,
+        "sha256": "23289d33644b3acb1f911e15c6a0394c8254c03dea8bb336528706d22ae1eca6"
+      },
+      "grid_categories": {
+        "Meal Type": [
+          "Dessert"
+        ]
+      },
+      "image_url": null,
+      "prep_time": null,
+      "source_url": null,
+      "structured_ingredients": [
+        {
+          "amount": 1.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "1 quart milk",
+          "id": "ing_01",
+          "is_ai_converted": false,
+          "name": "milk",
+          "unit": "quart"
+        },
+        {
+          "amount": 4.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "4 eggs",
+          "id": "ing_02",
+          "is_ai_converted": false,
+          "name": "eggs",
+          "unit": null
+        },
+        {
+          "amount": 0.5,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "1/2 cup sugar",
+          "id": "ing_03",
+          "is_ai_converted": false,
+          "name": "sugar",
+          "unit": "cup"
+        },
+        {
+          "amount": 1.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "1 teaspoon vanilla",
+          "id": "ing_04",
+          "is_ai_converted": false,
+          "name": "vanilla",
+          "unit": "teaspoon"
+        }
+      ],
+      "title": "Boiled Custard",
+      "tokenized_directions": [
+        {
+          "step": 1,
+          "text": "Scald the {{ing_01|milk}}."
+        },
+        {
+          "step": 2,
+          "text": "Beat the {{ing_02|eggs}} and {{ing_03|sugar}} together."
+        },
+        {
+          "step": 3,
+          "text": "Pour the hot {{ing_01|milk}} over the {{ing_02|eggs}}, stirring."
+        },
+        {
+          "step": 4,
+          "text": "Cook over water until it coats a spoon."
+        },
+        {
+          "step": 5,
+          "text": "Cool, then stir in the {{ing_04|vanilla}}."
+        }
+      ]
+    }
+  ]
+}

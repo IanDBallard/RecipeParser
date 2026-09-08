@@ -1,0 +1,182 @@
+{
+  "recipes": [
+    {
+      "base_servings": 12,
+      "categories": [
+        "British",
+        "Dessert"
+      ],
+      "cook_time": "40 mins",
+      "embedding": {
+        "len": 1536,
+        "sha256": "edeafa1291e5ec89b7ad14780aeee9b197a34b6e98ef043854385a58a7b50aec"
+      },
+      "grid_categories": {
+        "Cuisine": [
+          "British"
+        ],
+        "Meal Type": [
+          "Dessert"
+        ]
+      },
+      "image_url": null,
+      "prep_time": "20 mins",
+      "source_url": "Dual Units",
+      "structured_ingredients": [
+        {
+          "amount": 14.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "14 tablespoons/200g butter",
+          "id": "ing_01",
+          "is_ai_converted": false,
+          "name": "butter",
+          "unit": "tablespoons"
+        },
+        {
+          "amount": 0.5,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "1/2 cup/100g caster sugar",
+          "id": "ing_02",
+          "is_ai_converted": false,
+          "name": "caster sugar",
+          "unit": "cup"
+        },
+        {
+          "amount": 2.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "2 cups/250g plain flour",
+          "id": "ing_03",
+          "is_ai_converted": false,
+          "name": "plain flour",
+          "unit": "cups"
+        },
+        {
+          "amount": 0.25,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "1/4 teaspoon/1.5g fine salt",
+          "id": "ing_04",
+          "is_ai_converted": false,
+          "name": "fine salt",
+          "unit": "teaspoon"
+        }
+      ],
+      "title": "Brown Butter Shortbread",
+      "tokenized_directions": [
+        {
+          "step": 1,
+          "text": "Brown the {{ing_01|butter}} in a pale pan until it smells of hazelnuts, then cool until thick."
+        },
+        {
+          "step": 2,
+          "text": "Beat in the {{ing_02|sugar}}, then the {{ing_03|flour}} and {{ing_04|salt}}, to a stiff paste."
+        },
+        {
+          "step": 3,
+          "text": "Press into a tin, dock all over, and bake at 325F for 40 minutes."
+        },
+        {
+          "step": 4,
+          "text": "Cut while warm and cool in the tin."
+        }
+      ]
+    },
+    {
+      "base_servings": 8,
+      "categories": [
+        "British",
+        "Bread"
+      ],
+      "cook_time": "14 mins",
+      "embedding": {
+        "len": 1536,
+        "sha256": "f951e17453a0b5eb581fc43153e180288b16174af95f00717fd153250b7a22a2"
+      },
+      "grid_categories": {
+        "Cuisine": [
+          "British"
+        ],
+        "Meal Type": [
+          "Bread"
+        ]
+      },
+      "image_url": null,
+      "prep_time": "15 mins",
+      "source_url": "Dual Units",
+      "structured_ingredients": [
+        {
+          "amount": 2.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "2 cups/250g plain flour",
+          "id": "ing_01",
+          "is_ai_converted": false,
+          "name": "plain flour",
+          "unit": "cups"
+        },
+        {
+          "amount": 1.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "1 tablespoon/12g baking powder",
+          "id": "ing_02",
+          "is_ai_converted": false,
+          "name": "baking powder",
+          "unit": "tablespoon"
+        },
+        {
+          "amount": 0.5,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "1/2 teaspoon/3g fine salt",
+          "id": "ing_03",
+          "is_ai_converted": false,
+          "name": "fine salt",
+          "unit": "teaspoon"
+        },
+        {
+          "amount": 5.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "5 tablespoons/70g cold butter, cubed",
+          "id": "ing_04",
+          "is_ai_converted": false,
+          "name": "cold butter",
+          "unit": "tablespoons"
+        },
+        {
+          "amount": 0.75,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "3/4 cup/180ml buttermilk",
+          "id": "ing_05",
+          "is_ai_converted": false,
+          "name": "buttermilk",
+          "unit": "cup"
+        }
+      ],
+      "title": "Buttermilk Scones",
+      "tokenized_directions": [
+        {
+          "step": 1,
+          "text": "Heat the oven to 425F. Line a tray with parchment."
+        },
+        {
+          "step": 2,
+          "text": "Rub the {{ing_04|butter}} into the {{ing_01|flour}}, {{ing_02|baking powder}} and {{ing_03|salt}} until it looks like coarse crumbs."
+        },
+        {
+          "step": 3,
+          "text": "Stir in the {{ing_05|buttermilk}} until a shaggy dough forms. Do not overwork it."
+        },
+        {
+          "step": 4,
+          "text": "Pat out to 1 inch thick, cut rounds, and bake for 12 to 14 minutes."
+        }
+      ]
+    }
+  ]
+}
