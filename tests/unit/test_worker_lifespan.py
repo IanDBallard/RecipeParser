@@ -35,8 +35,7 @@ def test_lifespan_starts_and_stops_workers(monkeypatch):
             pass
     run.assert_awaited_once()
     workers, stop = run.await_args.args[0], run.await_args.args[1]
-    assert [type(w).__name__ for w in workers] == ["RegenWorker", "RecatWorker"] or \
-           [type(w).__name__ for w in workers] == ["RegenWorker"]
+    assert [type(w).__name__ for w in workers] == ["RegenWorker", "RecatWorker"]
     assert stop.is_set()
 
 
