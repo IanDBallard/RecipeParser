@@ -124,7 +124,15 @@ def _with_http_timeout(config: dict) -> dict:
     validates a plain ``config`` dict into ``GenerateContentConfig``, whose
     ``http_options.timeout`` bounds the underlying HTTP request.
     """
-    return {**config, "http_options": {"timeout": _HTTP_TIMEOUT_MS}}
+    return {
+        **config,
+        # Merge into any http_options the caller already set rather than
+        # replacing it: an api_version pin, custom headers or a base_url
+        # override would otherwise be dropped silently on the way to the SDK.
+        # The timeout is applied last on purpose — merging must not become a
+        # way to opt out of the bound this function exists to enforce.
+        "http_options": {**config.get("http_options", {}), "timeout": _HTTP_TIMEOUT_MS},
+    }
 
 
 def _call_with_retry(client, model: str, contents: str, config: dict) -> object:

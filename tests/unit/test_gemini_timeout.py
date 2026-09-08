@@ -119,3 +119,47 @@ def test_rate_limit_retry_still_works_with_the_timeout_wired_in(monkeypatch):
     # The retried call must still carry the timeout.
     _, kwargs = client.models.generate_content.call_args
     assert kwargs["config"]["http_options"]["timeout"] == 180_000
+
+
+def test_a_callers_own_http_options_survive_alongside_the_timeout():
+    """_with_http_timeout must merge into http_options, not replace it.
+
+    It built ``{"http_options": {"timeout": ...}}`` wholesale, so any
+    http_options a caller had already set — an api_version pin, a custom
+    header, a base_url override — was silently dropped on the way to the SDK.
+    No caller supplies one today, which is exactly why this would have been
+    found the hard way: the first caller to set one would lose it with no
+    error, and the timeout would still look correct in every existing test.
+    """
+    client = _client(SimpleNamespace(text="ok", candidates=[]))
+
+    _call_with_retry(
+        client,
+        model="gemini-2.5-flash",
+        contents="hi",
+        config={"http_options": {"api_version": "v1alpha", "headers": {"X-Trace": "abc"}}},
+    )
+
+    sent = client.models.generate_content.call_args[1]["config"]["http_options"]
+    assert sent["timeout"] == HTTP_TIMEOUT_SECS * 1000
+    assert sent["api_version"] == "v1alpha", "caller's api_version was dropped"
+    assert sent["headers"] == {"X-Trace": "abc"}, "caller's headers were dropped"
+
+
+def test_the_timeout_wins_over_a_callers_own_timeout():
+    """If a caller sets its own timeout, the module's bound still applies.
+
+    Merging must not become a way to opt out of the timeout — that would
+    reintroduce the unbounded call this whole mechanism exists to prevent.
+    """
+    client = _client(SimpleNamespace(text="ok", candidates=[]))
+
+    _call_with_retry(
+        client,
+        model="gemini-2.5-flash",
+        contents="hi",
+        config={"http_options": {"timeout": 5}},
+    )
+
+    sent = client.models.generate_content.call_args[1]["config"]["http_options"]
+    assert sent["timeout"] == HTTP_TIMEOUT_SECS * 1000
