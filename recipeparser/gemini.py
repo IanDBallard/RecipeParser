@@ -825,25 +825,35 @@ def categorize_batch(
     """
     Categorise several existing recipes against ONLY the newly added tags
     (spec 6.2).  Returns recipe_id -> tags.  Never used at ingest; REFINE does
-    that.  An empty or unparseable reply returns {} so the caller skips the batch.
+    that.
+
+    A well-formed reply with no matches is a normal, successful result: the
+    model is told most recipes will match nothing, so ``{}`` and empty tag lists
+    are expected.
+
+    Raises:
+        Exception: whatever the Gemini call raises, and ValueError when the
+            reply is empty or unparseable.  Failures MUST propagate.
+            ``RecatWorker`` isolates every batch in its own try/except, counts
+            the failure, and errors the job when more than 10% of batches fail
+            (spec 6.4).  Swallowing them here and returning {} made that
+            threshold dead code: a completely broken Gemini produced a job that
+            finished status='done', progress_pct=100, recipe_count=0, telling
+            the user their library had been recategorised when nothing was
+            examined.
     """
-    try:
-        response = _call_with_retry(
-            client,
-            model=GEMINI_MODEL,
-            contents=build_categorize_batch_prompt(recipes, new_axes),
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": _schema_for_gemini(_BatchCategorization),
-                "temperature": 0.0,
-            },
-            what="categorize_batch",
-        )
-        if not response.text or not response.text.strip():
-            log.error("categorize_batch: empty response")
-            return {}
-        parsed = _BatchCategorization.model_validate(json.loads(response.text))
-    except Exception as exc:  # noqa: BLE001
-        log.error("categorize_batch failed: %s", exc)
-        return {}
+    response = _call_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=build_categorize_batch_prompt(recipes, new_axes),
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": _schema_for_gemini(_BatchCategorization),
+            "temperature": 0.0,
+        },
+        what="categorize_batch",
+    )
+    if not response.text or not response.text.strip():
+        raise ValueError("categorize_batch: Gemini returned an empty response.")
+    parsed = _BatchCategorization.model_validate(json.loads(response.text))
     return {r.recipe_id: list(r.tags) for r in parsed.results}

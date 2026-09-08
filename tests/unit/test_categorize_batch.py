@@ -2,6 +2,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from recipeparser.config import GEMINI_MODEL
 from recipeparser.core.stages.categorize import chunked, filter_batch_result
 
@@ -36,8 +38,30 @@ def test_categorize_batch_prompt_and_parse():
     assert call.call_args.kwargs["what"] == "categorize_batch"
 
 
-def test_categorize_batch_empty_reply():
+def test_categorize_batch_empty_reply_raises():
+    # An empty reply is a failed batch, not "nothing matched". It must reach
+    # RecatWorker's per-batch handler so the batch is counted as failed.
     from recipeparser.gemini import categorize_batch
     with patch("recipeparser.gemini._call_with_retry", return_value=MagicMock(text="")):
+        with pytest.raises(ValueError, match="empty response"):
+            categorize_batch([{"id": "r1", "title": "x", "ingredient_lines": [], "direction_steps": []}],
+                             {"Cuisine": ["Italian"]}, client=MagicMock())
+
+
+def test_categorize_batch_call_failure_propagates():
+    # Same for the call itself: swallowing it here would leave RecatWorker's
+    # 10% failure threshold as dead code.
+    from recipeparser.gemini import categorize_batch
+    with patch("recipeparser.gemini._call_with_retry", side_effect=RuntimeError("gemini down")):
+        with pytest.raises(RuntimeError, match="gemini down"):
+            categorize_batch([{"id": "r1", "title": "x", "ingredient_lines": [], "direction_steps": []}],
+                             {"Cuisine": ["Italian"]}, client=MagicMock())
+
+
+def test_categorize_batch_no_matches_is_not_a_failure():
+    # A well-formed reply where nothing matched is a successful, empty result.
+    from recipeparser.gemini import categorize_batch
+    reply = MagicMock(text=json.dumps({"results": [{"recipe_id": "r1", "tags": []}]}))
+    with patch("recipeparser.gemini._call_with_retry", return_value=reply):
         assert categorize_batch([{"id": "r1", "title": "x", "ingredient_lines": [], "direction_steps": []}],
-                                {"Cuisine": ["Italian"]}, client=MagicMock()) == {}
+                                {"Cuisine": ["Italian"]}, client=MagicMock()) == {"r1": []}

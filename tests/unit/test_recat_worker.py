@@ -1,7 +1,8 @@
 """RecatWorker: additive, scoped, cancellable bulk recategorise (spec 6)."""
+import json
 import uuid
 from typing import Any, Dict, List
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -222,3 +223,40 @@ def test_fresh_job_pages_from_the_nil_uuid():
     assert cursors[1] == _rid(9)                       # then the last id of page 1
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "done" and final["progress_pct"] == 100
+
+
+def test_real_categorize_batch_failure_errors_the_job():
+    # The default categorize_fn is gemini.categorize_batch. It used to catch
+    # Exception and return {}, so RecatWorker's per-batch handler never fired
+    # for a Gemini failure: no rows, no exception, `failed` stayed 0, and a job
+    # run against a completely broken Gemini finished 'done' at 100% with
+    # recipe_count 0. test_too_many_failed_batches_errors_the_job injects a
+    # raising categorize_fn — something the real function was constructed never
+    # to do — so it passed either way. This one drives the real function with
+    # only _call_with_retry patched.
+    from recipeparser.adapters.recat_worker import RecatWorker
+    fake = _fake_with_job(["running"] * 5, _recipes(30), count=30)
+    worker = RecatWorker(fake, gemini_client=MagicMock(), batch_size=10)
+    with patch("recipeparser.gemini._call_with_retry", side_effect=RuntimeError("gemini down")):
+        assert worker.run_once() == 1
+    assert _ops(fake, "recipe_categories") == []
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "error" and "3 of 3 batches failed" in final["error_message"]
+    assert final["recipe_count"] == 0
+
+
+def test_real_categorize_batch_success_finishes_the_job():
+    # The other half: with the real categorize_batch and a well-formed reply the
+    # job still completes and the tags land, so the fix above is not simply
+    # "everything now fails".
+    from recipeparser.adapters.recat_worker import RecatWorker
+    fake = _fake_with_job(["running"], _recipes(2), count=2)
+    reply = MagicMock(text=json.dumps({"results": [{"recipe_id": _rid(0), "tags": ["Thai"]},
+                                                   {"recipe_id": _rid(1), "tags": []}]}))
+    worker = RecatWorker(fake, gemini_client=MagicMock(), batch_size=10)
+    with patch("recipeparser.gemini._call_with_retry", return_value=reply):
+        assert worker.run_once() == 1
+    rows = _ops(fake, "recipe_categories")[0][0][1][0]
+    assert [r["recipe_id"] for r in rows] == [_rid(0)]
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "done" and final["recipe_count"] == 1
