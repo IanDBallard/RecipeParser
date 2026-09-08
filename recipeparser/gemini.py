@@ -628,6 +628,17 @@ RULES:
 2. TOKENIZED DIRECTIONS:
    - Rewrite directions using Fat Tokens: {{{{ingredient_id|original_text}}}}
    - Example: "Mix the flour" -> "Mix the {{{{ing_01|flour}}}}"
+
+3. PHASES:
+   - If the raw recipe groups its ingredients or directions into phases,
+     stages, or days (a bold heading entry such as "**Phase 1**", "**Day 1**",
+     "**Soaker**"), keep every one of those headings as its own entry, in
+     place, in both lists.
+   - A heading is not an ingredient: give it no amount, no unit, and no fat
+     tokens. Carry the heading text through as the entry's fallback_string
+     (ingredients) or text (directions).
+   - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
+     be able to tell where one session ends and the next begins.
 {categorization_section}
 CONTEXT:
 UOM System: {uom_system}
