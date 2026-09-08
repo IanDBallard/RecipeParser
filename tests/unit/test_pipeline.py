@@ -14,11 +14,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from recipeparser.core.fsm import PipelineController
-from recipeparser.core.models import Chunk, InputType
+from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.models import (
+    CayenneRecipe,
     CayenneRefinement,
     IngestResponse,
     StructuredIngredient,
@@ -485,7 +486,7 @@ class _FakeImageStore(ImageStore):
 
 
 def _assemble_reflecting_image_url(
-    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time
+    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta=None
 ):
     """Stand-in for the real ``assemble`` stage: echoes the image_url it was
     actually called with, so a test can prove the URL travels all the way
@@ -539,3 +540,68 @@ def test_a_failed_upload_still_yields_the_recipe():
     assert len(results) == 1
     assert chunk.image_url is None
     assert results[0].image_url is None
+
+
+_CAPTURED_META: dict = {}
+
+
+def _assemble_capturing_meta(
+    *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta
+):
+    """Stand-in for assemble() that records the meta it was handed."""
+    _CAPTURED_META["meta"] = meta
+    return _make_ingest_response("R")
+
+
+def test_a_legacy_paprika_chunks_meta_reaches_assemble():
+    """Design 5.4 - what the reader read survives the whole pipeline."""
+    _CAPTURED_META.clear()
+    meta = SourceMeta(prep_time="20 min", cook_time="1 hr")
+    chunk = Chunk(
+        text="Pie\n\nIngredients:\nx\n\nDirections:\ny",
+        input_type=InputType.PAPRIKA_LEGACY,
+        meta=meta,
+    )
+
+    pipeline = _make_pipeline()
+    # extract() only has to return one non-empty item: refine is patched over it.
+    with patch(_PATCH_EXTRACT, return_value=[_make_refinement("Pie")]), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Pie")), \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING), \
+         patch(_PATCH_ASSEMBLE, side_effect=_assemble_capturing_meta):
+        pipeline.run([chunk])
+
+    assert _CAPTURED_META["meta"] is meta
+
+
+def test_flow_b_restores_the_six_metadata_fields():
+    """Design 6.3 - a Cayenne archive round-trips the new fields."""
+    pre_parsed = CayenneRecipe(
+        title="Chicken Pie",
+        structured_ingredients=[],
+        tokenized_directions=[],
+        source="Bon Appetit",
+        notes="Chill the dough.",
+        rating=4,
+        nutritional_info="520 kcal",
+        description="A cold-weather pie.",
+        difficulty="Moderate",
+    )
+    chunk = Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=pre_parsed,
+        pre_parsed_embedding=FAKE_EMBEDDING,
+    )
+
+    # The real assemble(), not a stand-in: the point is that the six survive the
+    # last hop into the IngestResponse, and a stand-in would prove nothing about it.
+    result = _make_pipeline().run([chunk])[0]
+
+    assert result.source == "Bon Appetit"
+    assert result.notes == "Chill the dough."
+    assert result.rating == 4
+    assert result.nutritional_info == "520 kcal"
+    assert result.description == "A cold-weather pie."
+    assert result.difficulty == "Moderate"

@@ -194,6 +194,14 @@ def write_recipe_to_supabase(
         "base_servings": recipe.base_servings,
         "source_url": recipe.source_url,
         "image_url": recipe.image_url,
+        # Plain text and smallint - not jsonb, so the array rule below does not
+        # apply. rating is null when unrated; the column's check rejects 0.
+        "source": recipe.source,
+        "notes": recipe.notes,
+        "rating": recipe.rating,
+        "nutritional_info": recipe.nutritional_info,
+        "description": recipe.description,
+        "difficulty": recipe.difficulty,
         # jsonb columns — send the list itself. json.dumps()ing it here handed
         # Postgres a JSON *string* containing an array, and that is what jsonb
         # stored: on 2026-09-06 jsonb_typeof reported 'string' for all 786 rows
