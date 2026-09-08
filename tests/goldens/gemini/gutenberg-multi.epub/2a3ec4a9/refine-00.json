@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "76ca7a1f2ec84a164c46bc5e2076e3429ca89a92c4264572bfa3fff4111e75e4",
+  "response_text": "{\n  \"title\": \"Field Herbs\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Field and Forest Herbs\",\n      \"fallback_string\": \"FIELD AND FOREST HERBS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Stock\",\n      \"fallback_string\": \"STOCK\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Oil\",\n      \"fallback_string\": \"OIL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Vinegar\",\n      \"fallback_string\": \"VINEGAR\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Cumin\",\n      \"fallback_string\": \"CUMIN\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_07\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Mastich Berries\",\n      \"fallback_string\": \"MASTICH BERRIES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|FIELD AND FOREST HERBS}} ARE PREPARED [either raw] WITH {{ing_02|STOCK}} {{ing_03|OIL}} AND {{ing_04|VINEGAR}} [as a salad,] OR AS A COOKED DISH BY ADDING {{ing_05|PEPPER}}, {{ing_06|CUMIN}} AND {{ing_07|MASTICH BERRIES}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "5e12b131f194d44b641d9fb4c4821225e7a361d6d18c737bc7506dac12cac596",
+  "response_text": "{\"title\": \"MEAT BALLS WITH LASER\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"LASER\", \"fallback_string\": \"LASER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"GINGER\", \"fallback_string\": \"GINGER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"CARDAMOM\", \"fallback_string\": \"CARDAMOM\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"BROTH\", \"fallback_string\": \"A DASH OF BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"MEAT BALL\", \"fallback_string\": \"MEAT BALL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"{{ing_01|LASER}}, {{ing_02|GINGER}}, {{ing_03|CARDAMOM}}, and {{ing_04|a dash of BROTH}}.\"}, {\"step\": 2, \"text\": \"CRUSH THIS ALL, MIX WELL.\"}, {\"step\": 3, \"text\": \"AND COOK THE {{ing_05|MEAT BALL}} THEREIN.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

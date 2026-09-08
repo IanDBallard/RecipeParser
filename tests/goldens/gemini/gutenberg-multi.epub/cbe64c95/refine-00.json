@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "312abc87ec7d5d3aec8f2820f959c2cf1674863ac3b882e90a3d7035ff1c07a9",
+  "response_text": "{\"title\": \"KID WITH LASER\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"well-cleaned guts of a kid\", \"fallback_string\": \"WELL-CLEANED GUTS OF A KID\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"PEPPER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"laser\", \"fallback_string\": \"LASER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"OIL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"carcass\", \"fallback_string\": \"CARCASS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"rue\", \"fallback_string\": \"RUE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"laurel berries\", \"fallback_string\": \"LAUREL BERRIES\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"THE {{ing_01|WELL-CLEANED GUTS OF A KID}} FILL WITH [a preparation of] {{ing_02|PEPPER}}, {{ing_03|BROTH}}, {{ing_04|LASER}}, {{ing_05|OIL}}.\"}, {\"step\": 2, \"text\": \"AND PUT THEM BACK INTO THE {{ing_06|CARCASS}} WHICH SEW TIGHTLY.\"}, {\"step\": 3, \"text\": \"AND THUS COOK [roast] THE KID [whole].\"}, {\"step\": 4, \"text\": \"WHEN DONE PUT IN THE MORTAR {{ing_07|RUE}}, {{ing_08|LAUREL BERRIES}}.\"}, {\"step\": 5, \"text\": \"AND THEN SERVE THE KID WHICH MEANWHILE HAS BEEN RETIRED FROM THE POT WITH ITS OWN DRIPPINGS OR GRAVY.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

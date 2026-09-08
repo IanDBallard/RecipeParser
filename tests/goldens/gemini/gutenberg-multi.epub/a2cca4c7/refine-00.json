@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "b2b5f75b00eacd6d8cad5f536f603c0ab3e70646af5d38b0e83e120dc9c5b228",
+  "response_text": "{\n  \"title\": \"TO KEEP MEATS FRESH WITHOUT SALT FOR ANY LENGTH OF TIME\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"FRESH MEAT\",\n      \"fallback_string\": \"FRESH MEAT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"HONEY\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"COVER {{ing_01|FRESH MEAT}} WITH {{ing_02|HONEY}}, SUSPEND IT IN A VESSEL.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"USE AS NEEDED; IN WINTER IT WILL KEEP BUT IN SUMMER IT WILL LAST ONLY A FEW DAYS.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"COOKED {{ing_01|MEAT}} MAY BE TREATED LIKEWISE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "3bf9b61714ba6f1f0c3ca7adaee87b90fe479350d8d2fcd559afdc2eae9f3a30",
+  "response_text": "{\n  \"title\": \"TO IMPROVE A BROTH\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"BROTH\",\n      \"fallback_string\": \"BROTH (with a bad odor)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"LAUREL\",\n      \"fallback_string\": \"LAUREL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"CYPRESS\",\n      \"fallback_string\": \"CYPRESS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"HONEY\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"FRESH SPIKENARD\",\n      \"fallback_string\": \"FRESH SPIKENARD\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"NEW MUST\",\n      \"fallback_string\": \"NEW MUST (alternative)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"IF {{ing_01|BROTH}} HAS CONTRACTED A BAD ODOR, PLACE A VESSEL UPSIDE DOWN AND FUMIGATE IT WITH {{ing_02|LAUREL}} AND {{ing_03|CYPRESS}} AND BEFORE VENTILATING IT, POUR THE {{ing_01|BROTH}} IN THIS VESSEL.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"IF THIS DOES NOT HELP MATTERS AND IF THE TASTE IS TOO PRONOUNCED, ADD {{ing_04|HONEY}} AND {{ing_05|FRESH SPIKENARD}} TO IT; THAT WILL IMPROVE IT.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"ALSO {{ing_06|NEW MUST}} SHOULD BE LIKEWISE EFFECTIVE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

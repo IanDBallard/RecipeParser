@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "a48ac5f6ec565f370569de137cbc9da780c4055dae1063dc460a9571b4782e75",
+  "response_text": "{\"title\":\"FISH AND WINE SAUCE\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"FISH\",\"fallback_string\":\"FISH\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"PEPPER\",\"fallback_string\":\"PEPPER\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":null,\"unit\":null,\"name\":\"LOVAGE\",\"fallback_string\":\"LOVAGE\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":null,\"unit\":null,\"name\":\"RUE\",\"fallback_string\":\"RUE\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_05\",\"amount\":null,\"unit\":null,\"name\":\"GREEN HERBS\",\"fallback_string\":\"GREEN HERBS\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_06\",\"amount\":null,\"unit\":null,\"name\":\"DRY ONIONS\",\"fallback_string\":\"DRY ONIONS\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_07\",\"amount\":null,\"unit\":null,\"name\":\"OIL\",\"fallback_string\":\"OIL\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_08\",\"amount\":null,\"unit\":null,\"name\":\"WINE\",\"fallback_string\":\"WINE\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_09\",\"amount\":null,\"unit\":null,\"name\":\"BROTH\",\"fallback_string\":\"BROTH\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"FRY THE {{ing_01|FISH}}.\"},{\"step\":2,\"text\":\"CRUSH {{ing_02|PEPPER}}, {{ing_03|LOVAGE}}, {{ing_04|RUE}}, {{ing_05|GREEN HERBS}}, {{ing_06|DRY ONIONS}}.\"},{\"step\":3,\"text\":\"ADD {{ing_07|OIL}} [{{ing_08|WINE}}] {{ing_09|BROTH}} AND SERVE.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[\"Dinner\"]}}"
+}

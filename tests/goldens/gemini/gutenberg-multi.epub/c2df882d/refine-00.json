@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "bff8f009003fd1aa0a3a90ad1938e6aa46c2c8dd9bb52782a3463f5daafadad1",
+  "response_text": "{\n  \"title\": \"ANOTHER LAXATIVE (ALITER AD VENTREM)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"celery\",\n      \"fallback_string\": \"CELERY (greens and roots)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"leeks\",\n      \"fallback_string\": \"TENDER PART AND HEAD OF LEEKS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"BROTH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"HONEY (in equal amounts)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"WASH {{ing_01|CELERY, GREENS AND ROOTS}}, AND DRY IT IN THE SUN.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"THEN ALSO COOK THE {{ing_02|TENDER PART AND HEAD OF LEEKS}} IN A NEW [1] POT, ALLOWING THE WATER TO BOIL DOWN ONE THIRD OF ITS VOLUME.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"THEREUPON GRIND {{ing_03|PEPPER}} WITH {{ing_04|BROTH}} AND {{ing_05|HONEY}} IN EQUAL AMOUNTS PROPERLY MEASURED.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"MIX IT IN THE MORTAR WITH THE WATER OF THE COOKED {{ing_01|CELERY}}, STRAIN, BOIL AGAIN AND USE IT TO MASK THE [cooked] {{ing_01|CELERY}} WITH.\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"IF DESIRED, ADD [the sliced root of the] {{ing_01|CELERY}} TO IT [2].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

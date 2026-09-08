@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "a01200851a3a719b6d8190f8149875ec1137e6ca89a8f3306beb7f9567e2cb5e",
+  "response_text": "{\"title\":\"THE RAW KID OR LAMB\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"raw kid or lamb\",\"fallback_string\":\"Raw kid or lamb\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"oil\",\"fallback_string\":\"Oil\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":null,\"unit\":null,\"name\":\"pepper\",\"fallback_string\":\"Pepper\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":null,\"unit\":null,\"name\":\"clean salt\",\"fallback_string\":\"Plenty of clean salt\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_05\",\"amount\":null,\"unit\":null,\"name\":\"coriander seed\",\"fallback_string\":\"Coriander seed\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"The {{ing_01|raw kid or lamb}} is rubbed with {{ing_02|oil}} and {{ing_03|pepper}} and sprinkled with {{ing_04|plenty of clean salt}} and {{ing_05|coriander seed}}.\"},{\"step\":2,\"text\":\"Placed in the oven, served roast.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[\"Dinner\"]}}"
+}

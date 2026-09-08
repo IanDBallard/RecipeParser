@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "dfe4ac5205c527298b7c4a14d366d5097bb346350c82e5881bc29d27a1c28f8f",
+  "response_text": "{\n  \"title\": \"Fried Porridge Cookies, A Still Better Way\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Milk\",\n      \"fallback_string\": \"Milk (instead of water)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Prepare this with {{ing_01|milk}} instead of water (following the method of ℞ No. 299).\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dessert\"]\n  }\n}"
+}

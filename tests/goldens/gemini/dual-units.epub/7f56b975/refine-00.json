@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "71f90837bd5020b97a55ac66020110fdef9a235ab299cd5991325c0cc3a874c8",
+  "response_text": "{\n  \"title\": \"Brown Butter Shortbread\",\n  \"base_servings\": 12,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 14,\n      \"unit\": \"tablespoons\",\n      \"name\": \"butter\",\n      \"fallback_string\": \"14 tablespoons/200g butter\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 0.5,\n      \"unit\": \"cup\",\n      \"name\": \"caster sugar\",\n      \"fallback_string\": \"1/2 cup/100g caster sugar\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 2,\n      \"unit\": \"cups\",\n      \"name\": \"plain flour\",\n      \"fallback_string\": \"2 cups/250g plain flour\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 0.25,\n      \"unit\": \"teaspoon\",\n      \"name\": \"fine salt\",\n      \"fallback_string\": \"1/4 teaspoon/1.5g fine salt\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Brown the {{ing_01|butter}} in a pale pan until it smells of hazelnuts, then cool until thick.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Beat in the {{ing_02|sugar}}, then the {{ing_03|flour}} and {{ing_04|salt}}, to a stiff paste.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Press into a tin, dock all over, and bake at 325F for 40 minutes.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"Cut while warm and cool in the tin.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [\"British\"],\n    \"Meal Type\": [\"Dessert\"]\n  }\n}"
+}

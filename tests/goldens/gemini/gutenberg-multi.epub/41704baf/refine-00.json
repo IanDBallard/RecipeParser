@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "76ea5a422a452e49f983e44409af869342016f90556a6e57735d39206dc1e756",
+  "response_text": "{\n  \"title\": \"ANOTHER WAY, BOILED AND FRIED (ALITER CUCURBITAS ELIXATAS ET FRICTAS)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"boiled pumpkin\",\n      \"fallback_string\": \"BOILED PUMPKIN (fried)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cumin wine\",\n      \"fallback_string\": \"CUMIN WINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"oil\",\n      \"fallback_string\": \"A LITTLE OIL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|Boiled pumpkin fried}} is placed in a baking pan.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Season with {{ing_02|cumin wine}}, add {{ing_03|a little oil}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Finish on the fire and serve.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

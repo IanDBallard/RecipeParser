@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "32701001ff68bab2fe769087061fb1c0d62526f125487d26ce101ca43eae9924",
+  "response_text": "{\n  \"title\": \"Chicken and Cream Sauce\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 1,\n      \"unit\": null,\n      \"name\": \"chicken\",\n      \"fallback_string\": \"A chicken\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"water\",\n      \"fallback_string\": \"Water (a little)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Spanish oil\",\n      \"fallback_string\": \"Spanish oil (plenty)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"Pepper\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Take {{ing_01|a chicken}} and prepare it as above.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Empty it through the aperture of the neck so that none of the entrails remain.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Take {{ing_02|water}} and {{ing_03|plenty of Spanish oil}}, stir, cook together until all moisture is evaporated.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"When this is done take {{ing_01|the chicken}} out, so that the greatest possible amount of {{ing_03|oil}} remains behind.\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"Sprinkle with {{ing_04|pepper}} and serve.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

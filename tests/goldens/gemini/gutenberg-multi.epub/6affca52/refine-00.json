@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "3e86ab6a372f5dd6a645cc8aa27de577a29155b32eb277865f21164ba7a844c0",
+  "response_text": "{\n  \"title\": \"ANOTHER WAY FOR TRUFFLES\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Truffles\",\n      \"fallback_string\": \"Truffles\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Leeks\",\n      \"fallback_string\": \"Leeks\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Salt\",\n      \"fallback_string\": \"Salt\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Pepper\",\n      \"fallback_string\": \"Pepper\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Chopped coriander\",\n      \"fallback_string\": \"Chopped coriander\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"The very best wine\",\n      \"fallback_string\": \"The very best wine\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_07\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"oil\",\n      \"fallback_string\": \"A little oil\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Cook the {{ing_01|truffles}} with {{ing_02|leeks}}, {{ing_03|salt}}, {{ing_04|pepper}}, {{ing_05|chopped coriander}}, {{ing_06|the very best wine}} and {{ing_07|a little oil}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

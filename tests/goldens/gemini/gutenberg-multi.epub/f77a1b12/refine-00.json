@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "5f70e70e7cb8b0d94d6d1eddf7a60e5d8d0cd02b1244a5e37db736e41c803526",
+  "response_text": "{\n  \"title\": \"PLAIN DUMPLING WITH BROTH (ISICIUM SIMPLEX)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 1,\n      \"unit\": \"ACETABULUM\",\n      \"name\": \"STOCK\",\n      \"fallback_string\": \"1 ACETABULUM [1] OF STOCK [2]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 7,\n      \"unit\": \"ACETABULUM\",\n      \"name\": \"WATER\",\n      \"fallback_string\": \"7 ACETABULUM OF WATER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"GREEN CELERY\",\n      \"fallback_string\": \"A LITTLE GREEN CELERY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": \"SPOONFUL\",\n      \"name\": \"GROUND PEPPER\",\n      \"fallback_string\": \"A LITTLE SPOONFUL OF GROUND PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"SAUSAGE MEAT OR DUMPLINGS\",\n      \"fallback_string\": \"SAUSAGE MEAT OR DUMPLINGS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"SEDIMENT SALTS OF HYDROGARUM\",\n      \"fallback_string\": \"SEDIMENT SALTS [3] OF HYDROGARUM (if for bowels)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"TO {{ing_01|1 ACETABULUM [1] OF STOCK [2]}} ADD {{ing_02|7 OF WATER}}, {{ing_03|A LITTLE GREEN CELERY}}, {{ing_04|A LITTLE SPOONFUL OF GROUND PEPPER}}, AND BOIL THIS WITH THE {{ing_05|SAUSAGE MEAT OR DUMPLINGS}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"IF YOU INTEND TAKING THIS TO MOVE THE BOWELS THE {{ing_06|SEDIMENT SALTS [3] OF HYDROGARUM}} HAVE TO BE ADDED [4].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

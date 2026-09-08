@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "0dc624e312115e99bd9a99fb851e126e26ce79714b0c20342a413a3b79499990",
+  "response_text": "{\"title\": \"Young Cabbage, Sprouts, Another Way (with Green Olives)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"sprouts or stalks\", \"fallback_string\": \"SPROUTS OR STALKS (seasoned and prepared as above)\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"green olives\", \"fallback_string\": \"GREEN OLIVES\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"TO THE {{ing_01|SPROUTS OR STALKS}}, SEASONED AND PREPARED AS ABOVE, ARE ADDED {{ing_02|GREEN OLIVES}} WHICH ARE HEATED LIKEWISE.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

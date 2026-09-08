@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "48fe6b9d357abd2edb4312a541e954766004ae5a0a2f5e7b73d8b5bbcea3c76f",
+  "response_text": "{\n  \"title\": \"SPELT OR FARINA PUDDING (APOTHERMUM)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"spelt\",\n      \"fallback_string\": \"SPELT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pignolia nuts\",\n      \"fallback_string\": \"[Tor. PIGNOLIA] NUTS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"peeled almonds\",\n      \"fallback_string\": \"PEELED ALMONDS [1]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"raisins\",\n      \"fallback_string\": \"RAISINS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"condensed wine or raisin wine\",\n      \"fallback_string\": \"CONDENSED WINE OR RAISIN WINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"crushed nuts, fruit, bread or cake crumbs\",\n      \"fallback_string\": \"CRUSHED [2] [nuts, fruit, bread or cake crumbs]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"BOIL {{ing_01|SPELT}} WITH {{ing_02|[Tor. PIGNOLIA] NUTS}} AND {{ing_03|PEELED ALMONDS [1]}} [G.-V. AND] IMMERSED IN [boiling] WATER AND WASHED WITH WHITE CLAY SO THAT THEY APPEAR PERFECTLY WHITE, ADD {{ing_04|RAISINS}}, [flavor with] {{ing_05|CONDENSED WINE OR RAISIN WINE}} AND SERVE IT IN A ROUND DISH WITH {{ing_06|CRUSHED [2] [nuts, fruit, bread or cake crumbs]}} SPRINKLED OVER IT [3].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dessert\"]\n  }\n}"
+}

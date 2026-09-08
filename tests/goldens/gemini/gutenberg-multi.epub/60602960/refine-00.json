@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "c88ce6aa1fd5f6b571e30048a8b10dffc385b7f0bbfcb100f615056fc05c50c6",
+  "response_text": "{\"title\": \"SAUCE FOR PERCH\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"lovage\", \"fallback_string\": \"lovage\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"crushed cumin\", \"fallback_string\": \"crushed cumin\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"onions\", \"fallback_string\": \"onions\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"stoned Damascus prunes\", \"fallback_string\": \"stoned Damascus prunes\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"wine\", \"fallback_string\": \"wine\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"mead\", \"fallback_string\": \"mead\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"vinegar\", \"fallback_string\": \"vinegar\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_10\", \"amount\": null, \"unit\": null, \"name\": \"reduced must\", \"fallback_string\": \"reduced must\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"{{ing_01|PEPPER}}, {{ing_02|LOVAGE}}, {{ing_03|CRUSHED CUMIN}}, {{ing_04|ONIONS}}, {{ing_05|STONED DAMASCUS PRUNES}}, {{ing_06|WINE}}, {{ing_07|MEAD}}, {{ing_08|VINEGAR}}, {{ing_09|OIL}}, {{ing_10|REDUCED MUST}}; COOK IT.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

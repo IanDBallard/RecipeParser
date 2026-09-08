@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "3ca4aeb384b1615fc243b99e20435d587d34603e255f8c7ead7a6e8237918fba",
+  "response_text": "{\"title\": \"[Dressing for] SPINY LOBSTER (AND SQUILL)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"PEPPER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"lovage\", \"fallback_string\": \"LOVAGE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"celery seed\", \"fallback_string\": \"CELERY SEED\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"vinegar\", \"fallback_string\": \"VINEGAR\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"yolks of hard boiled eggs\", \"fallback_string\": \"YOLKS OF [hard boiled] EGGS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"boiled shellfish meat\", \"fallback_string\": \"boiled shellfish meat\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"CRUSH {{ing_01|PEPPER}}, {{ing_02|LOVAGE}}, {{ing_03|CELERY SEED}}.\"}, {\"step\": 2, \"text\": \"POUR IN {{ing_04|VINEGAR}}, {{ing_05|BROTH}}, {{ing_06|YOLKS OF [hard boiled] EGGS}}.\"}, {\"step\": 3, \"text\": \"MIX WELL TOGETHER AND DRESS the {{ing_07|boiled shellfish meat}} AND SERVE.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

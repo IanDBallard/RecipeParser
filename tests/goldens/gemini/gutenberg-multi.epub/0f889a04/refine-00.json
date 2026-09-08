@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "b5ae29fd31c4231a8127e7d1087934c661160f063e8fbfe55556448e0563bbb6",
+  "response_text": "{\"title\":\"Parsnips Croquettes or Sausage\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"boiled parsnips\",\"fallback_string\":\"BOILED PARSNIPS\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"boiled spelt\",\"fallback_string\":\"BOILED SPELT\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":null,\"unit\":null,\"name\":\"chopped hard eggs\",\"fallback_string\":\"CHOPPED HARD EGGS\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":null,\"unit\":null,\"name\":\"stock\",\"fallback_string\":\"STOCK\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_05\",\"amount\":null,\"unit\":null,\"name\":\"pepper\",\"fallback_string\":\"PEPPER\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_06\",\"amount\":null,\"unit\":null,\"name\":\"pignolia nut\",\"fallback_string\":\"PIGNOLIA NUT\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_07\",\"amount\":null,\"unit\":null,\"name\":\"caul\",\"fallback_string\":\"CAUL (or casings)\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_08\",\"amount\":null,\"unit\":null,\"name\":\"wine sauce\",\"fallback_string\":\"WINE SAUCE\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"BRUISE THE {{ing_01|BOILED PARSNIPS}} [scallops, muscular part of shellfish] ELIMINATE THE HARD STRINGS; ADD {{ing_02|BOILED SPELT}} AND {{ing_03|CHOPPED HARD EGGS}}, {{ing_04|STOCK}} AND {{ing_05|PEPPER}}. MAKE CROQUETTES OR SAUSAGE FROM THIS, ADDING {{ing_06|PIGNOLIA NUT}} AND {{ing_05|PEPPER}}, WRAP IN {{ing_07|CAUL}} [or fill in casings] FRY AND SERVE THEM AS AN ENTRÉE DISH IN A {{ing_08|WINE SAUCE}}.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[\"Dinner\"]}}"
+}

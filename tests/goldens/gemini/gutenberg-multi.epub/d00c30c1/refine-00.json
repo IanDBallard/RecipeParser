@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "b21a1dc908870140372f4ffa8624f940a030998c7b0e57cb2ed2fffd43befa98",
+  "response_text": "{\n  \"title\": \"Leeks\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"leeks\",\n      \"fallback_string\": \"WELL MATURED LEEKS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"salt\",\n      \"fallback_string\": \"SALT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"water\",\n      \"fallback_string\": \"WATER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"oil\",\n      \"fallback_string\": \"OIL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"BEST KIND OF BROTH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|WELL MATURED LEEKS}} ARE BOILED WITH A PINCH OF {{ing_02|SALT}} IN {{ing_03|WATER}} AND {{ing_04|OIL}}. THEY ARE THEN STEWED IN {{ing_04|OIL}} AND IN THE {{ing_05|BEST KIND OF BROTH}}, AND SERVED.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

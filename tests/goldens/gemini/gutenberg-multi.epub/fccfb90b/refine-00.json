@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "172d8f26e6cbb011c824fd9ca13daa9917c58a59e1ee5faa26f9582e49f0cc3a",
+  "response_text": "{\n  \"title\": \"TO CLARIFY MUDDY WINE\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"bean meal\",\n      \"fallback_string\": \"BEAN MEAL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 3,\n      \"unit\": \"whites\",\n      \"name\": \"eggs\",\n      \"fallback_string\": \"WHITES OF THREE EGGS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"wine\",\n      \"fallback_string\": \"WINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"ashes of vines\",\n      \"fallback_string\": \"ASHES OF VINES (alternative)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"PUT {{ing_01|BEAN MEAL}} AND THE {{ing_02|WHITES OF THREE EGGS}} IN A MIXING BOWL.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"MIX THOROUGHLY WITH A WHIP AND ADD TO THE {{ing_03|WINE}}, STIRRING FOR A LONG TIME.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"THE NEXT DAY THE {{ing_03|WINE}} WILL BE CLEAR.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"{{ing_04|ASHES OF VINES}} HAVE THE SAME EFFECT.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

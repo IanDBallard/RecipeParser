@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "5a886d52672f8734b749813f764dca0199e79b6d6db377b621f337208a32a03c",
+  "response_text": "{\"title\": \"SUCKLING PIG, WINE SAUCE\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"pig\", \"fallback_string\": \"PIG\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"OIL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"PEPPER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"rue\", \"fallback_string\": \"RUE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"laurel berries\", \"fallback_string\": \"LAUREL BERRIES\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"raisin wine or reduced wine\", \"fallback_string\": \"RAISIN WINE OR REDUCED WINE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"old wine\", \"fallback_string\": \"OLD WINE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"TAKE THE {{ing_01|PIG}}, GARNISH [with a marinade of herbs, etc.].\"}, {\"step\": 2, \"text\": \"COOK [roast] IT WITH {{ing_02|OIL}} AND {{ing_03|BROTH}}.\"}, {\"step\": 3, \"text\": \"WHEN DONE, PUT IN THE MORTAR {{ing_04|PEPPER}}, {{ing_05|RUE}}, {{ing_06|LAUREL BERRIES}}, {{ing_03|BROTH}}, {{ing_07|RAISIN WINE OR REDUCED WINE}}, {{ing_08|OLD WINE}}.\"}, {\"step\": 4, \"text\": \"CRUSH ALL, MIX AND PREPARE TO A POINT.\"}, {\"step\": 5, \"text\": \"DRESS THE {{ing_01|PIG}} ON A SHOWY SERVICE PLATTER AND SERVE.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

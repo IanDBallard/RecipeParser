@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "9d80d853731e1756bc6268c156ed0da503c2e71b3030de847882507c395babdb",
+  "response_text": "{\n  \"title\": \"ROSE WINE\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"rose petals\",\n      \"fallback_string\": \"ROSE PETALS (lower white part removed)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"wine\",\n      \"fallback_string\": \"WINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|ROSE PETALS}}, the lower white part removed, sewed into a linen bag and immersed in {{ing_02|wine}} for seven days.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Thereupon add a sack of {{ing_01|new petals}} which allow to draw for another seven days.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Again remove the {{ing_01|old petals}} and replace them by {{ing_01|fresh ones}} for another week; then strain the {{ing_02|wine}} through the colander.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"Before serving, add {{ing_03|honey}} sweetening to taste.\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"Take care that only the best {{ing_01|petals}} free from dew be used for soaking.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "42dd7379677f738f1c3b61e19d873191b1e736cb0da56156bd5b3a9af095ab11",
+  "response_text": "{\"title\": \"ANOTHER SAUCE FOR SARDINES\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"lovage\", \"fallback_string\": \"lovage\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"dry mint cooked\", \"fallback_string\": \"dry mint cooked\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"onion\", \"fallback_string\": \"onion [chopped]\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"honey\", \"fallback_string\": \"honey\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"vinegar\", \"fallback_string\": \"vinegar\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"hard eggs\", \"fallback_string\": \"chopped hard eggs\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"{{ing_01|PEPPER}}, {{ing_02|LOVAGE}}, {{ing_03|DRY MINT COOKED}}, {{ing_04|ONION [chopped]}}, {{ing_05|HONEY}}, {{ing_06|VINEGAR}}\"}, {\"step\": 2, \"text\": \"DILUTE WITH {{ing_07|OIL}}\"}, {\"step\": 3, \"text\": \"SPRINKLE WITH {{ing_08|CHOPPED HARD EGGS}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "268c8fbc0d39e5ffe0917133964df279294b137901e6c6dcb77d7b47fef01ce3",
+  "response_text": "{\"title\": \"ANOTHER WAY\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Truffles\", \"fallback_string\": \"Truffles\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Caul of pork\", \"fallback_string\": \"Caul of pork\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"If you wish you may also wrap the {{ing_01|truffles}} in {{ing_02|caul of pork}}.\"}, {\"step\": 2, \"text\": \"Braise and so serve them.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

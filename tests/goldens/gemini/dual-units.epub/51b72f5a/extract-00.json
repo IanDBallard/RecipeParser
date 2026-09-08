@@ -1,0 +1,14 @@
+{
+  "stage": "extract",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "d6d21535c4a2049debb482cd6ab9c4ad430ae0369a7fbb567f75f7d1a3c8cc6c",
+  "response_text": "{\"recipes\": [{\"name\": \"Buttermilk Scones\", \"photo_filename\": \"scones.jpg\", \"servings\": \"8\", \"prep_time\": \"15 mins\", \"cook_time\": \"14 mins\", \"ingredients\": [\"2 cups/250g plain flour\", \"1 tablespoon/12g baking powder\", \"1/2 teaspoon/3g fine salt\", \"5 tablespoons/70g cold butter, cubed\", \"3/4 cup/180ml buttermilk\"], \"directions\": [\"Heat the oven to 425F. Line a tray with parchment.\", \"Rub the butter into the flour, baking powder and salt until it looks like coarse crumbs.\", \"Stir in the buttermilk until a shaggy dough forms. Do not overwork it.\", \"Pat out to 1 inch thick, cut rounds, and bake for 12 to 14 minutes.\"], \"notes\": null, \"categories\": []}]}"
+}

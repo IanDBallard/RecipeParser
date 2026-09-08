@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "2e2de3400ec3a06d8485ccccb896570cf36e94ae1f64fd622b62da6cef639afd",
+  "response_text": "{\n  \"title\": \"CALAMARY IN THE PAN\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Calamary\",\n      \"fallback_string\": \"Calamary\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"pepper\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"rue\",\n      \"fallback_string\": \"rue\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"a little honey\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"broth\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"reduced wine\",\n      \"fallback_string\": \"reduced wine\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_07\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"oil\",\n      \"fallback_string\": \"oil\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_08\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"roux\",\n      \"fallback_string\": \"roux\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Crush {{ing_02|pepper}}, {{ing_03|rue}}, {{ing_04|a little honey}}, {{ing_05|broth}}, {{ing_06|reduced wine}}, and {{ing_07|oil}} to taste.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"When commencing to boil, bind with {{ing_08|roux}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

@@ -218,17 +218,28 @@ class GoldenClient:
     def _generate(self, *, model: str, contents: object, config: dict) -> GoldenResponse:
         stage = sniff_stage(contents)
         body = prompt_body(contents, stage)
-        ordinal = self._next_ordinal(stage, body)
-        directory, filename = record_key(stage, body, ordinal)
-        path = self._fixture_dir / directory / filename
 
         if self.record:
+            # Call first, allocate second: a call that raises (and is retried
+            # by _call_with_retry on this same client) must not consume an
+            # ordinal, or the eventual successful reply lands at ordinal N
+            # while a fresh replay client always asks for ordinal 0 first.
             response = self._real.models.generate_content(
                 model=model, contents=contents, config=config
             )
             text = getattr(response, "text", "") or ""
+            ordinal = self._next_ordinal(stage, body)
+            directory, filename = record_key(stage, body, ordinal)
+            path = self._fixture_dir / directory / filename
             self._write(path, stage, ordinal, model, config, contents, text)
             return GoldenResponse(text=text)
+
+        # Replay: unchanged. A legitimate second real call for the same body
+        # (e.g. a parse retry) must still resolve to ordinal 1, so allocation
+        # stays keyed off call order here, not off a successful write.
+        ordinal = self._next_ordinal(stage, body)
+        directory, filename = record_key(stage, body, ordinal)
+        path = self._fixture_dir / directory / filename
 
         if not path.exists():
             raise MissingRecordingError(

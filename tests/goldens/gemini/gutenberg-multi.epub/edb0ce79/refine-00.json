@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "abe9e0363ab78d4da290a03b95efe456140043d36c5244b23ecae013203c986e",
+  "response_text": "{\"title\": \"Another White Sauce for Boiled Viands\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Pepper\", \"fallback_string\": \"Pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Carraway\", \"fallback_string\": \"Carraway\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"Lovage\", \"fallback_string\": \"Lovage\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"Thyme\", \"fallback_string\": \"Thyme\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"Origany\", \"fallback_string\": \"Origany\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"Shallots\", \"fallback_string\": \"Shallots\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"Dates\", \"fallback_string\": \"Dates\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"Honey\", \"fallback_string\": \"Honey\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"Vinegar\", \"fallback_string\": \"Vinegar\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_10\", \"amount\": null, \"unit\": null, \"name\": \"Broth\", \"fallback_string\": \"Broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_11\", \"amount\": null, \"unit\": null, \"name\": \"Oil\", \"fallback_string\": \"Oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Another white sauce for boiled dishes contains: {{ing_01|Pepper}}, {{ing_02|Carraway}}, {{ing_03|Lovage}}, {{ing_04|Thyme}}, {{ing_05|Origany}}, {{ing_06|Shallots}}, {{ing_07|Dates}}, {{ing_08|Honey}}, {{ing_09|Vinegar}}, {{ing_10|Broth}}, {{ing_11|Oil}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

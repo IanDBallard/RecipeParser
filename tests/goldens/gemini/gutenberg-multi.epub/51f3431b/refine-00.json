@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "53e739756cc4bb3907babefaee8a33e9513614d97ff26af10d126d27e569d9af",
+  "response_text": "{\"title\": \"FISH LIQUOR\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": 1, \"unit\": \"ounce\", \"name\": \"pepper\", \"fallback_string\": \"One ounce of pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": 1, \"unit\": \"pint\", \"name\": \"reduced wine\", \"fallback_string\": \"one pint of reduced wine\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": 1, \"unit\": \"pint\", \"name\": \"spiced wine\", \"fallback_string\": \"one pint of spiced wine\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": 2, \"unit\": \"ounces\", \"name\": \"oil\", \"fallback_string\": \"two ounces of oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"A liquor [in which to cook fish] is made by taking [1] {{ing_01|one ounce of pepper}}, {{ing_02|one pint of reduced wine}}, {{ing_03|one pint of spiced wine}} and {{ing_04|two ounces of oil}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

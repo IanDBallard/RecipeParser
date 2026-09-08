@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "0b567a7c9dbaec116459b89692711406d3e9f6f826d09a64efad7ee915ef3067",
+  "response_text": "{\n  \"title\": \"KROMESKIS OF HARE\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Hare\",\n      \"fallback_string\": \"Hare\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"soaked nuts\",\n      \"fallback_string\": \"soaked nuts\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"caul or parchment\",\n      \"fallback_string\": \"caul or parchment\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"The {{ing_01|hare}} is cooked and flavored in the same (above) manner.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Small bits of meat are mixed with {{ing_02|soaked nuts}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"This (salpicon) is wrapped in {{ing_03|caul or parchment}}, the ends being closed by means of skewers (and fried).\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [\"French\"],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

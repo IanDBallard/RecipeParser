@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "6472fd8bd2d3b49252dcf054843bf294538236f37bcb9018d31a2cac844b5773",
+  "response_text": "{\n  \"title\": \"MUSTARD BEANS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"beans\",\n      \"fallback_string\": \"BEANS (previously cooked)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"crushed mustard seed\",\n      \"fallback_string\": \"CRUSHED MUSTARD SEED\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"nuts\",\n      \"fallback_string\": \"NUTS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"rue\",\n      \"fallback_string\": \"RUE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cumin\",\n      \"fallback_string\": \"CUMIN\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_07\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"vinegar\",\n      \"fallback_string\": \"VINEGAR\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"The {{ing_01|beans previously cooked}} are seasoned with {{ing_02|CRUSHED MUSTARD SEED}}, {{ing_03|HONEY}}, {{ing_04|NUTS}}, {{ing_05|RUE}}, {{ing_06|CUMIN}}, and served with {{ing_07|VINEGAR}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "44db5dd74ed4bbd8eaa11c6b3549cc39952d22d2c329af992c76dcc96e48cf13",
+  "response_text": "{\"title\": \"Stuffed Sow’s Belly\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Sow’s belly\", \"fallback_string\": \"Sow’s belly (full grown)\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Crushed pepper\", \"fallback_string\": \"Crushed pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"Carraway\", \"fallback_string\": \"Carraway\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"Salt mussels\", \"fallback_string\": \"Salt mussels\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"Brine sauce\", \"fallback_string\": \"Brine sauce\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"Mustard\", \"fallback_string\": \"Mustard\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"{{ing_01|Full sow’s belly}} is stuffed with {{ing_02|crushed pepper}}, {{ing_03|carraway}}, {{ing_04|salt mussels}}.\"}, {\"step\": 2, \"text\": \"Sew the {{ing_01|belly}} tight and roast.\"}, {\"step\": 3, \"text\": \"Enjoy this with a {{ing_05|brine sauce}} and {{ing_06|mustard}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

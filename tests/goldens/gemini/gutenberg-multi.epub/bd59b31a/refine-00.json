@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "efc02031b31c56e707ac4f72e3894d8832bd208f2788e39aa6bd848e535f64f0",
+  "response_text": "{\n  \"title\": \"Carrots, Another Way (Stewed with Cumin Sauce)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"carrots\",\n      \"fallback_string\": \"CARROTS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cumin\",\n      \"fallback_string\": \"CUMIN\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"oil\",\n      \"fallback_string\": \"OIL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"THE {{ing_01|CARROTS}} [are] BOILED [and] SLICED, STEWED WITH {{ing_02|CUMIN}} AND A LITTLE {{ing_03|OIL}} AND ARE SERVED.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"AT THE SAME TIME [here is your opportunity] MAKE A {{ing_02|CUMIN}} SAUCE [from the carrot juice] FOR THOSE WHO HAVE THE COLIC.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

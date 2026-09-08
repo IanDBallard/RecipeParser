@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "1877577db7d8826ca2120d469e8b592b9efeba66c7f78114066bd113e9f13fa2",
+  "response_text": "{\"title\":\"Another Sweet (Nut Custard)\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"Pepper\",\"fallback_string\":\"Pepper\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"Nuts\",\"fallback_string\":\"Nuts\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":null,\"unit\":null,\"name\":\"Honey\",\"fallback_string\":\"Honey\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":null,\"unit\":null,\"name\":\"Rue\",\"fallback_string\":\"Rue\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_05\",\"amount\":null,\"unit\":null,\"name\":\"Raisin wine\",\"fallback_string\":\"Raisin wine\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_06\",\"amount\":null,\"unit\":null,\"name\":\"Milk\",\"fallback_string\":\"Milk\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_07\",\"amount\":null,\"unit\":null,\"name\":\"eggs\",\"fallback_string\":\"A few eggs (well worked in)\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"Crush {{ing_01|pepper}}, {{ing_02|nuts}}, {{ing_03|honey}}, {{ing_04|rue}}, and {{ing_05|raisin wine}} with {{ing_06|milk}}, and cook the mixture with a few {{ing_07|eggs}} well worked in.\"},{\"step\":2,\"text\":\"Cover with {{ing_03|honey}}, sprinkle with [crushed {{ing_02|nuts}}, etc.] and serve.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[\"Dessert\"]}}"
+}

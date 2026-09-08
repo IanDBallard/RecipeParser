@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "e82e2a47406bb327a958d812d3ce2ce12541f104395d89cd1480eb6e36983ca1",
+  "response_text": "{\n  \"title\": \"HONEY REFRESHER FOR TRAVELERS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"ground pepper\",\n      \"fallback_string\": \"GROUND PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"spiced wine\",\n      \"fallback_string\": \"SPICED WINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"FLAVOR {{ing_01|HONEY}} WITH {{ing_02|GROUND PEPPER}} AND SKIM.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"IN THE MOMENT OF SERVING PUT {{ing_01|HONEY}} IN A CUP, AS MUCH AS IS DESIRED TO OBTAIN THE RIGHT DEGREE OF SWEETNESS, AND MIX {{ing_03|SPICED WINE}} NOT MORE THAN A NEEDED QUANTITY; ALSO ADD SOME WINE TO THE SPICED {{ing_01|HONEY}} TO FACILITATE ITS FLOW AND THE MIXING.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

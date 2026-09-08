@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "09c7ea9c630ea6f7d4c509a791061944224cf156d65feabe4ea9e6bf92c0d696",
+  "response_text": "{\"title\": \"MORELS\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Morels\", \"fallback_string\": \"Morels\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Garum\", \"fallback_string\": \"Garum\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"Pepper\", \"fallback_string\": \"Pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"Broth\", \"fallback_string\": \"Broth (optional)\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Cook {{ing_01|morels}} quickly in {{ing_02|garum}} and {{ing_03|pepper}}.\"}, {\"step\": 2, \"text\": \"Take out and allow to drip.\"}, {\"step\": 3, \"text\": \"Alternatively, {{ing_04|broth}} with crushed {{ing_03|pepper}} may be used to cook the {{ing_01|mushrooms}} in.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

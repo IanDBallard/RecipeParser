@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "6574b88fd506ae4c690393525e506d8ca73b49fd0719cd5d904c0d97ed3f18c7",
+  "response_text": "{\n  \"title\": \"SPOILED HONEY MADE GOOD\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 1,\n      \"unit\": \"part\",\n      \"name\": \"spoiled honey\",\n      \"fallback_string\": \"ONE PART of SPOILED HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 2,\n      \"unit\": \"parts\",\n      \"name\": \"good honey\",\n      \"fallback_string\": \"TWO PARTS of GOOD HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"HOW BAD HONEY MAY BE TURNED INTO A SALEABLE ARTICLE IS TO MIX {{ing_01|ONE PART OF THE SPOILED HONEY}} WITH {{ing_02|TWO PARTS OF GOOD HONEY}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

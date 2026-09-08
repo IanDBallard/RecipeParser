@@ -1,0 +1,14 @@
+{
+  "stage": "extract",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "db3168a1f07d77ba06ba0e93baa2429814dca0e6c295edc10f59e89d755585bf",
+  "response_text": "{\"recipes\": []}"
+}

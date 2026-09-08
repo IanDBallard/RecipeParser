@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "45b2325a7f6ee0ac3f8a3a7190c371f67df505e12f85fe42bb470b316b336ce7",
+  "response_text": "{\"title\": \"ANOTHER METHOD (SEA URCHIN)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Sea urchin\", \"fallback_string\": \"Sea urchin\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"costmary\", \"fallback_string\": \"a little costmary\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"dry mint\", \"fallback_string\": \"dry mint\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"mead\", \"fallback_string\": \"mead\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"Indian spikenard\", \"fallback_string\": \"Indian spikenard\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"leaves\", \"fallback_string\": \"(bay or nard) leaves\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Combine {{ing_02|pepper}}, {{ing_03|costmary}}, {{ing_04|dry mint}}, {{ing_05|mead}}, {{ing_06|broth}}, {{ing_07|Indian spikenard}}, and {{ing_08|leaves}} for preparing {{ing_01|sea urchin}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

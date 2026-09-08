@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "4df2c56698917ef8b077debe186d2b15b72791b38174c7d4e81e2c680c86e36e",
+  "response_text": "{\"title\": \"SAUCE FOR BOILED TUNNY\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"lovage\", \"fallback_string\": \"lovage\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"thyme\", \"fallback_string\": \"thyme\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"crushed herbs\", \"fallback_string\": \"crushed herbs\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"onions\", \"fallback_string\": \"onions\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"fig dates [or fig wine]\", \"fallback_string\": \"fig dates [or fig wine]\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"honey\", \"fallback_string\": \"honey\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"vinegar\", \"fallback_string\": \"vinegar\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_10\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_11\", \"amount\": null, \"unit\": null, \"name\": \"mustard\", \"fallback_string\": \"mustard\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Combine {{ing_01|pepper}}, {{ing_02|lovage}}, {{ing_03|thyme}}, {{ing_04|crushed herbs}}, {{ing_05|onions}}, {{ing_06|fig dates [or fig wine]}}, {{ing_07|honey}}, {{ing_08|vinegar}}, {{ing_09|broth}}, {{ing_10|oil}}, and {{ing_11|mustard}} and tie.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

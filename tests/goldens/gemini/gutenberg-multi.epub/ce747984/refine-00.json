@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "3863e979577c9a81f877ba2401a4573ee0dee7335c7c8a2965e9b3cbf372c9c9",
+  "response_text": "{\"title\": \"Carrots, Another Way (Salad)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"carrots\", \"fallback_string\": \"CARROTS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"salt\", \"fallback_string\": \"SALT\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"pure oil\", \"fallback_string\": \"PURE OIL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"vinegar\", \"fallback_string\": \"VINEGAR\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"The {{ing_01|carrots}} are cooked, {{ing_02|salted}}, and served with {{ing_03|pure oil}} and {{ing_04|vinegar}}.\"}], \"grid_categories\": {\"Cuisine\": [\"Italian\"], \"Meal Type\": []}}"
+}

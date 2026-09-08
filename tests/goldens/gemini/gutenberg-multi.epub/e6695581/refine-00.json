@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "e0e8961d3194a969b244c37332626718822767f9587c27f7714bd5bdf7f54b82",
+  "response_text": "{\n  \"title\": \"DUMPLINGS OF PHEASANT (ISICIA PLENA)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"fresh pheasants\",\n      \"fallback_string\": \"FRESH PHEASANTS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"fat and trimmings of the pheasant\",\n      \"fallback_string\": \"FAT AND TRIMMINGS OF THE PHEASANT (for forcemeat)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"BROTH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"reduced wine\",\n      \"fallback_string\": \"REDUCED WINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"hydrogarum\",\n      \"fallback_string\": \"HYDROGARUM [water seasoned with garum, or even plain salt water]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"[Lightly roast choice] {{ing_01|FRESH PHEASANTS}} [cut them into dice and mix these with a] STIFF FORCEMEAT MADE OF THE {{ing_02|FAT AND THE TRIMMINGS OF THE PHEASANT}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"SEASON WITH {{ing_03|PEPPER}}, {{ing_04|BROTH}} AND {{ing_05|REDUCED WINE}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"SHAPE INTO CROQUETTES OR SPOON DUMPLINGS, AND POACH IN {{ing_06|HYDROGARUM [water seasoned with garum, or even plain salt water]}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

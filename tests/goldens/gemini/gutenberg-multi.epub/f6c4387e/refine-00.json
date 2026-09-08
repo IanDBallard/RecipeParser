@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "0dcb8ebb16fa4923951153769175e80f8db979df875f6d87bd3b2d14fa9b364a",
+  "response_text": "{\n  \"title\": \"TURTLEDOVES\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"turtledoves\",\n      \"fallback_string\": \"TURTLEDOVES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"laser\",\n      \"fallback_string\": \"LASER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"A LITTLE BROTH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"OPEN {{ing_01|them}}, PREPARE [marinate] CAREFULLY.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"CRUSH {{ing_02|PEPPER}}, {{ing_03|LASER}}, {{ing_04|A LITTLE BROTH}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"IMMERSE THE {{ing_01|DOVES}} IN THIS PREPARATION SO THAT IT WILL BE ABSORBED BY {{ing_01|them}}.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"AND THUS ROAST {{ing_01|them}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

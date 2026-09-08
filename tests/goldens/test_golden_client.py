@@ -4,8 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 import warnings
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
+from google.genai import errors as genai_errors
 
 from recipeparser import gemini, toc
 from recipeparser.models import RecipeExtraction
@@ -241,6 +244,44 @@ class TestEmbeddings:
         client = GoldenClient(fixture_id="f.epub", root=tmp_path)
         client.models.embed_content(model="m", contents="soup", config=None)
         assert not (tmp_path / "f.epub").exists()
+
+
+class TestRecordOrdinalAllocation:
+    """Regression test for the gutenberg-multi.epub incident (Task 8).
+
+    ``_call_with_retry`` retries a transient server error on the very same
+    client. If GoldenClient allocated an ordinal before attempting the real
+    call, the failed attempt burned ordinal 0 and the eventual successful
+    reply landed at ordinal 1 -- but a replay client's ordinal counter always
+    starts at 0, so it could never find that reply. The fix allocates the
+    ordinal only after a real response comes back.
+    """
+
+    def test_a_retried_call_still_writes_ordinal_zero(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(gemini.time, "sleep", lambda *_: None)
+        prompt = gemini.build_extract_prompt("MY CHUNK")
+
+        # record=False at construction time sidesteps the real-API-key guard;
+        # flipping the flag and injecting a fake "_real" afterwards recreates
+        # exactly the record-mode state _generate() branches on, with no network.
+        client = GoldenClient(fixture_id="f.epub", root=tmp_path)
+        client.record = True
+        transient = genai_errors.ServerError(
+            504, {"message": "504 error", "status": "DEADLINE_EXCEEDED"}
+        )
+        ok_response = SimpleNamespace(text='{"recipes": []}')
+        client._real = MagicMock()
+        client._real.models.generate_content.side_effect = [transient, ok_response]
+
+        result = gemini._call_with_retry(client, model="m", contents=prompt, config={})
+
+        assert result.text == '{"recipes": []}'
+        assert client._real.models.generate_content.call_count == 2
+        body = gc.prompt_body(prompt, "extract")
+        directory, _ = gc.record_key("extract", body, 0)
+        fixture_dir = tmp_path / "f.epub" / directory
+        assert (fixture_dir / "extract-00.json").exists()
+        assert not (fixture_dir / "extract-01.json").exists()
 
 
 class TestRecordModeGuard:

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "f4412d83a8f4652eed9772326e062ef33fcf88d68bb2e20f3a650ecaeb176e3c",
+  "response_text": "{\"title\": \"THE HERB FENUGREEK\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"FENUGREEK\", \"fallback_string\": \"FENUGREEK\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"BROTH\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"OIL\", \"fallback_string\": \"OIL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"WINE\", \"fallback_string\": \"WINE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"{{ing_01|FENUGREEK}} [is prepared] IN {{ing_02|BROTH}}, {{ing_03|OIL}} AND {{ing_04|WINE}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "563b3ec20ae3542bc591d66aa360ab18e190466b509b713440eb831d76813b45",
+  "response_text": "{\"title\": \"Nut Custard (Patina Versatilis)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"WALNUTS\", \"fallback_string\": \"WALNUTS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"HAZELNUTS\", \"fallback_string\": \"HAZELNUTS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"HONEY\", \"fallback_string\": \"HONEY\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"PEPPER\", \"fallback_string\": \"PEPPER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"BROTH\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"MILK\", \"fallback_string\": \"MILK\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"EGGS\", \"fallback_string\": \"EGGS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"OIL\", \"fallback_string\": \"OIL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"CRUSH VERY FINE {{ing_01|WALNUTS}} AND {{ing_02|HAZELNUTS}} TOAST THEM AND CRUSH WITH {{ing_03|HONEY}}, MIX IN {{ing_04|PEPPER}}, {{ing_05|BROTH}}, {{ing_06|MILK}} AND {{ing_07|EGGS}} AND A LITTLE {{ing_08|OIL}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dessert\"]}}"
+}

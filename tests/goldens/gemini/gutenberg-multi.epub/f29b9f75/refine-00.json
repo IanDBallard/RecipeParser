@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "e9f7dd281db107aca6f01660f60571276977d373057c82755760704e8945b099",
+  "response_text": "{\"title\": \"PLAIN LAMB\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"skinned lamb\", \"fallback_string\": \"SKINNED LAMB\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"OIL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"wine\", \"fallback_string\": \"WINE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"leeks\", \"fallback_string\": \"LEEKS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"coriander cut with the knife\", \"fallback_string\": \"CORIANDER CUT WITH THE KNIFE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"OF THE {{ing_01|SKINNED LAMB}} MAKE SMALL CUTLETS WHICH WASH CAREFULLY.\"}, {\"step\": 2, \"text\": \"AND ARRANGE IN A SAUCE PAN.\"}, {\"step\": 3, \"text\": \"ADD {{ing_02|OIL}}, {{ing_03|BROTH}}, {{ing_04|WINE}}, {{ing_05|LEEKS}}, {{ing_06|CORIANDER CUT WITH THE KNIFE}}.\"}, {\"step\": 4, \"text\": \"WHEN IT COMMENCES TO BOIL, STIR VERY FREQUENTLY AND SERVE.\"}], \"grid_categories\": {\"Cuisine\": [\"British\"], \"Meal Type\": [\"Dinner\"]}}"
+}

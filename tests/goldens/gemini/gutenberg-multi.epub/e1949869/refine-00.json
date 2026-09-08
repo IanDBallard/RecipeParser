@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "1def1c6ea362432d5afa9797ed2547703cc0b5399b62f15398bc910f752051e2",
+  "response_text": "{\n  \"title\": \"TO MAKE HONEY CAKES LAST\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"yeast\",\n      \"fallback_string\": \"Yeast (what the Greeks call)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"flour\",\n      \"fallback_string\": \"FLOUR\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"TO MAKE HONEY CAKES THAT WILL KEEP TAKE {{ing_01|what the Greeks call yeast}} AND MIX IT WITH THE {{ing_02|FLOUR}} AND THE {{ing_03|HONEY}} AT THE TIME WHEN MAKING THE COOKY DOUGH.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dessert\"]\n  }\n}"
+}

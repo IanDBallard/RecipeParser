@@ -1,0 +1,14 @@
+{
+  "stage": "extract",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "4d2d259b5b1b8f0dca9939dddcecf58077e373c9ecbae9d0ef49b7d44bc424dd",
+  "response_text": "{\n  \"recipes\": [\n    {\n      \"name\": \"Brown Butter Shortbread\",\n      \"photo_filename\": \"shortbread.jpg\",\n      \"servings\": \"12\",\n      \"prep_time\": \"20 mins\",\n      \"cook_time\": \"40 mins\",\n      \"ingredients\": [\n        \"14 tablespoons/200g butter\",\n        \"1/2 cup/100g caster sugar\",\n        \"2 cups/250g plain flour\",\n        \"1/4 teaspoon/1.5g fine salt\"\n      ],\n      \"directions\": [\n        \"Brown the butter in a pale pan until it smells of hazelnuts, then cool until thick.\",\n        \"Beat in the sugar, then the flour and salt, to a stiff paste.\",\n        \"Press into a tin, dock all over, and bake at 325F for 40 minutes.\",\n        \"Cut while warm and cool in the tin.\"\n      ],\n      \"notes\": null,\n      \"categories\": []\n    }\n  ]\n}"
+}

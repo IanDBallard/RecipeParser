@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "462a2f054aaa8bb865d7ab643573522cda35a07b132cbf1aa6fedc4a69c90dca",
+  "response_text": "{\n  \"title\": \"To Cook Pork Shoulder\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Ham (pork shoulder)\",\n      \"fallback_string\": \"Ham (pork shoulder)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Water\",\n      \"fallback_string\": \"Water\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Figs\",\n      \"fallback_string\": \"Figs\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Crumbs\",\n      \"fallback_string\": \"Crumbs\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Reduced wine (or spiced wine)\",\n      \"fallback_string\": \"Reduced wine (or spiced wine)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|Ham}} simply cooked in {{ing_02|water}} with {{ing_03|figs}} is usually dressed on a platter [baking pan] sprinkled with {{ing_04|crumbs}} and {{ing_05|reduced wine}}, or, still better, with {{ing_05|spiced wine}} [and is glazed under the open flame, or with a shovel containing red-hot embers].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "f0a7c44499c0ce543256db5585adfbec5552fc4ad22c417d4f1d48f4ff32fadd",
+  "response_text": "{\"title\": \"Another Way to Cook Leeks\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"leeks\", \"fallback_string\": \"LEEKS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"cabbage leaves\", \"fallback_string\": \"CABBAGE LEAVES\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"WRAP THE {{ing_01|LEEKS}} WELL IN {{ing_02|CABBAGE LEAVES}}, HAVING FIRST COOKED THEM AS DIRECTED ABOVE AND THEN FINISH THEM IN THE ABOVE WAY.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

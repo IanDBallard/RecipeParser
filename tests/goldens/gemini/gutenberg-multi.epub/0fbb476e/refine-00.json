@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "ec1c9a995ac3c230a87908a5be65982a034bc9b877f86ae179ecb61f510faa7b",
+  "response_text": "{\n  \"title\": \"CUCUMBERS (CUCUMERES)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"peeled cucumbers\",\n      \"fallback_string\": \"PEELED CUCUMBERS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth or wine sauce\",\n      \"fallback_string\": \"BROTH [1] OR WINE SAUCE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Stew the {{ing_01|PEELED CUCUMBERS}} either in {{ing_02|BROTH [1] OR IN A WINE SAUCE}}; and you will find them to be tender and not causing indigestion.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

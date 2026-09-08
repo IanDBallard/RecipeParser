@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "8e400e199c4439272ab41c78c700f4027633fc7309b0d242637a19b31f494319",
+  "response_text": "{\"title\": \"VEAL OR BEEF WITH LEEKS\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Veal or beef\", \"fallback_string\": \"Veal or beef\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Leeks\", \"fallback_string\": \"Leeks\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"Quinces\", \"fallback_string\": \"Quinces\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"Onions\", \"fallback_string\": \"Onions\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"Dasheens\", \"fallback_string\": \"Dasheens\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"Broth\", \"fallback_string\": \"Broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"Pepper\", \"fallback_string\": \"Pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"Laser\", \"fallback_string\": \"Laser\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"A little oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Prepare {{ing_01|veal or beef}} with {{ing_02|leeks}} or with {{ing_03|quinces}} or with {{ing_04|onions}}, or with {{ing_05|dasheens}}.\"}, {\"step\": 2, \"text\": \"Use {{ing_06|broth}}, {{ing_07|pepper}}, {{ing_08|laser}} and {{ing_09|a little oil}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

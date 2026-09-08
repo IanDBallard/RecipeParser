@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "1af964e063dfca5fef132d2be071ef61243137a1172b76ed48bd7674bf902b65",
+  "response_text": "{\"title\": \"PEAS\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Peas\", \"fallback_string\": \"Peas\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Leeks\", \"fallback_string\": \"Leeks\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"Coriander\", \"fallback_string\": \"Coriander\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"Cumin\", \"fallback_string\": \"Cumin\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"Pepper\", \"fallback_string\": \"Pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"Lovage\", \"fallback_string\": \"Lovage\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"Dill\", \"fallback_string\": \"Dill\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"Green basilica\", \"fallback_string\": \"Green basilica\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"Wine\", \"fallback_string\": \"Wine\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_10\", \"amount\": null, \"unit\": null, \"name\": \"Broth\", \"fallback_string\": \"Broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Cook the {{ing_01|peas}}, when skimmed, lay {{ing_02|leeks}}, {{ing_03|coriander}} and {{ing_04|cumin}} on top.\"}, {\"step\": 2, \"text\": \"Crush {{ing_05|pepper}}, {{ing_06|lovage}}, {{ing_04|cumin}}, {{ing_07|dill}} and {{ing_08|green basilica}}, {{ing_09|wine}} and {{ing_10|broth}} to taste, make it boil.\"}, {\"step\": 3, \"text\": \"When done stir well, put in what perchance should be missing and serve.\"}], \"grid_categories\": {\"Cuisine\": [\"French\"], \"Meal Type\": [\"Dinner\"]}}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "f248cdc929f07bec13c203f088d7c7d104b5e53adbe9ae6f9d4238d94e96d015",
+  "response_text": "{\"title\": \"ANOTHER WAY FOR SNAILS\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Live snails\", \"fallback_string\": \"Live snails\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Milk\", \"fallback_string\": \"Milk\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"Finest wheat flour\", \"fallback_string\": \"Finest wheat flour\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"The {{ing_01|live snails}} are sprinkled with {{ing_02|milk}} mixed with the {{ing_03|finest wheat flour}}.\"}, {\"step\": 2, \"text\": \"When fat and nice and plump they are cooked.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

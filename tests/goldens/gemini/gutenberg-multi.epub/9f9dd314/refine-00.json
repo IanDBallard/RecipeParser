@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "c553ff114fcb5c4b66ec5aff18617901c4171f22763bd84646d9876f948946f6",
+  "response_text": "{\"title\": \"Young Cabbage, Sprouts, Another Way (with Spelt and Pine Nuts)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"sprouts\", \"fallback_string\": \"SPROUTS (prepared in the above way)\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"boiled spelt\", \"fallback_string\": \"BOILED SPELT\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"pine nuts\", \"fallback_string\": \"PINE NUTS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"raisins\", \"fallback_string\": \"RAISINS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"PREPARE THE {{ing_01|SPROUTS}} IN THE ABOVE WAY, COVER THEM WITH {{ing_02|BOILED SPELT}} AND {{ing_03|PINE NUTS}} AND SPRINKLE WITH {{ing_04|RAISINS}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

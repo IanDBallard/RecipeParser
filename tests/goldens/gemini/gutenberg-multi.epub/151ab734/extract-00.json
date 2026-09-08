@@ -1,0 +1,14 @@
+{
+  "stage": "extract",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "e6c4ccbf283739266f3489801d152eadd0c030d6a0c8a63f2774a5daf71de93e",
+  "response_text": "{\n  \"recipes\": [\n    {\n      \"name\": \"Tartar Sauce\",\n      \"photo_filename\": null,\n      \"servings\": null,\n      \"prep_time\": null,\n      \"cook_time\": null,\n      \"ingredients\": [\n        \"liquamen\",\n        \"pepper\",\n        \"cayenne\",\n        \"eggs\",\n        \"lemon\",\n        \"olive oil\",\n        \"vinegar\",\n        \"white wine\",\n        \"anchovies\",\n        \"onions\",\n        \"tarragon\",\n        \"pickled cucumbers\",\n        \"parsley\",\n        \"chervil\",\n        \"hard-boiled eggs\",\n        \"capers\",\n        \"green peppers\",\n        \"mustard\"\n      ],\n      \"directions\": [\n        \"Chop, mix well, and serve.\"\n      ],\n      \"notes\": null,\n      \"categories\": []\n    },\n    {\n      \"name\": \"Special Fruit Salad with Mayonnaise Mousseuse\",\n      \"photo_filename\": null,\n      \"servings\": null,\n      \"prep_time\": null,\n      \"cook_time\": null,\n      \"ingredients\": [\n        \"bananas\",\n        \"oranges\",\n        \"cherries\",\n        \"bitter almonds\",\n        \"fresh pineapple\",\n        \"lettuce\",\n        \"fresh peaches\",\n        \"plums\",\n        \"figs\",\n        \"grapes\",\n        \"apples\",\n        \"nuts\",\n        \"cream cheese\",\n        \"olive oil\",\n        \"eggs\",\n        \"white wine\",\n        \"vinegar\",\n        \"cayenne\",\n        \"lemon\",\n        \"salt\",\n        \"white pepper\",\n        \"dry mustard\",\n        \"tarragon\",\n        \"rich sour cream\"\n      ],\n      \"directions\": [\n        \"Chop, mix, whip well.\"\n      ],\n      \"notes\": null,\n      \"categories\": []\n    }\n  ]\n}"
+}

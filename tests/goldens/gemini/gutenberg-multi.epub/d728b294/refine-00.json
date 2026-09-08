@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "e4bba796afe43c6a365ab74a66e9945cb0f98377464222526e4567207c1ebae5",
+  "response_text": "{\"title\": \"Tidbits, Another Way\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Balls or cutlets\", \"fallback_string\": \"Balls or cutlets\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": 1, \"unit\": \"glass\", \"name\": \"broth\", \"fallback_string\": \"One whole glass broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": 1, \"unit\": \"glass\", \"name\": \"water\", \"fallback_string\": \"A glass of water\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": 1, \"unit\": \"glass\", \"name\": \"vinegar\", \"fallback_string\": \"A glass of vinegar\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": 1, \"unit\": \"glass\", \"name\": \"oil\", \"fallback_string\": \"A glass of oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"The {{ing_01|balls or cutlets}} are properly fried in the pan, nearly done.\"}, {\"step\": 2, \"text\": \"Prepare the following: {{ing_02|one whole glass broth}}, {{ing_03|a glass of water}}, {{ing_04|a glass of vinegar}} and {{ing_05|a glass of oil}}, properly mixed.\"}, {\"step\": 3, \"text\": \"Put this in an earthen baking dish [immerse meat pieces].\"}, {\"step\": 4, \"text\": \"Finish on the fire and serve.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

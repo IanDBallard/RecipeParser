@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "4bcc88784339f6bbdd3ca797433394e2ec1ff8c575597ccf6fc29bafe2a9c4d5",
+  "response_text": "{\n  \"title\": \"MAKING A LITTLE LASER GO A LONG WAY\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"laser\",\n      \"fallback_string\": \"LASER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 20,\n      \"unit\": null,\n      \"name\": \"pine kernels\",\n      \"fallback_string\": \"About 20 PINE KERNELS (pignolia nuts)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"PUT THE {{ing_01|LASER}} IN A SPACIOUS GLASS VESSEL; IMMERSE {{ing_02|ABOUT 20 PINE KERNELS [pignolia nuts]}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"IF YOU NEED {{ing_01|LASER}} FLAVOR, TAKE SOME {{ing_02|NUTS}}, CRUSH THEM; THEY WILL IMPART TO YOUR DISH AN ADMIRABLE FLAVOR.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"REPLACE THE USED {{ing_02|NUTS}} WITH A LIKE NUMBER OF FRESH ONES.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

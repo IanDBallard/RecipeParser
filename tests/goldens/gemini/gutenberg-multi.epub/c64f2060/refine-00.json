@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "60b739f65ba7f541248592a8edb5fd0b53fa24ef7a52b8a4e37c4755719cba7b",
+  "response_text": "{\n  \"title\": \"TO KEEP HARD-SKINNED PEACHES\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"HARD-SKINNED PEACHES\",\n      \"fallback_string\": \"HARD-SKINNED PEACHES (best)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"BRINE\",\n      \"fallback_string\": \"BRINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"SALT\",\n      \"fallback_string\": \"SALT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"SATURY\",\n      \"fallback_string\": \"SATURY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"VINEGAR\",\n      \"fallback_string\": \"VINEGAR\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"SELECT THE BEST {{ing_01|HARD-SKINNED PEACHES}} AND PUT THEM IN {{ing_02|BRINE}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"THE NEXT DAY REMOVE THEM AND RINSING THEM CAREFULLY SET THEM IN PLACE IN A VESSEL, SPRINKLE WITH {{ing_03|SALT}} AND {{ing_04|SATURY}} AND IMMERSE IN {{ing_05|VINEGAR}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "b1668d19c69bc9ebe4c0e1707a28cd1dbfaae037b747f6c15500406f5eaab23f",
+  "response_text": "{\n  \"title\": \"BAIÆAN BEANS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cooked beans from Baiæ\",\n      \"fallback_string\": \"COOKED BEANS FROM BAIÆ\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"rue\",\n      \"fallback_string\": \"RUE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"green celery\",\n      \"fallback_string\": \"GREEN CELERY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"leeks\",\n      \"fallback_string\": \"LEEKS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"vinegar\",\n      \"fallback_string\": \"VINEGAR\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"must or raisin wine\",\n      \"fallback_string\": \"A LITTLE MUST OR RAISIN WINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|COOKED BEANS FROM BAIÆ}} ARE CUT FINE [and finished with] {{ing_02|RUE}}, {{ing_03|GREEN CELERY}}, {{ing_04|LEEKS}}, {{ing_05|VINEGAR}} [2] {{ing_06|A LITTLE MUST OR RAISIN WINE}} AND SERVED [3].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [\"Italian\"],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

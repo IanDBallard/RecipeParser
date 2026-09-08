@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "f69ee7d0c3843e2a94b62f104bf620df0734a559c7bf3e3f33dfcc840fa2dd67",
+  "response_text": "{\n  \"title\": \"VEGETABLE DINNER, EASILY DIGESTED (PULMENTARIUM AD VENTREM)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"green vegetables (especially very young beets and well matured leeks)\",\n      \"fallback_string\": \"ALL GREEN VEGETABLES (especially very young beets and well matured leeks)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cumin\",\n      \"fallback_string\": \"CUMIN\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"BROTH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"condensed must, or anything else to sweeten them a little\",\n      \"fallback_string\": \"CONDENSED MUST, OR ANYTHING ELSE TO SWEETEN THEM A LITTLE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|ALL GREEN VEGETABLES}} ARE SUITED FOR THIS PURPOSE VERY YOUNG BEETS AND WELL MATURED LEEKS ARE PARBOILED.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"ARRANGE THEM IN A BAKING DISH.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"GRIND {{ing_02|PEPPER}} AND {{ing_03|CUMIN}}, ADD {{ing_04|BROTH}} AND {{ing_05|CONDENSED MUST, OR ANYTHING ELSE TO SWEETEN THEM A LITTLE}}.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"HEAT AND FINISH THEM ON A SLOW FIRE, AND SERVE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

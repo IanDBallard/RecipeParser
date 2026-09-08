@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "5f8c7614ee0b8ec4f887ab068bca90d879e47ab5cdbeb3b321cd90116993d121",
+  "response_text": "{\"title\":\"A DISH OF LITTLE FISH\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"Raisins\",\"fallback_string\":\"Raisins\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"pepper\",\"fallback_string\":\"pepper\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":null,\"unit\":null,\"name\":\"lovage\",\"fallback_string\":\"lovage\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":null,\"unit\":null,\"name\":\"origany\",\"fallback_string\":\"origany\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_05\",\"amount\":null,\"unit\":null,\"name\":\"onions\",\"fallback_string\":\"onions\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_06\",\"amount\":null,\"unit\":null,\"name\":\"wine\",\"fallback_string\":\"wine\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_07\",\"amount\":null,\"unit\":null,\"name\":\"broth\",\"fallback_string\":\"broth\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_08\",\"amount\":null,\"unit\":null,\"name\":\"oil\",\"fallback_string\":\"oil\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_09\",\"amount\":null,\"unit\":null,\"name\":\"cooked small fish\",\"fallback_string\":\"cooked small fish\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_10\",\"amount\":null,\"unit\":null,\"name\":\"roux\",\"fallback_string\":\"roux\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"Take {{ing_01|raisins}}, {{ing_02|pepper}}, {{ing_03|lovage}}, {{ing_04|origany}}, {{ing_05|onions}}, {{ing_06|wine}}, {{ing_07|broth}} and {{ing_08|oil}}, place this in a pan; after this has cooked add to it the {{ing_09|cooked small fish}}, bind with {{ing_10|roux}} and serve.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[\"Dinner\"]}}"
+}

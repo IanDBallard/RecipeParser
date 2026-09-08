@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "79c8926bf5df39fdf6e11d15e51045fb80ad84bb1eb7460d01dfc698752629df",
+  "response_text": "{\"title\": \"ANOTHER CHICKEN\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"honey\", \"fallback_string\": \"A LITTLE HONEY\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"cooked chicken\", \"fallback_string\": \"COOKED [parboiled] CHICKEN\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"PEPPER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"{{ing_01|A LITTLE HONEY}} IS MIXED WITH {{ing_02|BROTH}}; THE {{ing_03|COOKED [parboiled] CHICKEN}} IS CLEANED [skin taken off, sinews, etc., removed] THE CARCASS DRIED WITH A TOWEL, QUARTERED, THE PIECES IMMERSED IN {{ing_02|BROTH}} [2] SO THAT THE SAVOUR PENETRATES THOROUGHLY.\"}, {\"step\": 2, \"text\": \"FRY THE PIECES [in the pan] POUR OVER THEIR OWN GRAVY, SPRINKLE WITH {{ing_04|PEPPER}}, SERVE.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "e4d0e987135302ef34f01012d525d33c9f9ae4173a0a73f8a9593ae6f9eec1ad",
+  "response_text": "{\n  \"title\": \"Dish of Field Vegetables\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"field vegetables\",\n      \"fallback_string\": \"FIELD VEGETABLES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"thyme\",\n      \"fallback_string\": \"THYME\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"green peppers\",\n      \"fallback_string\": \"GREEN PEPPERS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cucumbers\",\n      \"fallback_string\": \"CUCUMBERS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"small tender sprouts\",\n      \"fallback_string\": \"SMALL TENDER SPROUTS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"boneless pieces of fish\",\n      \"fallback_string\": \"BONELESS PIECES OF FISH (optional)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_07\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"chicken\",\n      \"fallback_string\": \"CHICKEN (optional)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"BY FOLLOWING THE ABOVE INSTRUCTIONS YOU MAY MAKE A PIE OF {{ing_01|FIELD VEGETABLES}}, OR OF {{ing_02|THYME}} OR OF {{ing_03|GREEN PEPPERS}} OR OF {{ing_04|CUCUMBERS}} OR OF {{ing_05|SMALL TENDER SPROUTS}} SAME AS ABOVE, OR, IF YOU LIKE, MAKE ONE UNDERLAID WITH {{ing_06|BONELESS PIECES OF FISH}} OR OF {{ing_07|CHICKEN}} [combined with any of the above vegetables].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "afca4d6a3f2ab967d8ef94f7edba873f5b54ec36c5374b0d8ddeab710d534f9d",
+  "response_text": "{\n  \"title\": \"CHICKEN BROTH ANOTHER STYLE (ALITER DE PULLO)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"chicken meat\",\n      \"fallback_string\": \"CHICKEN MEAT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 31,\n      \"unit\": null,\n      \"name\": \"peppercorns crushed\",\n      \"fallback_string\": \"31 PEPPERCORNS CRUSHED\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 1,\n      \"unit\": \"choenix\",\n      \"name\": \"very best stock\",\n      \"fallback_string\": \"1 CHOENIX [1] FULL OF THE VERY BEST STOCK\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 1,\n      \"unit\": \"choenix\",\n      \"name\": \"boiled must\",\n      \"fallback_string\": \"A LIKE AMOUNT OF BOILED MUST\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": 11,\n      \"unit\": \"measures\",\n      \"name\": \"water\",\n      \"fallback_string\": \"ELEVEN MEASURES [2] OF WATER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"PLACE IT UPON THE FIRE TO SEETH AND EVAPORATE SLOWLY.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

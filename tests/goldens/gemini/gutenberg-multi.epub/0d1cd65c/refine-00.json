@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "1c3d11339bdf93f6e31f1cdc71b1236db63ce4629a94f0f5cbbf8d5038b94eeb",
+  "response_text": "{\n  \"title\": \"ANOTHER WAY TO PREPARE BOAR\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Boar\",\n      \"fallback_string\": \"Boar\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Sea water\",\n      \"fallback_string\": \"Sea water\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Sprigs of laurel\",\n      \"fallback_string\": \"Sprigs of laurel\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Salt\",\n      \"fallback_string\": \"Salt\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Mustard\",\n      \"fallback_string\": \"Mustard\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Vinegar\",\n      \"fallback_string\": \"Vinegar\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"You boil the {{ing_01|boar}} in {{ing_02|sea water}} with {{ing_03|sprigs of laurel}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"When done nice and soft, remove the skin.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Serve with {{ing_04|salt}}, {{ing_05|mustard}}, {{ing_06|vinegar}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

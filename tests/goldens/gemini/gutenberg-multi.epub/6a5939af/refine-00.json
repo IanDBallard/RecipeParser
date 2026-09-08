@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "c4e5c3c3286add64be24cef8ef63d12ae5fb58e9f1297a0a502a16b1be8592b1",
+  "response_text": "{\n  \"title\": \"ANOTHER WAY (SALT SEA URCHINS)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Salt sea urchins\",\n      \"fallback_string\": \"Salt sea urchins\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"best broth\",\n      \"fallback_string\": \"best broth\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Take {{ing_01|salt sea urchins}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Add the {{ing_02|best broth}} and treat them in a manner as to look like fresh that have just come out of the water.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

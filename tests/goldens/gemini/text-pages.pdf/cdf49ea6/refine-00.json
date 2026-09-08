@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "41df20af5360dc2a155beb8e15b2e8c04f95d3bd9e7c91ef47e601d0153a67df",
+  "response_text": "{\n  \"title\": \"FRIED BULBS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Bulbs\",\n      \"fallback_string\": \"Bulbs\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Wine Sauce (Oenogarum)\",\n      \"fallback_string\": \"Wine Sauce (Oenogarum)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Fry the {{ing_01|bulbs}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Serve with {{ing_02|wine sauce (Oenogarum)}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

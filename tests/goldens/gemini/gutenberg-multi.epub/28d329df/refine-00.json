@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "d6a9f243246a7713cb8bb7bb76aa56bdd470c91a1028cd5adcd0838e3585de98",
+  "response_text": "{\n  \"title\": \"LIBURNIAN OIL\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"SPANISH OIL\",\n      \"fallback_string\": \"SPANISH OIL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"ELECAMPANE\",\n      \"fallback_string\": \"ELECAMPANE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"CYPRIAN RUSH\",\n      \"fallback_string\": \"CYPRIAN RUSH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"GREEN LAUREL LEAVES (not too old)\",\n      \"fallback_string\": \"GREEN LAUREL LEAVES (not too old)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"FINELY GROUND SALT\",\n      \"fallback_string\": \"FINELY GROUND SALT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"IN {{ing_01|SPANISH OIL}} PUT [the following mixture of] {{ing_02|ELECAMPANE}}, {{ing_03|CYPRIAN RUSH}} AND {{ing_04|GREEN LAUREL LEAVES THAT ARE NOT TOO OLD}}, ALL OF IT CRUSHED AND MACERATED AND REDUCED TO A FINE POWDER.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"SIFT THIS IN AND ADD {{ing_05|FINELY GROUND SALT}} AND STIR INDUSTRIOUSLY FOR THREE DAYS OR MORE.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"THEN ALLOW TO SETTLE.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"EVERYBODY WILL TAKE THIS FOR LIBURNIAN OIL.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

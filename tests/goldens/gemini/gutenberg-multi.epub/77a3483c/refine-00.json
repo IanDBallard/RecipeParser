@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "a09097868e9de8ba5563644a1078732634e15df418bfcdd6b26bc25c2f821573",
+  "response_text": "{\n  \"title\": \"ANOTHER [OXYGARUM]\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 1,\n      \"unit\": \"oz\",\n      \"name\": \"pepper\",\n      \"fallback_string\": \"1 OZ. EACH of PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 1,\n      \"unit\": \"oz\",\n      \"name\": \"parsley\",\n      \"fallback_string\": \"1 OZ. EACH of PARSLEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 1,\n      \"unit\": \"oz\",\n      \"name\": \"caraway\",\n      \"fallback_string\": \"1 OZ. EACH of CARRAWAY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 1,\n      \"unit\": \"oz\",\n      \"name\": \"lovage\",\n      \"fallback_string\": \"1 OZ. EACH of LOVAGE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"BROTH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_07\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"vinegar\",\n      \"fallback_string\": \"VINEGAR\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|Pepper}}, {{ing_02|parsley}}, {{ing_03|caraway}}, {{ing_04|lovage}}, mix with {{ing_05|honey}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"When done add {{ing_06|broth}} and {{ing_07|vinegar}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

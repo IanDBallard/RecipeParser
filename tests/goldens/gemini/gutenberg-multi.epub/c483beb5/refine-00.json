@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "cd62dc8b41144bcbecc0f39e28d464508910fa8cf5c9d6c57df711100ae53505",
+  "response_text": "{\n  \"title\": \"SMOKED PIG À LA TRAJANUS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Pig\",\n      \"fallback_string\": \"Pig\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"spices\",\n      \"fallback_string\": \"spices\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"herbs\",\n      \"fallback_string\": \"herbs\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"wine\",\n      \"fallback_string\": \"wine\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"salt water\",\n      \"fallback_string\": \"salt water\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Bone the {{ing_01|pig}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Treat it as for stewing in {{ing_04|wine}} (℞ No. 375, i.e. marinate for some time in {{ing_02|spices}}, {{ing_03|herbs}} and {{ing_04|wine}}).\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Thereupon hang it in the smoke house.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"Next boil it in {{ing_05|salt water}} and serve thus on a large platter.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

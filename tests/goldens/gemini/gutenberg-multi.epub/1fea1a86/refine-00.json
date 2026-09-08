@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "6f0150a2b614a16814f251277ec0ff3cd68054ddafec79d8b7fd7db52e5e1cbc",
+  "response_text": "{\n  \"title\": \"ANOTHER SAUCE FOR BOILED FISH\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"fish\",\n      \"fallback_string\": \"fish\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"salt\",\n      \"fallback_string\": \"salt\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"coriander seed\",\n      \"fallback_string\": \"coriander seed\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"strong vinegar\",\n      \"fallback_string\": \"strong vinegar\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"PREPARE THE {{ing_01|FISH}} CAREFULLY\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"IN THE MORTAR PUT {{ing_02|SALT}}, {{ing_03|CORIANDER SEED}}, CRUSH AND MIX WELL\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"TURN THE {{ing_01|FISH}} THEREIN, PUT IT IN A PAN, COVER IT AND SEAL IT WITH PLASTER\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"COOK IT IN THE OVEN\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"WHEN DONE RETIRE [the {{ing_01|fish}} from the pan]\"\n    },\n    {\n      \"step\": 6,\n      \"text\": \"SPRINKLE WITH {{ing_04|STRONG VINEGAR}} AND SERVE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

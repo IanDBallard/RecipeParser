@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "5b552d4c51bded61972aee6613d389216bea85c9f3fd57fb62351d85a229a7d9",
+  "response_text": "{\"title\": \"Beets\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"beets\", \"fallback_string\": \"BEETS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"leeks\", \"fallback_string\": \"LEEKS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"crushed coriander\", \"fallback_string\": \"CRUSHED CORIANDER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"cumin\", \"fallback_string\": \"CUMIN\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"raisin wine\", \"fallback_string\": \"RAISIN WINE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"OIL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"vinegar\", \"fallback_string\": \"VINEGAR\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"SLICE [the {{ing_01|beets}}, with] {{ing_02|LEEKS}} AND CRUSH {{ing_03|CORIANDER}} AND {{ing_04|CUMIN}}; ADD {{ing_05|RAISIN WINE}}, BOIL ALL DOWN TO PERFECTION: BIND IT, SERVE [the {{ing_01|beets}}] SEPARATE FROM THE BROTH, WITH {{ing_06|OIL}} AND {{ing_07|VINEGAR}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

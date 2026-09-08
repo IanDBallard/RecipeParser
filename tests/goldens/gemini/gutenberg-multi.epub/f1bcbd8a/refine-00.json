@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "69031db5bbc237e909b1c28491ed9f57d618add48db7180bdcd0f0884634cd4a",
+  "response_text": "{\n  \"title\": \"ROUND SAUSAGE (CIRCELLOS ISICIATOS)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"forcemeat\",\n      \"fallback_string\": \"BEST MATERIAL [forcemeat]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cumin\",\n      \"fallback_string\": \"CUMIN\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pheasant wine gravy\",\n      \"fallback_string\": \"PHEASANT WINE GRAVY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"FILL THE CASINGS WITH THE {{ing_01|BEST MATERIAL [forcemeat]}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"SHAPE THE SAUSAGE INTO SMALL CIRCLES, SMOKE.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"WHEN THEY HAVE TAKEN ON (VERMILLION) COLOR FRY THEM LIGHTLY.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"DRESS NICELY GARNISHED ON A {{ing_03|PHEASANT WINE GRAVY}}, FLAVORED, HOWEVER, WITH {{ing_02|CUMIN}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "43b9901a54e9f675c535c909c0bd63fa0602fa2963912f394eba512ff734362d",
+  "response_text": "{\"title\": \"ANOTHER WAY (Beans or Chick-peas)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"BEANS or CHICK-PEAS\", \"fallback_string\": \"BEANS or CHICK-PEAS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"WINE SAUCE\", \"fallback_string\": \"WINE SAUCE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"PEPPER\", \"fallback_string\": \"PEPPER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"{{ing_01|Beans or chick-peas}} ARE COOKED IN A {{ing_02|WINE SAUCE}} AND SEASONED WITH {{ing_03|PEPPER}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

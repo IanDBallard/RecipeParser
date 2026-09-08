@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "57f310b23ea6a57de202673587f94da46e4347995d84cc437e2a5b0f3d701d8c",
+  "response_text": "{\"title\": \"BOILED, SUMPTUOUSLY (Beans)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Beans\", \"fallback_string\": \"BEANS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Hard eggs\", \"fallback_string\": \"HARD EGGS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"Green fennel\", \"fallback_string\": \"GREEN FENNEL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"Pepper\", \"fallback_string\": \"PEPPER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"Broth\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"Reduced wine\", \"fallback_string\": \"A LITTLE REDUCED WINE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"Salt\", \"fallback_string\": \"A LITTLE SALT\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"AND COOK THE {{ing_01|BEANS}}, IN A RICH MANNER, REMOVE THE SEEDS AND SERVE [as a Salad [2]], WITH {{ing_02|HARD EGGS}}, {{ing_03|GREEN FENNEL}}, {{ing_04|PEPPER}}, {{ing_05|BROTH}}, {{ing_06|A LITTLE REDUCED WINE}} AND {{ing_07|A LITTLE SALT}}, OR SERVE THEM IN SIMPLER WAYS, AS YOU MAY SEE FIT.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

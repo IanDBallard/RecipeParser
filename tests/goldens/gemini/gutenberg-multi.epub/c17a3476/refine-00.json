@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "6d4c11cb72d4218410ac18ec7a4eadbb45bfbdb4cc07eddbfc28219953d022d1",
+  "response_text": "{\n  \"title\": \"Nettles\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"female nettles\",\n      \"fallback_string\": \"FEMALE NETTLES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"THE {{ing_01|FEMALE NETTLES}}, WHEN THE SUN IS IN THE POSITION OF THE ARIES, IS SUPPOSED TO RENDER VALUABLE SERVICES AGAINST AILMENTS OF VARIOUS KINDS.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}
