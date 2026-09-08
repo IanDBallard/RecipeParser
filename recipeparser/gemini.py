@@ -5,6 +5,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Type
 
+from google.genai import errors as genai_errors
 from pydantic import BaseModel, create_model, Field, ValidationError
 
 from recipeparser.config import (
@@ -52,6 +53,51 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in msg or "quota" in msg or "resource_exhausted" in msg
 
 
+# gRPC-style status names for a transient server-side failure, matched only
+# against google.genai.errors.APIError.status — never against free-form
+# exception text (see _is_transient_server_error).
+_TRANSIENT_STATUS_NAMES = frozenset({"UNAVAILABLE", "DEADLINE_EXCEEDED", "INTERNAL"})
+
+
+def _is_transient_server_error(exc: Exception) -> bool:
+    """Return True if *exc* looks like a transient server-side failure worth
+    retrying through the existing back-off ladder: HTTP 500/502/503/504, or
+    the gRPC-style UNAVAILABLE/DEADLINE_EXCEEDED/INTERNAL.
+
+    Detection is exclusively typed/structured — it never inspects the
+    exception message. google-genai's ``APIError.raise_error`` (google.genai
+    .errors) raises ``ClientError`` for any 4xx status and ``ServerError``
+    for any 5xx status, and every ``APIError`` carries a numeric ``.code``
+    and a string ``.status`` (e.g. "UNAVAILABLE"); that is what every real
+    call in this module actually raises on an HTTP-level failure, so typed
+    detection fully covers the defect this function exists to fix (a 504
+    aborting a recording run on attempt 1).
+
+    A message-substring fallback was deliberately rejected, not merely
+    avoided: this repo's own tests/test_gemini.py has two pre-existing,
+    unrelated tests that raise a plain ``Exception("503 Service
+    Unavailable")`` expecting it to propagate on attempt 1 with no retry
+    and no sleep. Any text-based match for "503" or "UNAVAILABLE" reclassifies
+    that plain exception as retryable and burns the real (unpatched, in
+    those tests) 5x back-off ladder — turning a ~4s suite into a ~130s one.
+    ``tests/goldens/golden_client.py``'s ``MissingRecordingError`` (whose
+    message embeds a hex sha8 path segment such as
+    ``.../gemini/f.epub/8fb1500a/extract-00.json``, containing "500") is the
+    same trap from the other direction. Typed-only detection rules out both
+    by construction: neither is a ``genai_errors.APIError``.
+    """
+    if not isinstance(exc, genai_errors.APIError):
+        return False
+    if isinstance(exc, genai_errors.ClientError):
+        return False
+    if isinstance(exc, genai_errors.ServerError):
+        return True
+    code = getattr(exc, "code", None)
+    if isinstance(code, int) and 500 <= code < 600:
+        return True
+    return (getattr(exc, "status", None) or "").upper() in _TRANSIENT_STATUS_NAMES
+
+
 # google-genai's GenerateContentConfig.http_options.timeout is in MILLISECONDS
 # (confirmed against installed google-genai==1.68.0: HttpOptions.timeout's
 # docstring says "Timeout for the request in milliseconds", and
@@ -77,14 +123,14 @@ def _with_http_timeout(config: dict) -> dict:
 def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
     """
     Wrapper around client.models.generate_content that retries on rate-limit
-    errors with exponential back-off, and raises for all other errors.
+    errors and transient server errors with exponential back-off, and raises
+    for all other errors.
 
-    A transport-level timeout is deliberately NOT treated as a rate-limit
-    error: ``_is_rate_limit_error`` only matches "429"/"quota"/
-    "resource_exhausted" in the exception message, which a timeout's message
-    never contains, so it raises immediately on the first attempt instead of
-    burning the 5x exponential back-off ladder on a call that already waited
-    the full HTTP_TIMEOUT_SECS.
+    A transport-level timeout is deliberately NOT retried: it is neither a
+    rate-limit signal nor a transient server error (a server-returned 504 is
+    a different thing from a local timeout), so it raises immediately on the
+    first attempt instead of burning the 5x exponential back-off ladder on a
+    call that already waited the full HTTP_TIMEOUT_SECS.
     """
     delay = BACKOFF_BASE_SECS
     for attempt in range(1, MAX_RETRIES + 2):
@@ -95,12 +141,14 @@ def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
                 config=_with_http_timeout(config),
             )
         except Exception as exc:
-            if _is_rate_limit_error(exc) and attempt <= MAX_RETRIES:
+            retryable = _is_rate_limit_error(exc) or _is_transient_server_error(exc)
+            if retryable and attempt <= MAX_RETRIES:
                 log.warning(
-                    "Rate-limit hit (attempt %d/%d) — waiting %ds before retry.",
+                    "Transient error hit (attempt %d/%d) — waiting %ds before retry: %s",
                     attempt,
                     MAX_RETRIES,
                     delay,
+                    exc,
                 )
                 time.sleep(delay)
                 delay = min(delay * 2, BACKOFF_MAX_SECS)
