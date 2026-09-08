@@ -1,0 +1,37 @@
+{
+  "duration": [
+    {"input": null, "min": null, "max": null, "note": null},
+    {"input": "", "min": null, "max": null, "note": null},
+    {"input": "   ", "min": null, "max": null, "note": null},
+    {"input": "15 mins", "min": 15, "max": 15, "note": null},
+    {"input": "30", "min": 30, "max": 30, "note": null},
+    {"input": "30-45 minutes", "min": 30, "max": 45, "note": null},
+    {"input": "20 to 25 min", "min": 20, "max": 25, "note": null},
+    {"input": "1 hr 30 min", "min": 90, "max": 90, "note": null},
+    {"input": "1.5 hours", "min": 90, "max": 90, "note": null},
+    {"input": "1 1/2 hours", "min": 90, "max": 90, "note": null},
+    {"input": "1½ hours", "min": 90, "max": 90, "note": null},
+    {"input": "1-2 hours", "min": 60, "max": 120, "note": null},
+    {"input": "1–2 hours", "min": 60, "max": 120, "note": null},
+    {"input": "1h 15m", "min": 75, "max": 75, "note": null},
+    {"input": "90 minutes", "min": 90, "max": 90, "note": null},
+    {"input": "1 day", "min": 1440, "max": 1440, "note": null},
+    {"input": "45 min plus chilling", "min": 45, "max": 45, "note": "plus chilling"},
+    {"input": "10 minutes (plus resting)", "min": 10, "max": 10, "note": "plus resting"},
+    {"input": "35 mins, plus 4 hrs marinating", "min": 35, "max": 35, "note": "plus 4 hrs marinating"},
+    {"input": "overnight", "min": null, "max": null, "note": "overnight"},
+    {"input": "until golden", "min": null, "max": null, "note": "until golden"}
+  ],
+  "servings": [
+    {"input": null, "min": null, "max": null, "note": null},
+    {"input": "", "min": null, "max": null, "note": null},
+    {"input": "4", "min": 4, "max": 4, "note": null},
+    {"input": "4 servings", "min": 4, "max": 4, "note": null},
+    {"input": "Serves 6", "min": 6, "max": 6, "note": null},
+    {"input": "2-4", "min": 2, "max": 4, "note": null},
+    {"input": "6-8 as a starter", "min": 6, "max": 8, "note": "as a starter"},
+    {"input": "makes 12 cookies", "min": 12, "max": 12, "note": "cookies"},
+    {"input": "about 4", "min": 4, "max": 4, "note": "about"},
+    {"input": "a crowd", "min": null, "max": null, "note": "a crowd"}
+  ]
+}
