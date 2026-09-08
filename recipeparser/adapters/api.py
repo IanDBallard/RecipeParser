@@ -164,12 +164,11 @@ async def _lifespan(_app: FastAPI):
         else:
             # Imported here so the worker modules are not a hard dependency of the API import.
             from recipeparser.adapters import regen_worker as _rw  # noqa: PLC0415
-            workers: list = [_rw.RegenWorker(supabase, _get_client())]
-            try:
-                from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
-                workers.append(RecatWorker(supabase, _get_client()))
-            except ImportError:
-                pass  # Task 10 adds it; the regen worker runs alone until then.
+            from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
+            workers: list = [
+                _rw.RegenWorker(supabase, _get_client()),
+                RecatWorker(supabase, _get_client()),
+            ]
             task = asyncio.create_task(_rw.run_workers(workers, stop))
             logger.info("Background workers started: %s", [type(w).__name__ for w in workers])
     try:
