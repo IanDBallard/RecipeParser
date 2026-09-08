@@ -42,6 +42,13 @@ def _chunks_for(fixture: str, monkeypatch):
     raise AssertionError(f"no reader for {fixture}")
 
 
+#: How many entries per fixture the stage snapshot records in full. Every
+#: entry is still executed and structurally asserted; this caps only the
+#: byte-for-byte detail, so the .ambr stays small enough that a reviewer
+#: actually reads its diff.
+_SNAPSHOT_DETAIL_CAP = 6
+
+
 @pytest.fixture(autouse=True)
 def _no_retry_sleeps(monkeypatch):
     """A recorded parse retry must not cost a real second of wall clock."""
@@ -102,7 +109,38 @@ def test_stage_golden(fixture, golden_client, snapshot: SnapshotAssertion, monke
                 }
             )
 
-    assert rendered == snapshot
+    # Every entry is checked structurally, whatever the fixture's size: a tag
+    # outside the axes or a recipe that refined to nothing is a real defect
+    # wherever it appears, and these assertions are what keep the entries
+    # beyond the detail cap honestly covered rather than merely executed.
+    valid_axes = {axis: set(tags) for axis, tags in FIXED_AXES.items()}
+    for entry in rendered:
+        assert entry["refined"]["structured_ingredients"], (
+            f"{entry['raw']['name']!r} refined to no ingredients"
+        )
+        for axis, tags in entry["refined"]["grid_categories"].items():
+            assert axis in valid_axes, f"{entry['raw']['name']!r} invented axis {axis!r}"
+            assert set(tags) <= valid_axes[axis], (
+                f"{entry['raw']['name']!r} has tags outside {axis!r}: {tags}"
+            )
+
+    # The snapshot carries every recipe's name but only the first few in full.
+    #
+    # gutenberg-multi.epub is a whole cookbook: snapshotting all 503 refined
+    # recipes produced a 72,401-line .ambr whose 97% majority was that one
+    # fixture. A snapshot nobody can read the diff of guards less than it
+    # appears to — any refine change produced thousands of changed lines, so
+    # the realistic response was --snapshot-update without inspection.
+    #
+    # names[] still fails on a recipe appearing, vanishing or being renamed
+    # anywhere in the book; the structural assertions above still cover every
+    # entry; and detail[] keeps a readable sample of the full shape. All 503
+    # recordings are still replayed through the real parse path either way.
+    assert {
+        "recipe_count": len(rendered),
+        "names": [entry["raw"]["name"] for entry in rendered],
+        "detail": rendered[:_SNAPSHOT_DETAIL_CAP],
+    } == snapshot
 
 
 def test_vision_ocr_golden(golden_client, snapshot: SnapshotAssertion):
