@@ -54,7 +54,7 @@ def main() -> int:
     from supabase import create_client  # noqa: PLC0415
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
 
-    offset, updated, flagged = 0, 0, []
+    offset, updated, failed, flagged = 0, 0, 0, []
     while True:
         rows = (sb.table("recipes").select("id,title,prep_time,cook_time,base_servings")
                 .order("id").range(offset, offset + PAGE - 1).execute().data or [])
@@ -67,19 +67,28 @@ def main() -> int:
             if args.verbose:
                 print(f"  {rid}  {titles[rid]!r}  {cols}")
             if args.live:
-                sb.table("recipes").update(cols).eq("id", rid).execute()
+                try:
+                    sb.table("recipes").update(cols).eq("id", rid).execute()
+                except Exception as exc:  # noqa: BLE001
+                    # One bad row must not abandon the rest of the library. Report and carry on.
+                    failed += 1
+                    print(f"  FAILED to update {rid} {titles[rid]!r}: {exc}")
+                    continue
             updated += 1
         offset += PAGE
 
     # Printed on a dry run and a live run alike, so the two are comparable.
-    print(f"{'updated' if args.live else 'would update'} {updated} recipe(s)")
+    print(
+        f"{'updated' if args.live else 'would update'} {updated} recipe(s)"
+        + (f", {failed} failed" if failed else "")
+    )
     if not args.live:
         print("DRY RUN — nothing was written. Re-run with --live to apply.")
     if flagged:
         print(f"{len(flagged)} row(s) with note-only durations — eyeball these:")
         for rid, title, p, c in flagged:
             print(f"  {rid}  {title!r}  prep_note={p!r}  cook_note={c!r}")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
