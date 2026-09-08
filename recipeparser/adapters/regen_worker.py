@@ -75,8 +75,13 @@ class RegenWorker:
     # ── one recipe ───────────────────────────────────────────────────────
 
     def _process(self, row: Dict[str, Any]) -> None:
-        rid, read_rev = row["id"], int(row["body_rev"])
+        # The unpack lives inside the try: a claimed row missing id or body_rev
+        # would otherwise raise straight out of pool.map(), out of run_once(),
+        # and abandon every other row in the batch. rid/read_rev are seeded for
+        # the log so a malformed row is still identifiable.
+        rid, read_rev = row.get("id", "?"), -1
         try:
+            rid, read_rev = row["id"], int(row["body_rev"])
             uom, measure = load_profile_prefs(self._sb, row["user_id"])
             refinement = self._refine(
                 build_extraction(row),
@@ -101,7 +106,27 @@ class RegenWorker:
                 log.info("regen: %s regenerated at rev %d.", rid, read_rev)
         except Exception as exc:  # noqa: BLE001 — every failure is recorded, never fatal
             log.warning("regen: %s failed at rev %d: %s", rid, read_rev, exc, exc_info=True)
+            self._record_failure(rid, exc)
+
+    def _record_failure(self, rid: str, exc: BaseException) -> None:
+        """
+        Record one failed attempt, never raising.
+
+        regen_failed can fail under exactly the conditions that made the primary
+        call fail — RPC missing, Supabase down. Letting that escape _process
+        re-raises it out of ``list(pool.map(...))`` and out of ``run_once()``,
+        and the row then keeps its claimed_at and gains no derived_attempts: it
+        is re-claimed every five minutes forever, burning a REFINE and an EMBED
+        call each time. That is a cost loop, not a lost error message.
+        """
+        try:
             self._sb.rpc("regen_failed", {"p_id": rid, "p_msg": str(exc)[:2000]}).execute()
+        except Exception as rpc_exc:  # noqa: BLE001
+            log.error(
+                "regen: could not record the failure for %s (regen_failed: %s) — the row "
+                "keeps its claim until the lease expires and its attempt is not counted.",
+                rid, rpc_exc, exc_info=True,
+            )
 
 
 # ── the loop ─────────────────────────────────────────────────────────────

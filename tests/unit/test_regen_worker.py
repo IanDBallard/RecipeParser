@@ -187,6 +187,51 @@ def test_infrastructure_failure_on_write_back_is_caught_and_recorded():
     assert ("regen_failed", {"p_id": "r1", "p_msg": "db unreachable"}) in fake.rpcs
 
 
+def test_regen_failed_rpc_failure_is_logged_not_raised(caplog):
+    # regen_failed fails under exactly the conditions that broke the primary
+    # call (RPC missing, Supabase down). Letting it escape _process re-raises
+    # out of pool.map() and out of run_once(), so the row keeps claimed_at and
+    # gains no derived_attempts: re-claimed every 5 minutes forever, burning a
+    # REFINE and an EMBED call each time.
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row()]},
+                        raises={"rpc:regen_failed": RuntimeError("function does not exist")})
+    w = _worker(fake, refine_fn=MagicMock(side_effect=ValueError("bad tokens")))
+    assert w.run_once() == 1                                # did not blow up the batch
+    assert ("regen_failed", {"p_id": "r1", "p_msg": "bad tokens"}) in fake.rpcs
+    assert "could not record the failure for r1" in caplog.text
+
+
+def test_regen_failed_rpc_failure_does_not_abandon_the_rest_of_the_batch():
+    # The second row must still be processed after the first row's regen_failed
+    # call itself fails.
+    fake = FakeSupabase(
+        rpc_responses={"claim_stale_recipes": [_row(rev=3, rid="r1"), _row(rev=5, rid="r2")]},
+        responses={"recipes": [{"id": "r2"}]},
+        raises={"rpc:regen_failed": RuntimeError("supabase down")},
+    )
+    w = _worker(fake, refine_fn=MagicMock(side_effect=[ValueError("bad tofu"), _refinement()]))
+    assert w.run_once() == 2
+    recipe_ops = _ops(fake, "recipes")
+    assert len(recipe_ops) == 1
+    assert ("eq", ("id", "r2"), {}) in recipe_ops[0]
+
+
+def test_malformed_claimed_row_is_recorded_not_raised(caplog):
+    # A claimed row missing body_rev used to raise from the unpack, outside the
+    # try, straight out of pool.map() and run_once().
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [{"id": "r9", "user_id": "u1"}]})
+    assert _worker(fake).run_once() == 1
+    assert ("regen_failed", {"p_id": "r9", "p_msg": "'body_rev'"}) in fake.rpcs
+    assert "regen: r9 failed" in caplog.text
+
+
+def test_claimed_row_without_an_id_is_logged_not_raised(caplog):
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [{"user_id": "u1", "body_rev": 2}]})
+    assert _worker(fake).run_once() == 1
+    assert ("regen_failed", {"p_id": "?", "p_msg": "'id'"}) in fake.rpcs
+    assert "regen: ? failed" in caplog.text
+
+
 def test_run_workers_loops_until_stopped():
     from recipeparser.adapters.regen_worker import run_workers
     calls = []
