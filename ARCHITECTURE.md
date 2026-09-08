@@ -735,6 +735,6 @@ The client edits **raw** columns only (`title`, `ingredient_lines`, `direction_s
 | `adapters/regen_worker.py` | `RegenWorker.run_once()`: `claim_stale_recipes` RPC → REFINE → EMBED → `update … where id = ? and body_rev = ?`. Failures via `regen_failed` RPC. `run_workers()` is the shared poll loop. |
 | `adapters/recat_worker.py` | `RecatWorker.run_once()`: one pending `ingestion_jobs` row with `kind = 'recategorize'` → batches of 10 recipes → `categorize_batch` (with `build_categorize_batch_prompt()`) → additive junction upserts. |
 
-Workers start from the FastAPI lifespan when `REGEN_WORKER_ENABLED=1` and the service-role Supabase client is configured. Poll every 10 s; regen concurrency 2.
+Workers start from the FastAPI lifespan when `REGEN_WORKER_ENABLED=1` and the service-role Supabase client is configured. Requires Cayenne migrations 013 (`recipe_edit_columns`) and 014 (`regen_rpcs`); until then the RPCs above don't exist and the flag must stay unset. Poll every 10 s; regen concurrency 2.
 
 REFINE's `base_servings` and `grid_categories` are discarded on regen: both are user-owned after ingest. `amount_overrides` is emptied on every successful regen because the new structured entries reflect the rewritten lines.
