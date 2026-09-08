@@ -1,4 +1,6 @@
 """Pure regen helpers (spec 5.2, 5.7)."""
+import pytest
+
 from recipeparser.core.regen import build_extraction, build_update, raw_lines_from_derived, strip_fat_tokens
 from recipeparser.models import CayenneRefinement, StructuredIngredient, TokenizedDirection
 
@@ -38,6 +40,28 @@ def test_build_extraction_from_row():
 def test_build_extraction_tolerates_missing_lists():
     ex = build_extraction({"title": "Cake"})
     assert ex.ingredients == [] and ex.directions == []
+
+
+def test_build_extraction_tolerates_explicit_nulls():
+    ex = build_extraction({"title": "Cake", "ingredient_lines": None, "direction_steps": None})
+    assert ex.ingredients == [] and ex.directions == []
+
+
+def test_build_extraction_rejects_a_double_encoded_ingredient_column():
+    # A double-encoded jsonb column arrives as a str. Iterating it yields
+    # characters, so REFINE would get one "ingredient" per character, succeed,
+    # and the worker would write the garbage back under the body_rev guard with
+    # no error and no attempt counted. Fail loudly instead: the worker records
+    # it via regen_failed and the attempt cap stops the row.
+    row = {"title": "Cake", "ingredient_lines": '["1 cup flour", "2 eggs"]', "direction_steps": []}
+    with pytest.raises(TypeError, match="ingredient_lines must be a list, got str"):
+        build_extraction(row)
+
+
+def test_build_extraction_rejects_a_double_encoded_direction_column():
+    row = {"title": "Cake", "ingredient_lines": [], "direction_steps": '["Mix."]'}
+    with pytest.raises(TypeError, match="direction_steps must be a list, got str"):
+        build_extraction(row)
 
 
 def test_build_update_payload():

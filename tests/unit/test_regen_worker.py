@@ -136,6 +136,24 @@ def test_exception_records_failure():
     assert _ops(fake, "recipes") == []                    # no write-back attempted
 
 
+def test_double_encoded_body_column_is_recorded_not_regenerated():
+    # A double-encoded jsonb column comes back as a str. Iterating it fed REFINE
+    # one "ingredient" per character; the result then wrote back cleanly under
+    # the body_rev guard, so the recipe was silently replaced by garbage with no
+    # derived_error and no attempt counted. It must fail and be recorded.
+    row = _row()
+    row["ingredient_lines"] = '["1 cup flour", "2 eggs"]'
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [row]},
+                        responses={"recipes": [{"id": "r1"}]})
+    refine_fn = MagicMock(return_value=_refinement())
+    assert _worker(fake, refine_fn=refine_fn).run_once() == 1
+    refine_fn.assert_not_called()                          # never reached Gemini
+    assert _ops(fake, "recipes") == []                     # nothing written back
+    failures = [p for n, p in fake.rpcs if n == "regen_failed"]
+    assert len(failures) == 1
+    assert failures[0]["p_id"] == "r1" and "must be a list" in failures[0]["p_msg"]
+
+
 def test_batch_mixed_outcomes_do_not_abandon_other_rows():
     # Two claimed rows in one batch: the first fails REFINE, the second succeeds.
     # A per-row exception must not abort the rest of the claimed batch — each row

@@ -31,12 +31,44 @@ def raw_lines_from_derived(
     return lines, steps
 
 
+def raw_body_column(row: Mapping[str, Any], column: str) -> List[str]:
+    """
+    One raw body column (``ingredient_lines`` / ``direction_steps``) as strings.
+
+    Missing or null is an empty list; anything else that is not a list is a hard
+    error.  A double-encoded jsonb column arrives as a ``str``, and iterating a
+    ``str`` yields characters: REFINE would receive forty single-character
+    "ingredients", succeed, and the worker would write that garbage back as
+    derived data under the body_rev guard — silent corruption with no error and
+    no attempt counter.  This is not hypothetical; ``io/writers/supabase.py``
+    records that all 786 rows in the live library once carried exactly this
+    double-encoding on ``structured_ingredients``, unnoticed because the client
+    compensated for it.  Raising sends the row to ``derived_error`` via the
+    ``regen_failed`` RPC, where the attempt cap stops it after three tries.
+    """
+    value = row.get(column)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise TypeError(
+            "build_extraction(): {} must be a list, got {} ({:.60}) — the column "
+            "is probably double-encoded jsonb.".format(column, type(value).__name__, repr(value))
+        )
+    return [str(s) for s in value]
+
+
 def build_extraction(row: Mapping[str, Any]) -> RecipeExtraction:
-    """A REFINE input from a claimed recipes row (spec 5.4)."""
+    """
+    A REFINE input from a claimed recipes row (spec 5.4).
+
+    Raises:
+        TypeError: if ``ingredient_lines`` or ``direction_steps`` is present but
+            is not a list — see ``raw_body_column``.
+    """
     return RecipeExtraction(
         name=str(row.get("title") or ""),
-        ingredients=[str(s) for s in (row.get("ingredient_lines") or [])],
-        directions=[str(s) for s in (row.get("direction_steps") or [])],
+        ingredients=raw_body_column(row, "ingredient_lines"),
+        directions=raw_body_column(row, "direction_steps"),
     )
 
 
