@@ -1,6 +1,9 @@
 """RecatWorker: additive, scoped, cancellable bulk recategorise (spec 6)."""
+import uuid
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
+
+import pytest
 
 
 class _Result:
@@ -80,15 +83,37 @@ def _fake_with_job(job_status_sequence, recipes, count, category_ids=("t2",)):
     def recipes_h(q):
         if any(o[0] == "select" and o[2].get("count") == "exact" for o in q.ops):
             return _Result([], count=count)
-        cursor = next((o[1][1] for o in q.ops if o[0] == "gt"), "")
-        page = [r for r in recipes if r["id"] > cursor][:10]
+        cursor = next((o[1][1] for o in q.ops if o[0] == "gt"), None)
+        page = [r for r in recipes if r["id"] > _uuid_cursor(cursor)][:10]
         return _Result(page)
     fake.handlers["recipes"] = recipes_h
     return fake
 
 
+def _uuid_cursor(value):
+    """
+    recipes.id is a uuid column. PostgREST renders `.gt("id", "")` as `id=gt.`
+    and Postgres then fails the whole page with
+    `invalid input syntax for type uuid: ""`. The double must be no more
+    permissive than the database, or an empty-string cursor looks like a valid
+    floor here and only breaks in production.
+    """
+    if not isinstance(value, str):
+        raise AssertionError(f"cursor must be a uuid string, got {value!r}")
+    try:
+        uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        raise ValueError(f'invalid input syntax for type uuid: "{value}"') from None
+    return value
+
+
+def _rid(i):
+    """A real uuid that still sorts by index, so paging order is predictable."""
+    return f"00000000-0000-4000-8000-{i:012d}"
+
+
 def _recipes(n):
-    return [{"id": f"r{i:03d}", "title": f"R{i}", "ingredient_lines": [], "direction_steps": []}
+    return [{"id": _rid(i), "title": f"R{i}", "ingredient_lines": [], "direction_steps": []}
             for i in range(n)]
 
 
@@ -112,7 +137,7 @@ def test_job_runs_in_batches_and_inserts_additively():
     inserts = _ops(fake, "recipe_categories")
     assert len(inserts) == 3
     rows = inserts[0][0][1][0]
-    assert rows == [{"id": rows[0]["id"], "recipe_id": "r000", "category_id": "t2", "user_id": "u1"}]
+    assert rows == [{"id": rows[0]["id"], "recipe_id": _rid(0), "category_id": "t2", "user_id": "u1"}]
     assert inserts[0][0][2] == {"on_conflict": "recipe_id,category_id", "ignore_duplicates": True}
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "done" and final["stage"] == "DONE" and final["progress_pct"] == 100
@@ -143,7 +168,7 @@ def test_infrastructure_failure_on_upsert_is_caught_and_recorded():
     # failed batch, not left to crash the run.
     fake = _fake_with_job(["running"], _recipes(5), count=5)
     fake.raises["recipe_categories"] = RuntimeError("db unreachable")
-    cat = MagicMock(return_value={"r000": ["Thai"]})
+    cat = MagicMock(return_value={_rid(0): ["Thai"]})
     assert _worker(fake, cat).run_once() == 1
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "error" and "1 of 1 batches failed" in final["error_message"]
@@ -156,7 +181,7 @@ def test_recipe_count_is_distinct_recipes_not_tag_rows_single_axis():
     # rows inserted". filter_batch_result returns a list of tags per recipe,
     # so this already reproduces the overcount without needing multiple axes.
     fake = _fake_with_job(["running"], _recipes(1), count=1, category_ids=["t1", "t2"])
-    cat = MagicMock(return_value={"r000": ["Italian", "Thai"]})
+    cat = MagicMock(return_value={_rid(0): ["Italian", "Thai"]})
     assert _worker(fake, cat).run_once() == 1
     rows = _ops(fake, "recipe_categories")[0][0][1][0]
     assert len(rows) == 2                                          # both tags inserted
@@ -169,9 +194,31 @@ def test_recipe_count_is_distinct_recipes_not_tag_rows_multi_axis():
     # (Cuisine's Thai and the standalone Quick axis) — the scenario the plan
     # review named explicitly, on top of the simpler single-axis case above.
     fake = _fake_with_job(["running"], _recipes(1), count=1, category_ids=["t2", "ax2"])
-    cat = MagicMock(return_value={"r000": ["Thai", "Quick"]})
+    cat = MagicMock(return_value={_rid(0): ["Thai", "Quick"]})
     assert _worker(fake, cat).run_once() == 1
     rows = _ops(fake, "recipe_categories")[0][0][1][0]
     assert len(rows) == 2
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "done" and final["recipe_count"] == 1
+
+
+def test_double_rejects_a_non_uuid_cursor():
+    # Guards the guard: the fake must reject exactly what Postgres rejects.
+    with pytest.raises(ValueError, match="invalid input syntax for type uuid"):
+        _uuid_cursor("")
+
+
+def test_fresh_job_pages_from_the_nil_uuid():
+    # A job whose params carry no cursor must still send a valid uuid as the
+    # page floor. `.gt("id", "")` renders as `id=gt.`, which Postgres fails with
+    # `invalid input syntax for type uuid: ""` — so every fresh job died on its
+    # first page and was marked 'error' before a single batch ran.
+    from recipeparser.adapters.recat_worker import NIL_UUID
+    fake = _fake_with_job(["running"] * 3, _recipes(15), count=15)
+    cat = MagicMock(return_value={})
+    assert _worker(fake, cat).run_once() == 1
+    cursors = [o[1][1] for ops in _ops(fake, "recipes") for o in ops if o[0] == "gt"]
+    assert cursors[0] == NIL_UUID
+    assert cursors[1] == _rid(9)                       # then the last id of page 1
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "done" and final["progress_pct"] == 100

@@ -20,6 +20,11 @@ from recipeparser.gemini import categorize_batch
 
 log = logging.getLogger(__name__)
 
+# recipes.id is a uuid column, so the paging cursor must always be a uuid.
+# An empty string renders as `id=gt.` in PostgREST, which Postgres rejects with
+# `invalid input syntax for type uuid: ""` — the nil uuid is the real floor.
+NIL_UUID = "00000000-0000-0000-0000-000000000000"
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -104,7 +109,7 @@ class RecatWorker:
 
         total = self._sb.table("recipes").select("id", count="exact").eq("user_id", user_id).execute().count or 0
         total_batches = max(1, math.ceil(total / self._batch_size))
-        cursor = str(params.get("cursor") or "")
+        cursor = str(params.get("cursor") or NIL_UUID)
         done_batches = failed = matched = 0
 
         while True:
