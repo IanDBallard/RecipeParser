@@ -199,6 +199,12 @@ expects in production. `GET /health` reports `{"status":"ok","auth_mode":"verify
 | `SUPABASE_URL` | Your Supabase project URL, e.g. `https://<ref>.supabase.co` — required for image uploads to the `recipe-images` bucket |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service-role** key (never the anon key) — required for image uploads. Never ship this in the mobile app. |
 
+**Optional environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `REGEN_WORKER_ENABLED` | `0` | Set to `1` to run the regen and bulk-recategorise workers inside the API process. Requires `SUPABASE_SERVICE_ROLE_KEY` and Cayenne migrations 013–014 to be applied. |
+
 ### Authentication
 
 All API endpoints require a valid Supabase JWT in the `Authorization` header:

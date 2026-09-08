@@ -721,3 +721,20 @@ export function useIngestionJobs(): IngestionJobRow[] {
 ```
 
 The Library screen shows a dismissible banner for any job with `status = 'running'`, and a success/error toast when `status` transitions to `done` or `error`.
+
+## 13. Recipe Edits and Regeneration
+
+Spec: `docs/superpowers/specs/2026-09-07-recipe-edit-philosophy-design.md`.
+
+The client edits **raw** columns only (`title`, `ingredient_lines`, `direction_steps`, metadata) and bumps `body_rev` on free-text changes. The server is the sole writer of **derived** columns (`structured_ingredients`, `tokenized_directions`, `embedding`, `derived_rev`). A recipe is stale when `derived_rev < body_rev`; stale rows are the queue.
+
+| Module | Role |
+|--------|------|
+| `core/durations.py` | Deterministic prep/cook/servings parser. Shares `tests/fixtures/duration_cases.json` with the Cayenne TypeScript parser. |
+| `core/regen.py` | Pure: REFINE input from a row, write-back payload, raw lines from derived data. |
+| `adapters/regen_worker.py` | `RegenWorker.run_once()`: `claim_stale_recipes` RPC → REFINE → EMBED → `update … where id = ? and body_rev = ?`. Failures via `regen_failed` RPC. `run_workers()` is the shared poll loop. |
+| `adapters/recat_worker.py` | `RecatWorker.run_once()`: one pending `ingestion_jobs` row with `kind = 'recategorize'` → batches of 10 recipes → `categorize_batch` (with `build_categorize_batch_prompt()`) → additive junction upserts. |
+
+Workers start from the FastAPI lifespan when `REGEN_WORKER_ENABLED=1` and the service-role Supabase client is configured. Poll every 10 s; regen concurrency 2.
+
+REFINE's `base_servings` and `grid_categories` are discarded on regen: both are user-owned after ingest. `amount_overrides` is emptied on every successful regen because the new structured entries reflect the rewritten lines.

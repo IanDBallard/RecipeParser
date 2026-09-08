@@ -5,7 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [Unreleased] — recipe edit backend
+
+### ✨ Added
+- `StructuredIngredient.line_index`, emitted by REFINE and validated (in range, unique).
+- `core/durations.py`: deterministic duration and servings parser; shared fixture `tests/fixtures/duration_cases.json`.
+- Raw `ingredient_lines` / `direction_steps` and structured duration/servings columns carried through ASSEMBLE and written by `SupabaseWriter`.
+- `RegenWorker` and `RecatWorker` background workers behind `REGEN_WORKER_ENABLED`, started from the FastAPI lifespan.
+- `gemini.categorize_batch()` — categorise-only call for bulk recategorise.
+- Ingestion reads `uom_system` / `measure_preference` from `profiles`; request values are the fallback.
+- `scripts/backfill_durations.py` one-off backfill.
+
+### Requires
+- Cayenne migrations 013 (`recipe_edit_columns`) and 014 (`regen_rpcs`). The workers no-op without them; `REGEN_WORKER_ENABLED` stays unset until they are applied.
 
 ---
 
