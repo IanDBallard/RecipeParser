@@ -60,6 +60,17 @@ def _no_retry_sleeps(monkeypatch):
     "ignore:This search incorrectly ignores the root element, "
     "and will be fixed in a future version.:FutureWarning"
 )
+# The refine prompt gained a phase-preservation rule (see
+# gemini.build_refine_prompt). Only phases-bakers.epub was re-recorded against
+# it — that is the fixture the rule exists for, and re-recording the other 517
+# refine replies would have cost 517 paid API calls to obtain replies whose
+# content the rule does not change. Those recordings therefore no longer match
+# their prompt's sha256. Replay is unaffected: recordings key off the prompt
+# BODY (the raw recipe), which the rule does not touch. Scoped to refine-NN by
+# filename so extract/table/vision drift still warns.
+@pytest.mark.filterwarnings(
+    r"ignore:prompt_sha256 mismatch for .*refine-\d+\.json:UserWarning"
+)
 def test_stage_golden(fixture, golden_client, snapshot: SnapshotAssertion, monkeypatch):
     client = golden_client(fixture)
     chunks = _chunks_for(fixture, monkeypatch)
@@ -125,6 +136,17 @@ def test_the_bakers_table_is_normalised_before_extraction(golden_client):
     "ignore:This search incorrectly ignores the root element, "
     "and will be fixed in a future version.:FutureWarning"
 )
+# The refine prompt gained a phase-preservation rule (see
+# gemini.build_refine_prompt). Only phases-bakers.epub was re-recorded against
+# it — that is the fixture the rule exists for, and re-recording the other 517
+# refine replies would have cost 517 paid API calls to obtain replies whose
+# content the rule does not change. Those recordings therefore no longer match
+# their prompt's sha256. Replay is unaffected: recordings key off the prompt
+# BODY (the raw recipe), which the rule does not touch. Scoped to refine-NN by
+# filename so extract/table/vision drift still warns.
+@pytest.mark.filterwarnings(
+    r"ignore:prompt_sha256 mismatch for .*refine-\d+\.json:UserWarning"
+)
 def test_every_refined_recipe_keeps_its_grid_inside_the_axes(golden_client, monkeypatch):
     """Clean-grid stripping: a tag outside FIXED_AXES must never survive."""
     valid = {axis: set(tags) for axis, tags in FIXED_AXES.items()}
@@ -138,3 +160,50 @@ def test_every_refined_recipe_keeps_its_grid_inside_the_axes(golden_client, monk
             for axis, tags in refined.grid_categories.items():
                 assert axis in valid
                 assert set(tags) <= valid[axis]
+
+
+@pytest.mark.filterwarnings(
+    "ignore:In the future version we will turn default option ignore_ncx:UserWarning"
+)
+@pytest.mark.filterwarnings(
+    "ignore:This search incorrectly ignores the root element, "
+    "and will be fixed in a future version.:FutureWarning"
+)
+def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
+    """A multi-phase recipe must still read as phases after refinement.
+
+    gemini's extract prompt is explicit — "Do NOT flatten, merge, or skip any
+    phase" — and the recorded extract reply honours it, emitting bold "Phase 1"
+    / "Phase 2" heading entries. build_refine_prompt carried no such rule, so
+    the refined output dropped those headings: the ingredients and their order
+    survived, but a reader lost the grouping that makes an overnight levain
+    legible as two separate sessions.
+
+    phases-bakers.epub exists in the corpus for exactly this branch.
+    """
+    client = golden_client("phases-bakers.epub")
+    chunks = EpubReader().read(str(corpus_path("phases-bakers.epub")))
+
+    phase_markers = []
+    for chunk in chunks:
+        text = chunk.text
+        if gemini.needs_table_normalisation(text):
+            text = gemini.normalise_baker_table(text, client)
+        for raw in extract(chunk_text=text, client=client, units="book", plain_text_mode=False):
+            if not any("phase" in item.lower() for item in raw.ingredients + raw.directions):
+                continue  # not the multi-phase recipe
+            refined = refine(
+                raw=raw,
+                client=client,
+                uom_system="US",
+                measure_preference="Volume",
+                user_axes=FIXED_AXES,
+            )
+            lines = [i.fallback_string for i in refined.structured_ingredients]
+            lines += [d.text for d in refined.tokenized_directions]
+            phase_markers = [line for line in lines if "phase" in line.lower()]
+
+    assert phase_markers, (
+        "the refined recipe kept no phase heading at all — extraction produced "
+        "them and refinement dropped them"
+    )

@@ -10,7 +10,7 @@
       "difficulty": null,
       "embedding": {
         "len": 1536,
-        "sha256": "db35bb927725fe7c72ecf103fe8fa32f56c0c849be24a5b45d4252aba75d7699"
+        "sha256": "403eb9981fc2809e1383c3c12b09547b216df439b2189c50c540b34c5341bba4"
       },
       "grid_categories": {
         "Meal Type": [
@@ -25,6 +25,16 @@
       "source": null,
       "source_url": "Phases And Percentages",
       "structured_ingredients": [
+        {
+          "amount": null,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "**PHASE 1 — Levain**",
+          "id": "heading_01",
+          "is_ai_converted": false,
+          "name": "PHASE 1 — Levain",
+          "unit": null
+        },
         {
           "amount": 1.0,
           "converted_amount": null,
@@ -56,6 +66,16 @@
           "unit": "teaspoon"
         },
         {
+          "amount": null,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "**PHASE 2 — Final Dough**",
+          "id": "heading_02",
+          "is_ai_converted": false,
+          "name": "PHASE 2 — Final Dough",
+          "unit": null
+        },
+        {
           "amount": 1.0,
           "converted_amount": null,
           "converted_unit": null,
@@ -66,7 +86,7 @@
           "unit": "lb"
         },
         {
-          "amount": 0.3333333333333333,
+          "amount": 0.33,
           "converted_amount": null,
           "converted_unit": null,
           "fallback_string": "50g (1/3 cup) whole wheat flour",
@@ -100,18 +120,26 @@
       "tokenized_directions": [
         {
           "step": 1,
-          "text": "Mix the levain ingredients ({{ing_01|whole wheat flour}}, {{ing_02|water}}, {{ing_03|ripe starter}}) and leave at room temperature for 10 hours."
+          "text": "**PHASE 1**"
         },
         {
           "step": 2,
-          "text": "Mix the {{ing_04|bread flour}}, {{ing_05|whole wheat flour}} and {{ing_06|water}} and rest for 40 minutes."
+          "text": "Mix the {{ing_01|whole wheat flour}}, {{ing_02|water}}, and {{ing_03|ripe starter}} and leave at room temperature for 10 hours."
         },
         {
           "step": 3,
-          "text": "Add the levain and {{ing_07|fine salt}}, then fold every 30 minutes for 3 hours."
+          "text": "**PHASE 2**"
         },
         {
           "step": 4,
+          "text": "Mix the {{ing_04|bread flour}}, {{ing_05|whole wheat flour}} and {{ing_06|water}} and rest for 40 minutes."
+        },
+        {
+          "step": 5,
+          "text": "Add the {{ing_03|ripe starter}} and {{ing_07|fine salt}}, then fold every 30 minutes for 3 hours."
+        },
+        {
+          "step": 6,
           "text": "Shape, retard overnight, and bake at 475F in a covered pot for 20 minutes, then 20 uncovered."
         }
       ]
