@@ -127,7 +127,7 @@ class RecatWorker:
                         self._sb.table("recipe_categories").upsert(
                             rows, on_conflict="recipe_id,category_id", ignore_duplicates=True
                         ).execute()
-                    matched += len(rows)
+                    matched += len(hits)  # distinct recipes matched, not junction rows inserted
                 except Exception as exc:  # noqa: BLE001
                     failed += 1
                     log.warning("recat job %s: batch failed (%s) — skipped.", job["id"], exc)

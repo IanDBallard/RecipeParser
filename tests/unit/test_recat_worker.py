@@ -60,7 +60,7 @@ def test_resolve_new_axes():
     assert ids == {"Thai": "t2", "Quick": "ax2"}
 
 
-def _fake_with_job(job_status_sequence, recipes, count):
+def _fake_with_job(job_status_sequence, recipes, count, category_ids=("t2",)):
     fake = FakeSupabase()
     fake.responses["categories"] = CATS
     statuses = list(job_status_sequence)
@@ -69,7 +69,7 @@ def _fake_with_job(job_status_sequence, recipes, count):
         names = [o[0] for o in q.ops]
         if names[0] == "select" and ("eq", ("status", "pending"), {}) in q.ops:
             return _Result([{"id": "j1", "user_id": "u1", "kind": "recategorize",
-                             "status": "pending", "params": {"category_ids": ["t2"]}}])
+                             "status": "pending", "params": {"category_ids": list(category_ids)}}])
         if names[0] == "select":                       # cancel check
             return _Result([{"status": statuses.pop(0) if statuses else "running"}])
         if names[0] == "update" and ("eq", ("status", "pending"), {}) in q.ops:
@@ -148,3 +148,30 @@ def test_infrastructure_failure_on_upsert_is_caught_and_recorded():
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "error" and "1 of 1 batches failed" in final["error_message"]
     assert final["recipe_count"] == 0
+
+
+def test_recipe_count_is_distinct_recipes_not_tag_rows_single_axis():
+    # One recipe matching two tags WITHIN one axis must contribute 1 to
+    # recipe_count, not 2 — recipe_count is "recipes processed", not "junction
+    # rows inserted". filter_batch_result returns a list of tags per recipe,
+    # so this already reproduces the overcount without needing multiple axes.
+    fake = _fake_with_job(["running"], _recipes(1), count=1, category_ids=["t1", "t2"])
+    cat = MagicMock(return_value={"r000": ["Italian", "Thai"]})
+    assert _worker(fake, cat).run_once() == 1
+    rows = _ops(fake, "recipe_categories")[0][0][1][0]
+    assert len(rows) == 2                                          # both tags inserted
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "done" and final["recipe_count"] == 1  # but 1 recipe
+
+
+def test_recipe_count_is_distinct_recipes_not_tag_rows_multi_axis():
+    # Same overcount, but the two matched tags come from different axes
+    # (Cuisine's Thai and the standalone Quick axis) — the scenario the plan
+    # review named explicitly, on top of the simpler single-axis case above.
+    fake = _fake_with_job(["running"], _recipes(1), count=1, category_ids=["t2", "ax2"])
+    cat = MagicMock(return_value={"r000": ["Thai", "Quick"]})
+    assert _worker(fake, cat).run_once() == 1
+    rows = _ops(fake, "recipe_categories")[0][0][1][0]
+    assert len(rows) == 2
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "done" and final["recipe_count"] == 1
