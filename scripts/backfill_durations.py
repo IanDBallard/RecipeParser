@@ -1,8 +1,9 @@
 """
 One-off: parse prep_time / cook_time text into the structured duration columns
 (spec 7.2).  Servings text was never stored, so servings_min/max are seeded
-from base_servings.  Rows whose text landed entirely in a note are printed for
-a manual look.
+from base_servings.  `base_servings` itself is never changed — it is numeric and
+user-owned, and it is written back exactly as it was read.  Rows whose text
+landed entirely in a note are printed for a manual look.
 
 Mirrors the CLI shape of `scripts/backfill_paprika_metadata.py` (on master): a dry
 run is the default and writing is an explicit opt-in, so a mistyped invocation
@@ -22,7 +23,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -31,13 +32,27 @@ from recipeparser.core.durations import duration_columns  # noqa: E402
 PAGE = 500
 
 
+def _servings_text(base: Any) -> Optional[str]:
+    """Servings text for the parser from a numeric base_servings, without truncating."""
+    if base is None:
+        return None
+    value = float(base)
+    return str(int(value)) if value.is_integer() else str(value)
+
+
 def plan_backfill(rows: List[Dict[str, Any]]) -> List[Tuple[str, Dict[str, Any], bool]]:
     plan = []
     for row in rows:
         base = row.get("base_servings")
-        base_int = int(base) if base is not None else None
-        servings_text = str(base_int) if base_int is not None else None
-        cols = duration_columns(row.get("prep_time"), row.get("cook_time"), servings_text, base_int)
+        # recipes.base_servings is numeric, so int(base) turns 4.5 into 4 — and
+        # duration_columns puts its result into cols["base_servings"], which the
+        # UPDATE writes. A --live run would silently rewrite every fractional
+        # base_servings in the library. Derive the servings text from the true
+        # value and hand back the original untouched: this backfill seeds the
+        # structured servings columns and never changes base_servings.
+        servings_text = _servings_text(base)
+        cols = duration_columns(row.get("prep_time"), row.get("cook_time"), servings_text, None)
+        cols["base_servings"] = base
         note_only = any(
             cols[f"{k}_note"] and cols[f"{k}_min_minutes"] is None and row.get(f"{k}_time")
             for k in ("prep", "cook")
