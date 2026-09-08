@@ -1,7 +1,6 @@
-"""refine() validates line_index against the raw ingredient list (spec 4.3)."""
+"""refine() normalises line_index against the raw ingredient list (spec 4.3)."""
+import logging
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from recipeparser.models import (
     CayenneRefinement,
@@ -62,16 +61,35 @@ def test_header_line_skipped_is_fine():
     assert [i.line_index for i in result.structured_ingredients] == [0, 2]
 
 
-def test_out_of_range_raises():
-    with pytest.raises(ValueError, match="line_index 5"):
-        _run(_raw(3), _refinement([0, 5]))
+def test_out_of_range_degrades_to_none(caplog):
+    # line_index is Optional by design and spec 4.3 gives the client a fallback
+    # for a missing one, so a bad index must not cost the whole recipe: it
+    # would propagate to the per-chunk error boundary and drop it at ingest.
+    caplog.set_level(logging.WARNING, logger="recipeparser.core.stages.refine")
+    result = _run(_raw(3), _refinement([0, 5]))
+    assert [i.line_index for i in result.structured_ingredients] == [0, None]
+    assert "ing_02" in caplog.text and "line_index 5" in caplog.text
 
 
-def test_negative_raises():
-    with pytest.raises(ValueError, match="line_index -1"):
-        _run(_raw(3), _refinement([-1]))
+def test_negative_degrades_to_none(caplog):
+    caplog.set_level(logging.WARNING, logger="recipeparser.core.stages.refine")
+    result = _run(_raw(3), _refinement([-1]))
+    assert [i.line_index for i in result.structured_ingredients] == [None]
+    assert "ing_01" in caplog.text and "line_index -1" in caplog.text
 
 
-def test_duplicate_raises():
-    with pytest.raises(ValueError, match="line_index 1 .*twice"):
-        _run(_raw(3), _refinement([1, 1]))
+def test_duplicate_degrades_only_the_second_claimant(caplog):
+    # The first entry to claim a line keeps it; only the duplicate is cleared,
+    # so one cosmetic slip does not discard indices that are still correct.
+    caplog.set_level(logging.WARNING, logger="recipeparser.core.stages.refine")
+    result = _run(_raw(3), _refinement([1, 1, 2]))
+    assert [i.line_index for i in result.structured_ingredients] == [1, None, 2]
+    assert "ing_02" in caplog.text and "already claimed by 'ing_01'" in caplog.text
+
+
+def test_valid_indices_are_untouched_and_log_nothing(caplog):
+    # The degrade path must not fire for a clean result.
+    caplog.set_level(logging.WARNING, logger="recipeparser.core.stages.refine")
+    result = _run(_raw(4), _refinement([0, 2, None, 3]))
+    assert [i.line_index for i in result.structured_ingredients] == [0, 2, None, 3]
+    assert caplog.text == ""
