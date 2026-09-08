@@ -146,7 +146,16 @@ First ingredients: {ingredient_sample}
 Notes: {recipe.notes or ""}
 """
     try:
-        response = client.models.generate_content(
+        # Routed through gemini._call_with_retry rather than calling the client
+        # directly: that is the one path carrying the HTTP timeout and the
+        # back-off ladder. A bulk `--recategorize` run should survive a
+        # transient 503 rather than silently dropping that recipe into the
+        # fallback bucket. Imported here, not at module scope, to keep
+        # categories.py importable without pulling in the Gemini module.
+        from recipeparser.gemini import _call_with_retry
+
+        response = _call_with_retry(
+            client,
             model="gemini-2.5-flash",
             contents=prompt,
             config={"temperature": 0},

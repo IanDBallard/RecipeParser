@@ -1,4 +1,11 @@
-"""All Gemini API calls with retry, timeout, and rate-limit back-off."""
+"""Gemini API calls.
+
+Every call that goes through ``_call_with_retry`` carries the HTTP timeout,
+rate-limit back-off, and transient-server-error retry. ``get_embeddings`` and
+``verify_connectivity`` call the client directly and carry the timeout only —
+an embedding has no parse step worth retrying, and the connectivity probe is
+meant to return a fast verdict rather than retry a dead key five times.
+"""
 import json
 import logging
 import re
@@ -206,10 +213,14 @@ def verify_connectivity(client) -> bool:
     Returns True if the API is reachable, False otherwise.
     """
     try:
+        # Timeout but deliberately NOT _call_with_retry: this is a preflight
+        # probe whose value is a fast verdict before real work starts, so a
+        # dead key should fail in one attempt rather than burn the five-retry
+        # back-off ladder.
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents="Reply with the single word OK.",
-            config={"max_output_tokens": 5, "temperature": 0},
+            config=_with_http_timeout({"max_output_tokens": 5, "temperature": 0}),
         )
         log.info("Gemini connectivity check passed (response: %s).", response.text.strip())
         return True
@@ -225,7 +236,15 @@ def get_embeddings(text: str, client) -> List[float]:
         response = client.models.embed_content(
             model="models/gemini-embedding-001",
             contents=text,
-            config=genai_types.EmbedContentConfig(output_dimensionality=1536),
+            # Bounded like every generate_content call: EmbedContentConfig
+            # carries its own http_options, so the timeout goes on the typed
+            # config rather than through _with_http_timeout's dict merge.
+            # This is the EMBED stage of every run — an unbounded call here
+            # hangs an ordinary import.
+            config=genai_types.EmbedContentConfig(
+                output_dimensionality=1536,
+                http_options={"timeout": _HTTP_TIMEOUT_MS},
+            ),
         )
         return response.embeddings[0].values
     except Exception as e:
