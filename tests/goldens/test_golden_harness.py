@@ -66,3 +66,33 @@ def test_the_readme_documents_exactly_the_declared_fixtures():
 def test_the_corpus_stays_under_two_megabytes():
     total = sum(p.stat().st_size for p in paths.CORPUS_DIR.iterdir())
     assert total < 2 * 1024 * 1024, f"corpus is {total} bytes"
+
+
+def test_every_recording_is_valid_and_named_by_its_own_key():
+    """A recording whose filename disagrees with its contents would replay wrongly."""
+    import json
+
+    from tests.goldens import golden_client as gc
+
+    seen = 0
+    for path in paths.GEMINI_DIR.rglob("*.json"):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert set(payload) >= {
+            "stage", "ordinal", "model", "config", "prompt_sha256", "response_text"
+        }, f"{path} is missing fields"
+        assert "response_json_schema" not in payload["config"], f"{path} stored a schema"
+        assert path.name == f"{payload['stage']}-{payload['ordinal']:02d}.json", path
+        assert len(path.parent.name) == 8, f"{path.parent} is not a body sha8 directory"
+        assert path.parent.parent.name in paths.CORPUS_FIXTURES, path
+        seen += 1
+    assert seen > 0, "no recordings found — tests/goldens/gemini/ is empty"
+    assert gc.GoldenClient is not None  # imported to prove the module loads cleanly
+
+
+def test_every_fixture_that_calls_gemini_has_recordings():
+    expected = {
+        "gutenberg-multi.epub", "dual-units.epub", "phases-bakers.epub",
+        "text-pages.pdf", "scanned.pdf", "legacy-photo.paprikarecipes",
+    }
+    present = {d.name for d in paths.GEMINI_DIR.iterdir() if d.is_dir()}
+    assert expected <= present, f"no recordings for {sorted(expected - present)}"

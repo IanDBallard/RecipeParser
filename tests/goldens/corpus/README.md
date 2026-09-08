@@ -25,3 +25,29 @@ so a reviewer can see how each was made.
   `GOOGLE_API_KEY`, costs money, and never runs in CI. Do it only when a prompt
   or model changes on purpose, and commit the prompt, the recordings and the
   resulting output together.
+
+## What each family covers
+
+Note: file names below are given without backticks on purpose — a bare
+backtick-quoted cell in the first column of any table in this document is
+read by `test_every_corpus_file_has_a_readme_entry` /
+`test_the_readme_documents_exactly_the_declared_fixtures` as a corpus fixture
+name (see `test_golden_harness.py`), and these are test files, not corpus
+fixtures.
+
+| File | What it locks |
+|---|---|
+| test_readers_golden.py | Every reader's chunks and qualifying images against a real file; the scanned PDF's preflight refusal; `utils.html_to_text`. No Gemini. |
+| test_prompts_snapshot.py | The six prompt builders across the units, axes and measure-preference matrix, and `_schema_for_gemini` for every response model. This is the only guard that `additionalProperties` cannot creep back. |
+| test_stages_golden.py | Real recorded replies through `json.loads`, `model_validate`, the dynamic grid round-trip, clean-grid tag stripping and fat-token validation; the baker's-table branch; the vision OCR fallback. |
+| test_e2e_golden.py | `RecipePipeline` at pool size 4 through both zip writers, compared as an order-independent multiset; the Cayenne archive's round trip back through `PaprikaReader`. |
+| test_golden_client.py | The keying rules — which recording a call belongs to, at any pool size. |
+| test_golden_harness.py | The corpus/README cross-check, the 2 MB budget, and that every recording is named by its own key. |
+
+## Not covered here
+
+A live quality eval (running the corpus against real Gemini and reporting
+`run_recon` results with tolerance), broader OCR than the one scanned fixture,
+migrating the older mock-based reader and TOC tests onto this corpus, and a
+Supabase writer cassette. TOC calls are recorded by stage but not replayed:
+`toc.py` reads `response.parsed`, which `GoldenResponse` leaves as None.
