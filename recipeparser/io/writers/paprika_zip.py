@@ -275,12 +275,16 @@ def _ingest_to_paprika_dict(recipe: IngestResponse) -> Dict[str, Any]:
         "cook_time": recipe.cook_time or "",
         "total_time": "",
         "servings": servings_str,
-        "notes": "",
-        "description": "",
-        "nutritional_info": "",
-        "difficulty": "",
-        "rating": 0,
-        "source": "",
+        "notes": recipe.notes or "",
+        "description": recipe.description or "",
+        "nutritional_info": recipe.nutritional_info or "",
+        "difficulty": recipe.difficulty or "",
+        # Paprika's rating is an integer; a plain Paprika archive has no
+        # _cayenne_meta to hold the null, so an unrated recipe reads as 0 here and
+        # is lost. That is the format's limit, not a defect: this writer's output
+        # is for Paprika.
+        "rating": recipe.rating or 0,
+        "source": recipe.source or "",
         "source_url": recipe.source_url or "",
         "image_url": recipe.image_url or "",
         "categories": recipe.categories,

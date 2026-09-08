@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
 
 from recipeparser.core.fsm import PipelineController
-from recipeparser.core.models import Chunk, InputType
+from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.stages.assemble import assemble
 from recipeparser.core.stages.categorize import categorize
@@ -301,7 +301,7 @@ class RecipePipeline:
                 grid_categories=pr.grid_categories or {},
                 prep_time=pr.prep_time,
                 cook_time=pr.cook_time,
-                meta=chunk.meta,
+                meta=chunk.meta or _source_meta_from(pr),
             )
             return [result]
 
@@ -325,7 +325,7 @@ class RecipePipeline:
                 grid_categories=pr.grid_categories or {},
                 prep_time=pr.prep_time,
                 cook_time=pr.cook_time,
-                meta=chunk.meta,
+                meta=chunk.meta or _source_meta_from(pr),
             )
             return [result]
 
@@ -397,6 +397,26 @@ def _uom_to_units_key(uom_system: str) -> str:
         "Imperial": "imperial",
     }
     return mapping.get(uom_system, "book")
+
+
+def _source_meta_from(pr: "CayenneRecipe | IngestResponse") -> SourceMeta:
+    """
+    The six metadata fields of a pre-parsed recipe, in the shape ``assemble()`` reads.
+
+    ``_pre_parsed_to_refinement`` is a shim over the four fields ``embed()`` needs and
+    carries none of these, so without this the six would arrive from ``_cayenne_meta``
+    and then be dropped on the last hop of a restore.
+    """
+    return SourceMeta(
+        prep_time=pr.prep_time,
+        cook_time=pr.cook_time,
+        source=pr.source,
+        notes=pr.notes,
+        rating=pr.rating,
+        nutritional_info=pr.nutritional_info,
+        description=pr.description,
+        difficulty=pr.difficulty,
+    )
 
 
 def _pre_parsed_to_refinement(

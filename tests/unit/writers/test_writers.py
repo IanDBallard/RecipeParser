@@ -497,3 +497,137 @@ def test_the_jsonb_columns_are_sent_as_arrays_not_strings(monkeypatch):
     # Elements survive as objects, not as re-encoded text.
     assert payload["structured_ingredients"][0]["name"] == "all-purpose flour"
     assert payload["tokenized_directions"][0]["step"] == 1
+
+
+# ---------------------------------------------------------------------------
+# The six Paprika metadata columns (design 6.3)
+# ---------------------------------------------------------------------------
+
+#: A recipe that states all six. model_copy rather than attribute assignment,
+#: matching how this suite already builds variants of the shared fixture.
+_RATED = {
+    "source": "Bon Appetit",
+    "notes": "Chill the dough.",
+    "rating": 4,
+    "nutritional_info": "520 kcal",
+    "description": "A cold-weather pie.",
+    "difficulty": "Moderate",
+}
+
+
+def _recipes_payload(mock_post):
+    """The row posted to /rest/v1/recipes, ignoring the category junction calls."""
+    return next(
+        c.kwargs["json"] for c in mock_post.call_args_list
+        if "/rest/v1/recipes" in str(c)
+    )
+
+
+def _fake_supabase(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+    # httpx.post is mocked by the caller, so nothing leaves this process.
+    monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+    response = MagicMock()
+    response.status_code = 201
+    return response
+
+
+def test_the_supabase_row_carries_all_six(monkeypatch):
+    response = _fake_supabase(monkeypatch)
+
+    with patch("recipeparser.io.writers.supabase.httpx.post", return_value=response) as mock_post:
+        write_recipe_to_supabase(
+            _make_recipe("Chicken Pie").model_copy(update=_RATED), "user-uuid-1"
+        )
+
+    payload = _recipes_payload(mock_post)
+    assert payload["source"] == "Bon Appetit"
+    assert payload["notes"] == "Chill the dough."
+    assert payload["rating"] == 4
+    assert payload["nutritional_info"] == "520 kcal"
+    assert payload["description"] == "A cold-weather pie."
+    assert payload["difficulty"] == "Moderate"
+
+
+def test_an_unrated_recipe_writes_null_not_zero(monkeypatch):
+    """The column's check constraint rejects 0; unrated is null."""
+    response = _fake_supabase(monkeypatch)
+
+    with patch("recipeparser.io.writers.supabase.httpx.post", return_value=response) as mock_post:
+        write_recipe_to_supabase(_make_recipe("Plain"), "user-uuid-1")
+
+    assert _recipes_payload(mock_post)["rating"] is None
+
+
+def _read_one_entry(archive: Path) -> dict:
+    """Decompress the single .paprikarecipe entry in a written archive."""
+    with zipfile.ZipFile(archive, "r") as zf:
+        entries = [n for n in zf.namelist() if n.endswith(".paprikarecipe")]
+        assert len(entries) == 1, f"expected one entry, found {entries}"
+        return json.loads(gzip.decompress(zf.read(entries[0])))
+
+
+def test_the_paprika_writer_carries_the_six(tmp_path: Path):
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_make_recipe("Chicken Pie").model_copy(update=_RATED)])
+
+    entry = _read_one_entry(out)
+
+    assert entry["source"] == "Bon Appetit"
+    assert entry["notes"] == "Chill the dough."
+    assert entry["rating"] == 4
+    assert entry["nutritional_info"] == "520 kcal"
+    assert entry["description"] == "A cold-weather pie."
+    assert entry["difficulty"] == "Moderate"
+
+
+def test_the_cayenne_writer_carries_them_at_both_levels(tmp_path: Path):
+    out = tmp_path / "export.paprikarecipes"
+    CayenneZipWriter(out).write([_make_recipe("Chicken Pie").model_copy(update=_RATED)])
+
+    entry = _read_one_entry(out)
+
+    assert entry["source"] == "Bon Appetit"
+    assert entry["rating"] == 4
+    assert entry["_cayenne_meta"]["source"] == "Bon Appetit"
+    assert entry["_cayenne_meta"]["rating"] == 4
+    assert entry["_cayenne_meta"]["difficulty"] == "Moderate"
+
+
+def test_an_unrated_recipe_writes_zero_at_the_paprika_level(tmp_path: Path):
+    """Paprika's rating is an integer; the null lives in _cayenne_meta instead."""
+    out = tmp_path / "export.paprikarecipes"
+    CayenneZipWriter(out).write([_make_recipe("Plain")])
+
+    entry = _read_one_entry(out)
+
+    assert entry["rating"] == 0
+    assert entry["_cayenne_meta"]["rating"] is None
+
+
+def test_an_absent_text_field_writes_an_empty_string(tmp_path: Path):
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_make_recipe("Plain")])
+
+    entry = _read_one_entry(out)
+
+    assert entry["source"] == ""
+    assert entry["notes"] == ""
+
+
+def test_a_cayenne_archive_round_trips_every_new_field(tmp_path: Path):
+    """Design 6.4 - write, read back, and the six survive with no Gemini call."""
+    out = tmp_path / "export.paprikarecipes"
+    CayenneZipWriter(out).write([_make_recipe("Chicken Pie").model_copy(update=_RATED)])
+
+    chunk = PaprikaReader().read(str(out))[0]
+
+    assert chunk.input_type == InputType.PAPRIKA_CAYENNE
+    assert chunk.pre_parsed is not None
+    assert chunk.pre_parsed.source == "Bon Appetit"
+    assert chunk.pre_parsed.notes == "Chill the dough."
+    assert chunk.pre_parsed.rating == 4
+    assert chunk.pre_parsed.nutritional_info == "520 kcal"
+    assert chunk.pre_parsed.description == "A cold-weather pie."
+    assert chunk.pre_parsed.difficulty == "Moderate"

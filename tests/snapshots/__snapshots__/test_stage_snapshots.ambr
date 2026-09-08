@@ -7,6 +7,8 @@
       'Dessert',
     ]),
     'cook_time': None,
+    'description': None,
+    'difficulty': None,
     'embedding': '<vector len=3>',
     'grid_categories': dict({
       'Cuisine': list([
@@ -17,7 +19,11 @@
       ]),
     }),
     'image_url': None,
+    'notes': None,
+    'nutritional_info': None,
     'prep_time': None,
+    'rating': None,
+    'source': None,
     'source_url': 'https://example.com/cake',
     'structured_ingredients': list([
       dict({

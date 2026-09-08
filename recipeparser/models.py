@@ -137,6 +137,24 @@ class CayenneRecipe(BaseModel):
     base_servings: Optional[int] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None  # Supabase Storage public URL; None when no photo available
+    source: Optional[str] = Field(
+        default=None,
+        description="Where the recipe came from, as the source states it (a book, a magazine, a person).",
+    )
+    notes: Optional[str] = Field(default=None, description="The cook's own notes on the recipe.")
+    rating: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=5,
+        description="1-5 stars. None means unrated - Paprika's 0 is mapped to None at the reader.",
+    )
+    nutritional_info: Optional[str] = Field(
+        default=None, description="Free-text nutrition, as the source states it."
+    )
+    description: Optional[str] = Field(
+        default=None, description="A short blurb, shown above the directions."
+    )
+    difficulty: Optional[str] = Field(default=None, description="Free text, e.g. 'Easy', 'Moderate'.")
     categories: List[str] = Field(
         default_factory=list,
         description=(

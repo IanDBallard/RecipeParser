@@ -470,3 +470,27 @@ class TestPaprikaLegacyMetadata:
 
         assert chunk.input_type == InputType.PAPRIKA_CAYENNE
         assert chunk.meta is None
+
+    def test_all_six_new_fields_reach_the_chunks_meta(self, tmp_path: Path):
+        entry = {
+            "name": "Chicken Pie",
+            "ingredients": "1 chicken",
+            "directions": "Bake it.",
+            "source": "Bon Appetit",
+            "notes": "Chill the dough.",
+            "rating": 4,
+            "nutritional_info": "520 kcal",
+            "description": "A cold-weather pie.",
+            "difficulty": "Moderate",
+        }
+        archive = _write_paprika_archive(tmp_path, [entry])
+
+        meta = PaprikaReader().read(str(archive))[0].meta
+
+        assert meta is not None
+        assert meta.source == "Bon Appetit"
+        assert meta.notes == "Chill the dough."
+        assert meta.rating == 4
+        assert meta.nutritional_info == "520 kcal"
+        assert meta.description == "A cold-weather pie."
+        assert meta.difficulty == "Moderate"
