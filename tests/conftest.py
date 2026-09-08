@@ -1,8 +1,10 @@
 """Shared fixtures and helpers for the recipeparser test suite."""
+import os
 import sys
 import types
-import os
 from unittest.mock import MagicMock
+
+import pytest
 
 
 def pytest_addoption(parser):
@@ -25,6 +27,105 @@ def pytest_addoption(parser):
         default=False,
         help="Rewrite expected files under tests/goldens/readers/ and tests/goldens/e2e/.",
     )
+
+
+#: (option attribute, flag, why a distributed run would be wrong).  Order is
+#: the order they are reported in; the first match wins.
+_SERIAL_ONLY = (
+    (
+        "record_gemini",
+        "--record-gemini",
+        "GlobalRateLimiter is a per-process singleton, so N xdist workers would "
+        "issue N x the intended RPM against the real Gemini quota",
+    ),
+    (
+        "update_goldens",
+        "--update-goldens",
+        "a golden regenerated under load bakes any flake into a committed file",
+    ),
+    (
+        "update_snapshots",
+        "--snapshot-update",
+        "xdist suppresses syrupy's snapshot report, which is what detects a "
+        "stale or unused snapshot",
+    ),
+)
+
+
+def serial_reason(option) -> "str | None":
+    """Why this run must not be distributed across xdist workers, or None.
+
+    Pure on purpose: the whole policy is one readable table plus this lookup,
+    so tests/unit/test_pytest_config.py can check it without spawning pytest.
+    Attributes are read defensively — syrupy or xdist may not be installed.
+    """
+    for attr, flag, why in _SERIAL_ONLY:
+        if getattr(option, attr, False):
+            return f"{flag}: {why}"
+    return None
+
+
+#: Most workers worth starting.  Measured on the 759-test suite (8-core/16-thread):
+#: serial 9.23s, n=4 7.18s, n=6 7.18s, n=8 7.50s, n=16 10.14s.  Past this the
+#: per-worker import cost outruns the gain -- which is why xdist's own "auto" is
+#: not used here: with no psutil it counts *logical* cores (16 on this desktop)
+#: and lands slower than not distributing at all.
+WORKER_CAP = 6
+
+
+def default_workers(cpu_count: "int | None") -> int:
+    """How many xdist workers to use when the operator named no count.
+
+    Returns 0 -- serial -- for a machine that cannot gain from workers, so a
+    single-core runner never pays startup for parallelism it cannot use.
+    """
+    if not cpu_count or cpu_count < 2:
+        return 0
+    return min(WORKER_CAP, cpu_count)
+
+
+#: Set when pytest_configure demoted a distributed run, so the header can say so.
+_FORCED_SERIAL = pytest.StashKey[str]()
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config: "pytest.Config") -> None:
+    """Demote a write-mode run to serial before xdist reads its own options.
+
+    pyproject.toml sets ``addopts = -n auto``, so the guarded flags would
+    otherwise inherit the parallel default.  tryfirst is what makes this work:
+    xdist decides whether to distribute in its own pytest_configure.
+    """
+    if not hasattr(config.option, "numprocesses"):
+        return  # xdist not installed; nothing to decide
+
+    reason = serial_reason(config.option)
+    if reason:
+        if config.option.numprocesses:
+            config.option.numprocesses = 0
+            config.option.dist = "no"
+            config.stash[_FORCED_SERIAL] = reason
+        return
+
+
+
+def pytest_xdist_auto_num_workers(config: "pytest.Config") -> int:
+    """Resolve the ``-n auto`` in pyproject.toml to a count that suits the host.
+
+    xdist's own answer is os.cpu_count() -- 16 logical on the desktop this was
+    tuned on, which measured slower than serial.  Capping it is the whole point;
+    see WORKER_CAP for the numbers.
+
+    This is the hook xdist provides for the job, and it has to be: distribution
+    cannot be switched on from pytest_configure, because xdist has already built
+    config.option.tx from the worker count by then.
+    """
+    return default_workers(os.cpu_count())
+
+
+def pytest_report_header(config: "pytest.Config") -> "str | None":
+    reason = config.stash.get(_FORCED_SERIAL, None)
+    return f"forcing serial execution -- {reason}" if reason else None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
