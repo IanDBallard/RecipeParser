@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "19c5b7350f870a87bb678ff2770833397eef38abbbdd7350e52723d3aed07b89",
+  "response_text": "{\"title\":\"Boiled Custard\",\"base_servings\":6,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":1,\"unit\":\"quart\",\"name\":\"milk\",\"fallback_string\":\"1 quart milk\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":4,\"unit\":null,\"name\":\"eggs\",\"fallback_string\":\"4 eggs\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":0.5,\"unit\":\"cup\",\"name\":\"sugar\",\"fallback_string\":\"1/2 cup sugar\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":1,\"unit\":\"teaspoon\",\"name\":\"vanilla\",\"fallback_string\":\"1 teaspoon vanilla\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"Scald the {{ing_01|milk}}.\"},{\"step\":2,\"text\":\"Beat the {{ing_02|eggs}} and {{ing_03|sugar}} together.\"},{\"step\":3,\"text\":\"Pour the hot {{ing_01|milk}} over the {{ing_02|eggs}}, stirring.\"},{\"step\":4,\"text\":\"Cook over water until it coats a spoon.\"},{\"step\":5,\"text\":\"Cool, then stir in the {{ing_04|vanilla}}.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[\"Dessert\"]}}"
+}

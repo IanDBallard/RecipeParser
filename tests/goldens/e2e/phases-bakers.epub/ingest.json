@@ -6,6 +6,8 @@
         "Bread"
       ],
       "cook_time": "40 mins",
+      "description": null,
+      "difficulty": null,
       "embedding": {
         "len": 1536,
         "sha256": "db35bb927725fe7c72ecf103fe8fa32f56c0c849be24a5b45d4252aba75d7699"
@@ -16,7 +18,11 @@
         ]
       },
       "image_url": null,
+      "notes": null,
+      "nutritional_info": null,
       "prep_time": "14 hours",
+      "rating": null,
+      "source": null,
       "source_url": "Phases And Percentages",
       "structured_ingredients": [
         {
@@ -116,6 +122,8 @@
         "Bread"
       ],
       "cook_time": "35 mins",
+      "description": null,
+      "difficulty": null,
       "embedding": {
         "len": 1536,
         "sha256": "4062a3eb743dccba41f5a1ac835e2ac1cbcecbf0bcb9a68dac1d964010c25924"
@@ -126,7 +134,11 @@
         ]
       },
       "image_url": null,
+      "notes": null,
+      "nutritional_info": null,
       "prep_time": "3 hours",
+      "rating": null,
+      "source": null,
       "source_url": "Phases And Percentages",
       "structured_ingredients": [
         {

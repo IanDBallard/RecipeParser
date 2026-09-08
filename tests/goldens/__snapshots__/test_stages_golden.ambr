@@ -70596,10 +70596,10 @@
         'notes': None,
         'photo_filename': None,
         'prep_time': None,
-        'servings': None,
+        'servings': '6',
       }),
       'refined': dict({
-        'base_servings': None,
+        'base_servings': 6,
         'grid_categories': dict({
           'Cuisine': list([
           ]),
