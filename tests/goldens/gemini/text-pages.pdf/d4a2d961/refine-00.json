@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "ad372428400edd11c0d5313856a2428dd57fa3bf8d758fa76041326643f4c047",
+  "response_text": "{\n  \"title\": \"MUSHROOMS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Fresh Mushrooms\",\n      \"fallback_string\": \"Fresh Mushrooms\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Reduced Wine\",\n      \"fallback_string\": \"Reduced Wine\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Green Coriander\",\n      \"fallback_string\": \"Bunch of Green Coriander\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Stew {{ing_01|fresh mushrooms}} in {{ing_02|reduced wine}} with a {{ing_03|bunch of green coriander}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Remove {{ing_03|coriander}} before serving.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "2d4d8ba50fed37a43fdda45d9b73c656dff914bbb3fc9de6ab346539fc3d4f99",
+  "response_text": "{\n  \"title\": \"ROMAN VERMOUTH\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 1,\n      \"unit\": \"Theban ounce\",\n      \"name\": \"wormwood\",\n      \"fallback_string\": \"1 THEBAN OUNCE of WORMWOOD\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 6,\n      \"unit\": \"scruples\",\n      \"name\": \"mastich\",\n      \"fallback_string\": \"6 SCRUPLES of MASTICH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 3,\n      \"unit\": \"scruples\",\n      \"name\": \"nard leaves\",\n      \"fallback_string\": \"3 SCRUPLES each of [nard] LEAVES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 3,\n      \"unit\": \"scruples\",\n      \"name\": \"costmary\",\n      \"fallback_string\": \"3 SCRUPLES each of COSTMARY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": 3,\n      \"unit\": \"scruples\",\n      \"name\": \"saffron\",\n      \"fallback_string\": \"3 SCRUPLES each of SAFFRON\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": 18,\n      \"unit\": \"quarts\",\n      \"name\": \"mild wine\",\n      \"fallback_string\": \"18 QUARTS of any kind of MILD WINE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"ACCORDING TO THE RECIPE OF CAMERINUM YOU NEED WORMWOOD FROM SANTO FOR ROMAN VERMOUTH OR, AS A SUBSTITUTE, WORMWOOD FROM THE PONTUS CLEANED AND CRUSHED, {{ing_01|1 THEBAN OUNCE OF IT}}, {{ing_02|6 SCRUPLES OF MASTICH}}, {{ing_03|3 EACH OF [nard] LEAVES}}, {{ing_04|COSTMARY}} AND {{ing_05|SAFFRON}} AND {{ing_06|18 QUARTS OF ANY KIND OF MILD WINE}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"[Filter cold] CHARCOAL IS NOT REQUIRED BECAUSE OF THE BITTERNESS.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [\"Italian\", \"French\"],\n    \"Meal Type\": []\n  }\n}"
+}

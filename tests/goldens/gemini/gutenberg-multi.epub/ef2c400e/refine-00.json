@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "cf0dd9aa4bc5d0d1a4dccfdcc474a8e9a3952e4a311c43c77ebf85f2a63e9c31",
+  "response_text": "{\n  \"title\": \"A SIMILAR DISH (SIMILITER)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"polypody root\",\n      \"fallback_string\": \"POLYPODY [1] ROOT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"ground pepper\",\n      \"fallback_string\": \"GROUND PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cumin\",\n      \"fallback_string\": \"CUMIN\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"PARBOIL {{ing_01|POLYPODY [1] ROOT}} SO AS TO SOFTEN THEM.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"CUT THEM INTO SMALL PIECES.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"SEASON WITH {{ing_02|GROUND PEPPER}} AND {{ing_03|CUMIN}}.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"ARRANGE IN A BAKING DISH, FINISH ON THE FIRE AND SERVE [2].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

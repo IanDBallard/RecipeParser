@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "ed97bf15f72a60054ab246775c3ab5b07f97901de27cc22c5aa84e1da5962523",
+  "response_text": "{\n  \"title\": \"SIMILAR\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Cooked spelt\",\n      \"fallback_string\": \"Cooked spelt\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Liquor of dainty pieces of pork, or capon cooked in wine\",\n      \"fallback_string\": \"Liquor of dainty pieces of pork, or capon [2] cooked in wine [3]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Or flavor {{ing_01|cooked spelt}} with the {{ing_02|liquor of dainty pieces of pork, or capon [2] cooked in wine [3]}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

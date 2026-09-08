@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "ede7489888b5270e4c2cdc66581728f5b90bf7e380889ec9110bf5f93b9a772c",
+  "response_text": "{\"title\": \"CHICKEN FORCEMEAT (ISICIA DE PULLO)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": 1, \"unit\": \"lb\", \"name\": \"chicken meat\", \"fallback_string\": \"CHICKEN MEAT, 1 LB.\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": 0.25, \"unit\": \"pint\", \"name\": \"darnel meal\", \"fallback_string\": \"DARNEL [1] MEAL, ONE QUARTER PINT\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": 0.25, \"unit\": \"pint\", \"name\": \"stock\", \"fallback_string\": \"STOCK, ONE QUARTER PINT\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": 0.5, \"unit\": \"ounce\", \"name\": \"pepper\", \"fallback_string\": \"PEPPER, ONE HALF OUNCE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

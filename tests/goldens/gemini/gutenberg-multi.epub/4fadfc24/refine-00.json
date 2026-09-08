@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "15c8834d777a6341e35783033a6983068dc8545c9044069913c429b449a652a4",
+  "response_text": "{\n  \"title\": \"Another Sweetmeat (Aphros with Honey)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"fresh aphros\",\n      \"fallback_string\": \"Very best fresh aphros (scraped, peeled)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Milk\",\n      \"fallback_string\": \"Milk\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Honey\",\n      \"fallback_string\": \"Honey\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Pepper\",\n      \"fallback_string\": \"Pepper\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Grate [scrape, peel] some very best {{ing_01|fresh aphros}} and immerse in {{ing_02|milk}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"When saturated place in the oven to heat but not to dry out.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"When thoroughly hot retire from oven, pour over some {{ing_03|honey}}, stipple [the fruit] so that the {{ing_03|honey}} may penetrate, sprinkle with {{ing_04|pepper}} and serve.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dessert\"]\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "0259907951fc51cf66d7c897e3e7bcc73f7e691a8c09365313f9d1ffe8e13216",
+  "response_text": "{\"title\": \"ANOTHER STYLE OF MUSHROOMS\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Mushroom stems (or buds, very small mushrooms)\", \"fallback_string\": \"Mushroom stems (or buds, very small mushrooms)\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Broth\", \"fallback_string\": \"Broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"Salt\", \"fallback_string\": \"Salt\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Cook {{ing_01|mushroom stems (or buds, very small mushrooms)}} in {{ing_02|broth}}.\"}, {\"step\": 2, \"text\": \"Serve sprinkled with {{ing_03|salt}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

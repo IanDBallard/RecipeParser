@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "aef1b7fe1717c997b0b99339888badc5e5051609e089126164e0953705335c4c",
+  "response_text": "{\n  \"title\": \"ROAST MEAT BALLS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"meatballs\",\n      \"fallback_string\": \"MEATBALLS (previously sauté)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"wine sauce\",\n      \"fallback_string\": \"WINE SAUCE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|MEATBALLS [previously sauté]}}, CAREFULLY PREPARED, ARRANGE IN A SHALLOW STEW PAN.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"AND BRAISE THEM IN {{ing_02|WINE SAUCE}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"AFTERWARDS SERVE THEM IN THE SAME SAUCE OR GRAVY, SPRINKLED WITH {{ing_03|PEPPER}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

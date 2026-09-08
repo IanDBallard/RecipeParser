@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "63fe2a8a19e5784614328b00d67a62d8709945e1a6bbc31d8c3d0563a6bc6dba",
+  "response_text": "{\n  \"title\": \"DUMPLINGS AND HYDROGARUM (HYDROGARATA ISICIA)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"lovage\",\n      \"fallback_string\": \"LOVAGE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pellitory\",\n      \"fallback_string\": \"PELLITORY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"stock\",\n      \"fallback_string\": \"STOCK\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"well water\",\n      \"fallback_string\": \"WELL WATER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"little dumplings of forcemeat\",\n      \"fallback_string\": \"LITTLE DUMPLINGS OF FORCEMEAT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"CRUSH {{ing_01|PEPPER}}, {{ing_02|LOVAGE}} AND JUST A SUSPICION OF {{ing_03|PELLITORY}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"MOISTEN WITH {{ing_04|STOCK}} AND {{ing_05|WELL WATER}}, ALLOW IT TO DRAW, PLACE IT IN A SAUCE PAN, BOIL IT DOWN, AND STRAIN.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"POACH YOUR {{ing_06|LITTLE DUMPLINGS OF FORCEMEAT}} IN THIS LIQUOR AND WHEN THEY ARE DONE SERVE IN A DISH FOR ISICIA, TO BE SIPPED AT THE TABLE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

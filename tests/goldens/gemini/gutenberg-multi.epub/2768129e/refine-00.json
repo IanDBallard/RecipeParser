@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "c61b1b30170068d795df60f2c82ece1f59c90f049a303eef31a382affb825786",
+  "response_text": "{\n  \"title\": \"BRAISED CUTLETS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"meat\",\n      \"fallback_string\": \"MEAT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 1,\n      \"unit\": \"pound\",\n      \"name\": \"broth\",\n      \"fallback_string\": \"ONE POUND OF BROTH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 1,\n      \"unit\": \"pound\",\n      \"name\": \"oil\",\n      \"fallback_string\": \"A LIKE QUANTITY OF OIL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"A TRIFLE OF HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"PLACE THE {{ing_01|MEAT}} IN A STEW PAN.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"ADD {{ing_02|ONE POUND OF BROTH}}, {{ing_03|A LIKE QUANTITY OF OIL}}, {{ing_04|A TRIFLE OF HONEY}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"AND THUS BRAISE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

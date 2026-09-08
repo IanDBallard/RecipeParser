@@ -161,6 +161,83 @@ class TestSplitLargeChunk:
         assert len(parts) == 1
         assert parts[0] == text
 
+    # -----------------------------------------------------------------------
+    # Task 7b: EPUB chapter text has single "\n" breaks and no "\n\n" at all,
+    # so the paragraph split above never triggers and MAX_CHUNK_CHARS is dead
+    # for every EPUB. These tests cover the "\n" fallback fix.
+    # -----------------------------------------------------------------------
+
+    def test_single_newline_breaks_split_into_fitting_parts(self):
+        """The real bug: text with only single '\n' breaks (no blank lines at
+        all) must still be split so every part fits, not returned whole."""
+        lines = [f"line {i} " + ("word " * 5) for i in range(30)]
+        text = "\n".join(lines)
+        max_chars = 200
+        assert len(text) > max_chars  # sanity: this really is oversized
+
+        parts = split_large_chunk(text, max_chars=max_chars)
+
+        assert len(parts) > 1
+        for part in parts:
+            assert len(part) <= max_chars
+
+    def test_oversized_paragraph_with_internal_newlines_falls_back_to_line_split(self):
+        """A '\n\n'-delimited paragraph that alone exceeds max_chars, but has
+        single '\n' breaks inside it, must be split further rather than kept
+        whole (unlike test_single_oversized_paragraph_stays_intact, which has
+        no internal breaks at all)."""
+        small_para = "A" * 20
+        oversized_para = "\n".join(f"line {i}" for i in range(20))
+        assert len(oversized_para) > 100  # sanity: oversized without \n\n
+        text = f"{small_para}\n\n{oversized_para}"
+        max_chars = 100
+
+        parts = split_large_chunk(text, max_chars=max_chars)
+
+        for part in parts:
+            assert len(part) <= max_chars
+
+    def test_paragraphs_that_already_fit_are_not_touched_by_the_fallback(self):
+        """Guards against over-eager splitting: a '\n\n'-derived part that
+        already fits within max_chars must be returned untouched by the '\n'
+        fallback, even when it happens to contain an internal newline."""
+        para1 = "A" * 20
+        para2 = "line one\nline two"  # fits; has an internal "\n"
+        para3 = "B" * 20
+        text = f"{para1}\n\n{para2}\n\n{para3}"
+        max_chars = 25
+
+        result = split_large_chunk(text, max_chars=max_chars)
+
+        assert result == [para1, para2, para3]
+
+    def test_split_invariant_fits_or_has_no_split_point_and_preserves_content(self):
+        """Property test: for each case below, every returned part is
+        <= max_chars UNLESS it has no '\n\n' or '\n' left to split on (in
+        which case it is returned whole, matching
+        test_single_oversized_paragraph_stays_intact). Concatenating the
+        parts must recover the original text's non-whitespace content
+        exactly — no character dropped, duplicated, or reordered."""
+        cases = [
+            ("Short text that fits.", 1000),
+            ("\n\n".join(["A" * 20, "B" * 20, "C" * 20]), 30),
+            ("\n".join(f"line {i} filler text here" for i in range(25)), 150),
+            ("word " * 500, 50),  # no "\n\n" and no "\n" — cannot be split further
+        ]
+
+        for text, max_chars in cases:
+            parts = split_large_chunk(text, max_chars=max_chars)
+
+            for part in parts:
+                if len(part) > max_chars:
+                    assert "\n\n" not in part and "\n" not in part, (
+                        f"oversized part still has a split point: {part!r}"
+                    )
+
+            original_content = "".join(text.split())
+            reconstructed = "".join("".join(part.split()) for part in parts)
+            assert reconstructed == original_content, f"content mismatch for case: {text!r}"
+
 
 # ---------------------------------------------------------------------------
 # extract_chapters_with_image_markers

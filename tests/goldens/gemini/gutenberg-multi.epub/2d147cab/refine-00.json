@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "9ed2cb3c6d70c19a1ce65609c4b43eb8c76354a4e6f14b6bc6135c7cc3849f4e",
+  "response_text": "{\n  \"title\": \"SEA URCHIN\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"sea urchin\",\n      \"fallback_string\": \"Sea urchin\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"oil\",\n      \"fallback_string\": \"a little oil\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"broth\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"sweet wine\",\n      \"fallback_string\": \"sweet wine\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"ground pepper\",\n      \"fallback_string\": \"ground pepper\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"To prepare {{ing_01|sea urchin}} take a new earthen pot, {{ing_02|a little oil}}, {{ing_03|broth}}, {{ing_04|sweet wine}}, {{ing_05|ground pepper}}, and set it to heat.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"When boiling, put the {{ing_01|urchins}} in singly.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Shake them well, let them stew, and when done sprinkle with {{ing_05|pepper}} and serve.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

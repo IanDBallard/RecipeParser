@@ -1,0 +1,58 @@
+{
+  "entries": {
+    "Overnight Country Loaf.paprikarecipe": {
+      "categories": [
+        "Bread"
+      ],
+      "cook_time": "40 mins",
+      "created": "<fixed>",
+      "description": "",
+      "difficulty": "",
+      "directions": "Mix the levain ingredients (whole wheat flour, water, ripe starter) and leave at room temperature for 10 hours.\nMix the bread flour, whole wheat flour and water and rest for 40 minutes.\nAdd the levain and fine salt, then fold every 30 minutes for 3 hours.\nShape, retard overnight, and bake at 475F in a covered pot for 20 minutes, then 20 uncovered.",
+      "hash": "<fixed>",
+      "image_url": "",
+      "ingredients": "28g (1 oz) whole wheat flour\n28g (2 tablespoons) water\n6g (1 teaspoon) ripe starter\n450g (1 lb) bread flour\n50g (1/3 cup) whole wheat flour\n360g (1 1/2 cups) water\n10g (2 teaspoons) fine salt",
+      "name": "Overnight Country Loaf",
+      "notes": "",
+      "nutritional_info": "",
+      "photo_hash": "",
+      "photo_large": null,
+      "prep_time": "14 hours",
+      "rating": 0,
+      "servings": "10",
+      "source": "",
+      "source_url": "Phases And Percentages",
+      "total_time": "",
+      "uid": "<fixed>"
+    },
+    "Sandwich Loaf.paprikarecipe": {
+      "categories": [
+        "Bread"
+      ],
+      "cook_time": "35 mins",
+      "created": "<fixed>",
+      "description": "",
+      "difficulty": "",
+      "directions": "Mix everything to a smooth dough and knead for 8 minutes.\nProve until doubled, shape into a pan loaf, and prove again.\nBake at 400F for 35 minutes.",
+      "hash": "<fixed>",
+      "image_url": "",
+      "ingredients": "Bread flour: 500g (4 cups)\nWater: 325g (1 1/3 cups)\nSalt: 10g (1 3/4 tsp)\nInstant yeast: 7g (2 1/4 tsp)\nButter: 30g (2 tbsp)",
+      "name": "Sandwich Loaf",
+      "notes": "",
+      "nutritional_info": "",
+      "photo_hash": "",
+      "photo_large": null,
+      "prep_time": "3 hours",
+      "rating": 0,
+      "servings": "12",
+      "source": "",
+      "source_url": "Phases And Percentages",
+      "total_time": "",
+      "uid": "<fixed>"
+    }
+  },
+  "names": [
+    "Overnight Country Loaf.paprikarecipe",
+    "Sandwich Loaf.paprikarecipe"
+  ]
+}

@@ -5,11 +5,13 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Type
 
+from google.genai import errors as genai_errors
 from pydantic import BaseModel, create_model, Field, ValidationError
 
 from recipeparser.config import (
     BACKOFF_BASE_SECS,
     BACKOFF_MAX_SECS,
+    HTTP_TIMEOUT_SECS,
     MAX_PARSE_RETRIES,
     MAX_RETRIES,
     PARSE_RETRY_DELAY_SECS,
@@ -51,10 +53,84 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in msg or "quota" in msg or "resource_exhausted" in msg
 
 
+# gRPC-style status names for a transient server-side failure, matched only
+# against google.genai.errors.APIError.status — never against free-form
+# exception text (see _is_transient_server_error).
+_TRANSIENT_STATUS_NAMES = frozenset({"UNAVAILABLE", "DEADLINE_EXCEEDED", "INTERNAL"})
+
+
+def _is_transient_server_error(exc: Exception) -> bool:
+    """Return True if *exc* looks like a transient server-side failure worth
+    retrying through the existing back-off ladder: HTTP 500/502/503/504, or
+    the gRPC-style UNAVAILABLE/DEADLINE_EXCEEDED/INTERNAL.
+
+    Detection is exclusively typed/structured — it never inspects the
+    exception message. google-genai's ``APIError.raise_error`` (google.genai
+    .errors) raises ``ClientError`` for any 4xx status and ``ServerError``
+    for any 5xx status, and every ``APIError`` carries a numeric ``.code``
+    and a string ``.status`` (e.g. "UNAVAILABLE"); that is what every real
+    call in this module actually raises on an HTTP-level failure, so typed
+    detection fully covers the defect this function exists to fix (a 504
+    aborting a recording run on attempt 1).
+
+    A message-substring fallback was deliberately rejected, not merely
+    avoided: this repo's own tests/test_gemini.py has two pre-existing,
+    unrelated tests that raise a plain ``Exception("503 Service
+    Unavailable")`` expecting it to propagate on attempt 1 with no retry
+    and no sleep. Any text-based match for "503" or "UNAVAILABLE" reclassifies
+    that plain exception as retryable and burns the real (unpatched, in
+    those tests) 5x back-off ladder — turning a ~4s suite into a ~130s one.
+    ``tests/goldens/golden_client.py``'s ``MissingRecordingError`` (whose
+    message embeds a hex sha8 path segment such as
+    ``.../gemini/f.epub/8fb1500a/extract-00.json``, containing "500") is the
+    same trap from the other direction. Typed-only detection rules out both
+    by construction: neither is a ``genai_errors.APIError``.
+    """
+    if not isinstance(exc, genai_errors.APIError):
+        return False
+    if isinstance(exc, genai_errors.ClientError):
+        return False
+    if isinstance(exc, genai_errors.ServerError):
+        return True
+    code = getattr(exc, "code", None)
+    if isinstance(code, int) and 500 <= code < 600:
+        return True
+    return (getattr(exc, "status", None) or "").upper() in _TRANSIENT_STATUS_NAMES
+
+
+# google-genai's GenerateContentConfig.http_options.timeout is in MILLISECONDS
+# (confirmed against installed google-genai==1.68.0: HttpOptions.timeout's
+# docstring says "Timeout for the request in milliseconds", and
+# google.genai._api_client.get_timeout_in_seconds divides it by 1000.0 before
+# handing it to httpx). HTTP_TIMEOUT_SECS is expressed in seconds, so it must
+# be multiplied by 1000 here — passing it unconverted would give every real
+# call an unusable ~0.18s timeout.
+_HTTP_TIMEOUT_MS = HTTP_TIMEOUT_SECS * 1000
+
+
+def _with_http_timeout(config: dict) -> dict:
+    """Return a copy of ``config`` with the per-call HTTP timeout applied.
+
+    Passed per-call (not at client construction) because ``_call_with_retry``
+    only ever receives an already-constructed ``client`` — this is the one
+    place in the call path that can attach it, and ``generate_content``
+    validates a plain ``config`` dict into ``GenerateContentConfig``, whose
+    ``http_options.timeout`` bounds the underlying HTTP request.
+    """
+    return {**config, "http_options": {"timeout": _HTTP_TIMEOUT_MS}}
+
+
 def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
     """
     Wrapper around client.models.generate_content that retries on rate-limit
-    errors with exponential back-off, and raises for all other errors.
+    errors and transient server errors with exponential back-off, and raises
+    for all other errors.
+
+    A transport-level timeout is deliberately NOT retried: it is neither a
+    rate-limit signal nor a transient server error (a server-returned 504 is
+    a different thing from a local timeout), so it raises immediately on the
+    first attempt instead of burning the 5x exponential back-off ladder on a
+    call that already waited the full HTTP_TIMEOUT_SECS.
     """
     delay = BACKOFF_BASE_SECS
     for attempt in range(1, MAX_RETRIES + 2):
@@ -62,15 +138,17 @@ def _call_with_retry(client, model: str, contents: str, config: dict) -> object:
             return client.models.generate_content(
                 model=model,
                 contents=contents,
-                config=config,
+                config=_with_http_timeout(config),
             )
         except Exception as exc:
-            if _is_rate_limit_error(exc) and attempt <= MAX_RETRIES:
+            retryable = _is_rate_limit_error(exc) or _is_transient_server_error(exc)
+            if retryable and attempt <= MAX_RETRIES:
                 log.warning(
-                    "Rate-limit hit (attempt %d/%d) — waiting %ds before retry.",
+                    "Transient error hit (attempt %d/%d) — waiting %ds before retry: %s",
                     attempt,
                     MAX_RETRIES,
                     delay,
+                    exc,
                 )
                 time.sleep(delay)
                 delay = min(delay * 2, BACKOFF_MAX_SECS)
@@ -168,13 +246,9 @@ def needs_table_normalisation(text: str) -> bool:
     )
 
 
-def normalise_baker_table(text_chunk: str, client) -> str:
-    """
-    Pre-process a chunk containing multi-column baker's percentage tables by
-    asking Gemini to reformat them into readable per-ingredient lines.
-    Returns the reformatted text, or the original text unchanged if the call fails.
-    """
-    prompt = f"""The following text is from a recipe book and contains one or more ingredient tables
+def build_table_prompt(text_chunk: str) -> str:
+    """The prompt that reformats a multi-column baker's percentage table."""
+    return f"""The following text is from a recipe book and contains one or more ingredient tables
 where each ingredient name, its weight, its volume measure, and its baker's percentage
 appear on separate lines rather than in columns.
 
@@ -187,6 +261,15 @@ Preserve all [IMAGE: ...] markers exactly as they appear.
 
 Text:
 {text_chunk}"""
+
+
+def normalise_baker_table(text_chunk: str, client) -> str:
+    """
+    Pre-process a chunk containing multi-column baker's percentage tables by
+    asking Gemini to reformat them into readable per-ingredient lines.
+    Returns the reformatted text, or the original text unchanged if the call fails.
+    """
+    prompt = build_table_prompt(text_chunk)
 
     try:
         response = _call_with_retry(
@@ -239,19 +322,9 @@ _UNITS_RULES = {
 }
 
 
-def extract_recipe_from_text(
-    text: str,
-    client,
-) -> RecipeList:
-    """
-    Extract a single recipe from plain text (e.g. from a Paprika import or
-    pasted recipe).  Uses a simpler, more direct prompt than extract_recipes
-    which is tuned for EPUB/PDF book chunks.
-
-    Raises:
-        ExtractionParseError: every attempt's reply could not be parsed.
-    """
-    prompt = f"""
+def build_plain_text_prompt(text: str) -> str:
+    """The prompt for a single recipe in plain text (Paprika import, pasted recipe)."""
+    return f"""
 You are a culinary data extractor. The following text is a recipe. Extract it.
 
 Rules:
@@ -265,6 +338,21 @@ Rules:
 Text:
 {text}
 """
+
+
+def extract_recipe_from_text(
+    text: str,
+    client,
+) -> RecipeList:
+    """
+    Extract a single recipe from plain text (e.g. from a Paprika import or
+    pasted recipe).  Uses a simpler, more direct prompt than extract_recipes
+    which is tuned for EPUB/PDF book chunks.
+
+    Raises:
+        ExtractionParseError: every attempt's reply could not be parsed.
+    """
+    prompt = build_plain_text_prompt(text)
     return _generate_and_parse(
         client,
         model="gemini-2.5-flash",
@@ -278,29 +366,11 @@ Text:
     )
 
 
-def extract_recipes(
-    text_chunk: str,
-    client,
-    units: str = "book",
-) -> RecipeList:
-    """
-    Call Gemini with the extraction prompt and return a parsed RecipeList.
-    Applies retry/back-off for rate-limit errors and for a reply that will
-    not parse.
-
-    ``units`` controls how dual-measurement ingredient lines are handled:
-      "metric"   — keep only gram/ml values  (e.g. "250g flour")
-      "us"       — keep only US cup/tbsp values
-      "imperial" — keep only oz/lb values (falls back to metric for dual lines)
-      "book"     — preserve whatever the book uses (default)
-
-    Raises:
-        ExtractionParseError: every attempt's reply could not be parsed.
-    """
+def build_extract_prompt(text_chunk: str, units: str = "book") -> str:
+    """The prompt for a book chunk that may hold several recipes."""
     units_rule = _UNITS_RULES.get(units.lower(), "")
     units_section = f"\n{units_rule}" if units_rule else ""
-
-    prompt = f"""
+    return f"""
 You are a culinary data extractor. Review the following text from an EPUB recipe book.
 Extract ALL distinct recipes found in the text.
 
@@ -334,6 +404,28 @@ Rules:
 Text chunk:
 {text_chunk}
 """
+
+
+def extract_recipes(
+    text_chunk: str,
+    client,
+    units: str = "book",
+) -> RecipeList:
+    """
+    Call Gemini with the extraction prompt and return a parsed RecipeList.
+    Applies retry/back-off for rate-limit errors and for a reply that will
+    not parse.
+
+    ``units`` controls how dual-measurement ingredient lines are handled:
+      "metric"   — keep only gram/ml values  (e.g. "250g flour")
+      "us"       — keep only US cup/tbsp values
+      "imperial" — keep only oz/lb values (falls back to metric for dual lines)
+      "book"     — preserve whatever the book uses (default)
+
+    Raises:
+        ExtractionParseError: every attempt's reply could not be parsed.
+    """
+    prompt = build_extract_prompt(text_chunk, units)
 
     return _generate_and_parse(
         client,
@@ -493,32 +585,15 @@ def _format_axes_for_prompt(user_axes: Dict[str, List[str]]) -> str:
     return "\n".join(lines)
 
 
-def refine_recipe_for_cayenne(
+def build_refine_prompt(
     raw_recipe: object,
-    client,
-    uom_system: str = "US",
-    measure_preference: str = "Volume",
+    uom_system: str,
+    measure_preference: str,
     user_axes: Optional[Dict[str, List[str]]] = None,
-) -> Optional[CayenneRefinement]:
-    """
-    Post-processing pass to convert raw text recipe into high-fidelity Cayenne data.
-
-    Combines Fat Token generation, UOM conversion, and multipolar categorization
-    into a single LLM call (Pass 2).
-
-    Args:
-        raw_recipe:        The raw RecipeExtraction object from Pass 1.
-        client:            Initialised Gemini client.
-        uom_system:        "US", "Metric", or "Imperial".
-        measure_preference: "Volume" or "Weight".
-        user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
-                           When None or empty, grid_categories will be {} in the result.
-    """
-    axes = user_axes or {}
-    categorization_section = _format_axes_for_prompt(axes)
-    schema = _build_dynamic_grid_schema(axes)
-
-    prompt = f"""
+) -> str:
+    """The Pass-2 prompt: structured ingredients, fat tokens, and categorisation."""
+    categorization_section = _format_axes_for_prompt(user_axes or {})
+    return f"""
 You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
 
 RULES:
@@ -542,6 +617,33 @@ Measure Preference: {measure_preference}
 RAW RECIPE:
 {raw_recipe}
 """
+
+
+def refine_recipe_for_cayenne(
+    raw_recipe: object,
+    client,
+    uom_system: str = "US",
+    measure_preference: str = "Volume",
+    user_axes: Optional[Dict[str, List[str]]] = None,
+) -> Optional[CayenneRefinement]:
+    """
+    Post-processing pass to convert raw text recipe into high-fidelity Cayenne data.
+
+    Combines Fat Token generation, UOM conversion, and multipolar categorization
+    into a single LLM call (Pass 2).
+
+    Args:
+        raw_recipe:        The raw RecipeExtraction object from Pass 1.
+        client:            Initialised Gemini client.
+        uom_system:        "US", "Metric", or "Imperial".
+        measure_preference: "Volume" or "Weight".
+        user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
+                           When None or empty, grid_categories will be {} in the result.
+    """
+    axes = user_axes or {}
+    schema = _build_dynamic_grid_schema(axes)
+
+    prompt = build_refine_prompt(raw_recipe, uom_system, measure_preference, axes)
     try:
         # Use response_json_schema with additionalProperties stripped — Gemini API
         # rejects response_schema when Pydantic emits additionalProperties (Dict types).

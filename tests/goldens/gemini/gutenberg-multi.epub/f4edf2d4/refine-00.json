@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "5b1d829ecacd6ae53ef811e76a007f70914b48456707b5a8a8dd4d2ecc84a43b",
+  "response_text": "{\"title\": \"STUFFED DORMOUSE\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"dormouse\", \"fallback_string\": \"Dormouse\"}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"forcemeat of pork\", \"fallback_string\": \"forcemeat of pork\"}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"small pieces of dormouse meat trimmings\", \"fallback_string\": \"small pieces of dormouse meat trimmings\"}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"pepper\"}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"nuts\", \"fallback_string\": \"nuts\"}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"laser\", \"fallback_string\": \"laser\"}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"broth\"}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Is stuffed with a {{ing_02|forcemeat of pork}} and {{ing_03|small pieces of dormouse meat trimmings}}, all pounded with {{ing_04|pepper}}, {{ing_05|nuts}}, {{ing_06|laser}}, {{ing_07|broth}}.\"}, {\"step\": 2, \"text\": \"Put the {{ing_01|dormouse}} thus stuffed in an earthen casserole.\"}, {\"step\": 3, \"text\": \"Roast it in the oven, or boil it in the stock pot.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

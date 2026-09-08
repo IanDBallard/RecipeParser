@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "91d7cac84dc3d0bbaa3bc48f00a52974d68ec71a6cb00f9528ec54b0b8a20f56",
+  "response_text": "{\"title\": \"ROSE WINE WITHOUT ROSES\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"fresh citrus leaves\", \"fallback_string\": \"A PALM LEAF BASKET FULL OF FRESH CITRUS LEAVES\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"new wine\", \"fallback_string\": \"NEW WINE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"honey\", \"fallback_string\": \"HONEY\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"A {{ing_01|palm leaf basket full of fresh citrus leaves}} is immersed in the vat of {{ing_02|new wine}} before fermentation has set in.\"}, {\"step\": 2, \"text\": \"After forty days retire the leaves, and, as occasion arises, sweeten the {{ing_02|wine}} with {{ing_03|honey}}, and pass it up for rose wine.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

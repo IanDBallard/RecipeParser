@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "05a397460fa64f5cc9da5bcc71414dab4cb989fc984a77efa24f982e4291802a",
+  "response_text": "{\n  \"title\": \"THE SAME, WITH ANOTHER DRESSING, A CABBAGE CHARTREUSE\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"leaves\",\n      \"fallback_string\": \"LEAVES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"chervil\",\n      \"fallback_string\": \"CHERVIL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 1.25,\n      \"unit\": \"part\",\n      \"name\": \"laurel berries\",\n      \"fallback_string\": \"ONE AND A QUARTER PART OF LAUREL BERRIES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"medium-sized boiled cabbage\",\n      \"fallback_string\": \"A MEDIUM-SIZED BOILED CABBAGE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"coriander leaves\",\n      \"fallback_string\": \"CORIANDER LEAVES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"its own juice\",\n      \"fallback_string\": \"ITS OWN JUICE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"CRUSH WHATEVER QUANTITY OF {{ing_01|LEAVES}} IS REQUIRED WITH {{ing_02|CHERVIL}} AND {{ing_03|ONE AND A QUARTER PART OF LAUREL BERRIES}}, {{ing_04|A MEDIUM-SIZED BOILED CABBAGE}}, {{ing_05|CORIANDER LEAVES}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"DISSOLVE WITH {{ing_06|ITS OWN JUICE}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"STEAM IN THE HOT ASHES, BUT FIRST PLACE IN A MOULD [when stiff unmould on a platter].\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"DECORATE, POUR UNDER A WELL-SEASONED SAUCE, AND SO SERVE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

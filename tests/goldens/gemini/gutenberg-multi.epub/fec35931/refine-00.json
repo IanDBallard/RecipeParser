@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "b44f0e82eff437254fea5fafe261396a673998fd382e12fe4bc5d565c6bfa131",
+  "response_text": "{\n  \"title\": \"ANOTHER [THICK ENTRÉE GRAVY] (ALITER)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER (soaked overnight)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"stock\",\n      \"fallback_string\": \"STOCK\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"quince-apple cider\",\n      \"fallback_string\": \"QUINCE-APPLE CIDER (boiled down one half)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"fig wine concentrate\",\n      \"fallback_string\": \"FIG WINE [1] CONCENTRATE (if cider not at hand)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"roux or soaked rice flour\",\n      \"fallback_string\": \"ROUX or SOAKED RICE FLOUR\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"GRIND {{ing_01|PEPPER WHICH HAS BEEN SOAKED OVERNIGHT}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"ADD SOME MORE {{ing_02|STOCK}} AND WORK IT INTO A SMOOTH PASTE.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"THEREUPON ADD {{ing_03|QUINCE-APPLE CIDER, BOILED DOWN ONE HALF}}, THAT IS WHICH HAS EVAPORATED IN THE HEAT OF THE SUN TO THE CONSISTENCY OF HONEY.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"IF THIS IS NOT AT HAND, ADD {{ing_04|FIG WINE [1] CONCENTRATE}} WHICH THE ROMANS CALL “COLOR” [2].\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"NOW THICKEN THE GRAVY WITH {{ing_05|ROUX or SOAKED RICE FLOUR}} AND FINISH IT ON A GENTLE FIRE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

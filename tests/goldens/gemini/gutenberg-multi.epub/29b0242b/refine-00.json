@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "9a1f39cafa93fadc3faa046a217c198566809cf7ec58f5086d313c506cea26d4",
+  "response_text": "{\n  \"title\": \"TO KEEP GREEN OLIVES\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"olives\",\n      \"fallback_string\": \"OLIVES (fresh from the tree)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"brine\",\n      \"fallback_string\": \"BRINE (inferred)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"TO KEEP {{ing_01|OLIVES}}, FRESH FROM THE TREE, IN A MANNER ENABLING YOU TO MAKE OIL FROM THEM ANY TIME YOU DESIRE JUST PLACE THEM [in {{ing_02|brine}}].\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"HAVING BEEN KEPT THUS FOR SOME TIME THE {{ing_01|OLIVES}} MAY BE USED AS IF THEY HAD JUST COME OFF THE TREE FRESH IF YOU DESIRE TO MAKE GREEN OIL OF THEM.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

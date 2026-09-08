@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "1ea4888d3786864547b1969f18200b78ab660f839e33effc1e873c7955277f1e",
+  "response_text": "{\"title\": \"ROAST PIG\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Pepper\", \"fallback_string\": \"Pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"rue\", \"fallback_string\": \"rue\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"satury\", \"fallback_string\": \"satury\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"onions\", \"fallback_string\": \"onions\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"hard yolks of egg\", \"fallback_string\": \"hard yolks of egg\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"wine\", \"fallback_string\": \"wine\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"spices\", \"fallback_string\": \"spices\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_10\", \"amount\": null, \"unit\": null, \"name\": \"roast pig\", \"fallback_string\": \"roast pig\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Crush {{ing_01|pepper}}, {{ing_02|rue}}, {{ing_03|satury}}, {{ing_04|onions}}, {{ing_05|hard yolks of egg}}, {{ing_06|broth}}, {{ing_07|wine}}, {{ing_08|oil}}, {{ing_09|spices}}.\"}, {\"step\": 2, \"text\": \"Boil these ingredients.\"}, {\"step\": 3, \"text\": \"Pour over the {{ing_10|roast pig}} in the sauce pan and serve.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

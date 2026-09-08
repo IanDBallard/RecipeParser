@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "3e12e971a0bfe6234514531abaac61d55956791d911cc8136b6e1aca6e7647df",
+  "response_text": "{\n  \"title\": \"A DISH OF SCALLOPS (ISICIA EX SPONDYLIS)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"scallops\",\n      \"fallback_string\": \"SCALLOPS [or the firm part of oysters]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cooked spelt\",\n      \"fallback_string\": \"COOKED SPELT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"eggs\",\n      \"fallback_string\": \"EGGS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"caul\",\n      \"fallback_string\": \"CAUL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"rich fish sauce\",\n      \"fallback_string\": \"RICH FISH SAUCE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"COOK {{ing_01|SCALLOPS [or the firm part of oysters]}} REMOVE THE HARD AND OBJECTIONABLE PARTS, MINCE THE MEAT VERY FINE.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"MIX THIS WITH {{ing_02|COOKED SPELT}} and {{ing_03|EGGS}}, SEASON WITH {{ing_04|PEPPER}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"IN {{ing_05|CAUL}}, FRY, UNDERLAY A {{ing_06|RICH FISH SAUCE}} AND SERVE AS A DELICIOUS ENTRÉE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

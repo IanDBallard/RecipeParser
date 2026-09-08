@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "23f3b9ed40c1efb4a653316c0ee6036048b72f61867d7a3c7d9ec5b454b55ab4",
+  "response_text": "{\n  \"title\": \"MILK TOAST\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 1,\n      \"unit\": \"pint\",\n      \"name\": \"milk\",\n      \"fallback_string\": \"1 pint of milk\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"water\",\n      \"fallback_string\": \"Some water\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"round bread\",\n      \"fallback_string\": \"Round bread (dry) [2]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Put {{ing_01|1 pint of milk}} and {{ing_02|some water}} on the fire in a new [clean] pot.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Break {{ing_03|round bread}} into it [2] dry, stir well to prevent burning.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Add {{ing_02|water}} as necessary [3].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Breakfast\"]\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "2ee98488477badcb979fbe300df30d531f6c3b7ba69d951bc41ea3d03841d2d5",
+  "response_text": "{\n  \"title\": \"BROILED LOBSTER\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Lobster\",\n      \"fallback_string\": \"Lobster\"\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper sauce\",\n      \"fallback_string\": \"pepper sauce\"\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"coriander sauce\",\n      \"fallback_string\": \"coriander sauce\"\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"oil or butter\",\n      \"fallback_string\": \"oil or butter\"\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"If broiled, {{ing_01|they}} should appear in their shell; (which is opened by splitting the live {{ing_01|lobster}} in two).\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Season with {{ing_02|pepper sauce}} and {{ing_03|coriander sauce}} (moisten with {{ing_04|oil}}) and broil {{ing_01|them}} on the grill.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"When {{ing_01|they}} are dry (1) keep on basting {{ing_01|them}} more and more (with {{ing_04|oil or butter}}) until {{ing_01|they}} are properly broiled (2).\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

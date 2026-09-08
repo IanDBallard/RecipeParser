@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "b31dfb0827ee94e0e0f59812f4e274824c4c174598024c9fd1cde2e3cfa7ea81",
+  "response_text": "{\"title\": \"ANOTHER LOBSTER PREPARATION\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Lobster\", \"fallback_string\": \"Lobster\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"lovage\", \"fallback_string\": \"lovage\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"cumin\", \"fallback_string\": \"cumin\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"mint\", \"fallback_string\": \"mint\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"rue\", \"fallback_string\": \"rue\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"nuts\", \"fallback_string\": \"nuts\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"honey\", \"fallback_string\": \"honey\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"vinegar\", \"fallback_string\": \"vinegar\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_10\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"broth\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_11\", \"amount\": null, \"unit\": null, \"name\": \"wine\", \"fallback_string\": \"wine\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Combine {{ing_02|pepper}}, {{ing_03|lovage}}, {{ing_04|cumin}}, {{ing_05|mint}}, {{ing_06|rue}}, {{ing_07|nuts}}, {{ing_08|honey}}, {{ing_09|vinegar}}, {{ing_10|broth}}, and {{ing_11|wine}} for the {{ing_01|lobster}} preparation.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

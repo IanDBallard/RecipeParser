@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "3b34dc456b1ff02106dca16a98fa096d73c493a9c3087385734e4a204acda61b",
+  "response_text": "{\n  \"title\": \"TO PRESERVE FRESH FIGS, APPLES, PLUMS, PEARS AND CHERRIES\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"fresh figs, apples, plums, pears and cherries\",\n      \"fallback_string\": \"FRESH FIGS, APPLES, PLUMS, PEARS AND CHERRIES (with stems on)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"SELECT {{ing_01|them all}} VERY CAREFULLY WITH THE STEMS ON AND PLACE {{ing_01|them}} IN {{ing_02|honey}} SO {{ing_01|they}} DO NOT TOUCH EACH OTHER.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

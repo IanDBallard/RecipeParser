@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "7d5cca010703d1240e52f96ac6789a8975dc3338afae79260cf2f3ea24bb6ad2",
+  "response_text": "{\"title\": \"GLAZED CUTLETS\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"meat pieces\", \"fallback_string\": \"MEAT PIECES\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"broth\", \"fallback_string\": \"BROTH\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"hot honey\", \"fallback_string\": \"HOT HONEY\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"The {{ing_01|meat pieces}} are braised in {{ing_02|broth}}.\"}, {\"step\": 2, \"text\": \"And are glazed with {{ing_03|hot honey}}.\"}, {\"step\": 3, \"text\": \"And thus served.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

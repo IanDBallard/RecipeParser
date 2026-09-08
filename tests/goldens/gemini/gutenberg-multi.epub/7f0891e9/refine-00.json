@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "51fb21a92b9dc6953bba5fa358c7a0a8d413091ac348f41ba75318efa7488595",
+  "response_text": "{\n  \"title\": \"PLAIN BOILED (SEA URCHIN)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Sea urchins\",\n      \"fallback_string\": \"Sea urchins\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"boiling water\",\n      \"fallback_string\": \"boiling water\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Put the {{ing_01|sea urchins}} singly in {{ing_02|boiling water}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Cook, retire, and place on a platter.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

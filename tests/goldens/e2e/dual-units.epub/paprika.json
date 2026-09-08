@@ -1,0 +1,60 @@
+{
+  "entries": {
+    "Brown Butter Shortbread.paprikarecipe": {
+      "categories": [
+        "British",
+        "Dessert"
+      ],
+      "cook_time": "40 mins",
+      "created": "<fixed>",
+      "description": "",
+      "difficulty": "",
+      "directions": "Brown the butter in a pale pan until it smells of hazelnuts, then cool until thick.\nBeat in the sugar, then the flour and salt, to a stiff paste.\nPress into a tin, dock all over, and bake at 325F for 40 minutes.\nCut while warm and cool in the tin.",
+      "hash": "<fixed>",
+      "image_url": "",
+      "ingredients": "14 tablespoons/200g butter\n1/2 cup/100g caster sugar\n2 cups/250g plain flour\n1/4 teaspoon/1.5g fine salt",
+      "name": "Brown Butter Shortbread",
+      "notes": "",
+      "nutritional_info": "",
+      "photo_hash": "",
+      "photo_large": null,
+      "prep_time": "20 mins",
+      "rating": 0,
+      "servings": "12",
+      "source": "",
+      "source_url": "Dual Units",
+      "total_time": "",
+      "uid": "<fixed>"
+    },
+    "Buttermilk Scones.paprikarecipe": {
+      "categories": [
+        "British",
+        "Bread"
+      ],
+      "cook_time": "14 mins",
+      "created": "<fixed>",
+      "description": "",
+      "difficulty": "",
+      "directions": "Heat the oven to 425F. Line a tray with parchment.\nRub the butter into the flour, baking powder and salt until it looks like coarse crumbs.\nStir in the buttermilk until a shaggy dough forms. Do not overwork it.\nPat out to 1 inch thick, cut rounds, and bake for 12 to 14 minutes.",
+      "hash": "<fixed>",
+      "image_url": "",
+      "ingredients": "2 cups/250g plain flour\n1 tablespoon/12g baking powder\n1/2 teaspoon/3g fine salt\n5 tablespoons/70g cold butter, cubed\n3/4 cup/180ml buttermilk",
+      "name": "Buttermilk Scones",
+      "notes": "",
+      "nutritional_info": "",
+      "photo_hash": "",
+      "photo_large": null,
+      "prep_time": "15 mins",
+      "rating": 0,
+      "servings": "8",
+      "source": "",
+      "source_url": "Dual Units",
+      "total_time": "",
+      "uid": "<fixed>"
+    }
+  },
+  "names": [
+    "Brown Butter Shortbread.paprikarecipe",
+    "Buttermilk Scones.paprikarecipe"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "a6bf89955c51e08f9157ac2e04b7ec51c4ac6edc2ee1827af8b77c035c3ed9cf",
+  "response_text": "{\n  \"title\": \"TO KEEP MULBERRIES\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"mulberries\",\n      \"fallback_string\": \"MULBERRIES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"mulberry juice\",\n      \"fallback_string\": \"MULBERRY JUICE\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"new wine (boiled down to one half)\",\n      \"fallback_string\": \"NEW WINE (boiled down to one half)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|MULBERRIES}}, IN ORDER TO KEEP THEM, MUST BE LAID INTO THEIR OWN {{ing_02|JUICE}} MIXED WITH {{ing_03|NEW WINE [boiled down to one half]}} IN A GLASS VESSEL AND MUST BE WATCHED ALL THE TIME [so that they do not spoil].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

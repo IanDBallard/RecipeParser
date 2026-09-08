@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "d87a1ec7d16cc9ad3be6a1c26216a023bdf74a402dfef9a02580c2f46ee51fb1",
+  "response_text": "{\"title\":\"TO KEEP TRUFFLES\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"truffles\",\"fallback_string\":\"TRUFFLES (not to be touched by water)\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"dry sawdust\",\"fallback_string\":\"DRY SAWDUST\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"THE {{ing_01|TRUFFLES}} WHICH MUST NOT BE TOUCHED BY WATER ARE PLACED ALTERNATELY IN {{ing_02|DRY SAWDUST}}; SEAL THE VESSEL WITH PLASTER AND DEPOSIT IT IN A COOL PLACE.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[]}}"
+}

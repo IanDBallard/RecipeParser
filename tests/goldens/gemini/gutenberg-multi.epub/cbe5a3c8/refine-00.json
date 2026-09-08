@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "e55a5d8583d4c8dfd42d14382fe7af32d370b155503a1380174158486051eb1f",
+  "response_text": "{\n  \"title\": \"Leeks and Beans\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"leeks\",\n      \"fallback_string\": \"LEEKS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"water\",\n      \"fallback_string\": \"WATER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"green beans\",\n      \"fallback_string\": \"[green string] BEANS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"AFTER HAVING BOILED THE {{ing_01|LEEKS}} IN {{ing_02|WATER}}, {{ing_03|[green string] BEANS}} WHICH HAVE NOT YET BEEN PREPARED OTHERWISE, MAY BE BOILED [in the leek water] PRINCIPALLY ON ACCOUNT OF THE GOOD TASTE THEY WILL ACQUIRE; AND MAY THEN BE SERVED WITH THE {{ing_01|LEEKS}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

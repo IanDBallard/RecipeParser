@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "1a63c505e92db56eb864fd5843418e890810547e291e51015e5fbec60fd452e2",
+  "response_text": "{\n  \"title\": \"PIG, PAN GRAVY\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"PIG\",\n      \"fallback_string\": \"PIG\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"ROUX\",\n      \"fallback_string\": \"ROUX\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"ROAST THE {{ing_01|PIG}} IN ITS OWN JUICE.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"[when done] RETIRE.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"BIND THE GRAVY WITH {{ing_02|ROUX}}.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"[strain] PUT IN A SAUCE BOAT AND SERVE.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

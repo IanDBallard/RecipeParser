@@ -1,0 +1,212 @@
+{
+  "recipes": [
+    {
+      "base_servings": 10,
+      "categories": [
+        "Bread"
+      ],
+      "cook_time": "40 mins",
+      "description": null,
+      "difficulty": null,
+      "embedding": {
+        "len": 1536,
+        "sha256": "db35bb927725fe7c72ecf103fe8fa32f56c0c849be24a5b45d4252aba75d7699"
+      },
+      "grid_categories": {
+        "Meal Type": [
+          "Bread"
+        ]
+      },
+      "image_url": null,
+      "notes": null,
+      "nutritional_info": null,
+      "prep_time": "14 hours",
+      "rating": null,
+      "source": null,
+      "source_url": "Phases And Percentages",
+      "structured_ingredients": [
+        {
+          "amount": 1.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "28g (1 oz) whole wheat flour",
+          "id": "ing_01",
+          "is_ai_converted": false,
+          "name": "whole wheat flour",
+          "unit": "oz"
+        },
+        {
+          "amount": 2.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "28g (2 tablespoons) water",
+          "id": "ing_02",
+          "is_ai_converted": false,
+          "name": "water",
+          "unit": "tablespoons"
+        },
+        {
+          "amount": 1.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "6g (1 teaspoon) ripe starter",
+          "id": "ing_03",
+          "is_ai_converted": false,
+          "name": "ripe starter",
+          "unit": "teaspoon"
+        },
+        {
+          "amount": 1.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "450g (1 lb) bread flour",
+          "id": "ing_04",
+          "is_ai_converted": false,
+          "name": "bread flour",
+          "unit": "lb"
+        },
+        {
+          "amount": 0.3333333333333333,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "50g (1/3 cup) whole wheat flour",
+          "id": "ing_05",
+          "is_ai_converted": false,
+          "name": "whole wheat flour",
+          "unit": "cup"
+        },
+        {
+          "amount": 1.5,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "360g (1 1/2 cups) water",
+          "id": "ing_06",
+          "is_ai_converted": false,
+          "name": "water",
+          "unit": "cups"
+        },
+        {
+          "amount": 2.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "10g (2 teaspoons) fine salt",
+          "id": "ing_07",
+          "is_ai_converted": false,
+          "name": "fine salt",
+          "unit": "teaspoons"
+        }
+      ],
+      "title": "Overnight Country Loaf",
+      "tokenized_directions": [
+        {
+          "step": 1,
+          "text": "Mix the levain ingredients ({{ing_01|whole wheat flour}}, {{ing_02|water}}, {{ing_03|ripe starter}}) and leave at room temperature for 10 hours."
+        },
+        {
+          "step": 2,
+          "text": "Mix the {{ing_04|bread flour}}, {{ing_05|whole wheat flour}} and {{ing_06|water}} and rest for 40 minutes."
+        },
+        {
+          "step": 3,
+          "text": "Add the levain and {{ing_07|fine salt}}, then fold every 30 minutes for 3 hours."
+        },
+        {
+          "step": 4,
+          "text": "Shape, retard overnight, and bake at 475F in a covered pot for 20 minutes, then 20 uncovered."
+        }
+      ]
+    },
+    {
+      "base_servings": 12,
+      "categories": [
+        "Bread"
+      ],
+      "cook_time": "35 mins",
+      "description": null,
+      "difficulty": null,
+      "embedding": {
+        "len": 1536,
+        "sha256": "4062a3eb743dccba41f5a1ac835e2ac1cbcecbf0bcb9a68dac1d964010c25924"
+      },
+      "grid_categories": {
+        "Meal Type": [
+          "Bread"
+        ]
+      },
+      "image_url": null,
+      "notes": null,
+      "nutritional_info": null,
+      "prep_time": "3 hours",
+      "rating": null,
+      "source": null,
+      "source_url": "Phases And Percentages",
+      "structured_ingredients": [
+        {
+          "amount": 4.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "Bread flour: 500g (4 cups)",
+          "id": "ing_01",
+          "is_ai_converted": false,
+          "name": "Bread flour",
+          "unit": "cups"
+        },
+        {
+          "amount": 1.333,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "Water: 325g (1 1/3 cups)",
+          "id": "ing_02",
+          "is_ai_converted": false,
+          "name": "Water",
+          "unit": "cups"
+        },
+        {
+          "amount": 1.75,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "Salt: 10g (1 3/4 tsp)",
+          "id": "ing_03",
+          "is_ai_converted": false,
+          "name": "Salt",
+          "unit": "tsp"
+        },
+        {
+          "amount": 2.25,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "Instant yeast: 7g (2 1/4 tsp)",
+          "id": "ing_04",
+          "is_ai_converted": false,
+          "name": "Instant yeast",
+          "unit": "tsp"
+        },
+        {
+          "amount": 2.0,
+          "converted_amount": null,
+          "converted_unit": null,
+          "fallback_string": "Butter: 30g (2 tbsp)",
+          "id": "ing_05",
+          "is_ai_converted": false,
+          "name": "Butter",
+          "unit": "tbsp"
+        }
+      ],
+      "title": "Sandwich Loaf",
+      "tokenized_directions": [
+        {
+          "step": 1,
+          "text": "Mix everything to a smooth dough and knead for 8 minutes."
+        },
+        {
+          "step": 2,
+          "text": "Prove until doubled, shape into a pan loaf, and prove again."
+        },
+        {
+          "step": 3,
+          "text": "Bake at 400F for 35 minutes."
+        }
+      ]
+    }
+  ]
+}

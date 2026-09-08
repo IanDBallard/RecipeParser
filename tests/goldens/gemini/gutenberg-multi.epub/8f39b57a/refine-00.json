@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "0c2f674c9ddb534014a0042627ad8fffc8bab1d12733fc3f9eaf9e1eba09eee8",
+  "response_text": "{\n  \"title\": \"MILK-FED SNAILS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Snails\",\n      \"fallback_string\": \"Snails\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Milk\",\n      \"fallback_string\": \"Milk\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Salt\",\n      \"fallback_string\": \"Salt\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Oil\",\n      \"fallback_string\": \"Oil\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Wine sauce\",\n      \"fallback_string\": \"Wine sauce\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Take {{ing_01|snails}} and sponge them.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Pull them out of the shells by the membrane and place them for a day in a vessel with {{ing_02|milk}} and {{ing_03|salt}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Renew the {{ing_02|milk}} daily.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"Hourly clean the {{ing_01|snails}} of all refuse.\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"When they are so fat that they can no longer retire (to their shells) fry them in {{ing_04|oil}} and serve them with {{ing_05|wine sauce}}.\"\n    },\n    {\n      \"step\": 6,\n      \"text\": \"In a similar way they may be fed on a {{ing_02|milk}} porridge.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

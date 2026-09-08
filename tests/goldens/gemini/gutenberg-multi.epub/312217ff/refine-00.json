@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "c3423673f3c457492d9d3fb1545f7045e4da6d6bfe02e93fe4e733ff196c3513",
+  "response_text": "{\n  \"title\": \"LOBSTER OR CRABMEAT CROQUETTES\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"lobster or crab meat\",\n      \"fallback_string\": \"LOBSTER OR CRAB MEAT (from cooked shells and head)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"broth\",\n      \"fallback_string\": \"BEST KIND of BROTH\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"THE SHELLS OF THE {{ing_01|LOBSTERS OR CRABS}} [which are cooked] ARE BROKEN, THE {{ing_01|MEAT}} EXTRACTED FROM THE HEAD AND POUNDED IN THE MORTAR WITH {{ing_02|PEPPER}} AND THE {{ing_03|BEST KIND OF BROTH}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"THIS PULP [is shaped into neat little cakes which are fried] AND SERVED UP NICELY.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

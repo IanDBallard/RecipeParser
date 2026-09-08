@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "71b9266fe0d4ec8a52b3a7ba8d7c6b93692f8a8c3ce273ba7b2f73003907bf41",
+  "response_text": "{\"title\": \"Carrots and Parsnips\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"carrots or parsnips\", \"fallback_string\": \"CARROTS OR PARSNIPS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"wine sauce\", \"fallback_string\": \"WINE SAUCE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"{{ing_01|CARROTS OR PARSNIPS}} ARE FRIED [and served] WITH A {{ing_02|WINE SAUCE}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": []}}"
+}

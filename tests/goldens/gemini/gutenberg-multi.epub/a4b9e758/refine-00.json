@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "287114fe3cb5362d454350c611ff34e1250fbb28dfef37f1e8c88447ee94bb80",
+  "response_text": "{\n  \"title\": \"TO KEEP ALL VEGETABLES GREEN (UT OMNE HOLUS SMARAGDINUM FIAT)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"all vegetables\",\n      \"fallback_string\": \"ALL VEGETABLES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"cooking soda\",\n      \"fallback_string\": \"COOKING SODA [1]\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|ALL VEGETABLES}} WILL REMAIN GREEN IF BOILED WITH {{ing_02|COOKING SODA}}.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

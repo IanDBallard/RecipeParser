@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "b6622b3e0d81ff7808adc693327cc8aabd3bb4e584d08e363e6e4756e2bc1482",
+  "response_text": "{\n  \"title\": \"TO PRESERVE SORREL OR SOUR DOCK\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"sorrel or sour dock\",\n      \"fallback_string\": \"SORREL OR SOUR DOCK (trimmed and cleaned)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"myrtle berries\",\n      \"fallback_string\": \"MYRTLE BERRIES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"honey\",\n      \"fallback_string\": \"HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"vinegar\",\n      \"fallback_string\": \"VINEGAR\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"mustard honey\",\n      \"fallback_string\": \"MUSTARD HONEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"salt\",\n      \"fallback_string\": \"SALT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"TRIM AND CLEAN {{ing_01|sorrel or sour dock}}. PLACE THEM TOGETHER. SPRINKLE {{ing_02|myrtle berries}} BETWEEN, COVER WITH {{ing_03|honey}} AND {{ing_04|vinegar}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"PREPARE {{ing_05|mustard honey}} AND {{ing_04|vinegar}} ALSO {{ing_06|salt}} AND COVER {{ing_01|sorrel or sour dock}} WITH THE SAME.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

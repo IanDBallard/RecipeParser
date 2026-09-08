@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- Golden test suite (`tests/goldens/`): a seven-file real-input corpus, recorded
+  Gemini replies replayed offline, and goldens for readers, prompts, schemas,
+  stage parsing, and the full pipeline through both zip writers.
+
+### Fixed
+- **`split_large_chunk` falls back to single-newline splitting** (`recipeparser/io/readers/epub.py`) — it previously split only on blank lines, so EPUB chapter text, which carries single newlines, was never split and `MAX_CHUNK_CHARS` had no effect for EPUBs; one real chapter reached 138,167 characters against a 30,000 limit. Behaviour for text that already split on blank lines is unchanged.
+- **`HTTP_TIMEOUT_SECS` is applied to Gemini calls** (`recipeparser/gemini.py`) — the constant was defined and documented but referenced nowhere, so `generate_content` had no timeout and a stalled call could hang indefinitely. Now passed as `http_options.timeout` (180 s, expressed as 180000 ms, the SDK's unit).
+- **Transient server errors are retried** (`recipeparser/gemini.py`) — only `429`/quota errors went through the exponential back-off ladder; a `500`/`502`/`503`/`504`/`UNAVAILABLE`/`DEADLINE_EXCEEDED`/`INTERNAL` raised on the first attempt instead of retrying. Client errors still raise immediately, and client-side timeouts still raise on the first attempt by design.
+
+### Changed
+- `gemini.py` and `toc.py` build their prompts through named functions
+  (`build_extract_prompt`, `build_refine_prompt`, `build_table_prompt`,
+  `build_plain_text_prompt`, `build_toc_parse_prompt`,
+  `build_toc_classify_prompt`). Behaviour is unchanged; the prompts are now
+  snapshot-tested.
+
+---
+
 ## [6.0.0] — 2026-03-20
 
 ### 🐛 Bug Fixes

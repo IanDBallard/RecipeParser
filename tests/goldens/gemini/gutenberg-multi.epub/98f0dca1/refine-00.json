@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "531b2e37a398e0c98178d0265b001790a7509782842b47949988364be7679d63",
+  "response_text": "{\"title\": \"Another Sweet (Fried Porridge Cookies)\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"flour/meal preparation\", \"fallback_string\": \"A preparation similar to the above (implied to contain flour or meal)\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"hot water\", \"fallback_string\": \"Hot water (bath or double boiler)\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"Best oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"hot honey\", \"fallback_string\": \"Hot honey\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"Pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"Take {{ing_01|a preparation similar [to the above]}} and in the {{ing_02|hot water [bath or double boiler]}} make a very hard porridge of it.\"}, {\"step\": 2, \"text\": \"Thereupon spread it out on a pan and when cool cut it into handy pieces like small cookies.\"}, {\"step\": 3, \"text\": \"Fry these in the {{ing_03|best oil}}, take them out, dip into {{ing_04|[hot] honey}}, sprinkle with {{ing_05|pepper}} and serve.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dessert\"]}}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "extract",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "bfccbe5bc1d6dd277f7973d40afc96fb3c1749f77b115a0accc818bdaed15ed7",
+  "response_text": "{\"recipes\": [{\"name\": \"Boiled Custard\", \"photo_filename\": null, \"servings\": \"6\", \"prep_time\": null, \"cook_time\": null, \"ingredients\": [\"1 quart milk\", \"4 eggs\", \"1/2 cup sugar\", \"1 teaspoon vanilla\"], \"directions\": [\"Scald the milk.\", \"Beat the eggs and sugar together.\", \"Pour the hot milk over the eggs, stirring.\", \"Cook over water until it coats a spoon.\", \"Cool, then stir in the vanilla.\"], \"notes\": null, \"categories\": []}]}"
+}

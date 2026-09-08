@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "bf4f2ba632554ca7432e182fdb19607548ea8268582c50a2712ead99f45e8b70",
+  "response_text": "{\n  \"title\": \"Another Sweet Dish (Fried Bread with Honey)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Fine white bread\",\n      \"fallback_string\": \"Fine white bread (crust removed, sliced into large pieces)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Milk\",\n      \"fallback_string\": \"Milk\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Beaten eggs\",\n      \"fallback_string\": \"Beaten eggs\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Oil\",\n      \"fallback_string\": \"Oil\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Honey\",\n      \"fallback_string\": \"Honey\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Break [slice] {{ing_01|fine white bread}}, crust removed, into rather large pieces which soak in {{ing_02|milk}} [and {{ing_03|beaten eggs}}].\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Fry in {{ing_04|oil}}, cover with {{ing_05|honey}} and serve.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [\"French\"],\n    \"Meal Type\": [\"Breakfast\"]\n  }\n}"
+}

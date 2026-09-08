@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "fb9c3927002bb9480dbf2443b54d5a6e8b6e6b6a29a897e9cc039ce6026db54c",
+  "response_text": "{\n  \"title\": \"TO PREVENT BIRDS FROM SPOILING\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"birds\",\n      \"fallback_string\": \"BIRDS\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"water\",\n      \"fallback_string\": \"WATER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"SCALDED WITH THE FEATHERS {{ing_01|BIRDS}} WILL NOT ALWAYS BE JUICY; IT IS BETTER TO FIRST EMPTY THEM THROUGH THE NECK AND STEAM THEM SUSPENDED OVER A KETTLE WITH {{ing_02|WATER}} [1].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

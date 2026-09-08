@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "c7db46eba5b5acf4a8922414f97a4ed398127ff3a262af94b76c739ed28ff426",
+  "response_text": "{\"title\": \"SUCKLING PIG À LA FLACCUS\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"Pig\", \"fallback_string\": \"Pig\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"Salt\", \"fallback_string\": \"Salt\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"The {{ing_01|pig}} is garnished like wild boar.\"}, {\"step\": 2, \"text\": \"Sprinkle with {{ing_02|salt}}, place in the oven.\"}, {\"step\": 3, \"text\": \"While being done put...\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

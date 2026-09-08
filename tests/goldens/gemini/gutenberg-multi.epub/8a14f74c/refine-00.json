@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "2560cfcdcfa1fec1a924f26f8975ab64197540c0e5000ce4e288159e5f75b1c7",
+  "response_text": "{\n  \"title\": \"BEETS À LA VARRO (BETACEOS VARRONIS)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Varro beets\",\n      \"fallback_string\": \"VARRO BEETS (black ones)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"mead\",\n      \"fallback_string\": \"MEAD\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"salt\",\n      \"fallback_string\": \"A LITTLE SALT\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"oil\",\n      \"fallback_string\": \"OIL\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"chicken\",\n      \"fallback_string\": \"A CHICKEN (optional)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"{{ing_01|VARRO BEETS}}, THAT IS, BLACK ONES [2] OF WHICH THE ROOTS MUST BE CLEANED WELL, COOK THEM WITH {{ing_02|MEAD}} AND {{ing_03|A LITTLE SALT}} AND {{ing_04|OIL}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"BOIL THEM DOWN IN THIS LIQUOR SO THAT THE ROOTS ARE SATURATED THEREBY.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"THE LIQUID ITSELF IS GOOD DRINKING.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"IT IS ALSO NICE TO COOK {{ing_05|A CHICKEN}} IN WITH THEM.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

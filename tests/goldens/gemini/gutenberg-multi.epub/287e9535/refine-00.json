@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "388a78da1f45fb9dfeafb560a1705e59aa3b11a5d1db95ef3180b361c2590dbe",
+  "response_text": "{\"title\": \"STUFFED SARDINE\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"sardine\", \"fallback_string\": \"sardine\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"crushed flea-bane\", \"fallback_string\": \"crushed flea-bane\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"pepper\", \"fallback_string\": \"several grains of pepper\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"mint\", \"fallback_string\": \"mint\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"nuts\", \"fallback_string\": \"nuts\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"honey\", \"fallback_string\": \"honey\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"oil\", \"fallback_string\": \"oil\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"reduced must\", \"fallback_string\": \"reduced must\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"origany\", \"fallback_string\": \"origany\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"The {{ing_01|sardine}} is boned and filled with {{ing_02|crushed flea-bane}}, several grains of {{ing_03|pepper}}, {{ing_04|mint}}, {{ing_05|nuts}}, diluted with {{ing_06|honey}}, tied or sewed, wrapped in parchment and placed in a flat dish above the steam rising from the stove.\"}, {\"step\": 2, \"text\": \"Season with {{ing_07|oil}}, {{ing_08|reduced must}} and {{ing_09|origany}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

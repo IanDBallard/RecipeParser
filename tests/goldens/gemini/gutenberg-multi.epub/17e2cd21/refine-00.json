@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "cb9a5836c8a080800909f42c3d1838b8ec4e1878353d1c063d1ffc0a339551a8",
+  "response_text": "{\n  \"title\": \"ANOTHER TREATMENT OF ODOR (for birds)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"birds (smelly)\",\n      \"fallback_string\": \"BIRDS (smelly)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"crushed fresh olives\",\n      \"fallback_string\": \"CRUSHED FRESH OLIVES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"[IF THE {{ing_01|BIRDS}} SMELL, [1]] STUFF THE INSIDE WITH {{ing_02|CRUSHED FRESH OLIVES}}, SEW UP [the aperture] AND THUS COOK, THEN RETIRE THE COOKED OLIVES.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

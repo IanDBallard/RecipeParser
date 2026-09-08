@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "522ad4f5b7464554eaaa4e032394d3d6f73777b0c4d805a1d4e178b73f96560d",
+  "response_text": "{\n  \"title\": \"TO KEEP GRAPES\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"grapes\",\n      \"fallback_string\": \"PERFECT GRAPES\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"rain water\",\n      \"fallback_string\": \"RAIN WATER (boiled down one third of its volume)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"barley bran\",\n      \"fallback_string\": \"BARLEY [bran] (alternative)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"TAKE {{ing_01|PERFECT GRAPES}} FROM THE VINES, PLACE THEM IN A VESSEL AND POUR {{ing_02|RAIN WATER}} OVER THEM THAT HAS BEEN BOILED DOWN ONE THIRD OF ITS VOLUME.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"THE VESSEL MUST BE PITCHED AND SEALED WITH PLASTER, AND MUST BE KEPT IN A COOL PLACE TO WHICH THE SUN HAS NO ACCESS.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"TREATED IN THIS MANNER, THE {{ing_01|GRAPES}} WILL BE FRESH WHENEVER YOU NEED THEM.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"YOU CAN ALSO SERVE THIS WATER AS HONEY MEAD TO THE SICK.\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"ALSO, IF YOU COVER THE {{ing_01|GRAPES}} WITH {{ing_03|BARLEY [bran]}} YOU WILL FIND THEM SOUND AND UNINJURED.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

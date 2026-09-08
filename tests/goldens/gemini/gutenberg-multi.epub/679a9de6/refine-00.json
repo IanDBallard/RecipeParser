@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "8d41f808418cb7f447a4f46cf6bf2ddfd7146da961b4233f1ac5c9cc3cb2ffc1",
+  "response_text": "{\n  \"title\": \"ROAST CHICKEN\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"laser\",\n      \"fallback_string\": \"A LITTLE LASER\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 6,\n      \"unit\": \"scrupules\",\n      \"name\": \"pepper\",\n      \"fallback_string\": \"PEPPER (6 scrupules)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 1,\n      \"unit\": \"glass\",\n      \"name\": \"oil\",\n      \"fallback_string\": \"OIL (A glass)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 1,\n      \"unit\": \"glass\",\n      \"name\": \"broth\",\n      \"fallback_string\": \"BROTH (A glass)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"parsley\",\n      \"fallback_string\": \"A LITTLE PARSLEY\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"[Pickle the chicken in a solution of] {{ing_01|A LITTLE LASER}}, {{ing_02|6 SCRUPLES OF PEPPER}}, {{ing_03|A GLASS OF OIL}}, {{ing_04|A GLASS OF BROTH}}, AND {{ing_05|A LITTLE PARSLEY}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"[Roast the chicken and use the pickle in making the gravy.]\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

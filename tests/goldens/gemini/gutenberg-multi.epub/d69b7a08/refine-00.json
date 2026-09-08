@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "c8072a9004588baf88b8717c8fa150a1f368c6cc745b5a5749141837cfa3043b",
+  "response_text": "{\n  \"title\": \"Baked Picnic Ham (Pork Shoulder)\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Ham (pork shoulder, fresh or cured)\",\n      \"fallback_string\": \"Ham (pork shoulder, fresh or cured)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"figs\",\n      \"fallback_string\": \"A good number of figs\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 3,\n      \"unit\": \"leaves\",\n      \"name\": \"laurel leaves\",\n      \"fallback_string\": \"Three laurel leaves\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Honey\",\n      \"fallback_string\": \"Honey\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Flour\",\n      \"fallback_string\": \"Flour\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_06\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Oil\",\n      \"fallback_string\": \"Oil\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"The {{ing_01|ham}} should be braised with {{ing_02|a good number of figs}} and some {{ing_03|three laurel leaves}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"The skin is then pulled off and cut into square pieces; these are macerated with {{ing_04|honey}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Thereupon make dough crumbs of {{ing_05|flour}} and {{ing_06|oil}}.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"Lay the dough over or around the {{ing_01|ham}}, stud the top with the pieces of the skin so that they will be baked with the dough [bake slowly].\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"When done, retire from the oven and serve.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

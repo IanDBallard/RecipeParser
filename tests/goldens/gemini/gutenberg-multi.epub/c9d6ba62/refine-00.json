@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "018271135df327cb928f08f76234751bb94363dfb66c8d8f0d6c9123b3af2e97",
+  "response_text": "{\n  \"title\": \"CHICKEN AND DASHEENS\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"SAUCE\",\n      \"fallback_string\": \"SAUCE (from previous recipe)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"CHICKEN\",\n      \"fallback_string\": \"CHICKEN\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"DASHEENS\",\n      \"fallback_string\": \"DASHEENS (peeled)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"GREEN OLIVES\",\n      \"fallback_string\": \"GREEN OLIVES (stoned)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"THE ABOVE {{ing_01|SAUCE}} IS ALSO USED FOR THIS DISH.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"STUFF THE {{ing_02|CHICKEN}} WITH {{ing_03|[peeled] DASHEENS}} AND {{ing_04|[stoned] GREEN OLIVES}}, THOUGH NOT TOO MUCH SO THAT THE DRESSING MAY HAVE ROOM FOR EXPANSION, TO PREVENT BURSTING WHILE THE {{ing_02|CHICKEN}} IS BEING COOKED IN THE POT.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"HOLD IT DOWN WITH A SMALL BASKET, LIFT IT UP FREQUENTLY [2] AND HANDLE CAREFULLY SO THAT THE {{ing_02|CHICKEN}} DOES NOT BURST [3].\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dinner\"]\n  }\n}"
+}

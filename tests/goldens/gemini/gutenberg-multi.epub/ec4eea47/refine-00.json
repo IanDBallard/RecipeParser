@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "aa313fc39a215feaedb93a4341cf33b644c78b633732263fb1c5291f3a8e7b27",
+  "response_text": "{\n  \"title\": \"Custard\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Milk\",\n      \"fallback_string\": \"Milk\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Honey\",\n      \"fallback_string\": \"Honey (to taste)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 5,\n      \"unit\": null,\n      \"name\": \"eggs\",\n      \"fallback_string\": \"5 eggs (for a pint of fluid)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 3,\n      \"unit\": null,\n      \"name\": \"eggs\",\n      \"fallback_string\": \"3 eggs (for half a pint of fluid)\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"Pepper\",\n      \"fallback_string\": \"Pepper\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Estimate the amount of {{ing_01|milk}} necessary for this dish and sweeten it with {{ing_02|honey}} to taste.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"To a pint of fluid take {{ing_03|5 eggs}}; for half a pint dissolve {{ing_04|3 eggs}} in {{ing_01|milk}} and beat well to incorporate thoroughly.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Strain through a colander into an earthen dish and cook on a slow fire [in hot water bath in oven].\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"When congealed sprinkle with {{ing_05|pepper}} and serve.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": [\"Dessert\"]\n  }\n}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "6607643b7f129178f9e67fdd752698ab47d5b3d60a32357862d828ff2d79adae",
+  "response_text": "{\"title\":\"VARRO SAYS OF BULBS\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"bulbs\",\"fallback_string\":\"bulbs\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"water\",\"fallback_string\":\"water\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":null,\"unit\":null,\"name\":\"pignolia nut\",\"fallback_string\":\"pignolia nut\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":null,\"unit\":null,\"name\":\"juice of colewort\",\"fallback_string\":\"juice of colewort\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_05\",\"amount\":null,\"unit\":null,\"name\":\"mustard\",\"fallback_string\":\"mustard\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_06\",\"amount\":null,\"unit\":null,\"name\":\"pepper\",\"fallback_string\":\"pepper\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"Cooked {{ing_01|bulbs}} in {{ing_02|water}} they are conducive to love and are therefore also served at wedding feasts, but also seasoned with {{ing_03|pignolia nut}} or with the {{ing_04|juice of colewort}}, or {{ing_05|mustard}}, and {{ing_06|pepper}}.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[]}}"
+}

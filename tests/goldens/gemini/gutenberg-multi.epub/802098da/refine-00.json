@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "247270ab540f5b4255773ecfb228b02cc33985c4d556c1903c349791c7030c3a",
+  "response_text": "{\"title\":\"OXYGARUM, AN AID TO DIGESTION\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":0.5,\"unit\":\"oz\",\"name\":\"pepper\",\"fallback_string\":\"1/2 OZ. of PEPPER\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":3,\"unit\":\"scruples\",\"name\":\"Gallic silphium\",\"fallback_string\":\"3 SCRUPLES of GALLIC SILPHIUM\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":6,\"unit\":\"scruples\",\"name\":\"cardamom\",\"fallback_string\":\"6 SCRUPLES of CARDAMOM\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":6,\"unit\":\"scruples\",\"name\":\"cumin\",\"fallback_string\":\"6 SCRUPLES of CUMIN\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_05\",\"amount\":1,\"unit\":\"scruple\",\"name\":\"leaves\",\"fallback_string\":\"1 SCRUPLE of LEAVES\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_06\",\"amount\":6,\"unit\":\"scruples\",\"name\":\"dry mint\",\"fallback_string\":\"6 SCRUPLES of DRY MINT\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_07\",\"amount\":null,\"unit\":null,\"name\":\"honey\",\"fallback_string\":\"HONEY\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_08\",\"amount\":null,\"unit\":null,\"name\":\"broth\",\"fallback_string\":\"BROTH\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_09\",\"amount\":null,\"unit\":null,\"name\":\"vinegar\",\"fallback_string\":\"VINEGAR\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"[Tor. OXYGARUM (WHICH IS SIMILAR TO GARUM OR RATHER AN ACID SAUCE) IS DIGESTIBLE AND IS COMPOSED OF]: {{ing_01|1/2 OZ. OF PEPPER}}, {{ing_02|3 SCRUPLES OF GALLIC SILPHIUM}}, {{ing_03|6 SCRUPLES OF CARDAMOM}}, {{ing_04|6 OF CUMIN}}, {{ing_05|1 SCRUPLE OF LEAVES}}, {{ing_06|6 SCRUPLES OF DRY MINT}}.\"},{\"step\":2,\"text\":\"THESE [ingredients] ARE BROKEN SINGLY AND CRUSHED AND [made into a paste] BOUND BY {{ing_07|HONEY}}.\"},{\"step\":3,\"text\":\"WHEN THIS WORK IS DONE [or whenever you desire] ADD {{ing_08|BROTH}} AND {{ing_09|VINEGAR}} [to taste].\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[]}}"
+}

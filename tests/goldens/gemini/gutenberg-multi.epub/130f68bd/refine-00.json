@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "20a3631c829de4525d2442c2dc066af9d394ff7475a4577fff5ea7975dd77715",
+  "response_text": "{\n  \"title\": \"Absynthium romanum\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 1,\n      \"unit\": \"Theban uncia\",\n      \"name\": \"purified and ground Pontic absinthe\",\n      \"fallback_string\": \"1 Theban uncia purified and ground Pontic absinthe\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 3,\n      \"unit\": \"scrupuli\",\n      \"name\": \"mastic leaves\",\n      \"fallback_string\": \"3 scrupuli mastic leaves\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 3,\n      \"unit\": \"scrupuli\",\n      \"name\": \"saffron\",\n      \"fallback_string\": \"3 scrupuli saffron\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 18,\n      \"unit\": \"sextarii\",\n      \"name\": \"wine\",\n      \"fallback_string\": \"18 sextarii wine\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Make Roman Absinthe thus, following the precepts of seasoned Camerinus.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"For absinthe, you will give one {{ing_01|Theban ounce of purified and ground Pontic absinthe}}.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Add {{ing_02|3 scruples of mastic leaves}}.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"Add {{ing_03|3 scruples of saffron}}.\"\n    },\n    {\n      \"step\": 5,\n      \"text\": \"Add {{ing_04|18 sextarii of such wine}}.\"\n    },\n    {\n      \"step\": 6,\n      \"text\": \"Bitterness does not require coals.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [],\n    \"Meal Type\": []\n  }\n}"
+}

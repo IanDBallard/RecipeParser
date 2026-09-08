@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "85b8a7bbc98ab3126595fb01df326e4cb627a2f46d5c7426d6e8f883c817a1f4",
+  "response_text": "{\"title\": \"Purée of Parsnips\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"PARSNIPS\", \"fallback_string\": \"PARSNIPS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_02\", \"amount\": null, \"unit\": null, \"name\": \"CUMIN\", \"fallback_string\": \"CUMIN\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_03\", \"amount\": null, \"unit\": null, \"name\": \"RUE\", \"fallback_string\": \"RUE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_04\", \"amount\": null, \"unit\": null, \"name\": \"STOCK\", \"fallback_string\": \"STOCK\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_05\", \"amount\": null, \"unit\": null, \"name\": \"CONDENSED WINE\", \"fallback_string\": \"CONDENSED WINE\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_06\", \"amount\": null, \"unit\": null, \"name\": \"OIL\", \"fallback_string\": \"OIL\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_07\", \"amount\": null, \"unit\": null, \"name\": \"GREEN CORIANDER\", \"fallback_string\": \"GREEN CORIANDER\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_08\", \"amount\": null, \"unit\": null, \"name\": \"LEEKS\", \"fallback_string\": \"LEEKS\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}, {\"id\": \"ing_09\", \"amount\": null, \"unit\": null, \"name\": \"SALT PORK\", \"fallback_string\": \"SALT PORK (optional)\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"MASH THE {{ing_01|PARSNIPS}}, [add] {{ing_02|CUMIN}}, {{ing_03|RUE}}, {{ing_04|STOCK}}, A LITTLE {{ing_05|CONDENSED WINE}}, {{ing_06|OIL}}, {{ing_07|GREEN CORIANDER}} [and] {{ing_08|LEEKS}} AND SERVE; GOES WELL WITH {{ing_09|SALT PORK}}.\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

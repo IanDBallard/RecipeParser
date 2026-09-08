@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "4ecc1ae96f53cc37ab2a75718661b417593e458ac238c6e1c7820afc86257b90",
+  "response_text": "{\n  \"title\": \"Buttermilk Scones\",\n  \"base_servings\": 8,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 2,\n      \"unit\": \"cups\",\n      \"name\": \"plain flour\",\n      \"fallback_string\": \"2 cups/250g plain flour\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 1,\n      \"unit\": \"tablespoon\",\n      \"name\": \"baking powder\",\n      \"fallback_string\": \"1 tablespoon/12g baking powder\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 0.5,\n      \"unit\": \"teaspoon\",\n      \"name\": \"fine salt\",\n      \"fallback_string\": \"1/2 teaspoon/3g fine salt\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 5,\n      \"unit\": \"tablespoons\",\n      \"name\": \"cold butter\",\n      \"fallback_string\": \"5 tablespoons/70g cold butter, cubed\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": 0.75,\n      \"unit\": \"cup\",\n      \"name\": \"buttermilk\",\n      \"fallback_string\": \"3/4 cup/180ml buttermilk\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Heat the oven to 425F. Line a tray with parchment.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Rub the {{ing_04|butter}} into the {{ing_01|flour}}, {{ing_02|baking powder}} and {{ing_03|salt}} until it looks like coarse crumbs.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Stir in the {{ing_05|buttermilk}} until a shaggy dough forms. Do not overwork it.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"Pat out to 1 inch thick, cut rounds, and bake for 12 to 14 minutes.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [\"British\"],\n    \"Meal Type\": [\"Bread\"]\n  }\n}"
+}

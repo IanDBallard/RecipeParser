@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "7c4b4d2861e32b42527105a30b6160a4d4ec609b09c899dbf3e24ce5f7e47b32",
+  "response_text": "{\"title\":\"Stuffed Capon Likewise\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"Capon\",\"fallback_string\":\"Capon\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"Pepper\",\"fallback_string\":\"Pepper\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_03\",\"amount\":null,\"unit\":null,\"name\":\"Lovage\",\"fallback_string\":\"Lovage\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_04\",\"amount\":null,\"unit\":null,\"name\":\"Ginger\",\"fallback_string\":\"Ginger\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_05\",\"amount\":null,\"unit\":null,\"name\":\"Cut meat (preferably raw pork or veal)\",\"fallback_string\":\"Cut meat (preferably raw pork or veal)\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_06\",\"amount\":null,\"unit\":null,\"name\":\"Cooked spelt\",\"fallback_string\":\"Cooked spelt\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_07\",\"amount\":null,\"unit\":null,\"name\":\"Crushed brains cooked in chicken broth\",\"fallback_string\":\"Crushed brains cooked in chicken broth\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_08\",\"amount\":null,\"unit\":null,\"name\":\"Eggs\",\"fallback_string\":\"Eggs\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_09\",\"amount\":null,\"unit\":null,\"name\":\"Broth\",\"fallback_string\":\"Broth (to taste)\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_10\",\"amount\":null,\"unit\":null,\"name\":\"Oil\",\"fallback_string\":\"Oil (a little)\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_11\",\"amount\":null,\"unit\":null,\"name\":\"Whole pepper\",\"fallback_string\":\"Whole pepper\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_12\",\"amount\":null,\"unit\":null,\"name\":\"Nuts\",\"fallback_string\":\"Nuts (plenty)\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"The {{ing_01|capon}} is stuffed in a similar way (using the dressing described previously).\"},{\"step\":2,\"text\":\"Cook with all the bones removed.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[\"Dinner\"]}}"
+}

@@ -1,0 +1,14 @@
+{
+  "stage": "extract",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "691d68ea7da5f48eaacc97f11754ac53ec689e763da097d7cd1117b92cc0dd3e",
+  "response_text": "{\"recipes\": [{\"name\": \"Overnight Country Loaf\", \"photo_filename\": null, \"servings\": \"10 servings\", \"prep_time\": \"14 hours\", \"cook_time\": \"40 mins\", \"ingredients\": [\"**PHASE 1 \\nLevain**\", \"28g (1 oz) whole wheat flour\", \"28g (2 tablespoons) water\", \"6g (1 teaspoon) ripe starter\", \"**PHASE 2 \\nFinal Dough**\", \"450g (1 lb) bread flour\", \"50g (1/3 cup) whole wheat flour\", \"360g (1 1/2 cups) water\", \"10g (2 teaspoons) fine salt\"], \"directions\": [\"**PHASE 1**\", \"Mix the levain ingredients and leave at room temperature for 10 hours.\", \"**PHASE 2**\", \"Mix the flours and water and rest for 40 minutes.\", \"Add the levain and salt, then fold every 30 minutes for 3 hours.\", \"Shape, retard overnight, and bake at 475F in a covered pot for 20 minutes, then 20 uncovered.\"], \"notes\": null, \"categories\": []}]}"
+}

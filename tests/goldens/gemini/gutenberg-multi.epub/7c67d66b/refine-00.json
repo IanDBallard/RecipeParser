@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "cc3738891fa9cafd7393cd4b3b74d88057bc2ed55ba2d69e3c7dc0871cc12ba4",
+  "response_text": "{\"title\":\"TO KEEP POMEGRANATES\",\"base_servings\":null,\"structured_ingredients\":[{\"id\":\"ing_01\",\"amount\":null,\"unit\":null,\"name\":\"POMEGRANATES\",\"fallback_string\":\"POMEGRANATES\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false},{\"id\":\"ing_02\",\"amount\":null,\"unit\":null,\"name\":\"HOT [sea] WATER\",\"fallback_string\":\"HOT [sea] WATER\",\"converted_amount\":null,\"converted_unit\":null,\"is_ai_converted\":false}],\"tokenized_directions\":[{\"step\":1,\"text\":\"STEEP {{ing_01|THEM}} INTO {{ing_02|HOT [sea] WATER}}, TAKE {{ing_01|THEM}} OUT IMMEDIATELY AND HANG {{ing_01|THEM}} UP.\"},{\"step\":2,\"text\":\"{{ing_01|THEY}} WILL KEEP.\"}],\"grid_categories\":{\"Cuisine\":[],\"Meal Type\":[]}}"
+}

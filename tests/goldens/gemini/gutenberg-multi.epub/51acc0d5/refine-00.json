@@ -1,0 +1,14 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-2.5-flash",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    }
+  },
+  "prompt_sha256": "9f28a8bc9ed34c6de5b8f75b9973573e0a0af5de9f558544a692fd091fe09a8e",
+  "response_text": "{\"title\": \"STUFFED CHICKEN [OR PIG]\", \"base_servings\": null, \"structured_ingredients\": [{\"id\": \"ing_01\", \"amount\": null, \"unit\": null, \"name\": \"chicken\", \"fallback_string\": \"CHICKEN\", \"converted_amount\": null, \"converted_unit\": null, \"is_ai_converted\": false}], \"tokenized_directions\": [{\"step\": 1, \"text\": \"EMPTY THE {{ing_01|CHICKEN}} THROUGH THE APERTURE OF THE NECK SO THAT NONE OF THE ENTRAILS REMAIN.\"}, {\"step\": 2, \"text\": \"CRUSH\"}], \"grid_categories\": {\"Cuisine\": [], \"Meal Type\": [\"Dinner\"]}}"
+}

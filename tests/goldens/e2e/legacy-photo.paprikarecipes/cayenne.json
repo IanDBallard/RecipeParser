@@ -1,0 +1,121 @@
+{
+  "entries": {
+    "Boiled Custard.paprikarecipe": {
+      "_cayenne_meta": {
+        "base_servings": 6,
+        "categories": [
+          "Dessert"
+        ],
+        "cook_time": "20 mins",
+        "description": null,
+        "difficulty": null,
+        "embedding": {
+          "len": 1536,
+          "sha256": "23289d33644b3acb1f911e15c6a0394c8254c03dea8bb336528706d22ae1eca6"
+        },
+        "grid_categories": {
+          "Meal Type": [
+            "Dessert"
+          ]
+        },
+        "image_url": null,
+        "notes": null,
+        "nutritional_info": null,
+        "prep_time": "10 mins",
+        "rating": null,
+        "source": null,
+        "source_url": null,
+        "structured_ingredients": [
+          {
+            "amount": 1.0,
+            "converted_amount": null,
+            "converted_unit": null,
+            "fallback_string": "1 quart milk",
+            "id": "ing_01",
+            "is_ai_converted": false,
+            "name": "milk",
+            "unit": "quart"
+          },
+          {
+            "amount": 4.0,
+            "converted_amount": null,
+            "converted_unit": null,
+            "fallback_string": "4 eggs",
+            "id": "ing_02",
+            "is_ai_converted": false,
+            "name": "eggs",
+            "unit": null
+          },
+          {
+            "amount": 0.5,
+            "converted_amount": null,
+            "converted_unit": null,
+            "fallback_string": "1/2 cup sugar",
+            "id": "ing_03",
+            "is_ai_converted": false,
+            "name": "sugar",
+            "unit": "cup"
+          },
+          {
+            "amount": 1.0,
+            "converted_amount": null,
+            "converted_unit": null,
+            "fallback_string": "1 teaspoon vanilla",
+            "id": "ing_04",
+            "is_ai_converted": false,
+            "name": "vanilla",
+            "unit": "teaspoon"
+          }
+        ],
+        "title": "Boiled Custard",
+        "tokenized_directions": [
+          {
+            "step": 1,
+            "text": "Scald the {{ing_01|milk}}."
+          },
+          {
+            "step": 2,
+            "text": "Beat the {{ing_02|eggs}} and {{ing_03|sugar}} together."
+          },
+          {
+            "step": 3,
+            "text": "Pour the hot {{ing_01|milk}} over the {{ing_02|eggs}}, stirring."
+          },
+          {
+            "step": 4,
+            "text": "Cook over water until it coats a spoon."
+          },
+          {
+            "step": 5,
+            "text": "Cool, then stir in the {{ing_04|vanilla}}."
+          }
+        ]
+      },
+      "categories": [
+        "Dessert"
+      ],
+      "cook_time": "20 mins",
+      "description": "",
+      "difficulty": "",
+      "directions": "Scald the milk.\nBeat the eggs and sugar together.\nPour the hot milk over the eggs, stirring.\nCook over water until it coats a spoon.\nCool, then stir in the vanilla.",
+      "hash": "<fixed>",
+      "image_url": "",
+      "ingredients": "1 quart milk\n4 eggs\n1/2 cup sugar\n1 teaspoon vanilla",
+      "name": "Boiled Custard",
+      "notes": "",
+      "nutritional_info": "",
+      "photo_hash": "",
+      "photo_large": null,
+      "prep_time": "10 mins",
+      "rating": 0,
+      "servings": "6",
+      "source": "",
+      "source_url": "",
+      "total_time": "",
+      "uid": "<fixed>"
+    }
+  },
+  "names": [
+    "Boiled Custard.paprikarecipe"
+  ]
+}
