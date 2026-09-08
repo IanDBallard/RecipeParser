@@ -15,8 +15,11 @@
 - Python 3.9 syntax only: `Optional[X]`, `List[X]`, `Dict[K, V]` from `typing`; no `X | Y`, no `match`.
 - `recipeparser/core/**` must not import from `recipeparser.io` or `recipeparser.adapters` (ruff TID rule; run `ruff check recipeparser` before every commit).
 - Tests never reach a real Supabase project: `recipeparser.config.live_writes_blocked()` is true under pytest unless `ALLOW_LIVE_WRITES_IN_TESTS=1`. Tests that exercise the writer set that env var **and** patch `httpx.post`.
-- All Gemini calls go through `recipeparser.gemini._call_with_retry(client, model=, contents=, config=)` with `model="gemini-2.5-flash"` for generation; embeddings via `recipeparser.gemini.get_embeddings`.
-- Database prerequisites (Cayenne repo plan `2026-09-07-recipe-edit-schema.md`): migrations 013 and 014 applied. The RPC signatures this plan relies on: `claim_stale_recipes(p_limit integer)` returning `id, user_id, title, ingredient_lines, direction_steps, body_rev`; `regen_failed(p_id uuid, p_msg text)`.
+- All Gemini calls go through `recipeparser.gemini._call_with_retry(client, model=, contents=, config=, what=)`. Never hardcode a model name: pass `model=GEMINI_MODEL`, imported from `recipeparser.config` (default `gemini-3.1-flash-lite`, overridable by the `GEMINI_MODEL` env var). `_call_with_retry` applies `_finalize_config` (HTTP timeout + thinking budget) itself, and logs usage metadata under the `what=` label — give every new call site a specific one, or its tokens land in the log as an anonymous "Gemini call". Embeddings via `recipeparser.gemini.get_embeddings`.
+- Every prompt is a `build_*_prompt(...)` function, never an f-string inside the call site. `tests/goldens/test_prompts_snapshot.py` snapshots each builder and asserts the call site sends exactly what the builder renders; a new call needs both a builder and a snapshot there.
+- Changing a prompt or a Gemini-facing schema is a snapshot change, not just a code change. Re-approve with `pytest tests/goldens tests/snapshots --snapshot-update -q`, review the resulting `.ambr` diff, and stage `tests/goldens` alongside `tests/snapshots`. Recorded replies are keyed by prompt *body*, so a changed rule warns (`prompt_sha256 mismatch`) but still serves — see the scoped `filterwarnings` precedent in `tests/goldens/test_stages_golden.py:63-79`.
+- **Gate — verify before starting Task 6.** Database prerequisites live in the Cayenne repo (plan `2026-09-07-recipe-edit-schema.md`): migrations 013 and 014 applied. As of the rebase onto `master` (2026-09-08) neither the migrations nor that plan exist in the sibling `cayenne/` checkout, which holds only `SpecificationDocumentation/`. Tasks 1-5 and 8-12 are unblocked; Tasks 6, 7 and 10 are unit-testable against fakes but cannot be integration-verified until the schema lands. Confirm the RPCs exist before treating those three as done.
+- Baseline on `master` at rebase time: `pytest -q` -> 759 passed, 27 snapshots, ~10s. Every task's "full suite green" check is measured against that. The RPC signatures this plan relies on: `claim_stale_recipes(p_limit integer)` returning `id, user_id, title, ingredient_lines, direction_steps, body_rev`; `regen_failed(p_id uuid, p_msg text)`.
 - New env var: `REGEN_WORKER_ENABLED` (truthy values `1`, `true`, `yes`, `on`). Absent means the worker never starts.
 - Run the full suite with `pytest -q` before each commit; it must stay green.
 - Commit messages: conventional prefix (`feat:`, `test:`, `docs:`), imperative mood.
@@ -27,10 +30,10 @@
 
 **Files:**
 - Modify: `recipeparser/models.py:98-108` (`StructuredIngredient`)
-- Modify: `recipeparser/gemini.py:522-540` (REFINE prompt rules)
+- Modify: `recipeparser/gemini.py:655-699` (`build_refine_prompt`, the `1. STRUCTURED INGREDIENTS:` block)
 - Modify: `recipeparser/core/stages/refine.py`
 - Create: `tests/unit/stages/test_refine_line_index.py`
-- Modify: `tests/snapshots/__snapshots__/*` (regenerated)
+- Modify: `tests/snapshots/__snapshots__/*` and `tests/goldens/__snapshots__/*` (regenerated)
 
 **Interfaces:**
 - Produces: `StructuredIngredient.line_index: Optional[int]` (0-based index into the raw ingredient list; `None` allowed).
@@ -177,7 +180,7 @@ And in `refine()` after `_validate_fat_tokens(result)`:
 
 - [ ] **Step 5: Ask the model for the index**
 
-In `recipeparser/gemini.py` REFINE prompt, under `1. STRUCTURED INGREDIENTS:` add a bullet after the `fallback_string` line:
+In `build_refine_prompt` (`recipeparser/gemini.py:655`), inside the `1. STRUCTURED INGREDIENTS:` block, add a bullet after the `fallback_string` line:
 
 ```
    - "line_index" is the 0-based position of the source line in the RAW RECIPE
@@ -192,13 +195,25 @@ Expected: 7 PASS.
 
 - [ ] **Step 7: Regenerate snapshots and run the whole suite**
 
-Run: `pytest tests/snapshots --snapshot-update -q && pytest -q`
-Expected: snapshots updated (the refine snapshot gains `line_index: None`), full suite green.
+Run: `pytest tests/goldens tests/snapshots --snapshot-update -q && pytest -q`
+
+This task moves four snapshot files, not one. Read the diff and confirm each change is only the new field or the new rule:
+
+| Snapshot | Why it moves |
+|---|---|
+| `tests/snapshots/__snapshots__/test_stage_snapshots.ambr` | the refine snapshot gains `line_index: None` |
+| `tests/goldens/__snapshots__/test_stages_golden.ambr` | every fixture's refined `model_dump()` gains `line_index` |
+| `tests/goldens/__snapshots__/test_prompts_snapshot.ambr` | the three `build_refine_prompt` snapshots gain the new bullet (`test_prompts_snapshot.py:122-129`) |
+| `tests/goldens/__snapshots__/test_prompts_snapshot.ambr` | `test_cayenne_refinement_schema` — the JSON schema sent to Gemini gains `line_index` |
+
+Recorded Gemini replies are keyed by prompt *body*, which this rule does not touch, so they still serve; expect `prompt_sha256 mismatch ... refine-NN.json` warnings. They do not fail the suite (there is no `-W error`). If they add noise, scope an `ignore:` filter the way `tests/goldens/test_stages_golden.py:63-79` already does for the phases rule — do not widen an existing one.
+
+Expected: those snapshots updated, full suite green (759 passing at baseline, plus the 7 new tests).
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add recipeparser/models.py recipeparser/gemini.py recipeparser/core/stages/refine.py tests/unit/stages/test_refine_line_index.py tests/snapshots
+git add recipeparser/models.py recipeparser/gemini.py recipeparser/core/stages/refine.py tests/unit/stages/test_refine_line_index.py tests/snapshots tests/goldens
 git commit -m "feat: structured ingredients carry line_index; REFINE validates it"
 ```
 
@@ -738,13 +753,13 @@ Both fast-path `assemble(` calls gain:
 - [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `pytest tests/unit/test_regen.py tests/unit/stages/test_assemble_raw.py -q && pytest -q`
-Expected: new tests PASS; the full suite green. If a snapshot changed shape (new fields on `IngestResponse`), run `pytest tests/snapshots --snapshot-update -q` and inspect the diff: only the new fields should appear.
+Expected: new tests PASS; the full suite green. Eleven new fields on `CayenneRecipe` change every snapshotted recipe shape, so re-approve both trees: `pytest tests/goldens tests/snapshots --snapshot-update -q`, then read the diff of `test_stage_snapshots.ambr` and `test_stages_golden.ambr` and confirm only the new fields appear. No prompt changes here, so `test_prompts_snapshot.ambr` must stay still — if it moves, something went into a prompt that should not have.
 
 - [ ] **Step 8: Lint and commit**
 
 ```bash
 ruff check recipeparser
-git add recipeparser/models.py recipeparser/core/regen.py recipeparser/core/stages/assemble.py recipeparser/core/pipeline.py tests/unit/test_regen.py tests/unit/stages/test_assemble_raw.py tests/snapshots
+git add recipeparser/models.py recipeparser/core/regen.py recipeparser/core/stages/assemble.py recipeparser/core/pipeline.py tests/unit/test_regen.py tests/unit/stages/test_assemble_raw.py tests/snapshots tests/goldens
 git commit -m "feat: carry raw lines and structured durations through ASSEMBLE"
 ```
 
@@ -848,7 +863,7 @@ In `write_recipe_to_supabase`, after the `"embedding": recipe.embedding,` line i
         "servings_note": recipe.servings_note,
 ```
 
-Check the existing row already carries `source`, `notes`, `rating`, `nutritional_info`, `description`, `difficulty` (added on the `feat/paprika-metadata-columns` branch). If not, add them the same way: `"source": recipe.source,` etc.
+The row already carries `source`, `notes`, `rating`, `nutritional_info`, `description`, `difficulty` — merged to `master` in #17 and visible at `recipeparser/io/writers/supabase.py:196-203`. Leave them alone; this step only appends.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1555,8 +1570,10 @@ git commit -m "feat: ingestion reads unit preferences from profiles"
 - Modify: `recipeparser/gemini.py` (append)
 - Modify: `recipeparser/core/stages/categorize.py` (append)
 - Create: `tests/unit/test_categorize_batch.py`
+- Modify: `tests/goldens/test_prompts_snapshot.py` and `tests/goldens/__snapshots__/test_prompts_snapshot.ambr` (the new builder's snapshot)
 
 **Interfaces:**
+- Produces: `gemini.build_categorize_batch_prompt(recipes: List[Dict[str, Any]], new_axes: Dict[str, List[str]]) -> str` — the prompt on its own, per the repo's builder convention (`tests/goldens/test_prompts_snapshot.py` locks every builder).
 - Produces: `gemini.categorize_batch(recipes: List[Dict[str, Any]], new_axes: Dict[str, List[str]], client) -> Dict[str, List[str]]` — recipe id → matching tags from `new_axes` only. Each recipe dict has `id`, `title`, `ingredient_lines`, `direction_steps`.
 - Produces: `categorize.chunked(items: Sequence[T], size: int) -> List[List[T]]` and `categorize.filter_batch_result(result: Dict[str, List[str]], offered: Set[str]) -> Dict[str, List[str]]`.
 
@@ -1568,6 +1585,7 @@ git commit -m "feat: ingestion reads unit preferences from profiles"
 import json
 from unittest.mock import MagicMock, patch
 
+from recipeparser.config import GEMINI_MODEL
 from recipeparser.core.stages.categorize import chunked, filter_batch_result
 
 
@@ -1597,7 +1615,8 @@ def test_categorize_batch_prompt_and_parse():
     assert out == {"r1": ["Italian"], "r2": []}
     prompt = call.call_args.kwargs["contents"]
     assert "Italian" in prompt and "Thai" in prompt and "Lasagne" in prompt and "r2" in prompt
-    assert call.call_args.kwargs["model"] == "gemini-2.5-flash"
+    assert call.call_args.kwargs["model"] == GEMINI_MODEL
+    assert call.call_args.kwargs["what"] == "categorize_batch"
 
 
 def test_categorize_batch_empty_reply():
@@ -1655,16 +1674,11 @@ class _BatchCategorization(BaseModel):
     results: List[_RecipeTags] = Field(default_factory=list)
 
 
-def categorize_batch(
+def build_categorize_batch_prompt(
     recipes: List[Dict[str, Any]],
     new_axes: Dict[str, List[str]],
-    client,
-) -> Dict[str, List[str]]:
-    """
-    Categorise several existing recipes against ONLY the newly added tags
-    (spec 6.2).  Returns recipe_id -> tags.  Never used at ingest; REFINE does
-    that.  An empty or unparseable reply returns {} so the caller skips the batch.
-    """
+) -> str:
+    """The bulk-recategorise prompt: several recipes against newly added tags only."""
     axes_text = "\n".join(f"- {axis}: {', '.join(tags)}" for axis, tags in new_axes.items())
     recipes_text = "\n\n".join(
         f"RECIPE ID: {r['id']}\nTITLE: {r.get('title', '')}\n"
@@ -1672,7 +1686,7 @@ def categorize_batch(
         f"DIRECTIONS:\n" + "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(r.get("direction_steps", [])))
         for r in recipes
     )
-    prompt = f"""
+    return f"""
 You are a culinary classifier. The user has just added these tags to their taxonomy:
 {axes_text}
 
@@ -1683,16 +1697,29 @@ For EACH recipe below, list which of the tags above apply. Rules:
 
 {recipes_text}
 """
+
+
+def categorize_batch(
+    recipes: List[Dict[str, Any]],
+    new_axes: Dict[str, List[str]],
+    client,
+) -> Dict[str, List[str]]:
+    """
+    Categorise several existing recipes against ONLY the newly added tags
+    (spec 6.2).  Returns recipe_id -> tags.  Never used at ingest; REFINE does
+    that.  An empty or unparseable reply returns {} so the caller skips the batch.
+    """
     try:
         response = _call_with_retry(
             client,
-            model="gemini-2.5-flash",
-            contents=prompt,
+            model=GEMINI_MODEL,
+            contents=build_categorize_batch_prompt(recipes, new_axes),
             config={
                 "response_mime_type": "application/json",
                 "response_json_schema": _schema_for_gemini(_BatchCategorization),
                 "temperature": 0.0,
             },
+            what="categorize_batch",
         )
         if not response.text or not response.text.strip():
             log.error("categorize_batch: empty response")
@@ -1704,18 +1731,33 @@ For EACH recipe below, list which of the tags above apply. Rules:
     return {r.recipe_id: list(r.tags) for r in parsed.results}
 ```
 
-(`BaseModel`, `Field`, `json`, `Any`, `Dict`, `List` are already imported in `gemini.py`; add any that are missing.)
+(`BaseModel`, `Field`, `json`, `Any`, `Dict`, `List` are already imported in `gemini.py`; `GEMINI_MODEL` comes from the existing `from recipeparser.config import (...)` block at the top of the module. Add any that are missing.)
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 5: Snapshot the new prompt**
 
-Run: `pytest tests/unit/test_categorize_batch.py -q`
-Expected: 4 PASS.
+Every builder is snapshotted. In `tests/goldens/test_prompts_snapshot.py`, alongside the existing prompt snapshots, add:
 
-- [ ] **Step 6: Lint and commit**
+```python
+    def test_categorize_batch_prompt(self, snapshot: SnapshotAssertion):
+        assert gemini.build_categorize_batch_prompt(
+            [{"id": "r1", "title": "Lasagne", "ingredient_lines": ["pasta"], "direction_steps": ["Bake."]}],
+            FIXED_AXES,
+        ) == snapshot
+```
+
+Run: `pytest tests/goldens/test_prompts_snapshot.py --snapshot-update -q`
+Expected: one snapshot written. No existing snapshot moves — this task appends a prompt, it does not edit one.
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `pytest tests/unit/test_categorize_batch.py tests/goldens/test_prompts_snapshot.py -q`
+Expected: 4 PASS, prompt snapshots green.
+
+- [ ] **Step 7: Lint and commit**
 
 ```bash
 ruff check recipeparser
-git add recipeparser/gemini.py recipeparser/core/stages/categorize.py tests/unit/test_categorize_batch.py
+git add recipeparser/gemini.py recipeparser/core/stages/categorize.py tests/unit/test_categorize_batch.py tests/goldens
 git commit -m "feat: categorise-only Gemini batch call and batch helpers"
 ```
 
@@ -2068,7 +2110,7 @@ git commit -m "feat: RecatWorker runs additive, scoped bulk recategorise jobs"
 **Interfaces:**
 - Consumes: `duration_columns` (Task 2).
 - Produces: `plan_backfill(rows: List[Dict[str, Any]]) -> List[Tuple[str, Dict[str, Any], bool]]` — `(recipe_id, payload, note_only)` per row, importable without side effects.
-- Produces: a CLI `python scripts/backfill_durations.py [--dry-run]` that pages through `recipes`, updates the nine columns (never `base_servings` when a value already exists), and prints rows whose text landed entirely in a note.
+- Produces: a CLI `python scripts/backfill_durations.py [--live] [--verbose]` — dry run by default — that pages through `recipes`, updates the nine columns (never `base_servings` when a value already exists), and prints rows whose text landed entirely in a note.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2113,8 +2155,15 @@ One-off: parse prep_time / cook_time text into the structured duration columns
 from base_servings.  Rows whose text landed entirely in a note are printed for
 a manual look.
 
-    python scripts/backfill_durations.py            # writes
-    python scripts/backfill_durations.py --dry-run  # prints the plan only
+Mirrors the CLI shape of `scripts/backfill_paprika_metadata.py` (on master): a dry
+run is the default and writing is an explicit opt-in, so a mistyped invocation
+costs nothing.
+
+    # dry run -- prints what it would do and writes nothing
+    python scripts/backfill_durations.py
+
+    # for real
+    python scripts/backfill_durations.py --live
 
 Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
 """
@@ -2149,8 +2198,9 @@ def plan_backfill(rows: List[Dict[str, Any]]) -> List[Tuple[str, Dict[str, Any],
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true")
+    ap = argparse.ArgumentParser(description="Backfill the structured duration and servings columns.")
+    ap.add_argument("--live", action="store_true", help="Actually write. Omit for a dry run.")
+    ap.add_argument("--verbose", action="store_true", help="List every row that would change.")
     args = ap.parse_args()
     from supabase import create_client  # noqa: PLC0415
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
@@ -2165,12 +2215,17 @@ def main() -> int:
         for rid, cols, note_only in plan_backfill(rows):
             if note_only:
                 flagged.append((rid, titles[rid], cols.get("prep_note"), cols.get("cook_note")))
-            if not args.dry_run:
+            if args.verbose:
+                print(f"  {rid}  {titles[rid]!r}  {cols}")
+            if args.live:
                 sb.table("recipes").update(cols).eq("id", rid).execute()
             updated += 1
         offset += PAGE
 
-    print(f"{'planned' if args.dry_run else 'updated'} {updated} recipe(s)")
+    # Printed on a dry run and a live run alike, so the two are comparable.
+    print(f"{'updated' if args.live else 'would update'} {updated} recipe(s)")
+    if not args.live:
+        print("DRY RUN — nothing was written. Re-run with --live to apply.")
     if flagged:
         print(f"{len(flagged)} row(s) with note-only durations — eyeball these:")
         for rid, title, p, c in flagged:
@@ -2189,8 +2244,8 @@ Expected: PASS.
 
 - [ ] **Step 5: Dry-run against the live project, then run**
 
-Run: `python scripts/backfill_durations.py --dry-run` (with the env vars set).
-Expected: a count equal to the library size and a short flagged list. Read the flagged list; if any entry is a parser gap rather than genuinely unparseable text, add the case to `tests/fixtures/duration_cases.json`, fix the parser (Task 2), and re-run. Then `python scripts/backfill_durations.py`.
+Run: `python scripts/backfill_durations.py` (with the env vars set) — the bare invocation is the dry run.
+Expected: a count equal to the library size, the `DRY RUN` banner, and a short flagged list. Read the flagged list; if any entry is a parser gap rather than genuinely unparseable text, add the case to `tests/fixtures/duration_cases.json`, fix the parser (Task 2), and re-run. Only then `python scripts/backfill_durations.py --live`.
 
 - [ ] **Step 6: Commit**
 
@@ -2255,7 +2310,7 @@ Insert below the `---` under the header in `CHANGELOG.md`:
 - `scripts/backfill_durations.py` one-off backfill.
 
 ### Requires
-- Cayenne migrations 013 (`recipe_edit_columns`) and 014 (`regen_rpcs`).
+- Cayenne migrations 013 (`recipe_edit_columns`) and 014 (`regen_rpcs`). The workers no-op without them; `REGEN_WORKER_ENABLED` stays unset until they are applied.
 ```
 
 - [ ] **Step 3: Document the env var in the README**
@@ -2294,8 +2349,23 @@ git commit -m "docs: recipe edit regeneration architecture and changelog"
 - 5.7 writer changes, Paprika fast path derivation, ingestion reads profiles → Tasks 3, 4, 8.
 - 6.1 job row shape → consumed by Task 10 (client inserts it; Cayenne plan).
 - 6.2 worker steps 1–5 → Task 10. 6.3 cancel + 10% failure rule → Task 10. 6.4 new code → Tasks 9, 10.
-- 8 RecipeParser tests → each task carries its tests; the golden/snapshot refresh is Task 1 step 7 and Task 3 step 7.
+- 8 RecipeParser tests → each task carries its tests; the golden/snapshot refresh is Task 1 step 7, Task 3 step 7 and Task 9 step 5.
 
 **Placeholders.** None. Every code step contains the code; every run step names the command and the expected result.
+
+**Rebased onto `master` (cfb54dd) on 2026-09-08.** The plan was written against `612bdf7`; 30 commits landed on top of it (extraction goldens, the Gemini prompt/config refactor, the Paprika backfill script). What that changed here:
+
+| Was | Now | Where |
+|---|---|---|
+| `model="gemini-2.5-flash"` hardcoded | `model=GEMINI_MODEL` from `recipeparser.config` (default `gemini-3.1-flash-lite`) | Global Constraints, Task 9 |
+| `_call_with_retry(client, model, contents, config)` | the same plus `what=` for usage/cost logging | Global Constraints, Task 9 |
+| REFINE prompt inline at `gemini.py:522-540` | `build_refine_prompt()` at `gemini.py:655-699` | Task 1 files, Task 1 step 5 |
+| a new prompt written inline at its call site | every prompt is a `build_*_prompt()` with a snapshot in `tests/goldens/test_prompts_snapshot.py` | Global Constraints, Task 9 steps 4-5 |
+| `pytest tests/snapshots --snapshot-update` | `tests/goldens` moves too — prompt, schema and stage snapshots | Task 1 step 7, Task 3 step 7 |
+| "check whether the six Paprika columns are there" | they are, at `supabase.py:196-203`; this step only appends | Task 4 step 3 |
+| backfill writes by default, `--dry-run` opts out | dry run by default, `--live` opts in, matching `scripts/backfill_paprika_metadata.py` | Task 11 |
+| Cayenne schema listed as a prerequisite | called out as a **gate** — the migrations are not in the sibling checkout, so Tasks 6/7/10 cannot be integration-verified yet | Global Constraints |
+
+Verified unchanged and still correct: `models.py:97-108` / `:132-175`, the three `assemble(` calls at `pipeline.py:298/322/375`, `row = {` at `supabase.py:188`, `app = FastAPI(...)` at `api.py:148` (still no lifespan, so Task 7 is a clean add), `RecipePipeline(` at `api.py:733` and `:862`, `config.live_writes_blocked()` at `:145`, the ruff TID rule, `target-version = "py39"`, ARCHITECTURE.md ending at §12, and an empty `[Unreleased]` in CHANGELOG.md.
 
 **Type consistency.** `build_update(refinement, embedding, read_rev)` (Task 5) is called with those positional args in Task 6. `load_profile_prefs(supabase, user_id)` (Task 6) is reused in Task 8. `categorize_batch(recipes, new_axes, client)` positional order (Task 9) matches `self._categorize(batch, new_axes, self._client)` and the test's `side_effect=lambda recipes, axes, client:` (Task 10). `run_workers(workers, stop, poll_seconds)` (Task 6) matches the lifespan call (Task 7). RPC names and parameter keys (`p_limit`, `p_id`, `p_msg`) match Cayenne migration 014. The junction upsert's `on_conflict="recipe_id,category_id"` matches the unique index in Cayenne migration 013.
