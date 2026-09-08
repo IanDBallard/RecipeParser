@@ -5,7 +5,6 @@ how each fixture was made and rebuild it if a dependency changes.
 
 Usage:
     python tools/build_golden_corpus.py --all          # needs network once, for Gutenberg
-    python tools/build_golden_corpus.py --synthetic    # offline: everything but Gutenberg
 """
 from __future__ import annotations
 
@@ -458,7 +457,6 @@ def fetch_and_trim_gutenberg() -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--all", action="store_true", help="Fetch Gutenberg, then build everything.")
-    parser.add_argument("--synthetic", action="store_true", help="Build everything but the Gutenberg fixture.")
     args = parser.parse_args()
 
     CORPUS.mkdir(parents=True, exist_ok=True)

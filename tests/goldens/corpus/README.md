@@ -51,3 +51,10 @@ A live quality eval (running the corpus against real Gemini and reporting
 migrating the older mock-based reader and TOC tests onto this corpus, and a
 Supabase writer cassette. TOC calls are recorded by stage but not replayed:
 `toc.py` reads `response.parsed`, which `GoldenResponse` leaves as None.
+
+The e2e goldens are also slightly counterfactual on units: the pipeline maps
+`uom_system="US"` to `units="us"` (`recipeparser/core/pipeline.py`,
+`_uom_to_units_key`), but the extract replies they replay were recorded under
+`units="book"`. Replay is still correct — recordings key off the prompt body,
+which is identical either way — but the reply text is what the model said for
+book units, not what it would say for US units.
