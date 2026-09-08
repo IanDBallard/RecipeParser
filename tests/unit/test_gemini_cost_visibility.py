@@ -17,8 +17,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
-
 from recipeparser.config import THINKING_BUDGET
 from recipeparser.gemini import _call_with_retry, _finalize_config, _log_usage_metadata
 
