@@ -1,7 +1,7 @@
 # Recipe Edit Philosophy — Design
 
 Date: 2026-09-07
-Status: Draft for review
+Status: Approved 2026-09-07
 Scope: Cayenne (SvelteKit + PowerSync) and RecipeParser (FastAPI). Supabase schema owned by the Cayenne repo.
 
 ## 1. Problem
@@ -179,6 +179,13 @@ parsed from). REFINE is asked to emit it; the stage validates that every
 client uses `line_index` to find the line to rewrite. Backfilled rows get
 `line_index = position` since backfill derives lines from the structured
 entries in order.
+
+Guard against a wrong index from the model: before rewriting, the client
+compares the entry's `fallback_string` with `ingredient_lines[line_index]`
+(normalised: lower-case, unicode fractions to ASCII, collapsed whitespace).
+If they share no numeric token and no word, the client does not rewrite the
+line; it writes the override and bumps `body_rev` instead, so the next regen
+re-establishes the mapping. Rare, and never rewrites the wrong line.
 
 ### 4.4 Upload handler
 `connector.ts` already sends only `opData` on PATCH. A test pins this: a
