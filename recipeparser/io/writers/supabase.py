@@ -213,6 +213,23 @@ def write_recipe_to_supabase(
         "tokenized_directions": [d.model_dump() for d in recipe.tokenized_directions],
         # vector(1536) — PostgREST accepts a JSON array for pgvector columns
         "embedding": recipe.embedding,
+        # Raw, user-owned body + derived bookkeeping (spec 3.2/3.3). A freshly
+        # ingested recipe is never stale: body_rev == derived_rev == 0.
+        "ingredient_lines": list(recipe.ingredient_lines),
+        "direction_steps": list(recipe.direction_steps),
+        "body_rev": 0,
+        "derived_rev": 0,
+        "amount_overrides": {},
+        # Structured durations and servings (spec 3.6).
+        "prep_min_minutes": recipe.prep_min_minutes,
+        "prep_max_minutes": recipe.prep_max_minutes,
+        "prep_note": recipe.prep_note,
+        "cook_min_minutes": recipe.cook_min_minutes,
+        "cook_max_minutes": recipe.cook_max_minutes,
+        "cook_note": recipe.cook_note,
+        "servings_min": recipe.servings_min,
+        "servings_max": recipe.servings_max,
+        "servings_note": recipe.servings_note,
     }
 
     headers = {
