@@ -34,6 +34,7 @@ here except where a decision affects it.
 | D5 | Regen mechanism | Stale rows are the queue (`derived_rev < body_rev`). A polling worker inside the FastAPI process claims them with a lease. No webhook, no client API call. |
 | D6 | Client vectors | Chat is the only consumer. `embedding` is removed from the PowerSync sync rules and lives only in Postgres. |
 | D7 | Derived columns are server-only | The client never writes `structured_ingredients`, `tokenized_directions`, `embedding` or the derived bookkeeping columns. |
+| D8 | Durations and servings | Stored as min/max integers plus a free-text note, displayed as "x to y". Parsed deterministically on both client and server; no AI involved. |
 
 ## 3. Schema and ownership
 
@@ -41,10 +42,10 @@ Every column on `recipes` belongs to exactly one group.
 
 ### 3.1 User-owned metadata (never triggers regen)
 
-`base_servings`, `prep_time`, `cook_time`, `source`, `source_url`, `notes`,
-`description`, `nutritional_info`, `difficulty`, `rating` (nullable, null =
-unrated), `image_url`. Categories live in `recipe_categories` and are
-user-owned after ingest.
+`source`, `source_url`, `notes`, `description`, `nutritional_info`,
+`difficulty`, `rating` (nullable, null = unrated), `image_url`, and the
+duration and servings columns defined in 3.6. Categories live in
+`recipe_categories` and are user-owned after ingest.
 
 ### 3.2 User-owned body (feeds the AI stages)
 
@@ -80,7 +81,9 @@ accepted for the simplicity it buys.
 ### 3.4 Sync rules
 
 Add to the `recipes` query: `ingredient_lines`, `direction_steps`, `body_rev`,
-`derived_rev`, `amount_overrides`, `derived_error`. Remove `embedding`. The
+`derived_rev`, `amount_overrides`, `derived_error`, and the nine duration and
+servings columns from 3.6. Remove `embedding`, and remove `prep_time` and
+`cook_time` once the client reads the structured columns. The
 attempt, claim and `updated_at` columns stay server-only. The client SQLite
 schema (`AppSchema`) mirrors the synced columns.
 
@@ -91,6 +94,50 @@ Fat tokens are rendered by looking up the ingredient id in the current
 text inside the token is used only when the id no longer exists. Once amounts
 can change without regen the baked fallback can be wrong, so this becomes a
 tested rule rather than a convention.
+
+### 3.6 Durations and servings
+
+Storage is separated from display. Today `prep_time`, `cook_time` and the
+extracted servings string are free text ("30-45 mins", "1 hr 30 min",
+"45 minutes plus chilling", "overnight", "2-4"), which can only be echoed
+back. They become structured, user-owned columns:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `prep_min_minutes`, `prep_max_minutes` | integer, nullable | equal for a single value |
+| `prep_note` | text, nullable | qualifier or unparseable text ("plus chilling", "overnight") |
+| `cook_min_minutes`, `cook_max_minutes`, `cook_note` | same | |
+| `servings_min`, `servings_max` | integer, nullable | display range ("serves 2 to 4") |
+| `servings_note` | text, nullable | e.g. "as a starter" |
+| `base_servings` | numeric | existing; the single number scaling divides by; defaults to `servings_min` |
+
+The text columns `prep_time` and `cook_time` are dropped after backfill.
+Total time is computed on the fly (min + min, max + max), never stored.
+
+**Parser** (pure, one rule set, two implementations): accepts a free-text
+string and returns `{min, max, note}`. Recognises integers, decimals and
+mixed fractions; units `min`, `mins`, `minute(s)`, `hr`, `hrs`, `hour(s)`,
+`h`, `m`, `day(s)`; ranges with `-`, `–`, `to`; compound values
+("1 hr 30 min"); trailing qualifiers after `plus`, `+`, `,` or `(` go to
+`note`. Anything else lands whole in `note` with null numbers, so entry never
+bounces. Servings uses the same parser with unitless numbers and the words
+`serves`, `servings`, `portions`, `makes` stripped.
+
+**Formatter** (pure): min = max → "45 min"; range → "30 to 45 min"; values
+≥ 60 fold to hours with halves and quarters ("1½ to 2 hr", "1 hr 15 min");
+note appended after a space. Servings: "Serves 4", "Serves 2 to 4".
+
+**Ownership.** The parse is deterministic, so these are user-owned metadata
+(3.1): the client parses on edit and writes the structured columns; the
+ingestion writer parses the extracted or Paprika text with the Python
+implementation before insert. Neither the worker nor REFINE writes them; the
+`base_servings` REFINE emits is discarded on regen exactly like
+`grid_categories` (D3), and used at ingest only when the servings parse
+yields null.
+
+**Shared fixture.** `tests/fixtures/duration_cases.json` (input → expected
+`{min, max, note}`) is consumed by both the Python and TypeScript test
+suites so the two implementations cannot drift.
 
 ## 4. Client rules (Cayenne)
 
@@ -196,7 +243,8 @@ Read `profiles.uom_system` and `profiles.measure_preference` for the owner
 (defaults US / Volume when absent). Then, for every claimed row:
 
 1. REFINE via `refine(build_extraction(row), client, uom_system=…,
-   measure_preference=…, user_axes=…)`. Discard `grid_categories` (D3).
+   measure_preference=…, user_axes=…)`. Discard `grid_categories` (D3) and
+   `base_servings` (3.6); both are user-owned after ingest.
 2. EMBED using the existing `embed()` (title + fallback strings), so old and
    new vectors remain comparable. Changing the embedding input is a separate
    decision; this worker is how it would be rolled out.
@@ -296,7 +344,16 @@ alter table recipes
   add column derived_attempts     integer not null default 0,
   add column derived_attempts_rev integer not null default 0,
   add column claimed_at           timestamptz,
-  add column updated_at           timestamptz not null default timezone('utc', now());
+  add column updated_at           timestamptz not null default timezone('utc', now()),
+  add column prep_min_minutes     integer,
+  add column prep_max_minutes     integer,
+  add column prep_note            text,
+  add column cook_min_minutes     integer,
+  add column cook_max_minutes     integer,
+  add column cook_note            text,
+  add column servings_min         integer,
+  add column servings_max         integer,
+  add column servings_note        text;
 
 create index recipes_stale_idx on recipes (updated_at)
   where derived_rev < body_rev;
@@ -331,6 +388,13 @@ update recipes set
 Backfilled rows are not stale (`body_rev = derived_rev = 0`), so the worker
 ignores them until their first edit.
 
+**Durations and servings backfill** is a one-off Python script
+(`scripts/backfill_durations.py`) that runs the parser over every row's
+`prep_time`, `cook_time` and `base_servings`, writes the structured columns,
+and reports rows whose text landed entirely in a note so they can be eyeballed.
+`prep_time` and `cook_time` are dropped in a follow-up migration once the
+client no longer reads them.
+
 ### 7.3 Deploy order
 1. Migration + backfill (all defaults; nothing reads the columns yet).
 2. Sync rules + client (renders from raw columns; edits start bumping `body_rev`).
@@ -358,6 +422,10 @@ edited recipes simply stay stale, which the client already renders.
   steps from structured data.
 - Golden/snapshot tests: REFINE snapshots updated once for the added
   `line_index` field; no other prompt change.
+- Duration/servings parser: every case in the shared fixture; note capture
+  for qualifiers and unparseable input; servings word stripping.
+- Writer: structured duration and servings columns populated from extracted
+  and Paprika text; `base_servings` falls back to REFINE only on a null parse.
 
 ### Cayenne
 - `rewriteAmount` pure function: leading integer, decimal, mixed fraction,
@@ -371,6 +439,10 @@ edited recipes simply stay stale, which the client already renders.
   a missing id.
 - Editor writes: free-text save bumps `body_rev`; amount save does not and
   writes both `ingredient_lines[line_index]` and `amount_overrides[id]`.
+- Duration/servings parser and formatter: every case in the shared fixture;
+  formatter folding to hours, halves and quarters; round-trip
+  parse(format(x)) preserves min/max/note; time edits write structured
+  columns only and never bump `body_rev`.
 
 ### End-to-end (manual, live project)
 Edit a direction offline → reconnect → badge clears within ~30 s and tokens
