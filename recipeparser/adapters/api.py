@@ -30,6 +30,7 @@ import re
 import tempfile
 import uuid
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional
 
@@ -145,7 +146,41 @@ if _DISABLE_AUTH:
         _TEST_USER_ID,
     )
 
-app = FastAPI(title="Cayenne Ingestion API", version="1.0.0")
+
+def _worker_enabled(env: Mapping[str, str]) -> bool:
+    """REGEN_WORKER_ENABLED gates the background regen/recategorise workers."""
+    return env.get("REGEN_WORKER_ENABLED", "").strip().lower() in _TRUTHY
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Start the background workers when enabled; stop them cleanly on shutdown."""
+    task: Optional[asyncio.Task] = None
+    stop = asyncio.Event()
+    if _worker_enabled(os.environ):
+        supabase = _get_supabase_service_client()
+        if supabase is None:
+            logger.warning("REGEN_WORKER_ENABLED is set but Supabase is not configured — workers not started.")
+        else:
+            # Imported here so the worker modules are not a hard dependency of the API import.
+            from recipeparser.adapters import regen_worker as _rw  # noqa: PLC0415
+            workers: list = [_rw.RegenWorker(supabase, _get_client())]
+            try:
+                from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
+                workers.append(RecatWorker(supabase, _get_client()))
+            except ImportError:
+                pass  # Task 10 adds it; the regen worker runs alone until then.
+            task = asyncio.create_task(_rw.run_workers(workers, stop))
+            logger.info("Background workers started: %s", [type(w).__name__ for w in workers])
+    try:
+        yield
+    finally:
+        stop.set()
+        if task is not None:
+            await task
+
+
+app = FastAPI(title="Cayenne Ingestion API", version="1.0.0", lifespan=_lifespan)
 check_service_key_name()
 
 # ---------------------------------------------------------------------------
