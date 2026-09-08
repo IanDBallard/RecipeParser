@@ -1,4 +1,25 @@
 # serializer version: 1
+# name: TestPromptSnapshots.test_categorize_batch_prompt
+  '''
+  
+  You are a culinary classifier. The user has just added these tags to their taxonomy:
+  - Cuisine: American, British, French, Italian
+  - Meal Type: Breakfast, Dessert, Dinner, Bread
+  
+  For EACH recipe below, list which of the tags above apply. Rules:
+  - Use ONLY tags from the list above, spelled exactly. Never invent a tag.
+  - Return an empty list when none apply. Most recipes will match nothing.
+  - Return one result per recipe id, in any order.
+  
+  RECIPE ID: r1
+  TITLE: Lasagne
+  INGREDIENTS:
+    - pasta
+  DIRECTIONS:
+    1. Bake.
+  
+  '''
+# ---
 # name: TestPromptSnapshots.test_extract_prompt[book][extract-book]
   '''
   

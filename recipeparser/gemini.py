@@ -781,3 +781,69 @@ def refine_recipe_for_cayenne(
     except Exception as e:
         log.error("Cayenne refinement failed: %s", e)
         return None
+
+
+class _RecipeTags(BaseModel):
+    recipe_id: str
+    tags: List[str] = Field(default_factory=list)
+
+
+class _BatchCategorization(BaseModel):
+    results: List[_RecipeTags] = Field(default_factory=list)
+
+
+def build_categorize_batch_prompt(
+    recipes: List[Dict[str, Any]],
+    new_axes: Dict[str, List[str]],
+) -> str:
+    """The bulk-recategorise prompt: several recipes against newly added tags only."""
+    axes_text = "\n".join(f"- {axis}: {', '.join(tags)}" for axis, tags in new_axes.items())
+    recipes_text = "\n\n".join(
+        f"RECIPE ID: {r['id']}\nTITLE: {r.get('title', '')}\n"
+        "INGREDIENTS:\n" + "\n".join(f"  - {line}" for line in r.get("ingredient_lines", [])) + "\n"
+        "DIRECTIONS:\n" + "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(r.get("direction_steps", [])))
+        for r in recipes
+    )
+    return f"""
+You are a culinary classifier. The user has just added these tags to their taxonomy:
+{axes_text}
+
+For EACH recipe below, list which of the tags above apply. Rules:
+- Use ONLY tags from the list above, spelled exactly. Never invent a tag.
+- Return an empty list when none apply. Most recipes will match nothing.
+- Return one result per recipe id, in any order.
+
+{recipes_text}
+"""
+
+
+def categorize_batch(
+    recipes: List[Dict[str, Any]],
+    new_axes: Dict[str, List[str]],
+    client,
+) -> Dict[str, List[str]]:
+    """
+    Categorise several existing recipes against ONLY the newly added tags
+    (spec 6.2).  Returns recipe_id -> tags.  Never used at ingest; REFINE does
+    that.  An empty or unparseable reply returns {} so the caller skips the batch.
+    """
+    try:
+        response = _call_with_retry(
+            client,
+            model=GEMINI_MODEL,
+            contents=build_categorize_batch_prompt(recipes, new_axes),
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": _schema_for_gemini(_BatchCategorization),
+                "temperature": 0.0,
+            },
+            what="categorize_batch",
+        )
+        if not response.text or not response.text.strip():
+            log.error("categorize_batch: empty response")
+            return {}
+        parsed = _BatchCategorization.model_validate(json.loads(response.text))
+    except Exception as exc:  # noqa: BLE001
+        log.error("categorize_batch failed: %s", exc)
+        return {}
+    return {r.recipe_id: list(r.tags) for r in parsed.results}
