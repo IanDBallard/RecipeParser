@@ -668,6 +668,9 @@ RULES:
    - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
    - Extract numeric "amount", "unit" (null if unitless), and "name".
    - "fallback_string" is the original full line.
+   - "line_index" is the 0-based position of the source line in the RAW RECIPE
+     ingredients list. Every ingredient line gets exactly one entry with its
+     index. A section header line (e.g. "For the sauce:") gets no entry.
    - CONVERSION: If preference is "Weight" and source is "Volume", provide "converted_amount" and "converted_unit" (e.g. 1 cup -> 120g). Set "is_ai_converted" to true.
    - amount: the numeric quantity. Use null - never 0 - when the source states no
      amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
@@ -778,3 +781,79 @@ def refine_recipe_for_cayenne(
     except Exception as e:
         log.error("Cayenne refinement failed: %s", e)
         return None
+
+
+class _RecipeTags(BaseModel):
+    recipe_id: str
+    tags: List[str] = Field(default_factory=list)
+
+
+class _BatchCategorization(BaseModel):
+    results: List[_RecipeTags] = Field(default_factory=list)
+
+
+def build_categorize_batch_prompt(
+    recipes: List[Dict[str, Any]],
+    new_axes: Dict[str, List[str]],
+) -> str:
+    """The bulk-recategorise prompt: several recipes against newly added tags only."""
+    axes_text = "\n".join(f"- {axis}: {', '.join(tags)}" for axis, tags in new_axes.items())
+    recipes_text = "\n\n".join(
+        f"RECIPE ID: {r['id']}\nTITLE: {r.get('title', '')}\n"
+        "INGREDIENTS:\n" + "\n".join(f"  - {line}" for line in r.get("ingredient_lines", [])) + "\n"
+        "DIRECTIONS:\n" + "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(r.get("direction_steps", [])))
+        for r in recipes
+    )
+    return f"""
+You are a culinary classifier. The user has just added these tags to their taxonomy:
+{axes_text}
+
+For EACH recipe below, list which of the tags above apply. Rules:
+- Use ONLY tags from the list above, spelled exactly. Never invent a tag.
+- Return an empty list when none apply. Most recipes will match nothing.
+- Return one result per recipe id, in any order.
+
+{recipes_text}
+"""
+
+
+def categorize_batch(
+    recipes: List[Dict[str, Any]],
+    new_axes: Dict[str, List[str]],
+    client,
+) -> Dict[str, List[str]]:
+    """
+    Categorise several existing recipes against ONLY the newly added tags
+    (spec 6.2).  Returns recipe_id -> tags.  Never used at ingest; REFINE does
+    that.
+
+    A well-formed reply with no matches is a normal, successful result: the
+    model is told most recipes will match nothing, so ``{}`` and empty tag lists
+    are expected.
+
+    Raises:
+        Exception: whatever the Gemini call raises, and ValueError when the
+            reply is empty or unparseable.  Failures MUST propagate.
+            ``RecatWorker`` isolates every batch in its own try/except, counts
+            the failure, and errors the job when more than 10% of batches fail
+            (spec 6.4).  Swallowing them here and returning {} made that
+            threshold dead code: a completely broken Gemini produced a job that
+            finished status='done', progress_pct=100, recipe_count=0, telling
+            the user their library had been recategorised when nothing was
+            examined.
+    """
+    response = _call_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=build_categorize_batch_prompt(recipes, new_axes),
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": _schema_for_gemini(_BatchCategorization),
+            "temperature": 0.0,
+        },
+        what="categorize_batch",
+    )
+    if not response.text or not response.text.strip():
+        raise ValueError("categorize_batch: Gemini returned an empty response.")
+    parsed = _BatchCategorization.model_validate(json.loads(response.text))
+    return {r.recipe_id: list(r.tags) for r in parsed.results}

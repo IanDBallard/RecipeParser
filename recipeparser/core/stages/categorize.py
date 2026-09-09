@@ -9,11 +9,32 @@ and filters it against the user's defined axes.
 No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 import logging
-from typing import Dict, List
+from typing import Dict, List, Sequence, Set, TypeVar
 
 from recipeparser.models import CayenneRefinement
 
 log = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+
+def chunked(items: Sequence[_T], size: int) -> List[List[_T]]:
+    """Split items into consecutive lists of at most ``size`` (spec 6.2 batches of 10)."""
+    size = max(1, size)
+    return [list(items[i:i + size]) for i in range(0, len(items), size)]
+
+
+def filter_batch_result(result: Dict[str, List[str]], offered: Set[str]) -> Dict[str, List[str]]:
+    """Keep only offered tags, deduplicated, and drop recipes with no matches."""
+    clean: Dict[str, List[str]] = {}
+    for recipe_id, tags in result.items():
+        kept: List[str] = []
+        for tag in tags:
+            if tag in offered and tag not in kept:
+                kept.append(tag)
+        if kept:
+            clean[recipe_id] = kept
+    return clean
 
 
 def categorize(

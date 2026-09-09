@@ -9,7 +9,9 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 import logging
 from typing import Dict, List, Optional
 
+from recipeparser.core.durations import duration_columns
 from recipeparser.core.models import SourceMeta
+from recipeparser.core.regen import raw_lines_from_derived
 from recipeparser.models import CayenneRefinement, IngestResponse
 
 log = logging.getLogger(__name__)
@@ -24,6 +26,9 @@ def assemble(
     prep_time: Optional[str] = None,
     cook_time: Optional[str] = None,
     meta: Optional[SourceMeta] = None,
+    ingredient_lines: Optional[List[str]] = None,
+    direction_steps: Optional[List[str]] = None,
+    servings_text: Optional[str] = None,
 ) -> IngestResponse:
     """
     Assemble the final IngestResponse from stage outputs.
@@ -48,6 +53,12 @@ def assemble(
         meta:            Fields the source stated for itself (Paprika only). A value
                          here wins over the extracted one; a field absent from meta
                          falls back to the argument rather than blanking it.
+        ingredient_lines: Raw ingredient lines from EXTRACT. When None or empty,
+                          derived from the refinement's fallback strings.
+        direction_steps:  Raw direction steps from EXTRACT. When None or empty,
+                          derived from the tokenized text with tokens stripped.
+        servings_text:    The extracted servings string ("4", "2-4"). Parsed into
+                          servings_min/max/note; servings_min becomes base_servings.
 
     Returns:
         A fully-populated ``IngestResponse`` ready for persistence.
@@ -68,11 +79,18 @@ def assemble(
         prep_time = meta.prep_time or prep_time
         cook_time = meta.cook_time or cook_time
 
+    derived_lines, derived_steps = raw_lines_from_derived(
+        recipe.structured_ingredients, recipe.tokenized_directions
+    )
+    lines = list(ingredient_lines) if ingredient_lines else derived_lines
+    steps = list(direction_steps) if direction_steps else derived_steps
+    cols = duration_columns(prep_time, cook_time, servings_text, recipe.base_servings)
+
     result = IngestResponse(
         title=recipe.title,
         prep_time=prep_time,
         cook_time=cook_time,
-        base_servings=recipe.base_servings,
+        base_servings=cols["base_servings"],
         source_url=source_url,
         image_url=image_url,
         categories=flat_categories,
@@ -88,6 +106,17 @@ def assemble(
         nutritional_info=meta.nutritional_info if meta else None,
         description=meta.description if meta else None,
         difficulty=meta.difficulty if meta else None,
+        ingredient_lines=lines,
+        direction_steps=steps,
+        prep_min_minutes=cols["prep_min_minutes"],
+        prep_max_minutes=cols["prep_max_minutes"],
+        prep_note=cols["prep_note"],
+        cook_min_minutes=cols["cook_min_minutes"],
+        cook_max_minutes=cols["cook_max_minutes"],
+        cook_note=cols["cook_note"],
+        servings_min=cols["servings_min"],
+        servings_max=cols["servings_max"],
+        servings_note=cols["servings_note"],
     )
 
     log.info(

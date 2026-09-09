@@ -134,6 +134,12 @@ class TestPromptSnapshots:
     def test_toc_classify_prompt(self, snapshot: SnapshotAssertion):
         assert toc.build_toc_classify_prompt(["Soups", "Boiled Custard"]) == snapshot
 
+    def test_categorize_batch_prompt(self, snapshot: SnapshotAssertion):
+        assert gemini.build_categorize_batch_prompt(
+            [{"id": "r1", "title": "Lasagne", "ingredient_lines": ["pasta"], "direction_steps": ["Bake."]}],
+            FIXED_AXES,
+        ) == snapshot
+
 
 class TestSchemaSnapshots:
     """The only guard that additionalProperties cannot creep back into a schema."""

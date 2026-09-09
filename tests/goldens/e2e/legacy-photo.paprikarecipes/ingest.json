@@ -5,9 +5,19 @@
       "categories": [
         "Dessert"
       ],
+      "cook_max_minutes": 20,
+      "cook_min_minutes": 20,
+      "cook_note": null,
       "cook_time": "20 mins",
       "description": null,
       "difficulty": null,
+      "direction_steps": [
+        "Scald the milk.",
+        "Beat the eggs and sugar together.",
+        "Pour the hot milk over the eggs, stirring.",
+        "Cook over water until it coats a spoon.",
+        "Cool, then stir in the vanilla."
+      ],
       "embedding": {
         "len": 1536,
         "sha256": "23289d33644b3acb1f911e15c6a0394c8254c03dea8bb336528706d22ae1eca6"
@@ -18,10 +28,22 @@
         ]
       },
       "image_url": null,
+      "ingredient_lines": [
+        "1 quart milk",
+        "4 eggs",
+        "1/2 cup sugar",
+        "1 teaspoon vanilla"
+      ],
       "notes": null,
       "nutritional_info": null,
+      "prep_max_minutes": 10,
+      "prep_min_minutes": 10,
+      "prep_note": null,
       "prep_time": "10 mins",
       "rating": null,
+      "servings_max": 6,
+      "servings_min": 6,
+      "servings_note": null,
       "source": null,
       "source_url": null,
       "structured_ingredients": [
@@ -32,6 +54,7 @@
           "fallback_string": "1 quart milk",
           "id": "ing_01",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "milk",
           "unit": "quart"
         },
@@ -42,6 +65,7 @@
           "fallback_string": "4 eggs",
           "id": "ing_02",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "eggs",
           "unit": null
         },
@@ -52,6 +76,7 @@
           "fallback_string": "1/2 cup sugar",
           "id": "ing_03",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "sugar",
           "unit": "cup"
         },
@@ -62,6 +87,7 @@
           "fallback_string": "1 teaspoon vanilla",
           "id": "ing_04",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "vanilla",
           "unit": "teaspoon"
         }

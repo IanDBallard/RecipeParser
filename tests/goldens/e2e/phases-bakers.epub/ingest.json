@@ -5,9 +5,20 @@
       "categories": [
         "Bread"
       ],
+      "cook_max_minutes": 40,
+      "cook_min_minutes": 40,
+      "cook_note": null,
       "cook_time": "40 mins",
       "description": null,
       "difficulty": null,
+      "direction_steps": [
+        "**PHASE 1**",
+        "Mix the levain ingredients and leave at room temperature for 10 hours.",
+        "**PHASE 2**",
+        "Mix the flours and water and rest for 40 minutes.",
+        "Add the levain and salt, then fold every 30 minutes for 3 hours.",
+        "Shape, retard overnight, and bake at 475F in a covered pot for 20 minutes, then 20 uncovered."
+      ],
       "embedding": {
         "len": 1536,
         "sha256": "403eb9981fc2809e1383c3c12b09547b216df439b2189c50c540b34c5341bba4"
@@ -18,10 +29,27 @@
         ]
       },
       "image_url": null,
+      "ingredient_lines": [
+        "**PHASE 1 — Levain**",
+        "28g (1 oz) whole wheat flour",
+        "28g (2 tablespoons) water",
+        "6g (1 teaspoon) ripe starter",
+        "**PHASE 2 — Final Dough**",
+        "450g (1 lb) bread flour",
+        "50g (1/3 cup) whole wheat flour",
+        "360g (1 1/2 cups) water",
+        "10g (2 teaspoons) fine salt"
+      ],
       "notes": null,
       "nutritional_info": null,
+      "prep_max_minutes": 840,
+      "prep_min_minutes": 840,
+      "prep_note": null,
       "prep_time": "14 hours",
       "rating": null,
+      "servings_max": 10,
+      "servings_min": 10,
+      "servings_note": null,
       "source": null,
       "source_url": "Phases And Percentages",
       "structured_ingredients": [
@@ -32,6 +60,7 @@
           "fallback_string": "**PHASE 1 — Levain**",
           "id": "heading_01",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "PHASE 1 — Levain",
           "unit": null
         },
@@ -42,6 +71,7 @@
           "fallback_string": "28g (1 oz) whole wheat flour",
           "id": "ing_01",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "whole wheat flour",
           "unit": "oz"
         },
@@ -52,6 +82,7 @@
           "fallback_string": "28g (2 tablespoons) water",
           "id": "ing_02",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "water",
           "unit": "tablespoons"
         },
@@ -62,6 +93,7 @@
           "fallback_string": "6g (1 teaspoon) ripe starter",
           "id": "ing_03",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "ripe starter",
           "unit": "teaspoon"
         },
@@ -72,6 +104,7 @@
           "fallback_string": "**PHASE 2 — Final Dough**",
           "id": "heading_02",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "PHASE 2 — Final Dough",
           "unit": null
         },
@@ -82,6 +115,7 @@
           "fallback_string": "450g (1 lb) bread flour",
           "id": "ing_04",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "bread flour",
           "unit": "lb"
         },
@@ -92,6 +126,7 @@
           "fallback_string": "50g (1/3 cup) whole wheat flour",
           "id": "ing_05",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "whole wheat flour",
           "unit": "cup"
         },
@@ -102,6 +137,7 @@
           "fallback_string": "360g (1 1/2 cups) water",
           "id": "ing_06",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "water",
           "unit": "cups"
         },
@@ -112,6 +148,7 @@
           "fallback_string": "10g (2 teaspoons) fine salt",
           "id": "ing_07",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "fine salt",
           "unit": "teaspoons"
         }
@@ -149,9 +186,17 @@
       "categories": [
         "Bread"
       ],
+      "cook_max_minutes": 35,
+      "cook_min_minutes": 35,
+      "cook_note": null,
       "cook_time": "35 mins",
       "description": null,
       "difficulty": null,
+      "direction_steps": [
+        "Mix everything to a smooth dough and knead for 8 minutes.",
+        "Prove until doubled, shape into a pan loaf, and prove again.",
+        "Bake at 400F for 35 minutes."
+      ],
       "embedding": {
         "len": 1536,
         "sha256": "4062a3eb743dccba41f5a1ac835e2ac1cbcecbf0bcb9a68dac1d964010c25924"
@@ -162,10 +207,23 @@
         ]
       },
       "image_url": null,
+      "ingredient_lines": [
+        "Bread flour: 500g (4 cups) \", \" 100%",
+        "Water: 325g (1 1/3 cups) \", \" 65%",
+        "Salt: 10g (1 3/4 tsp) \", \" 2%",
+        "Instant yeast: 7g (2 1/4 tsp) \", \" 1.4%",
+        "Butter: 30g (2 tbsp) \", \" 6%"
+      ],
       "notes": null,
       "nutritional_info": null,
+      "prep_max_minutes": 180,
+      "prep_min_minutes": 180,
+      "prep_note": null,
       "prep_time": "3 hours",
       "rating": null,
+      "servings_max": 12,
+      "servings_min": 12,
+      "servings_note": null,
       "source": null,
       "source_url": "Phases And Percentages",
       "structured_ingredients": [
@@ -176,6 +234,7 @@
           "fallback_string": "Bread flour: 500g (4 cups)",
           "id": "ing_01",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Bread flour",
           "unit": "cups"
         },
@@ -186,6 +245,7 @@
           "fallback_string": "Water: 325g (1 1/3 cups)",
           "id": "ing_02",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Water",
           "unit": "cups"
         },
@@ -196,6 +256,7 @@
           "fallback_string": "Salt: 10g (1 3/4 tsp)",
           "id": "ing_03",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Salt",
           "unit": "tsp"
         },
@@ -206,6 +267,7 @@
           "fallback_string": "Instant yeast: 7g (2 1/4 tsp)",
           "id": "ing_04",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Instant yeast",
           "unit": "tsp"
         },
@@ -216,6 +278,7 @@
           "fallback_string": "Butter: 30g (2 tbsp)",
           "id": "ing_05",
           "is_ai_converted": false,
+          "line_index": null,
           "name": "Butter",
           "unit": "tbsp"
         }

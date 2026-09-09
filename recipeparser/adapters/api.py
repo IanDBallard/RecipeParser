@@ -30,8 +30,9 @@ import re
 import tempfile
 import uuid
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
@@ -145,7 +146,40 @@ if _DISABLE_AUTH:
         _TEST_USER_ID,
     )
 
-app = FastAPI(title="Cayenne Ingestion API", version="1.0.0")
+
+def _worker_enabled(env: Mapping[str, str]) -> bool:
+    """REGEN_WORKER_ENABLED gates the background regen/recategorise workers."""
+    return env.get("REGEN_WORKER_ENABLED", "").strip().lower() in _TRUTHY
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Start the background workers when enabled; stop them cleanly on shutdown."""
+    task: Optional[asyncio.Task] = None
+    stop = asyncio.Event()
+    if _worker_enabled(os.environ):
+        supabase = _get_supabase_service_client()
+        if supabase is None:
+            logger.warning("REGEN_WORKER_ENABLED is set but Supabase is not configured — workers not started.")
+        else:
+            # Imported here so the worker modules are not a hard dependency of the API import.
+            from recipeparser.adapters import regen_worker as _rw  # noqa: PLC0415
+            from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
+            workers: list = [
+                _rw.RegenWorker(supabase, _get_client()),
+                RecatWorker(supabase, _get_client()),
+            ]
+            task = asyncio.create_task(_rw.run_workers(workers, stop))
+            logger.info("Background workers started: %s", [type(w).__name__ for w in workers])
+    try:
+        yield
+    finally:
+        stop.set()
+        if task is not None:
+            await task
+
+
+app = FastAPI(title="Cayenne Ingestion API", version="1.0.0", lifespan=_lifespan)
 check_service_key_name()
 
 # ---------------------------------------------------------------------------
@@ -423,6 +457,33 @@ def _get_supabase_service_client() -> Any:
         return None
     from supabase import create_client  # type: ignore[import-not-found]
     return create_client(supabase_url, supabase_key)
+
+
+def _resolve_prefs(user_id: str, body_uom: str, body_measure: str) -> Tuple[str, str]:
+    """Unit preferences for a job: the profiles row wins, the request body is the fallback.
+
+    Same query as regen_worker.load_profile_prefs, but the fallback differs: the
+    worker has no request body, so it defaults to US / Volume; ingestion has one.
+    """
+    supabase = _get_supabase_service_client()
+    if supabase is None:
+        return body_uom, body_measure
+    try:
+        res = (
+            supabase.table("profiles")
+            .select("uom_system,measure_preference")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("profiles lookup failed for %s (%s) — using request values.", user_id, exc)
+        return body_uom, body_measure
+    rows = res.data or []
+    if not rows:
+        return body_uom, body_measure
+    row = rows[0]
+    return (row.get("uom_system") or body_uom, row.get("measure_preference") or body_measure)
 
 
 def _create_ingestion_job(
@@ -730,12 +791,15 @@ async def submit_job(
                 if len(sink.progress_updates) > before:
                     write_progress(sink.progress_updates[-1])
 
+            uom_system, measure_preference = await asyncio.to_thread(
+                _resolve_prefs, user_id, body.uom_system, body.measure_preference
+            )
             pipeline = RecipePipeline(
                 client=client,
                 controller=controller,
                 category_source=category_source,
-                uom_system=body.uom_system,
-                measure_preference=body.measure_preference,
+                uom_system=uom_system,
+                measure_preference=measure_preference,
                 image_store=SupabaseImageStore(),
             )
             await asyncio.to_thread(_update_total_chunks, job_id, len(chunks))
@@ -859,12 +923,15 @@ async def submit_file_job(
             # RecipePipeline.run() transitions IDLE→RUNNING internally,
             # processes all chunks (with per-chunk error isolation), then
             # transitions RUNNING→IDLE on success.
+            uom_system_resolved, measure_preference_resolved = await asyncio.to_thread(
+                _resolve_prefs, user_id, uom_system, measure_preference
+            )
             pipeline = RecipePipeline(
                 client=client,
                 controller=controller,
                 category_source=category_source,
-                uom_system=uom_system,
-                measure_preference=measure_preference,
+                uom_system=uom_system_resolved,
+                measure_preference=measure_preference_resolved,
                 image_store=SupabaseImageStore(),
             )
             await asyncio.to_thread(_update_total_chunks, job_id, len(chunks))

@@ -190,6 +190,15 @@ python start_server.py
 The launcher runs the verifying configuration — the same one the Cayenne client
 expects in production. `GET /health` reports `{"status":"ok","auth_mode":"verifying"}`.
 
+> **⚠️ Required database migration: Cayenne 013 (`recipe_edit_columns`).** Apply it
+> **before** deploying this version. The Supabase writer puts `ingredient_lines`,
+> `direction_steps`, `body_rev`, `derived_rev`, `amount_overrides` and the nine
+> duration/servings columns into every recipe INSERT, unconditionally and behind
+> no feature flag. Against a pre-013 schema PostgREST rejects the insert with
+> `PGRST204` and **every ingest fails, for every user, on every path.** This is
+> not limited to the background workers — `REGEN_WORKER_ENABLED` does not gate
+> the writer, so leaving that flag unset does not protect you.
+
 **Required environment variables:**
 
 | Variable | Description |
@@ -198,6 +207,12 @@ expects in production. `GET /health` reports `{"status":"ok","auth_mode":"verify
 | `SUPABASE_JWT_SECRET` | JWT secret from Supabase dashboard → Project Settings → API → JWT Secret |
 | `SUPABASE_URL` | Your Supabase project URL, e.g. `https://<ref>.supabase.co` — required for image uploads to the `recipe-images` bucket |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service-role** key (never the anon key) — required for image uploads. Never ship this in the mobile app. |
+
+**Optional environment variables:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `REGEN_WORKER_ENABLED` | `0` | Set to `1` to run the regen and bulk-recategorise workers inside the API process. Requires `SUPABASE_SERVICE_ROLE_KEY` and Cayenne migration 014 (`regen_rpcs`) on top of the mandatory 013 above — without 014 the `claim_stale_recipes` / `regen_failed` RPCs do not exist and every poll raises. This flag gates only the workers; migration 013 is required regardless of its value. |
 
 ### Authentication
 

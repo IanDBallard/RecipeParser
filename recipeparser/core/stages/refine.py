@@ -38,6 +38,44 @@ def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
                 )
 
 
+def _normalise_line_index(refinement: CayenneRefinement, raw: RecipeExtraction) -> None:
+    """
+    Clear any ``line_index`` that does not point at a distinct line of
+    ``raw.ingredients``, in place.  Valid indices are left untouched.
+
+    ``line_index`` is optional by design: the model is ``Optional[int]`` and
+    spec 4.3 defines the client-side fallback for a missing or wrong index (the
+    client compares ``fallback_string`` against the line and bumps ``body_rev``
+    instead of writing an override).  An out-of-range or duplicated index is a
+    plausible model slip on a long sectioned ingredient list, and raising here
+    propagates to the per-chunk error boundary and drops the whole recipe at
+    ingest — destroying a recipe over a cosmetic error in a field whose absence
+    the design already tolerates.  Degrade the offending entries to ``None`` and
+    log which ones, so the fallback path handles them.
+    """
+    n_lines = len(raw.ingredients)
+    seen: Dict[int, str] = {}
+    dropped: List[str] = []
+    for ing in refinement.structured_ingredients:
+        idx = ing.line_index
+        if idx is None:
+            continue
+        if idx < 0 or idx >= n_lines:
+            dropped.append(f"'{ing.id}' (line_index {idx}, {n_lines} raw line(s))")
+            ing.line_index = None
+        elif idx in seen:
+            dropped.append(f"'{ing.id}' (line_index {idx} already claimed by '{seen[idx]}')")
+            ing.line_index = None
+        else:
+            seen[idx] = ing.id
+    if dropped:
+        log.warning(
+            "refine(): '%s' — dropped %d unusable line_index value(s); the client falls "
+            "back to fallback_string matching for these (spec 4.3): %s",
+            getattr(raw, "name", "?"), len(dropped), ", ".join(dropped),
+        )
+
+
 def refine(
     raw: RecipeExtraction,
     client: Any,
@@ -69,6 +107,12 @@ def refine(
 
     Raises:
         ValueError: If Gemini returns None, or if Fat Token validation fails.
+
+    Note:
+        An unusable ``line_index`` (out of range, or claimed twice) is *not* an
+        error: the offending entries are set to ``None`` with a warning and the
+        recipe is kept.  The field is optional and spec 4.3 defines the
+        client-side fallback for it.
     """
     result = refine_recipe_for_cayenne(
         raw_recipe=raw,
@@ -85,6 +129,7 @@ def refine(
         )
 
     _validate_fat_tokens(result)
+    _normalise_line_index(result, raw)
     log.info(
         "refine(): '%s' → %d ingredients, %d steps.",
         result.title,

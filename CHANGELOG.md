@@ -5,7 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [Unreleased] — recipe edit backend
+
+### ✨ Added
+- `StructuredIngredient.line_index`, emitted by REFINE and normalised (in range, unique). The field is optional by design, so an out-of-range or duplicated index degrades that entry to `null` with a warning rather than failing the recipe; the client falls back to `fallback_string` matching (spec 4.3).
+- `core/durations.py`: deterministic duration and servings parser; shared fixture `tests/fixtures/duration_cases.json`.
+- Raw `ingredient_lines` / `direction_steps` and structured duration/servings columns carried through ASSEMBLE and written by `SupabaseWriter`.
+- `RegenWorker` and `RecatWorker` background workers behind `REGEN_WORKER_ENABLED`, started from the FastAPI lifespan.
+- `gemini.categorize_batch()` — categorise-only call for bulk recategorise.
+- Ingestion reads `uom_system` / `measure_preference` from `profiles`; request values are the fallback.
+- `scripts/backfill_durations.py` one-off backfill.
+- `docs/sql/regen-rpcs.md`: required semantics and reference SQL for the `claim_stale_recipes` / `regen_failed` RPCs that Cayenne migration 014 must implement.
+
+### ⚠️ Requires — apply migration 013 **before** deploying this version
+- **Cayenne migration 013 (`recipe_edit_columns`) is required before deploying this version. Without it every ingest fails with `PGRST204` — this is not limited to the background workers.** `SupabaseWriter` puts the new columns (`ingredient_lines`, `direction_steps`, `body_rev`, `derived_rev`, `amount_overrides`, and the nine `prep_*` / `cook_*` / `servings_*` duration columns) into **every** recipe INSERT, unconditionally and behind no feature flag. Against the pre-013 schema PostgREST rejects the row with `PGRST204` ("column … does not exist") and `write_recipe_to_supabase` raises `RuntimeError`, so every ingest fails, for every user, on every path — URL, file, and Paprika alike. `REGEN_WORKER_ENABLED` does **not** protect the writer; leaving the flag unset changes nothing here.
+- Cayenne migration 014 (`regen_rpcs`) is required in addition before setting `REGEN_WORKER_ENABLED=1`: `claim_stale_recipes` and `regen_failed` do not exist without it and every poll raises. The RPCs' required semantics are in `docs/sql/regen-rpcs.md`.
 
 ---
 
