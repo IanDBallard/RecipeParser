@@ -1,8 +1,28 @@
 # `claim_stale_recipes` and `regen_failed` — required semantics
 
-**Status:** reference, not a migration. Nothing in this repo applies it. These two
-functions live in Cayenne migration `014_regen_rpcs.sql`; this file is what that
-migration has to implement, so it can be handed to whoever writes it.
+**Status:** reference, not a migration. Nothing in this repo applies it.
+
+**Implemented and applied, 2026-09-09.** These two functions now exist as Cayenne
+migration `014_regen_rpcs.sql`, applied to the live project along with `013`. Do
+not re-derive them from this file — read the migration. This stays as the
+statement of *required semantics* the implementation was built against and must
+keep satisfying: if you change either RPC, change it to still match what is
+written below, or change this file in the same breath.
+
+Verified against a real Postgres when applied: the claim was refused inside the
+20-second quiet window, granted after it, refused again inside the five-minute
+lease; the row dropped out of the poll after three failures; and a fresh
+`body_rev` bump reset the attempt counter and made it claimable again. Execute is
+denied to `anon` and `authenticated` and allowed to `service_role`, confirmed
+with `has_function_privilege`.
+
+One behaviour worth knowing that is not obvious from the SQL below: migration
+`013` installs a `moddatetime` trigger on `recipes`, so `claim_stale_recipes`
+updating `claimed_at` also bumps `updated_at`. `updated_at` therefore means "last
+write of any kind", not "last user edit" as the 20-second quiet window implies.
+It makes retries slightly more conservative and the oldest-first queue fairer, so
+it is not a defect — but a test that back-dates `updated_at` to force a claim
+must disable that trigger first, or the back-date is silently clobbered.
 
 **Why this file exists.** Spec §5.3 and §5.6
 (`docs/superpowers/specs/2026-09-07-recipe-edit-philosophy-design.md`) define
