@@ -1,6 +1,9 @@
 """REGEN_WORKER_ENABLED gates the background workers (spec 5.1)."""
+import logging
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 os.environ.setdefault("DISABLE_AUTH", "1")
 os.environ.setdefault("TEST_USER_ID", "00000000-0000-4000-8000-000000000001")
@@ -39,14 +42,26 @@ def test_lifespan_starts_and_stops_workers(monkeypatch):
     assert stop.is_set()
 
 
-def test_lifespan_skips_when_supabase_unavailable(monkeypatch):
+def test_lifespan_refuses_to_start_when_flag_set_without_supabase(monkeypatch):
+    """The flag on with no service-role client is the silent failure the roadmap names: a server
+    that answers every request correctly and drains nothing. It must not start."""
     monkeypatch.setenv("REGEN_WORKER_ENABLED", "1")
-    run = AsyncMock()
-    with patch("recipeparser.adapters.regen_worker.run_workers", new=run), \
+    with patch("recipeparser.adapters.regen_worker.run_workers", new=AsyncMock()) as run, \
          patch.object(api, "_get_supabase_service_client", return_value=None):
-        with TestClient(api.app):
-            pass
+        with pytest.raises(RuntimeError, match="REGEN_WORKER_ENABLED is set"):
+            with TestClient(api.app):
+                pass
     run.assert_not_called()
+
+
+def test_lifespan_warns_when_flag_unset(monkeypatch, caplog):
+    """Unset is legal — a dev server — but never quiet: an edited recipe stays stale until a worker runs."""
+    monkeypatch.delenv("REGEN_WORKER_ENABLED", raising=False)
+    with patch("recipeparser.adapters.regen_worker.run_workers", new=AsyncMock()):
+        with caplog.at_level(logging.WARNING):
+            with TestClient(api.app) as client:
+                assert client.get("/health").json()["regen_workers"] == "disabled"
+    assert "REGEN_WORKER_ENABLED is not set" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -72,13 +87,3 @@ def test_health_reports_workers_started(monkeypatch):
          patch.object(api, "_get_client", return_value=MagicMock()):
         with TestClient(api.app) as client:
             assert client.get("/health").json()["regen_workers"] == "started"
-
-
-def test_health_reports_misconfigured_when_flag_set_without_supabase(monkeypatch):
-    """The flag on with no service-role key is the silent failure worth naming:
-    the operator believes regen is running and nothing drains the queue."""
-    monkeypatch.setenv("REGEN_WORKER_ENABLED", "1")
-    with patch("recipeparser.adapters.regen_worker.run_workers", new=AsyncMock()), \
-         patch.object(api, "_get_supabase_service_client", return_value=None):
-        with TestClient(api.app) as client:
-            assert client.get("/health").json()["regen_workers"] == "misconfigured"
