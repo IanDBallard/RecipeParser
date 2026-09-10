@@ -38,7 +38,10 @@ class SupabaseImageStore(ImageStore):
             log.warning("SupabaseImageStore: credentials not set — cannot store the image for %s.", recipe_id)
             return None
         ext = _EXTENSIONS.get(content_type.lower(), "jpg")
-        path = f"{BUCKET}/{recipe_id}.{ext}"
+        # from_(BUCKET) already scopes the upload to the bucket, so the key must
+        # not repeat it -- doing so is what stored one object under the literal
+        # path recipe-images/recipe-images/<id>.jpg.
+        path = f"{recipe_id}.{ext}"
         try:
             from supabase import create_client  # noqa: PLC0415
 
