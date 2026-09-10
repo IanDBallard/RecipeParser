@@ -90,7 +90,7 @@ def refine(
     This is Pass 2 of the pipeline.  A single Gemini call handles:
       - Structured ingredient parsing (id, amount, unit, name, fallback_string)
       - Fat Token injection into direction text
-      - Optional Volume-to-Weight UOM conversion (flagged as is_ai_converted)
+      - Bidirectional Volume/Weight UOM conversion (flagged as is_ai_converted)
       - Multipolar categorization via grid_categories (when user_axes provided)
 
     Args:
