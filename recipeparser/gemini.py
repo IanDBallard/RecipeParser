@@ -674,8 +674,9 @@ RULES:
    - CONVERSION: Always give the equivalent in the OTHER measure, regardless of the Measure
      Preference below: a weight for a volume ("1 cup" -> 120, "g"), a volume for a weight
      ("150 g" -> 1.25, "cups"). Put it in "converted_amount" and "converted_unit" and set
-     "is_ai_converted" to true. Leave all three null when the line states no amount ("salt to
-     taste") or its unit is neither a volume nor a weight ("3 eggs", "a pinch").
+     "is_ai_converted" to true. Leave "converted_amount" and "converted_unit" null and
+     "is_ai_converted" false when the line states no amount ("salt to taste") or its
+     unit is neither a volume nor a weight ("3 eggs", "a pinch").
    - amount: the numeric quantity. Use null - never 0 - when the source states no
      amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
      measurement of nothing.
