@@ -34,3 +34,43 @@ def test_duration_columns_base_servings_fallback():
     assert cols["servings_min"] is None
     assert cols["servings_note"] == "a crowd"
     assert cols["base_servings"] == 6
+
+
+# ---------------------------------------------------------------------------
+# The unparseable-text fallback
+#
+# parse_duration's success paths all run through _normalise, which collapses
+# whitespace. Its failure path returned the raw input, so junk in a source
+# recipe's prep_time/cook_time reached cook_note verbatim. Three rows in the
+# live library carried 5.5k, 10k and 37k characters of newline padding that
+# way -- and cook_note is a synced column, so a backfill would have shipped
+# ~53KB of it to every device permanently.
+# ---------------------------------------------------------------------------
+
+def test_unparseable_note_collapses_runs_of_whitespace():
+    """The real row: a number, thousands of newlines, then a stray token."""
+    junk = "35" + "\n" * 6000 + "ext{"
+    span = parse_duration(junk)
+    assert span.min is None and span.max is None
+    assert span.note == "35 ext{"
+
+
+def test_unparseable_note_keeps_case_and_glyphs():
+    """The note is shown to a cook, so it is tidied, not normalised: _normalise
+    also lowercases and rewrites fractions, which would mangle the display."""
+    assert parse_duration("About 1½ Hours, Roughly").note == "About 1½ Hours, Roughly"
+
+
+def test_parseable_durations_are_unaffected_by_the_tidy():
+    """The fallback is the only path that changed; a parse still yields no note."""
+    assert parse_duration("1-2 hours") == Span(60, 120, None)
+
+
+def test_unparseable_servings_note_collapses_runs_of_whitespace():
+    """parse_servings carried the identical defect on its own failure path.
+    The backfill cannot reach it -- it derives servings text from the numeric
+    base_servings column -- but SupabaseWriter passes real recipe text through
+    duration_columns on every ingest, so servings_note leaked the same way."""
+    span = parse_servings("serves\n\n\n\n  a\t\tcrowd  ")
+    assert span.min is None and span.max is None
+    assert span.note == "serves a crowd"

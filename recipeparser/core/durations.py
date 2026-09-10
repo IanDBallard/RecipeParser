@@ -119,7 +119,11 @@ def parse_duration(text: Optional[str]) -> Span:
     else:
         lo = hi = _side_minutes(head)
     if lo is None or hi is None:
-        return Span(None, None, original)
+        # Tidied, not normalised: this note is shown to a cook, so it keeps its
+        # case and glyphs -- but a source recipe whose duration field holds a
+        # number followed by thousands of newlines must not carry them into
+        # cook_note, which syncs to every device.
+        return Span(None, None, re.sub(r"\s+", " ", original).strip())
     return Span(int(round(lo)), int(round(hi)), note)
 
 
@@ -136,7 +140,8 @@ def parse_servings(text: Optional[str]) -> Span:
     cleaned = re.sub(r"\s+", " ", _SERVING_WORDS_RE.sub(" ", norm)).strip()
     m = _SERVING_RANGE_RE.match(cleaned)
     if not m:
-        return Span(None, None, original)
+        # Same tidy as parse_duration's fallback, for the same reason.
+        return Span(None, None, re.sub(r"\s+", " ", original).strip())
     lo = _number(m.group(1))
     hi = _number(m.group(2)) if m.group(2) else lo
     rest = cleaned[m.end():].strip(" ,")
