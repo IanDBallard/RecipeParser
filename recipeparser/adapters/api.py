@@ -152,14 +152,22 @@ def _worker_enabled(env: Mapping[str, str]) -> bool:
     return env.get("REGEN_WORKER_ENABLED", "").strip().lower() in _TRUTHY
 
 
+# What the lifespan actually did, published by /health. "disabled" until a
+# lifespan runs, so a server that never started its workers never claims to.
+_regen_worker_state: str = "disabled"
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     """Start the background workers when enabled; stop them cleanly on shutdown."""
+    global _regen_worker_state
     task: Optional[asyncio.Task] = None
     stop = asyncio.Event()
+    _regen_worker_state = "disabled"
     if _worker_enabled(os.environ):
         supabase = _get_supabase_service_client()
         if supabase is None:
+            _regen_worker_state = "misconfigured"
             logger.warning("REGEN_WORKER_ENABLED is set but Supabase is not configured — workers not started.")
         else:
             # Imported here so the worker modules are not a hard dependency of the API import.
@@ -170,6 +178,7 @@ async def _lifespan(_app: FastAPI):
                 RecatWorker(supabase, _get_client()),
             ]
             task = asyncio.create_task(_rw.run_workers(workers, stop))
+            _regen_worker_state = "started"
             logger.info("Background workers started: %s", [type(w).__name__ for w in workers])
     try:
         yield
@@ -218,14 +227,18 @@ logger.info("CORS enabled for: %s", ", ".join(_cors_origins))
 
 @app.get("/health", status_code=200)
 def health() -> dict[str, str]:
-    """Liveness probe reporting the auth mode the app booted with.
+    """Liveness probe reporting the auth mode and worker state the app booted with.
 
     A bypassed server is indistinguishable from a verifying one until it
-    misattributes a write, so the mode is published rather than inferred.
+    misattributes a write, so the mode is published rather than inferred. The
+    same holds for the regen workers: with an empty queue a server that never
+    started them looks exactly like one that did, and the difference only
+    surfaces as a recipe that stays stale forever.
     """
     return {
         "status": "ok",
         "auth_mode": "bypassed" if _DISABLE_AUTH else "verifying",
+        "regen_workers": _regen_worker_state,
     }
 
 
