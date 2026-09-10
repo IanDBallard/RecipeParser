@@ -27,12 +27,12 @@ here except where a decision affects it.
 
 | # | Decision | Chosen |
 |---|----------|--------|
-| D1 | Edit surface | Free-text body (title, ingredient lines, direction steps) plus ingredient amount/unit editable without AI regen. All Paprika metadata fields are plain user-owned columns. |
-| D2 | Amount/unit edit semantics | A recipe change: the client rewrites the raw ingredient line and records an override. `body_rev` is not bumped. |
+| D1 | Edit surface | Free-text body (title, ingredient lines, direction steps) plus ingredient amount/unit. All Paprika metadata fields are plain user-owned columns, editable with no regeneration at all (3.1). **Revised 2026-09-09:** this row previously said an amount or unit edit needed no AI regeneration; reversing D2 makes it one. The edit still *renders* immediately from the override — the regeneration is what re-derives the tokens behind it. |
+| D2 | Amount/unit edit semantics | A recipe change: the client rewrites the raw ingredient line, records an override, **and bumps `body_rev`** — all in one PATCH. **Revised 2026-09-09** (was: not bumped); see 4.3. |
 | D3 | Categories after ingest | Never recategorised automatically. Regen ignores the categorisation output of REFINE. |
 | D4 | Taxonomy changes | Renames, moves and deletes need no AI. Additions offer an explicit, additive-only, scoped bulk pass. |
 | D5 | Regen mechanism | Stale rows are the queue (`derived_rev < body_rev`). A polling worker inside the FastAPI process claims them with a lease. No webhook, no client API call. |
-| D6 | Client vectors | Chat is the only consumer. `embedding` is removed from the PowerSync sync rules and lives only in Postgres. |
+| D6 | Client vectors | Chat is the only consumer. `embedding` is removed from the PowerSync sync rules and lives only in Postgres. **Not adopted while the library's search reads synced embeddings** — `searchIndex` builds its cosine index from them, so removing the column makes every library search title-mode with the reason "indexing". `powersync/sync-rules.yaml` keeps it with the reason in a comment beside the query. Revisit when semantic search moves server-side. |
 | D7 | Derived columns are server-only | The client never writes `structured_ingredients`, `tokenized_directions`, `embedding` or the derived bookkeeping columns. |
 | D8 | Durations and servings | Stored as min/max integers plus a free-text note, displayed as "x to y". Parsed deterministically on both client and server; no AI involved. |
 
@@ -154,10 +154,27 @@ On save the client writes the changed columns and sets
 
 ### 4.3 Amount or unit edit
 A structured widget on an ingredient. On save the client writes two raw
-columns and no derived ones, without bumping `body_rev`:
+columns and no derived ones, **and bumps `body_rev` in the same PATCH**:
+
+> **Revised 2026-09-09.** This section originally said `body_rev` was *not*
+> bumped. That is what opened hole 1 under *Concurrency*: the change stays
+> invisible to the worker's compare-and-swap, so a regeneration already in
+> flight can revert the display permanently while marking the row fresh. The
+> bump costs a REFINE per amount edit — the cost this section was declining to
+> pay, and the divergence was the bill for declining.
+
+> **The editor renders at base servings.** The kitchen may be showing eight
+> servings of a four-serving recipe. An editor showing *those* numbers and
+> storing what was typed would double the recipe on every edit.
 
 1. Rewrite the matching entry in `ingredient_lines` with a pure function
-   `rewriteAmount(line, oldAmount, oldUnit, newAmount, newUnit)`:
+   `rewriteAmount(line, oldAmount, oldUnit, newAmount, newUnit)`. **`old` is
+   always the canonical `(entry.amount, entry.unit)`, never the displayed
+   value** — that is what lets the widget show grams while rewriting a line
+   that says cups. Passing the displayed value corrupts the line:
+   `rewriteAmount("1 cup flour", old=120 g, new=240 g)` yields
+   `"240 cup flour"`, because the numeric branch replaces "1" with "240" and
+   leaves "cup" alone, it not being "g".
    - if the line starts with a numeric expression (`1`, `1.5`, `1 1/2`, `1/2`,
      ranges like `2-3`), replace it with the formatted new amount; if the
      following token equals the old unit, replace it with the new unit;
@@ -168,9 +185,11 @@ columns and no derived ones, without bumping `body_rev`:
 2. Set `amount_overrides[ingredient.id] = {amount, unit}`.
 
 Rendering applies the override on top of the structured entry with that id.
-The next REFINE (for any reason) parses the rewritten line and clears
-`amount_overrides` in the same write. If no regen ever happens the override
-persists and stays correct.
+The next REFINE parses the rewritten line and clears `amount_overrides` in the
+same write — and under the revised D2 an amount edit is itself a reason for one,
+so the override is normally short-lived. It is not a cache that must be
+invalidated: while it stands, rendering is already correct, so a worker that is
+switched off or behind costs nothing but staleness.
 
 Matching between a structured entry and its line: each structured entry
 gains a `line_index` field (the 0-based index into `ingredient_lines` it was
@@ -183,9 +202,16 @@ entries in order.
 Guard against a wrong index from the model: before rewriting, the client
 compares the entry's `fallback_string` with `ingredient_lines[line_index]`
 (normalised: lower-case, unicode fractions to ASCII, collapsed whitespace).
-If they share no numeric token and no word, the client does not rewrite the
-line; it writes the override and bumps `body_rev` instead, so the next regen
-re-establishes the mapping. Rare, and never rewrites the wrong line.
+On a mismatch it **scans the remaining lines for one that matches by the same
+rule** and rewrites that. Only when nothing matches does it refuse the edit
+and say so in a notice. Rare, and never rewrites the wrong line.
+
+> **Revised 2026-09-09.** The original fallback wrote the override and bumped
+> `body_rev` without rewriting the line, "so the next regen re-establishes the
+> mapping". It does the opposite: the regeneration that bump triggers *clears*
+> `amount_overrides` — and it clears it before the edit has ever reached the
+> raw line, so the cook's change disappears. Refusing an edit the client cannot
+> place is the honest outcome; silently losing it is not.
 
 ### 4.4 Upload handler
 `connector.ts` already sends only `opData` on PATCH. A test pins this: a
@@ -202,12 +228,21 @@ with no extra client work.
 When `derived_rev < body_rev`:
 - ingredients and directions render as plain text from the raw columns;
 - the scaling control is disabled;
-- a badge reads "Updating…" when online or "Will update when online" otherwise;
+- **check-off is disabled**: it is keyed by structured ingredient id, and a raw
+  line has none;
+- a **notice** reads "Updating…" when online or "Will update when online"
+  otherwise;
 - old fat tokens are never rendered against edited text.
 
-When `derived_error` is set, the badge shows the message and a **Retry**
-action that bumps `body_rev` (which also resets the attempt counter on the
-server side).
+When `derived_error` is set, the notice carries the message as its detail and a
+**Retry** action that bumps `body_rev` (which also resets the attempt counter on
+the server side).
+
+> **Revised 2026-09-09.** "Badge" was a shape this design did not own. Both
+> clients render these as entries in one ordered `NoticeRegion` — one container,
+> one order, one gutter — rather than as a badge of their own. Disabling
+> check-off while stale was decided by the Kitchen Mode design and is recorded
+> here so the rule has one home.
 
 When not stale: render from structured ingredients with overrides applied and
 tokenized directions resolved by id.
