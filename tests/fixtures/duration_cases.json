@@ -20,7 +20,8 @@
     {"input": "10 minutes (plus resting)", "min": 10, "max": 10, "note": "plus resting"},
     {"input": "35 mins, plus 4 hrs marinating", "min": 35, "max": 35, "note": "plus 4 hrs marinating"},
     {"input": "overnight", "min": null, "max": null, "note": "overnight"},
-    {"input": "until golden", "min": null, "max": null, "note": "until golden"}
+    {"input": "until golden", "min": null, "max": null, "note": "until golden"},
+    {"input": "2.5 min", "min": 2, "max": 2, "note": null}
   ],
   "servings": [
     {"input": null, "min": null, "max": null, "note": null},

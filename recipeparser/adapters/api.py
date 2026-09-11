@@ -154,6 +154,9 @@ def _worker_enabled(env: Mapping[str, str]) -> bool:
 
 # What the lifespan actually did, published by /health. "disabled" until a
 # lifespan runs, so a server that never started its workers never claims to.
+# Two reachable states: "disabled" (flag unset) and "started" (flag set,
+# workers running). A misconfigured flag (set, no Supabase) no longer starts
+# a server at all — see the RuntimeError below.
 _regen_worker_state: str = "disabled"
 
 
@@ -167,19 +170,30 @@ async def _lifespan(_app: FastAPI):
     if _worker_enabled(os.environ):
         supabase = _get_supabase_service_client()
         if supabase is None:
-            _regen_worker_state = "misconfigured"
-            logger.warning("REGEN_WORKER_ENABLED is set but Supabase is not configured — workers not started.")
-        else:
-            # Imported here so the worker modules are not a hard dependency of the API import.
-            from recipeparser.adapters import regen_worker as _rw  # noqa: PLC0415
-            from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
-            workers: list = [
-                _rw.RegenWorker(supabase, _get_client()),
-                RecatWorker(supabase, _get_client()),
-            ]
-            task = asyncio.create_task(_rw.run_workers(workers, stop))
-            _regen_worker_state = "started"
-            logger.info("Background workers started: %s", [type(w).__name__ for w in workers])
+            # Refuse rather than warn: a server that starts here answers every request correctly
+            # and drains nothing, and nothing reads /health (ROADMAP, Stage 4).
+            raise RuntimeError(
+                "REGEN_WORKER_ENABLED is set but the Supabase service client is not configured "
+                "(SUPABASE_URL and the service-role key): refusing to start a server that would "
+                "leave every edited recipe stale."
+            )
+        # Imported here so the worker modules are not a hard dependency of the API import.
+        from recipeparser.adapters import regen_worker as _rw  # noqa: PLC0415
+        from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
+        workers: list = [
+            _rw.RegenWorker(supabase, _get_client()),
+            RecatWorker(supabase, _get_client()),
+        ]
+        task = asyncio.create_task(_rw.run_workers(workers, stop))
+        _regen_worker_state = "started"
+        logger.info("Background workers started: %s", [type(w).__name__ for w in workers])
+    else:
+        # WARNING, not INFO: uvicorn's --log-level configures only its own loggers, so this is the
+        # lowest level that reaches the console under the default root configuration.
+        logger.warning(
+            "REGEN_WORKER_ENABLED is not set: no regeneration worker will run, and an edited "
+            "recipe stays stale until one does."
+        )
     try:
         yield
     finally:
@@ -233,7 +247,10 @@ def health() -> dict[str, str]:
     misattributes a write, so the mode is published rather than inferred. The
     same holds for the regen workers: with an empty queue a server that never
     started them looks exactly like one that did, and the difference only
-    surfaces as a recipe that stays stale forever.
+    surfaces as a recipe that stays stale forever. ``regen_workers`` is
+    ``"disabled"`` (REGEN_WORKER_ENABLED unset) or ``"started"`` (set, workers
+    running) — a flag set without a Supabase service client refuses to boot
+    rather than reporting a third state here.
     """
     return {
         "status": "ok",
