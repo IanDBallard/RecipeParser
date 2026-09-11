@@ -34,7 +34,7 @@ here except where a decision affects it.
 | D5 | Regen mechanism | Stale rows are the queue (`derived_rev < body_rev`). A polling worker inside the FastAPI process claims them with a lease. No webhook, no client API call. |
 | D6 | Client vectors | Chat is the only consumer. `embedding` is removed from the PowerSync sync rules and lives only in Postgres. **Not adopted while the library's search reads synced embeddings** — `searchIndex` builds its cosine index from them, so removing the column makes every library search title-mode with the reason "indexing". `powersync/sync-rules.yaml` keeps it with the reason in a comment beside the query. Revisit when semantic search moves server-side. |
 | D7 | Derived columns are server-only | The client never writes `structured_ingredients`, `tokenized_directions`, `embedding` or the derived bookkeeping columns. |
-| D8 | Durations and servings | Stored as min/max integers plus a free-text note, displayed as "x to y". Parsed deterministically on both client and server; no AI involved. |
+| D8 | Durations and servings | Stored as min/max integers plus a free-text note, displayed as "x to y". Parsed deterministically on both client and server; no AI involved. **Revised 2026-09-11:** the `prep_time` and `cook_time` text columns are kept on the server rather than dropped, and leave sync (3.6). |
 
 ## 3. Schema and ownership
 
@@ -111,7 +111,17 @@ back. They become structured, user-owned columns:
 | `servings_note` | text, nullable | e.g. "as a starter" |
 | `base_servings` | numeric | existing; the single number scaling divides by; defaults to `servings_min` |
 
-The text columns `prep_time` and `cook_time` are dropped after backfill.
+The text columns `prep_time` and `cook_time` stay on the server as the
+duration text as imported. The ingestion writer keeps filling them; nothing
+else writes them, an edit never updates them, and no screen displays them.
+They leave sync once the client reads the structured columns (3.4). After a
+cook edits a time, the text and the structured columns disagree, and the
+structured columns are the recipe. **Revised 2026-09-11** (was: dropped after
+backfill). The only case for the drop was that stale text could be misread,
+and taking the columns out of sync removes every reader that could misread it.
+A drop, by contrast, is irreversible, and it would discard the source's own
+wording: the input a better duration parser would re-run over, as regeneration
+re-runs over `ingredient_lines`.
 Total time is computed on the fly (min + min, max + max), never stored.
 
 **Parser** (pure, one rule set, two implementations): accepts a free-text
@@ -434,8 +444,9 @@ ignores them until their first edit.
 (`scripts/backfill_durations.py`) that runs the parser over every row's
 `prep_time`, `cook_time` and `base_servings`, writes the structured columns,
 and reports rows whose text landed entirely in a note so they can be eyeballed.
-`prep_time` and `cook_time` are dropped in a follow-up migration once the
-client no longer reads them.
+`prep_time` and `cook_time` leave the sync rules once the client no longer
+reads them, and stay on the server (3.6). **Revised 2026-09-11** (was: dropped
+in a follow-up migration).
 
 ### 7.3 Deploy order
 1. Migration + backfill (all defaults; nothing reads the columns yet).
