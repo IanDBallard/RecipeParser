@@ -12,6 +12,7 @@ No legacy /ingest* tests — those endpoints were removed in Phase 6.
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import time
@@ -33,9 +34,11 @@ os.environ.setdefault("GOOGLE_API_KEY", "dummy-key-for-tests")
 from recipeparser.adapters.api import (  # noqa: E402
     _active_jobs,
     _extract_image_url_from_markdown,
+    _fetch_page_meta,
     app,
 )
 from recipeparser.core.fsm import PipelineController, PipelineStatus  # noqa: E402
+from recipeparser.io.readers.url import PageMeta  # noqa: E402
 from recipeparser.io.writers.image_store import SupabaseImageStore  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -295,6 +298,62 @@ class TestPostJobs:
         chunks = mock_pipeline_cls.return_value.run.call_args.args[0]
         assert chunks[0].image_url == "https://storage.test/hero.jpg"
         assert chunks[0].meta is not None and chunks[0].meta.description == "A weeknight noodle dish."
+
+    def test_a_badge_og_image_does_not_win_and_does_not_suppress_the_markdown_photo(self) -> None:
+        """A site-wide logo served AS the page's own og:image must not become
+        the hero, and must not stop rule 3 from finding the markdown's real
+        photograph."""
+        from unittest.mock import AsyncMock
+
+        from recipeparser.io.readers.url import PageMeta
+
+        markdown = (
+            "Title: Noodles\n\n"
+            "![Dish](https://cdn.site.test/uploads/dish.jpg)\n\n"
+            "1 cup noodles"
+        )
+
+        class _Resp:
+            text = markdown
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> _Resp:
+                return _Resp()
+
+        badge_og_image = "https://cooking.nytimes.com/_next/image?url=%2Fassets%2Fedamam-logo.png"
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
+        with stack, \
+             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             patch(
+                 "recipeparser.adapters.api._fetch_page_meta",
+                 new=AsyncMock(
+                     return_value=PageMeta(badge_og_image, "A weeknight noodle dish.")
+                 ),
+             ), \
+             patch("recipeparser.adapters.api._upload_image_to_storage",
+                   new=AsyncMock(return_value="https://storage.test/dish.jpg")) as upload, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://cooking.nytimes.com/recipes/1020732-noodles"})
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+        upload.assert_awaited_once()
+        assert upload.await_args.args[0] == "https://cdn.site.test/uploads/dish.jpg"  # the photo, not the badge
 
 
 # ===========================================================================
@@ -633,6 +692,115 @@ class TestExtractImageUrl:
     def test_og_meta_line_still_beats_everything(self) -> None:
         md = "og:image: https://example.com/photo.jpg\n![Dish](https://example.com/other.jpg)"
         assert _extract_image_url_from_markdown(md) == "https://example.com/photo.jpg"
+
+
+class TestFetchPageMeta:
+    """_fetch_page_meta's three behaviours, offline: patch httpx.AsyncClient
+    directly and drive the coroutine with asyncio.run — no endpoint, no job."""
+
+    def test_an_html_response_is_parsed(self) -> None:
+        html = (
+            '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
+            '<meta name="description" content="A weeknight noodle dish.">'
+        )
+
+        class _Resp:
+            text = html
+            headers = {"content-type": "text/html; charset=utf-8"}
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> _Resp:
+                return _Resp()
+
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
+            result = asyncio.run(_fetch_page_meta("https://example.com/recipe"))
+
+        assert result == PageMeta("https://static01.nyt.com/hero.jpg", "A weeknight noodle dish.")
+
+    def test_a_non_html_content_type_is_no_meta(self) -> None:
+        class _Resp:
+            text = "binary data, not read"
+            headers = {"content-type": "image/jpeg"}
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> _Resp:
+                return _Resp()
+
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
+            result = asyncio.run(_fetch_page_meta("https://example.com/photo.jpg"))
+
+        assert result == PageMeta(None, None)
+
+    def test_a_network_failure_is_no_meta_and_nothing_propagates(self) -> None:
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> Any:
+                raise RuntimeError("boom")
+
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
+            result = asyncio.run(_fetch_page_meta("https://example.com/recipe"))
+
+        assert result == PageMeta(None, None)
+
+    def test_no_content_type_header_at_all_is_still_parsed(self) -> None:
+        html = '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
+
+        class _Resp:
+            text = html
+            headers: dict = {}
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> _Resp:
+                return _Resp()
+
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
+            result = asyncio.run(_fetch_page_meta("https://example.com/recipe"))
+
+        assert result == PageMeta("https://static01.nyt.com/hero.jpg", None)
 
 
 # ===========================================================================

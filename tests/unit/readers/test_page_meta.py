@@ -66,3 +66,14 @@ class TestLooksLikeBadge:
             "Spicy sesame noodles",
         )
         assert not looks_like_badge("https://cdn.site.test/uploads/2024/dish.jpg", "")
+
+    def test_badge_words_match_whole_tokens_not_substrings(self):
+        assert not looks_like_badge("https://cdn.site.test/recipes/iconic-lasagna.jpg")
+        assert not looks_like_badge("https://cdn.site.test/uploads/silicone-mold-cookies.jpg")
+
+    def test_the_wrapper_is_parsed_before_the_whole_url_is_unquoted(self):
+        # The inner url= value carries its own encoded ?/&/= — decoding the
+        # whole URL before urlparse would split it into bogus query params.
+        assert not looks_like_badge(
+            "https://x.test/_next/image?url=%2Fuploads%2Fdish.jpg%3Fa%3D1%26b%3D2&w=640"
+        )

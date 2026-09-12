@@ -82,7 +82,9 @@ def page_meta_from_html(html: str) -> PageMeta:
     return PageMeta(image_url=image, description=description)
 
 
-_BADGE_WORDS = ("logo", "badge", "icon", "sprite", "avatar", "powered", "button", "pixel", "spacer", "placeholder")
+_BADGE_WORDS = frozenset(
+    {"logo", "badge", "icon", "sprite", "avatar", "powered", "button", "pixel", "spacer", "placeholder"}
+)
 
 
 def looks_like_badge(url: str, alt: str = "") -> bool:
@@ -90,18 +92,25 @@ def looks_like_badge(url: str, alt: str = "") -> bool:
     True for an image that is a site's furniture rather than a photograph.
 
     Judged from the URL's path (with a Next.js ``/_next/image?url=…`` wrapper
-    unwrapped, and percent-encoding undone) and the alt text: a badge word in
-    either, an SVG, or anything the wrapper serves from ``/assets/``.
+    unwrapped) and the alt text: a whole badge-word token in either, an SVG,
+    or anything the wrapper serves from ``/assets/``. Badge words are matched
+    as whole tokens after splitting on non-alphanumerics, so "iconic-lasagna"
+    and "silicone-mold-cookies" are not mistaken for site furniture the way a
+    plain substring match would. ``parse_qs`` already percent-decodes the
+    wrapper's ``url=`` value; unquoting the whole URL before parsing it (as
+    opposed to just the path) would let an inner URL's own encoded
+    ``?``/``&``/``=`` characters split into the wrong query parameters.
     """
-    parsed = urlparse(unquote(url))
+    parsed = urlparse(url)
     inner = parse_qs(parsed.query).get("url", [""])[0].lower()
-    path = parsed.path.lower()
+    path = unquote(parsed.path).lower()
     if path.endswith(".svg") or inner.endswith(".svg"):
         return True
     if inner.startswith("/assets/") or "/assets/" in inner:
         return True
     haystack = " ".join((path, inner, alt.lower()))
-    return any(word in haystack for word in _BADGE_WORDS)
+    tokens = set(re.split(r"[^a-z0-9]+", haystack))
+    return bool(tokens & _BADGE_WORDS)
 
 
 class UrlReader(RecipeReader):

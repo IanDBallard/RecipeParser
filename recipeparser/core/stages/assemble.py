@@ -52,7 +52,7 @@ def assemble(
         grid_categories: The validated axis→tags dict from the CATEGORIZE stage.
         prep_time:       Prep time string from the EXTRACT stage (or None).
         cook_time:       Cook time string from the EXTRACT stage (or None).
-        meta:            Fields the source stated for itself (Paprika only). A value
+        meta:            Fields the source stated for itself. A value
                          here wins over the extracted one; a field absent from meta
                          falls back to the argument rather than blanking it.
         ingredient_lines: Raw ingredient lines from EXTRACT. When None or empty,
@@ -104,7 +104,8 @@ def assemble(
         structured_ingredients=recipe.structured_ingredients,
         tokenized_directions=recipe.tokenized_directions,
         embedding=embedding,
-        # No extracted fallback: only a Paprika entry states these, and nothing
+        # No extracted fallback: only a source's own statement (a Paprika entry;
+        # the page's meta description on the URL path) fills these, and nothing
         # infers them from a book or a web page.
         # Paprika's own statement first; else the citation's display form, so the
         # library row (which reads `source`) shows the same thing for a fresh

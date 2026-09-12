@@ -452,12 +452,13 @@ async def _fetch_page_meta(url: str) -> PageMeta:
         ) as http:
             resp = await http.get(url)
             resp.raise_for_status()
-            if "html" not in resp.headers.get("content-type", "").lower():
+            ctype = resp.headers.get("content-type", "")
+            if ctype and "html" not in ctype.lower():
                 return PageMeta(None, None)
             # The head is at the top; a megabyte is more than any head needs.
             return page_meta_from_html(resp.text[:1_000_000])
-    except Exception:
-        logger.info("Page meta unavailable for %s — falling back to the scraper's markdown.", url)
+    except Exception as exc:
+        logger.info("Page meta unavailable for %s (%s) — falling back to the scraper's markdown.", url, exc)
         return PageMeta(None, None)
 
 
@@ -870,7 +871,12 @@ async def submit_job(
                 # scraper's markdown second: the markdown dropped both on the
                 # NYT page of 2026-09-12 and offered a logo instead.
                 page_meta = await _fetch_page_meta(body.url)
-                image_url_candidate = page_meta.image_url or _extract_image_url_from_markdown(markdown_text)
+                page_image = (
+                    page_meta.image_url
+                    if page_meta.image_url and not looks_like_badge(page_meta.image_url)
+                    else None
+                )
+                image_url_candidate = page_image or _extract_image_url_from_markdown(markdown_text)
                 recipe_id_for_img = str(uuid.uuid4())
                 if image_url_candidate:
                     stored_image_url = await _upload_image_to_storage(
