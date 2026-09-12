@@ -709,19 +709,24 @@ _active_jobs: Dict[str, tuple[str, PipelineController]] = {}
 # Phase 6 helpers
 # ---------------------------------------------------------------------------
 
-_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
-_IMAGE_CONTENT_TYPES = ("image/jpeg", "image/jpg", "image/png", "image/webp")
+_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
+_IMAGE_CONTENT_TYPES = ("image/jpeg", "image/jpg", "image/png")
 _HEIC_EXTENSIONS = (".heic", ".heif")
 _HEIC_CONTENT_TYPES = ("image/heic", "image/heif")
+# The installed PyMuPDF (1.27.2) fails at fitz.open() on a real WebP file, so a
+# WebP upload is refused plainly rather than silently becoming a failed job —
+# same shape as the HEIC refusal below.
+_WEBP_EXTENSIONS = (".webp",)
+_WEBP_CONTENT_TYPES = ("image/webp",)
 # When a photo arrives with no extension, the temp file the reader opens needs
 # one PyMuPDF recognises; the content type is the only clue left.
 _IMAGE_SUFFIX_BY_TYPE = {
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
     "image/png": ".png",
-    "image/webp": ".webp",
 }
 _HEIC_SENTENCE = "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
+_WEBP_SENTENCE = "Cayenne can't read WebP photos yet. Share it as a JPEG instead."
 
 
 def _select_reader(filename: str, content_type: str) -> str:
@@ -754,6 +759,10 @@ def _select_reader(filename: str, content_type: str) -> str:
             # arrives through a share or a desktop drop, and there is no
             # decoder here yet.
             raise ValueError(_HEIC_SENTENCE)
+        if ext in _WEBP_EXTENSIONS:
+            # PyMuPDF 1.27.2 fails to open a real WebP file at all; refuse it
+            # plainly instead of letting it become a failed job.
+            raise ValueError(_WEBP_SENTENCE)
         if ext in _IMAGE_EXTENSIONS:
             return "image"
         raise ValueError(f"Cayenne can't read {ext} files yet.")
@@ -764,6 +773,8 @@ def _select_reader(filename: str, content_type: str) -> str:
         return "epub"
     if content_type in _HEIC_CONTENT_TYPES:
         raise ValueError(_HEIC_SENTENCE)
+    if content_type in _WEBP_CONTENT_TYPES:
+        raise ValueError(_WEBP_SENTENCE)
     if content_type in _IMAGE_CONTENT_TYPES:
         return "image"
     raise ValueError("Cayenne can't read this file yet.")
@@ -923,7 +934,7 @@ async def submit_file_job(
 ) -> AsyncJobResponse:
     """Fire-and-forget file upload ingestion job.
 
-    Accepts PDF, EPUB, .paprikarecipes or a photo (JPEG, PNG, WebP).  Routes
+    Accepts PDF, EPUB, .paprikarecipes or a photo (JPEG or PNG).  Routes
     to the correct reader via ``_select_reader()``.  Returns 202 +
     ``{ job_id }`` immediately.
     """

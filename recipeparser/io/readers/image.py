@@ -18,7 +18,7 @@ class ImageReader(RecipeReader):
     """
     Reads one photo and returns one Chunk holding its transcript.
 
-    PyMuPDF opens a JPEG, PNG or WebP as a one-page document, which is exactly
+    PyMuPDF opens a JPEG or PNG as a one-page document, which is exactly
     what ``extract_text_via_vision`` takes — the same call that reads a scanned
     PDF. The chunk carries no citation and no image: the transcript says where
     the recipe came from (``resolve_citation`` reads the model's stated source),

@@ -113,7 +113,6 @@ class TestSelectReaderImages:
             ("IMG_4021.jpg", "image/jpeg"),
             ("page.jpeg", "image/jpeg"),
             ("page.png", "image/png"),
-            ("page.webp", "image/webp"),
             ("PAGE.JPG", "application/octet-stream"),   # extension wins
             ("blob", "image/jpeg"),                      # no extension: content type decides
             ("blob", "image/jpg"),                       # the non-standard spelling some browsers send
@@ -130,6 +129,16 @@ class TestSelectReaderImages:
         with pytest.raises(ValueError) as excinfo:
             _select_reader(filename, content_type)
         assert str(excinfo.value) == "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
+
+    @pytest.mark.parametrize(
+        "filename,content_type",
+        [("page.webp", "image/webp"), ("PAGE.WEBP", "application/octet-stream"), ("blob", "image/webp")],
+    )
+    def test_webp_is_refused_plainly(self, filename, content_type):
+        """PyMuPDF 1.27.2 fails to open a real WebP file; refuse it plainly, like HEIC."""
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader(filename, content_type)
+        assert str(excinfo.value) == "Cayenne can't read WebP photos yet. Share it as a JPEG instead."
 
 
 class TestSelectReaderSentence:

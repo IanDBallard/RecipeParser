@@ -290,21 +290,39 @@ class TestPostJobsFile:
             resp = self._upload(client, "cookbook.epub", b"PK\x03\x04", "application/epub+zip")
         assert resp.status_code == 202
 
-    def test_photo_returns_202_through_the_image_reader(self, client: TestClient) -> None:
+    def test_photo_returns_202_through_the_image_reader(self) -> None:
         mock_chunk = MagicMock()
         mock_chunk.text = "Cake\n1 cup flour\nMix."
-        with _patch_pipeline_and_writer()[0], \
-             patch("recipeparser.adapters.api._ImageReader") as mock_reader_cls:
+
+        stack, mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
+
+        with stack, \
+             patch("recipeparser.adapters.api._ImageReader") as mock_reader_cls, \
+             TestClient(app, raise_server_exceptions=False) as tc:
             mock_reader_cls.return_value.read.return_value = [mock_chunk]
-            resp = self._upload(client, "IMG_4021.jpg", b"\xff\xd8\xff\xe0", "image/jpeg")
-        assert resp.status_code == 202
+            resp = tc.post(
+                "/jobs/file",
+                files={"file": ("IMG_4021.jpg", io.BytesIO(b"\xff\xd8\xff\xe0"), "image/jpeg")},
+            )
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+
         mock_reader_cls.assert_called_once()          # built with the Gemini client
-        assert mock_reader_cls.call_args.args or mock_reader_cls.call_args.kwargs
+        assert mock_reader_cls.call_args.args[0] is mock_client.return_value
 
     def test_heic_is_a_422_with_the_sentence(self, client: TestClient) -> None:
         resp = self._upload(client, "IMG_1.heic", b"\x00\x00\x00\x18ftypheic", "image/heic")
         assert resp.status_code == 422
         assert resp.json()["detail"] == "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
+
+    def test_webp_is_a_422_with_the_sentence(self, client: TestClient) -> None:
+        resp = self._upload(client, "page.webp", b"RIFF\x00\x00\x00\x00WEBP", "image/webp")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Cayenne can't read WebP photos yet. Share it as a JPEG instead."
 
     def test_docx_is_a_422_naming_the_extension(self, client: TestClient) -> None:
         resp = self._upload(client, "menu.docx", b"PK\x03\x04", "application/octet-stream")

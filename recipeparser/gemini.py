@@ -574,8 +574,8 @@ def extract_text_via_vision(doc, client) -> str:
 
     if not page_texts:
         raise RuntimeError(
-            "Gemini Vision returned no text for any page in the scanned PDF. "
-            "The document may contain non-recipe imagery or be unreadable."
+            "Gemini Vision returned no text for any page of the document. "
+            "It may contain non-recipe imagery or be unreadable."
         )
 
     return "\n\n".join(page_texts)
