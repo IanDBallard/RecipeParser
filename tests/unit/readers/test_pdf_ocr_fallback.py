@@ -66,6 +66,22 @@ def test_the_reader_without_a_client_keeps_the_refusal(tmp_path):
         PdfReader().read(_pdf(tmp_path, ""))
 
 
+def test_a_scan_over_the_ocr_cap_is_refused_before_any_vision_call(tmp_path, monkeypatch):
+    from recipeparser.io.readers import pdf as pdf_mod
+
+    monkeypatch.setattr(pdf_mod, "PDF_OCR_MAX_PAGES", 1)
+    client = _client("must not be read")
+    doc = fitz.open()
+    doc.new_page()
+    doc.new_page()
+    path = tmp_path / "two-blank-pages.pdf"
+    doc.save(str(path))
+    doc.close()
+    with pytest.raises(PdfExtractionError, match="up to 1"):
+        load_pdf(str(path), str(tmp_path / "out"), client=client)
+    client.models.generate_content.assert_not_called()
+
+
 def test_a_password_protected_document_is_refused_before_any_ocr(tmp_path):
     # PyMuPDF will not save a zero-page document, so the "no pages" branch has
     # no fixture; the password branch of _check_document proves the order.

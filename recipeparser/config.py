@@ -117,6 +117,8 @@ PDF_PREFLIGHT_MIN_CHARS_PER_PAGE: int = 100
 PDF_PREFLIGHT_SAMPLE_PAGES: int = 5
 PDF_PREFLIGHT_MIN_PAGES: int = 1  # Reject if 0 pages; warn if below this (e.g. pamphlet).
 PDF_PREFLIGHT_MAX_PAGES: Optional[int] = 2000  # Optional cap to avoid runaway cost; None = no cap.
+# A scan is transcribed one vision call per page; a photo or a few pages is the use case, not a scanned book.
+PDF_OCR_MAX_PAGES: int = 40
 
 # ---------------------------------------------------------------------------
 # Phase 3 — Pipeline control and rate-limit auto-pause

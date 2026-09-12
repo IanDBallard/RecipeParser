@@ -10,6 +10,7 @@ import fitz  # type: ignore[import-untyped]  # PyMuPDF
 
 from recipeparser.config import (
     MIN_PHOTO_BYTES,
+    PDF_OCR_MAX_PAGES,
     PDF_PREFLIGHT_MAX_PAGES,
     PDF_PREFLIGHT_MIN_CHARS_PER_PAGE,
     PDF_PREFLIGHT_MIN_PAGES,
@@ -45,7 +46,8 @@ class PdfReader(RecipeReader):
 
     def read(self, source: str) -> List[Chunk]:
         """
-        Parse a PDF file and return page chunks.
+        Parse a PDF file and return page chunks. A scan is transcribed by
+        vision OCR when a client was given.
 
         Args:
             source: File-system path to the .pdf file.
@@ -54,10 +56,13 @@ class PdfReader(RecipeReader):
             List of Chunk objects, one per non-empty page.
 
         Raises:
-            PdfExtractionError: If the PDF fails pre-flight checks (encrypted,
-                                no pages, insufficient text layer, etc.).
-
-        A scan is transcribed by vision OCR when a client was given.
+            PdfExtractionError: pre-flight checks (encrypted, no pages, too
+                                many pages), the no-client refusal for a
+                                text-poor document, or that document's page
+                                count over ``PDF_OCR_MAX_PAGES``.
+            RuntimeError: the model returned no text for any page (from
+                         ``extract_text_via_vision``; the job fails with that
+                         message).
         """
         with tempfile.TemporaryDirectory(prefix="cayenne_pdf_") as output_dir:
             return self._read_in_dir(source, output_dir)
@@ -92,10 +97,12 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
     Runs pre-flight (page count, password, page cap), then either extracts
     images and page-based text chunks with [IMAGE: filename] markers, or — for
     a document with little or no text layer — transcribes every page through
-    Gemini Vision when ``client`` is given. A scan read that way yields one
-    chunk for the whole document and no images: its page images are the scan
-    itself, not photographs of dishes. Without a client a scan is refused, as
-    it always was.
+    Gemini Vision when ``client`` is given, up to ``PDF_OCR_MAX_PAGES`` (a
+    scan is one vision call per page, and a longer scan is refused rather than
+    billed page by page). A scan read that way yields one chunk for the whole
+    document and no images: its page images are the scan itself, not
+    photographs of dishes. Without a client a scan is refused, as it always
+    was.
 
     Returns:
         (citation, image_dir, qualifying_images, raw_chunks)
@@ -117,6 +124,11 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
                 raise PdfExtractionError(
                     f"PDF has little or no extractable text (avg {avg_chars:.0f} chars/page "
                     f"over first {sample_pages} pages). It may be a scan without OCR: '{path}'"
+                )
+            if doc.page_count > PDF_OCR_MAX_PAGES:
+                raise PdfExtractionError(
+                    f"PDF has little or no extractable text and {doc.page_count} pages; "
+                    f"a scan is transcribed page by page, up to {PDF_OCR_MAX_PAGES}: '{path}'"
                 )
             log.info("Scanned PDF detected (avg %.0f chars/page) — transcribing through Gemini Vision.", avg_chars)
             from recipeparser.gemini import extract_text_via_vision  # noqa: PLC0415
