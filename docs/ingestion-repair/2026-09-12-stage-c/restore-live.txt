@@ -1,0 +1,7 @@
+python : Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+At line:1 char:790
++ ... -live.txt"; python scripts\restore_source_urls.py --archive "C:\Users ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 
+827 archive entries, 787 rows; 629 untouched, 9 ambiguous, 68 unmatched
+updated 114 recipe(s)
