@@ -33,6 +33,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from recipeparser.core.citation import classify_source, web_citation
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.io.readers import RecipeReader
 
@@ -169,11 +170,21 @@ class PaprikaReader(RecipeReader):
                 if photo_bytes is None:
                     image_url = str(entry.get("image_url") or "").strip() or None
 
+                entry_source = str(entry.get("source") or "").strip()
+                entry_url = str(entry.get("source_url") or "").strip() or None
+                if entry_source:
+                    citation = classify_source(entry_source).citation
+                elif entry_url and entry_url.lower().startswith("http"):
+                    citation = web_citation(entry_url)
+                else:
+                    citation = classify_source(None).citation
+
                 chunks.append(
                     Chunk(
                         text=text,
                         input_type=InputType.PAPRIKA_LEGACY,
-                        source_url=str(entry.get("source_url") or "").strip() or None,
+                        source_url=entry_url,
+                        citation=citation,
                         image_url=image_url,
                         image_bytes=photo_bytes,
                         image_content_type=photo_type,

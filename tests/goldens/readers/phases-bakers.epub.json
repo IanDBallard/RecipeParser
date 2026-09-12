@@ -1,6 +1,12 @@
 {
   "chunks": [
     {
+      "citation": {
+        "author": null,
+        "key": "phases and percentages",
+        "kind": "book",
+        "title": "Phases And Percentages"
+      },
       "image_bytes_len": 0,
       "image_bytes_sha256": null,
       "image_content_type": "image/jpeg",
@@ -9,10 +15,16 @@
       "label": null,
       "pre_parsed_embedding_len": null,
       "pre_parsed_title": null,
-      "source_url": "Phases And Percentages",
+      "source_url": null,
       "text": "Overnight Country Loaf\nIngredients\nPHASE 1 — Levain\n28g (1 oz) whole wheat flour\n28g (2 tablespoons) water\n6g (1 teaspoon) ripe starter\nPHASE 2 — Final Dough\n450g (1 lb) bread flour\n50g (1/3 cup) whole wheat flour\n360g (1 1/2 cups) water\n10g (2 teaspoons) fine salt\nMethod\nPHASE 1\nMix the levain ingredients and leave at room temperature for 10 hours.\nPHASE 2\nMix the flours and water and rest for 40 minutes.\nAdd the levain and salt, then fold every 30 minutes for 3 hours.\nShape, retard overnight, and bake at 475F in a covered pot for 20 minutes, then 20 uncovered.\nServes 10. Prep 14 hours. Cook 40 mins."
     },
     {
+      "citation": {
+        "author": null,
+        "key": "phases and percentages",
+        "kind": "book",
+        "title": "Phases And Percentages"
+      },
       "image_bytes_len": 0,
       "image_bytes_sha256": null,
       "image_content_type": "image/jpeg",
@@ -21,7 +33,7 @@
       "label": null,
       "pre_parsed_embedding_len": null,
       "pre_parsed_title": null,
-      "source_url": "Phases And Percentages",
+      "source_url": null,
       "text": "Sandwich Loaf\nIngredients\nIngredient\nWeight\nVolume\nBaker's %\nBread flour\n500g\n4 cups\n100%\nWater\n325g\n1 1/3 cups\n65%\nSalt\n10g\n1 3/4 tsp\n2%\nInstant yeast\n7g\n2 1/4 tsp\n1.4%\nButter\n30g\n2 tbsp\n6%\nMethod\nMix everything to a smooth dough and knead for 8 minutes.\nProve until doubled, shape into a pan loaf, and prove again.\nBake at 400F for 35 minutes.\nServes 12. Prep 3 hours. Cook 35 mins."
     }
   ],

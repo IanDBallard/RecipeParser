@@ -22,6 +22,7 @@ from typing import List
 
 import requests  # type: ignore[import-untyped]
 
+from recipeparser.core.citation import web_citation
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers import RecipeReader
 
@@ -80,5 +81,6 @@ class UrlReader(RecipeReader):
                 text=text,
                 input_type=InputType.URL,
                 source_url=source,
+                citation=web_citation(source),
             )
         ]

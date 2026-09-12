@@ -28,6 +28,10 @@ def _chunk_to_dict(chunk: Chunk) -> dict:
     return {
         "input_type": chunk.input_type.value,
         "source_url": chunk.source_url,
+        "citation": None if chunk.citation is None else {
+            "kind": chunk.citation.kind, "key": chunk.citation.key,
+            "title": chunk.citation.title, "author": chunk.citation.author,
+        },
         "image_url": chunk.image_url,
         "image_bytes_sha256": (
             hashlib.sha256(chunk.image_bytes).hexdigest() if chunk.image_bytes else None

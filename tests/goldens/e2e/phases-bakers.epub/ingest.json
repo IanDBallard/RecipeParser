@@ -51,7 +51,7 @@
       "servings_min": 10,
       "servings_note": null,
       "source": null,
-      "source_url": "Phases And Percentages",
+      "source_url": null,
       "structured_ingredients": [
         {
           "amount": null,
@@ -225,7 +225,7 @@
       "servings_min": 12,
       "servings_note": null,
       "source": null,
-      "source_url": "Phases And Percentages",
+      "source_url": null,
       "structured_ingredients": [
         {
           "amount": 4.0,

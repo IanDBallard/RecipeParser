@@ -1,6 +1,12 @@
 {
   "chunks": [
     {
+      "citation": {
+        "author": null,
+        "key": "example.invalid",
+        "kind": "web",
+        "title": "example.invalid"
+      },
       "image_bytes_len": 0,
       "image_bytes_sha256": null,
       "image_content_type": "image/jpeg",

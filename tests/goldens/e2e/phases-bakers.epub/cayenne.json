@@ -52,7 +52,7 @@
         "servings_min": 10,
         "servings_note": null,
         "source": null,
-        "source_url": "Phases And Percentages",
+        "source_url": null,
         "structured_ingredients": [
           {
             "amount": null,
@@ -201,7 +201,7 @@
       "rating": 0,
       "servings": "10",
       "source": "",
-      "source_url": "Phases And Percentages",
+      "source_url": "",
       "total_time": "",
       "uid": "<fixed>"
     },
@@ -250,7 +250,7 @@
         "servings_min": 12,
         "servings_note": null,
         "source": null,
-        "source_url": "Phases And Percentages",
+        "source_url": null,
         "structured_ingredients": [
           {
             "amount": 4.0,
@@ -343,7 +343,7 @@
       "rating": 0,
       "servings": "12",
       "source": "",
-      "source_url": "Phases And Percentages",
+      "source_url": "",
       "total_time": "",
       "uid": "<fixed>"
     }
