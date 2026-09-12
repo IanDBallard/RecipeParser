@@ -290,6 +290,27 @@ class TestPostJobsFile:
             resp = self._upload(client, "cookbook.epub", b"PK\x03\x04", "application/epub+zip")
         assert resp.status_code == 202
 
+    def test_photo_returns_202_through_the_image_reader(self, client: TestClient) -> None:
+        mock_chunk = MagicMock()
+        mock_chunk.text = "Cake\n1 cup flour\nMix."
+        with _patch_pipeline_and_writer()[0], \
+             patch("recipeparser.adapters.api._ImageReader") as mock_reader_cls:
+            mock_reader_cls.return_value.read.return_value = [mock_chunk]
+            resp = self._upload(client, "IMG_4021.jpg", b"\xff\xd8\xff\xe0", "image/jpeg")
+        assert resp.status_code == 202
+        mock_reader_cls.assert_called_once()          # built with the Gemini client
+        assert mock_reader_cls.call_args.args or mock_reader_cls.call_args.kwargs
+
+    def test_heic_is_a_422_with_the_sentence(self, client: TestClient) -> None:
+        resp = self._upload(client, "IMG_1.heic", b"\x00\x00\x00\x18ftypheic", "image/heic")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
+
+    def test_docx_is_a_422_naming_the_extension(self, client: TestClient) -> None:
+        resp = self._upload(client, "menu.docx", b"PK\x03\x04", "application/octet-stream")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Cayenne can't read .docx files yet."
+
     def test_paprikarecipes_flow_b_writes_pre_parsed_directly(self) -> None:
         """PAPRIKA_CAYENNE chunks (text="" + pre_parsed_embedding) must be routed
         through RecipePipeline which handles them via the cheap ASSEMBLE-only path

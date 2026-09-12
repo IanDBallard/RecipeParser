@@ -48,6 +48,7 @@ from recipeparser.core.models import Chunk, InputType
 from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
+from recipeparser.io.readers.image import ImageReader as _ImageReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
 from recipeparser.io.writers.image_store import SupabaseImageStore
@@ -922,8 +923,9 @@ async def submit_file_job(
 ) -> AsyncJobResponse:
     """Fire-and-forget file upload ingestion job.
 
-    Accepts PDF, EPUB, or .paprikarecipes files.  Routes to the correct
-    reader via ``_select_reader()``.  Returns 202 + ``{ job_id }`` immediately.
+    Accepts PDF, EPUB, .paprikarecipes or a photo (JPEG, PNG, WebP).  Routes
+    to the correct reader via ``_select_reader()``.  Returns 202 +
+    ``{ job_id }`` immediately.
     """
     filename = file.filename or ""
     content_type = file.content_type or ""
@@ -951,7 +953,7 @@ async def submit_file_job(
             client = _get_client()
 
             # Write bytes to a temp file (readers expect a filesystem path)
-            suffix = Path(filename).suffix or ".bin"
+            suffix = Path(filename).suffix or _IMAGE_SUFFIX_BY_TYPE.get(content_type, ".bin")
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 tmp.write(file_bytes)
                 tmp_path = tmp.name
@@ -961,6 +963,7 @@ async def submit_file_job(
                 # The pipeline's stage router (_get_stages) inspects each
                 # chunk's input_type and routes accordingly:
                 #   PDF / EPUB          → full pipeline (EXTRACT→…→ASSEMBLE)
+                #   IMAGE               → full pipeline (EXTRACT→…→ASSEMBLE)
                 #   PAPRIKA_LEGACY      → full pipeline (EXTRACT→…→ASSEMBLE)
                 #   PAPRIKA_CAYENNE + embedding  → ASSEMBLE only ($0)
                 #   PAPRIKA_CAYENNE no embedding → EMBED + ASSEMBLE (1 call)
@@ -968,6 +971,9 @@ async def submit_file_job(
                     chunks = await asyncio.to_thread(_PdfReader().read, tmp_path)
                 elif reader_tag == "epub":
                     chunks = await asyncio.to_thread(_EpubReader().read, tmp_path)
+                elif reader_tag == "image":
+                    # A model call inside the reader: the OCR is the read.
+                    chunks = await asyncio.to_thread(_ImageReader(client).read, tmp_path)
                 else:  # paprika
                     chunks = await asyncio.to_thread(_PaprikaReader().read, tmp_path)
             finally:

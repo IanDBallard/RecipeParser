@@ -33,6 +33,9 @@ class InputType(Enum):
     EPUB = "EPUB"
     """One chapter chunk from an EPUB document."""
 
+    IMAGE = "IMAGE"
+    """One photograph of a recipe, transcribed by vision OCR; routed like a book chunk."""
+
     PAPRIKA_LEGACY = "PAPRIKA_LEGACY"
     """A Paprika recipe entry with no _cayenne_meta key — requires full pipeline."""
 

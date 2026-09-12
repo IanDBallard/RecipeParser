@@ -26,6 +26,10 @@ class PdfExtractionError(RecipeParserError):
     """Raised when the PDF cannot be opened, parsed, or fails pre-flight (e.g. no text layer, password-protected)."""
 
 
+class ImageExtractionError(RecipeParserError):
+    """Raised when a photo cannot be opened as an image."""
+
+
 class ExportError(RecipeParserError):
     """Raised when the Paprika export bundle cannot be written."""
 
