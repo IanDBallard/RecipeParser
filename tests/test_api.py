@@ -240,6 +240,62 @@ class TestPostJobs:
         mock_write.assert_called_once()
         assert mock_write.call_args.args[0] is recipe
 
+    def test_a_url_job_takes_the_hero_and_the_description_from_the_page_meta(self) -> None:
+        from unittest.mock import AsyncMock
+
+        from recipeparser.io.readers.url import PageMeta
+
+        markdown = (
+            "Title: Noodles\n\n"
+            "![Image 1](https://cooking.nytimes.com/_next/image?url=%2Fassets%2Fedamam-logo.png)\n\n"
+            "1 cup noodles"
+        )
+
+        class _Resp:
+            text = markdown
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> _Resp:
+                return _Resp()
+
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
+        with stack, \
+             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             patch(
+                 "recipeparser.adapters.api._fetch_page_meta",
+                 new=AsyncMock(
+                     return_value=PageMeta("https://static01.nyt.com/hero.jpg", "A weeknight noodle dish.")
+                 ),
+             ) as meta, \
+             patch("recipeparser.adapters.api._upload_image_to_storage",
+                   new=AsyncMock(return_value="https://storage.test/hero.jpg")) as upload, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://cooking.nytimes.com/recipes/1020732-noodles"})
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+        meta.assert_awaited_once_with("https://cooking.nytimes.com/recipes/1020732-noodles")
+        upload.assert_awaited_once()
+        assert upload.await_args.args[0] == "https://static01.nyt.com/hero.jpg"   # the meta image, not the badge
+        chunks = mock_pipeline_cls.return_value.run.call_args.args[0]
+        assert chunks[0].image_url == "https://storage.test/hero.jpg"
+        assert chunks[0].meta is not None and chunks[0].meta.description == "A weeknight noodle dish."
+
 
 # ===========================================================================
 # Section 2 — POST /jobs/file
@@ -558,6 +614,25 @@ class TestExtractImageUrl:
         assert result is not None
         assert not result.endswith("))")
         assert result.endswith(")")
+
+    def test_a_badge_is_not_the_hero(self) -> None:
+        md = (
+            "# Recipe\n"
+            "[Powered by ![Image 1](https://cooking.nytimes.com/_next/image?url=%2Fassets%2Fedamam-logo.png&w=768&q=75)](https://www.edamam.com/)\n"
+            "Boil water."
+        )
+        assert _extract_image_url_from_markdown(md) is None
+
+    def test_the_first_non_badge_markdown_image_wins(self) -> None:
+        md = (
+            "![Site logo](https://cdn.site.test/logo.png)\n"
+            "![Spicy sesame noodles](https://cdn.site.test/uploads/dish.jpg)\n"
+        )
+        assert _extract_image_url_from_markdown(md) == "https://cdn.site.test/uploads/dish.jpg"
+
+    def test_og_meta_line_still_beats_everything(self) -> None:
+        md = "og:image: https://example.com/photo.jpg\n![Dish](https://example.com/other.jpg)"
+        assert _extract_image_url_from_markdown(md) == "https://example.com/photo.jpg"
 
 
 # ===========================================================================

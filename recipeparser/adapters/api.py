@@ -44,13 +44,14 @@ from recipeparser.adapters.job_sink import JobSink
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
-from recipeparser.core.models import Chunk, InputType
+from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
+from recipeparser.io.readers.url import PageMeta, looks_like_badge, page_meta_from_html
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.supabase import write_recipe_to_supabase
 import recipeparser.gemini as _gemini_mod
@@ -361,7 +362,9 @@ def _extract_image_url_from_markdown(md: str) -> Optional[str]:
     Priority:
       1. ``og:image: <url>`` meta line
       2. ``twitter:image: <url>`` meta line
-      3. First Markdown image ``![alt](url)``
+      3. The first Markdown image ``![alt](url)`` that is not a badge or a logo
+         (``looks_like_badge``): on an NYT page the only markdown image is the
+         Edamam "Powered by" logo, and it was the hero for a day.
 
     A trailing ``))`` is cleaned to a single ``)``.
     """
@@ -375,10 +378,11 @@ def _extract_image_url_from_markdown(md: str) -> Optional[str]:
             url = url[:-1]
         return url
 
-    # 3 — first Markdown image tag
-    md_match = re.search(r"!\[[^\]]*\]\((https?://[^)]+)\)", md)
-    if md_match:
-        return md_match.group(1)
+    # 3 — first Markdown image tag that is a photograph
+    for md_match in re.finditer(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)", md):
+        alt, url = md_match.group(1), md_match.group(2)
+        if not looks_like_badge(url, alt):
+            return url
 
     return None
 
@@ -424,6 +428,37 @@ async def _upload_image_to_storage(image_url: str, recipe_id: str) -> Optional[s
         logger.exception("Could not fetch %s for recipe %s — continuing without an image.", image_url, recipe_id)
         return None
     return await asyncio.to_thread(SupabaseImageStore().put, data, recipe_id, content_type)
+
+
+_PAGE_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0 Safari/537.36"
+)
+
+
+async def _fetch_page_meta(url: str) -> PageMeta:
+    """The page's own <meta> tags — its hero image and its description.
+
+    One GET of the page itself, with a browser user-agent (a bare client is
+    served a consent wall or a 403 by the sites that matter), read before the
+    scraper's markdown is consulted. Any failure — unreachable, not HTML, a
+    timeout — is a page without meta, never a failed job.
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=15,
+            follow_redirects=True,
+            headers={"User-Agent": _PAGE_USER_AGENT, "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
+        ) as http:
+            resp = await http.get(url)
+            resp.raise_for_status()
+            if "html" not in resp.headers.get("content-type", "").lower():
+                return PageMeta(None, None)
+            # The head is at the top; a megabyte is more than any head needs.
+            return page_meta_from_html(resp.text[:1_000_000])
+    except Exception:
+        logger.info("Page meta unavailable for %s — falling back to the scraper's markdown.", url)
+        return PageMeta(None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -823,6 +858,7 @@ async def submit_job(
             source_url: Optional[str] = None
             stored_image_url: Optional[str] = None
 
+            page_meta = PageMeta(None, None)
             if body.url:
                 source_url = body.url
                 jina_url = f"https://r.jina.ai/{body.url}"
@@ -830,7 +866,11 @@ async def submit_job(
                     resp = await http.get(jina_url)
                     resp.raise_for_status()
                     markdown_text = resp.text
-                image_url_candidate = _extract_image_url_from_markdown(markdown_text)
+                # The page's own head first (og:image, the description), the
+                # scraper's markdown second: the markdown dropped both on the
+                # NYT page of 2026-09-12 and offered a logo instead.
+                page_meta = await _fetch_page_meta(body.url)
+                image_url_candidate = page_meta.image_url or _extract_image_url_from_markdown(markdown_text)
                 recipe_id_for_img = str(uuid.uuid4())
                 if image_url_candidate:
                     stored_image_url = await _upload_image_to_storage(
@@ -846,6 +886,8 @@ async def submit_job(
             # sequence.  source_url is None for raw-text submissions.
             # A list of one, so the total_chunks write below and the run() call
             # take the same shape here as they do in the file endpoint.
+            # The page's description is the page's own statement, so it rides
+            # SourceMeta and beats the model's reading, as a Paprika entry's does.
             chunks = [
                 Chunk(
                     text=source_text,
@@ -853,6 +895,7 @@ async def submit_job(
                     source_url=source_url,
                     image_url=stored_image_url,
                     citation=web_citation(body.url) if body.url else None,
+                    meta=SourceMeta(description=page_meta.description) if page_meta.description else None,
                 )
             ]
 
