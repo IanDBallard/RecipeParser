@@ -43,9 +43,13 @@ Every column on `recipes` belongs to exactly one group.
 ### 3.1 User-owned metadata (never triggers regen)
 
 `source`, `source_url`, `notes`, `description`, `nutritional_info`,
-`difficulty`, `rating` (nullable, null = unrated), `image_url`, and the
-duration and servings columns defined in 3.6. Categories live in
-`recipe_categories` and are user-owned after ingest.
+`difficulty`, `rating` (nullable, null = unrated), `image_url`, the
+duration and servings columns defined in 3.6, and the four citation columns
+`source_kind`, `source_key`, `source_title`, `source_author` (all nullable;
+written by ingestion at insert, derived for older rows by
+`scripts/backfill_sources.py`, corrected by a cook through *Set source*;
+`docs/superpowers/specs/2026-09-11-recipe-source-citation-design.md`).
+Categories live in `recipe_categories` and are user-owned after ingest.
 
 ### 3.2 User-owned body (feeds the AI stages)
 
