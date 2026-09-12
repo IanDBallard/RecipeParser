@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.pipeline import RecipePipeline
@@ -488,7 +489,7 @@ class _FakeImageStore(ImageStore):
 
 def _assemble_reflecting_image_url(
     *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta=None,
-    ingredient_lines=None, direction_steps=None, servings_text=None
+    ingredient_lines=None, direction_steps=None, servings_text=None, citation=None
 ):
     """Stand-in for the real ``assemble`` stage: echoes the image_url it was
     actually called with, so a test can prove the URL travels all the way
@@ -549,7 +550,7 @@ _CAPTURED_META: dict = {}
 
 def _assemble_capturing_meta(
     *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta,
-    ingredient_lines=None, direction_steps=None, servings_text=None
+    ingredient_lines=None, direction_steps=None, servings_text=None, citation=None
 ):
     """Stand-in for assemble() that records the meta it was handed."""
     _CAPTURED_META["meta"] = meta
@@ -610,6 +611,94 @@ def test_flow_b_restores_the_six_metadata_fields():
     assert result.nutritional_info == "520 kcal"
     assert result.description == "A cold-weather pie."
     assert result.difficulty == "Moderate"
+
+
+def test_a_restored_cayenne_export_carries_its_citation_columns_back_in():
+    """Design finding 1 (fix wave 2026-09-11): a backup->restore round-trip must not
+    null the four citation columns. A pre-parsed PAPRIKA_CAYENNE chunk has no
+    chunk.citation (only a fresh reader sets that) — the columns live on
+    `_cayenne_meta` (here, the pre-parsed CayenneRecipe) instead, and
+    `_citation_from` must recover them for assemble()."""
+    pre_parsed = CayenneRecipe(
+        title="Italian Wedding Soup",
+        structured_ingredients=[],
+        tokenized_directions=[],
+        source_kind="book",
+        source_key="italian food",
+        source_title="Italian Food",
+        source_author="Elizabeth David",
+    )
+    chunk = Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=pre_parsed,
+        pre_parsed_embedding=FAKE_EMBEDDING,
+    )
+
+    # The real assemble(): the point is that the columns survive into the
+    # IngestResponse via the real ASSEMBLE-only fast path, not a stand-in's echo.
+    result = _make_pipeline().run([chunk])[0]
+
+    assert (result.source_kind, result.source_key, result.source_title, result.source_author) == (
+        "book", "italian food", "Italian Food", "Elizabeth David")
+
+
+def test_a_restored_export_with_no_source_kind_yields_no_citation():
+    """An export that predates the four columns (no source_kind) must not fabricate
+    one — all four stay null, same as any other chunk with nothing known."""
+    pre_parsed = CayenneRecipe(
+        title="Italian Wedding Soup",
+        structured_ingredients=[],
+        tokenized_directions=[],
+        source_kind=None,
+    )
+    chunk = Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=pre_parsed,
+        pre_parsed_embedding=FAKE_EMBEDDING,
+    )
+
+    result = _make_pipeline().run([chunk])[0]
+
+    assert (result.source_kind, result.source_key, result.source_title, result.source_author) == (
+        None, None, None, None)
+
+
+def test_pipeline_resolves_the_chunk_citation_with_the_models_stated_source():
+    """Design 2026-09-11: the full pipeline resolves chunk.citation against the
+    model's stated_source/byline via resolve_citation() before calling assemble().
+    The reader's host beats the model's guess; the model fills in what the reader
+    could not know — the site's own name and the byline.
+
+    No fixture named `pipeline_with_fake_client`/`make_extraction` exists in this
+    file; this drives RecipePipeline.run the same way
+    test_a_legacy_paprika_chunks_meta_reaches_assemble does — patching EXTRACT to
+    return a faked RecipeExtraction and letting the real assemble() run so the
+    citation columns on the returned IngestResponse are the true end-to-end
+    result, not an echo of a stand-in.
+    """
+    chunk = Chunk(
+        text="Tomato soup ...",
+        input_type=InputType.URL,
+        source_url="https://cooking.nytimes.com/r/1",
+        citation=web_citation("https://cooking.nytimes.com/r/1"),
+    )
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=[
+        RecipeExtraction(
+            name="Tomato Soup", ingredients=["x"], directions=["y"],
+            stated_source="NYT Cooking", byline="Melissa Clark",
+        )
+    ]), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Tomato Soup")), \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        [result] = pipeline.run([chunk])
+
+    assert (result.source_kind, result.source_key, result.source_title, result.source_author) == (
+        "web", "cooking.nytimes.com", "NYT Cooking", "Melissa Clark")
 
 
 def test_a_worker_timeouterror_is_reported_accurately_not_as_a_segment_timeout():

@@ -39,6 +39,10 @@
     'servings_min': None,
     'servings_note': None,
     'source': None,
+    'source_author': None,
+    'source_key': None,
+    'source_kind': None,
+    'source_title': None,
     'source_url': 'https://example.com/cake',
     'structured_ingredients': list([
       dict({
@@ -95,6 +99,7 @@
 # name: test_extract_output_shape
   list([
     dict({
+      'byline': None,
       'cook_time': '30 mins',
       'directions': list([
         'Mix until smooth.',
@@ -107,6 +112,7 @@
       'photo_filename': None,
       'prep_time': '10 mins',
       'servings': '4',
+      'stated_source': None,
     }),
   ])
 # ---

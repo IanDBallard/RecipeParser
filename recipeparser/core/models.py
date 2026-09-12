@@ -4,14 +4,17 @@ core/models.py — Shared data models for the hexagonal pipeline.
 This module defines the Chunk dataclass and InputType enum that form the
 contract between I/O readers and the RecipePipeline orchestrator.
 
-Design rule: this module imports ONLY from stdlib and recipeparser.models.
-It must never import from recipeparser.io or recipeparser.adapters.
+Design rule: this module imports ONLY from stdlib, recipeparser.models and
+recipeparser.core.citation (core→core is allowed). It must never import from
+recipeparser.io or recipeparser.adapters.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional, Union
+
+from recipeparser.core.citation import Citation
 
 if TYPE_CHECKING:
     # Avoid circular imports at runtime; only used for type hints.
@@ -131,11 +134,17 @@ class Chunk:
         Fields the source stated for itself rather than the extractor inferring
         them.  Set by ``PaprikaReader``; None for every other reader, whose
         sources carry no such metadata.
+    citation:
+        What the reader knows about where the recipe came from: a book's
+        metadata, a URL's host, a Paprika entry's source. None when only the
+        text can say (pasted text), in which case assemble() takes the model's
+        stated source. Books no longer put "Title — Author" in source_url.
     """
 
     text: str
     input_type: InputType
     source_url: Optional[str] = None
+    citation: Optional[Citation] = None
     image_url: Optional[str] = None
     image_bytes: Optional[bytes] = None
     image_content_type: str = "image/jpeg"

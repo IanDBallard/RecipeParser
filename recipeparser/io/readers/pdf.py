@@ -15,6 +15,7 @@ from recipeparser.config import (
     PDF_PREFLIGHT_MIN_PAGES,
     PDF_PREFLIGHT_SAMPLE_PAGES,
 )
+from recipeparser.core.citation import Citation, book_citation
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.exceptions import PdfExtractionError
 from recipeparser.io.readers import RecipeReader
@@ -29,7 +30,8 @@ class PdfReader(RecipeReader):
     Each chunk carries:
     - ``text``: page text with [IMAGE: filename] breadcrumb markers
     - ``input_type``: InputType.PDF
-    - ``source_url``: the book source string ("Title — Author" or filename)
+    - ``source_url``: None (a book has no URL)
+    - ``citation``: the PDF's title and author metadata, if any
 
     Images are extracted to a temporary directory.  The caller is responsible
     for uploading qualifying images to storage before the ASSEMBLE stage.
@@ -54,7 +56,7 @@ class PdfReader(RecipeReader):
 
     def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
         """Internal helper — called with a managed temp directory."""
-        book_source, _image_dir, _qualifying, raw_chunks = load_pdf(source, output_dir)
+        citation, _image_dir, _qualifying, raw_chunks = load_pdf(source, output_dir)
 
         chunks: List[Chunk] = []
         for text in raw_chunks:
@@ -63,7 +65,8 @@ class PdfReader(RecipeReader):
                     Chunk(
                         text=text,
                         input_type=InputType.PDF,
-                        source_url=book_source,
+                        source_url=None,
+                        citation=citation,
                         # load_pdf() drops the page number for empty/skipped pages before
                         # returning raw_chunks, so no true page range is in scope here;
                         # a null label is honest, an invented one is not.
@@ -74,7 +77,7 @@ class PdfReader(RecipeReader):
         return chunks
 
 
-def load_pdf(path: str, output_dir: str) -> Tuple[str, str, Set[str], List[str]]:
+def load_pdf(path: str, output_dir: str) -> Tuple[Citation, str, Set[str], List[str]]:
     """
     Load a PDF and return the standard book-loader tuple.
 
@@ -82,7 +85,7 @@ def load_pdf(path: str, output_dir: str) -> Tuple[str, str, Set[str], List[str]]
     and page-based text chunks with [IMAGE: filename] markers.
 
     Returns:
-        (book_source, image_dir, qualifying_images, raw_chunks)
+        (citation, image_dir, qualifying_images, raw_chunks)
     """
     try:
         doc = fitz.open(path)
@@ -91,7 +94,7 @@ def load_pdf(path: str, output_dir: str) -> Tuple[str, str, Set[str], List[str]]
 
     try:
         _preflight(doc, path)
-        book_source = _get_book_source(doc, path)
+        citation = _get_book_citation(doc)
         image_dir = os.path.join(output_dir, "images")
         os.makedirs(image_dir, exist_ok=True)
         qualifying_images: Set[str] = set()
@@ -112,7 +115,7 @@ def load_pdf(path: str, output_dir: str) -> Tuple[str, str, Set[str], List[str]]
             if chunk:
                 raw_chunks.append(chunk)
 
-        return book_source, image_dir, qualifying_images, raw_chunks
+        return citation, image_dir, qualifying_images, raw_chunks
     finally:
         doc.close()
 
@@ -144,19 +147,10 @@ def _preflight(doc: "fitz.Document", path: str) -> None:
         )
 
 
-def _get_book_source(doc: "fitz.Document", path: str) -> str:
-    """Extract title and author from PDF metadata; fallback to filename or 'PDF Auto-Import'."""
-    meta = doc.metadata
-    title = (meta.get("title") or "").strip()
-    author = (meta.get("author") or "").strip()
-    if title and author:
-        return f"{title} \u2014 {author}"
-    if title:
-        return title
-    if author:
-        return author
-    stem = os.path.splitext(os.path.basename(path))[0]
-    return stem if stem else "PDF Auto-Import"
+def _get_book_citation(doc: "fitz.Document") -> Citation:
+    """PDF title and author metadata as a citation; an unknown book when the title is absent."""
+    meta = doc.metadata or {}
+    return book_citation(meta.get("title"), meta.get("author"))
 
 
 def _extract_page_images(

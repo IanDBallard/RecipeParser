@@ -9,6 +9,7 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 import logging
 from typing import Dict, List, Optional
 
+from recipeparser.core.citation import Citation
 from recipeparser.core.durations import duration_columns
 from recipeparser.core.models import SourceMeta
 from recipeparser.core.regen import raw_lines_from_derived
@@ -29,6 +30,7 @@ def assemble(
     ingredient_lines: Optional[List[str]] = None,
     direction_steps: Optional[List[str]] = None,
     servings_text: Optional[str] = None,
+    citation: Optional[Citation] = None,
 ) -> IngestResponse:
     """
     Assemble the final IngestResponse from stage outputs.
@@ -59,6 +61,10 @@ def assemble(
                           derived from the tokenized text with tokens stripped.
         servings_text:    The extracted servings string ("4", "2-4"). Parsed into
                           servings_min/max/note; servings_min becomes base_servings.
+        citation:         What the reader and the model settled about the source
+                          (core.citation.resolve_citation). Fills the four
+                          citation columns and, when nothing else supplies
+                          `source`, its display form.
 
     Returns:
         A fully-populated ``IngestResponse`` ready for persistence.
@@ -100,7 +106,14 @@ def assemble(
         embedding=embedding,
         # No extracted fallback: only a Paprika entry states these, and nothing
         # infers them from a book or a web page.
-        source=meta.source if meta else None,
+        # Paprika's own statement first; else the citation's display form, so the
+        # library row (which reads `source`) shows the same thing for a fresh
+        # insert as for a backfilled row; else null.
+        source=(meta.source if meta else None) or (citation.display() if citation else None),
+        source_kind=citation.kind if citation else None,
+        source_key=citation.key if citation else None,
+        source_title=citation.title if citation else None,
+        source_author=citation.author if citation else None,
         notes=meta.notes if meta else None,
         rating=meta.rating if meta else None,
         nutritional_info=meta.nutritional_info if meta else None,

@@ -20,6 +20,7 @@ def _recipe() -> IngestResponse:
         prep_time="15 mins",
         prep_min_minutes=15, prep_max_minutes=15, prep_note=None,
         servings_min=2, servings_max=4, servings_note=None,
+        source_kind="book", source_key="cake book", source_title="Cake Book", source_author="A. Baker",
     )
 
 
@@ -51,3 +52,8 @@ def test_row_has_structured_durations(posted):
 
 def test_line_index_serialised(posted):
     assert posted["structured_ingredients"][0]["line_index"] == 0
+
+
+def test_row_has_the_citation_columns(posted):
+    assert (posted["source_kind"], posted["source_key"], posted["source_title"], posted["source_author"]) == (
+        "book", "cake book", "Cake Book", "A. Baker")

@@ -1,5 +1,6 @@
 """Pydantic models for structured Gemini output."""
 from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -48,6 +49,24 @@ class RecipeExtraction(BaseModel):
     notes: Optional[str] = Field(
         default=None,
         description="Any additional notes or headnotes from the author.",
+    )
+
+    stated_source: Optional[str] = Field(
+        default=None,
+        repr=False,
+        description=(
+            "The publication, website or book this text names as its own source, exactly as the "
+            "text names it: a masthead, a book title, a site name. Never the name of an AI model or "
+            "a tool. null when the text does not say."
+        ),
+    )
+    byline: Optional[str] = Field(
+        default=None,
+        repr=False,
+        description=(
+            "The recipe author's name when a byline is printed ('By Melissa Clark' gives 'Melissa Clark'). "
+            "null when none is printed."
+        ),
     )
 
     # Populated by the pipeline after extraction — not part of the LLM schema.
@@ -163,6 +182,13 @@ class CayenneRecipe(BaseModel):
         default=None, description="A short blurb, shown above the directions."
     )
     difficulty: Optional[str] = Field(default=None, description="Free text, e.g. 'Easy', 'Moderate'.")
+    # Citation (design 2026-09-11): written at insert by assemble(), never by the regen worker.
+    source_kind: Optional[str] = Field(default=None, description="book, web, periodical, person, unknown.")
+    source_key: Optional[str] = Field(
+        default=None, description="The identity the library filters and sorts on. Never shown."
+    )
+    source_title: Optional[str] = Field(default=None, description="What the Source pill and the kitchen line show.")
+    source_author: Optional[str] = Field(default=None, description="The book's author or a byline.")
     # Raw, user-owned body (spec 3.2). Empty lists on legacy objects; the writer
     # and regen worker derive them from the structured data when empty.
     ingredient_lines: List[str] = Field(default_factory=list)

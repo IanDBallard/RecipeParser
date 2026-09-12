@@ -25,7 +25,6 @@ from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers.paprika import PaprikaReader
 from recipeparser.io.readers.url import UrlReader
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -494,3 +493,61 @@ class TestPaprikaLegacyMetadata:
         assert meta.nutritional_info == "520 kcal"
         assert meta.description == "A cold-weather pie."
         assert meta.difficulty == "Moderate"
+
+
+class TestReaderCitations:
+    def test_chunk_citation_defaults_to_none(self):
+        chunk = Chunk(text="x", input_type=InputType.URL)
+        assert chunk.citation is None
+
+    def test_epub_with_metadata_is_a_book_and_writes_no_source_url(self):
+        from ebooklib import epub as ebook
+
+        from recipeparser.io.readers.epub import get_book_citation
+
+        book = ebook.EpubBook()
+        book.set_title("Italian Food")
+        book.add_author("Elizabeth David")
+        c = get_book_citation(book)
+        assert (c.kind, c.key, c.title, c.author) == ("book", "italian food", "Italian Food", "Elizabeth David")
+
+    def test_epub_without_metadata_is_an_unknown_book(self):
+        from ebooklib import epub as ebook
+
+        from recipeparser.io.readers.epub import get_book_citation
+
+        c = get_book_citation(ebook.EpubBook())
+        assert (c.kind, c.key, c.title, c.author) == ("unknown", "unknown-book", None, None)
+
+    def test_pdf_citation_from_metadata(self):
+        from recipeparser.io.readers.pdf import _get_book_citation
+
+        doc = MagicMock()
+        doc.metadata = {"title": "Classic German Baking", "author": "Luisa Weiss"}
+        c = _get_book_citation(doc)
+        assert (c.kind, c.title, c.author) == ("book", "Classic German Baking", "Luisa Weiss")
+        doc.metadata = {}
+        assert _get_book_citation(doc).key == "unknown-book"
+
+    def test_url_reader_chunk_carries_the_host(self):
+        response = MagicMock()
+        response.text = "Tomato soup\n1 tin tomatoes\nHeat."
+        response.raise_for_status = MagicMock()
+        with patch("recipeparser.io.readers.url.requests.get", return_value=response):
+            chunk = UrlReader().read("https://www.seriouseats.com/tomato-soup")[0]
+        assert chunk.source_url == "https://www.seriouseats.com/tomato-soup"
+        assert chunk.citation is not None
+        assert (chunk.citation.kind, chunk.citation.key) == ("web", "seriouseats.com")
+
+    def test_paprika_entry_citation_from_its_source(self, tmp_path):
+        archive = _write_paprika_archive(tmp_path, [
+            {"name": "A", "ingredients": "x", "directions": "y", "source": "Italian Food — Elizabeth David"},
+            {"name": "B", "ingredients": "x", "directions": "y", "source": "", "source_url": "https://cooking.nytimes.com/r/1"},
+            {"name": "C", "ingredients": "x", "directions": "y", "source": ""},
+        ])
+        chunks = PaprikaReader().read(str(archive))
+        by_label = {c.label: c for c in chunks}
+        assert by_label["A"].citation.kind == "book" and by_label["A"].citation.author == "Elizabeth David"
+        # A blank source with a URL is the site, not "no source".
+        assert by_label["B"].citation.kind == "web" and by_label["B"].citation.key == "cooking.nytimes.com"
+        assert by_label["C"].citation.kind == "unknown" and by_label["C"].citation.key is None

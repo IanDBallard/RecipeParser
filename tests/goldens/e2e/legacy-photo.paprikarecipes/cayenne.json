@@ -46,6 +46,10 @@
         "servings_min": 6,
         "servings_note": null,
         "source": null,
+        "source_author": null,
+        "source_key": null,
+        "source_kind": "unknown",
+        "source_title": null,
         "source_url": null,
         "structured_ingredients": [
           {

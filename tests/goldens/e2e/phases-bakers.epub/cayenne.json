@@ -51,8 +51,12 @@
         "servings_max": 10,
         "servings_min": 10,
         "servings_note": null,
-        "source": null,
-        "source_url": "Phases And Percentages",
+        "source": "Phases And Percentages",
+        "source_author": null,
+        "source_key": "phases and percentages",
+        "source_kind": "book",
+        "source_title": "Phases And Percentages",
+        "source_url": null,
         "structured_ingredients": [
           {
             "amount": null,
@@ -200,8 +204,8 @@
       "prep_time": "14 hours",
       "rating": 0,
       "servings": "10",
-      "source": "",
-      "source_url": "Phases And Percentages",
+      "source": "Phases And Percentages",
+      "source_url": "",
       "total_time": "",
       "uid": "<fixed>"
     },
@@ -249,8 +253,12 @@
         "servings_max": 12,
         "servings_min": 12,
         "servings_note": null,
-        "source": null,
-        "source_url": "Phases And Percentages",
+        "source": "Phases And Percentages",
+        "source_author": null,
+        "source_key": "phases and percentages",
+        "source_kind": "book",
+        "source_title": "Phases And Percentages",
+        "source_url": null,
         "structured_ingredients": [
           {
             "amount": 4.0,
@@ -342,8 +350,8 @@
       "prep_time": "3 hours",
       "rating": 0,
       "servings": "12",
-      "source": "",
-      "source_url": "Phases And Percentages",
+      "source": "Phases And Percentages",
+      "source_url": "",
       "total_time": "",
       "uid": "<fixed>"
     }

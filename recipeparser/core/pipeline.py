@@ -21,6 +21,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
 
+from recipeparser.core.citation import Citation, resolve_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.rate_limiter import GlobalRateLimiter
@@ -307,6 +308,7 @@ class RecipePipeline:
                 ingredient_lines=list(getattr(pr, "ingredient_lines", []) or []),
                 direction_steps=list(getattr(pr, "direction_steps", []) or []),
                 servings_text=None,
+                citation=chunk.citation or _citation_from(pr),
             )
             return [result]
 
@@ -334,6 +336,7 @@ class RecipePipeline:
                 ingredient_lines=list(getattr(pr, "ingredient_lines", []) or []),
                 direction_steps=list(getattr(pr, "direction_steps", []) or []),
                 servings_text=None,
+                citation=chunk.citation or _citation_from(pr),
             )
             return [result]
 
@@ -390,6 +393,11 @@ class RecipePipeline:
                 ingredient_lines=list(raw.ingredients),
                 direction_steps=list(raw.directions),
                 servings_text=getattr(raw, "servings", None),
+                citation=resolve_citation(
+                    chunk.citation,
+                    getattr(raw, "stated_source", None),
+                    getattr(raw, "byline", None),
+                ),
             )
             results.append(result)
 
@@ -427,6 +435,24 @@ def _source_meta_from(pr: "CayenneRecipe | IngestResponse") -> SourceMeta:
         nutritional_info=pr.nutritional_info,
         description=pr.description,
         difficulty=pr.difficulty,
+    )
+
+
+def _citation_from(pr: "CayenneRecipe | IngestResponse") -> Optional[Citation]:
+    """
+    The four citation columns of a pre-parsed recipe, in the shape ``assemble()`` reads,
+    so a Cayenne export restores what a cook filed with Set source rather than nulling it.
+    None when the export predates the columns (no kind), which lets the reader's or the
+    model's citation apply as for any other chunk.
+    """
+    kind = getattr(pr, "source_kind", None)
+    if not kind:
+        return None
+    return Citation(
+        kind,
+        getattr(pr, "source_key", None),
+        getattr(pr, "source_title", None),
+        getattr(pr, "source_author", None),
     )
 
 

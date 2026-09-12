@@ -7,10 +7,11 @@ import tempfile
 from typing import List, Optional, Set, Tuple
 
 import ebooklib  # type: ignore[import-untyped]
-from ebooklib import epub
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
+from ebooklib import epub
 
 from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
+from recipeparser.core.citation import Citation, book_citation
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers import RecipeReader
 
@@ -24,7 +25,8 @@ class EpubReader(RecipeReader):
     Each chunk carries:
     - ``text``: chapter text with [IMAGE: filename] breadcrumb markers
     - ``input_type``: InputType.EPUB
-    - ``source_url``: the book source string ("Title — Author")
+    - ``source_url``: None (a book has no URL)
+    - ``citation``: the book's title and author, from EPUB DC metadata
 
     Images are extracted to a temporary directory managed by this reader.
     The caller is responsible for uploading qualifying images to storage
@@ -49,7 +51,7 @@ class EpubReader(RecipeReader):
 
     def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
         """Internal helper — called with a managed temp directory."""
-        book_source, _image_dir, _qualifying, raw_chunks = load_epub(source, output_dir)
+        citation, _image_dir, _qualifying, raw_chunks = load_epub(source, output_dir)
 
         # Filter to recipe-candidate chapters
         candidate_chunks = [c for c in raw_chunks if is_recipe_candidate(c)]
@@ -65,9 +67,8 @@ class EpubReader(RecipeReader):
                     Chunk(
                         text=part,
                         input_type=InputType.EPUB,
-                        source_url=book_source,
-                        # Chapter titles aren't retained through extract_chapters_with_image_markers;
-                        # a null label is honest, an invented one is not.
+                        source_url=None,
+                        citation=citation,
                         label=None,
                     )
                 )
@@ -75,22 +76,22 @@ class EpubReader(RecipeReader):
         return chunks
 
 
-def load_epub(epub_path: str, output_dir: str) -> Tuple[str, str, Set[str], List[str]]:
+def load_epub(epub_path: str, output_dir: str) -> Tuple[Citation, str, Set[str], List[str]]:
     """
     Load an EPUB and return the standard book-loader tuple.
 
     Returns:
-        (book_source, image_dir, qualifying_images, raw_chunks)
+        (citation, image_dir, qualifying_images, raw_chunks)
     """
     from recipeparser.exceptions import EpubExtractionError
     try:
         book = epub.read_epub(epub_path)
     except Exception as e:
         raise EpubExtractionError(f"Failed to open EPUB '{epub_path}': {e}") from e
-    book_source = get_book_source(book)
+    citation = get_book_citation(book)
     image_dir, qualifying_images = extract_all_images(book, output_dir)
     raw_chunks = extract_chapters_with_image_markers(book, qualifying_images)
-    return book_source, image_dir, qualifying_images, raw_chunks
+    return citation, image_dir, qualifying_images, raw_chunks
 
 
 def extract_all_images(book: epub.EpubBook, output_dir: str) -> Tuple[str, Set[str]]:
@@ -238,6 +239,15 @@ def get_book_source(book: epub.EpubBook) -> str:
     if title and author:
         return f"{title} \u2014 {author}"
     return title or "EPUB Auto-Import"
+
+
+def get_book_citation(book: epub.EpubBook) -> Citation:
+    """The book's DC title and creator as a citation; an unknown book when the title is absent."""
+    def _first(key: str) -> str:
+        vals = book.get_metadata("DC", key)
+        return str(vals[0][0]).strip() if vals else ""
+
+    return book_citation(_first("title"), _first("creator"))
 
 
 def extract_text_from_epub(epub_path: str) -> str:
