@@ -10,6 +10,10 @@ name: Deploy
 # repository's own CI job. This job calls it directly and never runs
 # sync-from-repo.sh -- that script, and the rest of deploy/, belong to the
 # Cayenne repository, and only its job updates them.
+# The image is always built and pushed, :latest included, on a merge to
+# master, because cut-over needs it to exist. The tailnet and deploy steps
+# need a VM; until CAYENNE_VM_HOST is set they are skipped, and the skip is
+# written to the step summary rather than passing quietly.
 on:
   push:
     branches: [master]
@@ -18,9 +22,21 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # One deploy at a time. Cayenne's own job cannot join this group (it is a
+    # different repository's workflow), so deploy.sh also takes a lock on the
+    # VM to serialise across both.
+    concurrency:
+      group: recipeparser-deploy
+      cancel-in-progress: false
+    # packages: write is exercised only on a push (the ghcr login and push
+    # steps below); a pull-request run never reaches either.
     permissions:
       contents: read
       packages: write
+
+    env:
+      CAYENNE_VM_HOST: ${{ vars.CAYENNE_VM_HOST }}
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v5
@@ -33,6 +49,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Docker refuses an uppercase repository name, and the owner is
+      # IanDBallard, so every tag uses this lowercased copy.
+      - name: Lowercase the image owner
+        id: owner
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
       # On a pull request this builds and does not push, so a broken
       # Dockerfile fails before the merge rather than during a deploy.
       - name: Build and push
@@ -41,11 +63,17 @@ jobs:
           context: .
           push: ${{ github.event_name == 'push' }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/ingestion-api:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/ingestion-api:latest
+            ghcr.io/${{ steps.owner.outputs.owner }}/ingestion-api:${{ github.sha }}
+            ghcr.io/${{ steps.owner.outputs.owner }}/ingestion-api:latest
+
+      - name: Note why the deploy was skipped
+        if: github.event_name == 'push' && env.CAYENNE_VM_HOST == ''
+        run: |
+          echo "CAYENNE_VM_HOST is not configured, so the image was pushed but the deploy was skipped."
+          echo "**Deploy skipped:** \`CAYENNE_VM_HOST\` is not configured. The image was pushed; nothing was deployed. See deploy/README.md in the Cayenne repository." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Join the tailnet
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && env.CAYENNE_VM_HOST != ''
         uses: tailscale/github-action@v3
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -55,7 +83,7 @@ jobs:
       # deploy.sh verifies api through /health -- there is no version.txt
       # build arg for this image, unlike web.
       - name: Deploy
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && env.CAYENNE_VM_HOST != ''
         run: |
-          tailscale ssh "${{ vars.CAYENNE_VM_HOST }}" \
+          tailscale ssh "$CAYENNE_VM_HOST" \
             "sudo bash -c 'set -a; . /opt/cayenne/site.env; set +a; /opt/cayenne/deploy.sh --service api --sha ${{ github.sha }} --ci'"
