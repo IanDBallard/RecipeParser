@@ -63,3 +63,17 @@ def test_extraction_asks_for_a_stated_source_and_a_byline():
     assert "Never the name of an AI model" in schema["properties"]["stated_source"]["description"]
     r = RecipeExtraction(name="x", ingredients=[], directions=[])
     assert r.stated_source is None and r.byline is None
+
+
+def test_extraction_source_fields_stay_out_of_repr():
+    # tests/goldens/golden_client.py keys recorded refine replies by the sha of
+    # str(raw_recipe); these two fields are repr=False so adding them did not
+    # move a single recording. Removing repr=False costs a paid re-record.
+    from recipeparser.models import RecipeExtraction
+
+    text = str(RecipeExtraction(
+        name="x", ingredients=[], directions=[],
+        stated_source="NYT Cooking", byline="Melissa Clark",
+    ))
+    assert "stated_source" not in text and "byline" not in text
+    assert "NYT Cooking" not in text

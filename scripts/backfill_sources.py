@@ -49,6 +49,14 @@ RULE_NAMES = {
 RowPlan = Tuple[str, Dict[str, Any], int]
 
 
+def _creds() -> Tuple[str, str]:
+    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not url or not key:
+        raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must both be set.")
+    return url, key
+
+
 def _spelling(source: str) -> str:
     """The site as the row wrote it, without scheme or path, case kept: the title candidates for rule 4."""
     v = source.strip()
@@ -95,7 +103,7 @@ def main() -> int:
     ap.add_argument("--verbose", action="store_true", help="List every row that would change.")
     args = ap.parse_args()
     from supabase import create_client  # noqa: PLC0415
-    sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
+    sb = create_client(*_creds())
 
     # Read everything first: rule 4's majority spelling needs the whole library.
     rows: List[Dict[str, Any]] = []

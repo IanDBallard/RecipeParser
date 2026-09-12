@@ -147,21 +147,6 @@ def _preflight(doc: "fitz.Document", path: str) -> None:
         )
 
 
-def _get_book_source(doc: "fitz.Document", path: str) -> str:
-    """Extract title and author from PDF metadata; fallback to filename or 'PDF Auto-Import'."""
-    meta = doc.metadata
-    title = (meta.get("title") or "").strip()
-    author = (meta.get("author") or "").strip()
-    if title and author:
-        return f"{title} \u2014 {author}"
-    if title:
-        return title
-    if author:
-        return author
-    stem = os.path.splitext(os.path.basename(path))[0]
-    return stem if stem else "PDF Auto-Import"
-
-
 def _get_book_citation(doc: "fitz.Document") -> Citation:
     """PDF title and author metadata as a citation; an unknown book when the title is absent."""
     meta = doc.metadata or {}

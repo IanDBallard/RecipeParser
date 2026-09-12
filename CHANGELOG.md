@@ -12,8 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The EPUB and PDF readers no longer write `"Title — Author"` into `source_url`; the string form stays only as `Citation.display()`, used by the Paprika export.
 - `Chunk.citation`, carried alongside `source_url` from every reader through to `assemble()`.
 - The extraction model states `stated_source` and `byline` (both `repr=False`, so the refine prompt and the golden corpus are unchanged) and is told never to name itself as the source.
-- `scripts/backfill_sources.py` — the seven classification rules applied to existing rows, per-rule counts reported, dry run by default, `--force` to write.
-- `scripts/restore_source_urls.py` — restores book `source_url`s the backfill's predecessor overwrote; dry run by default.
+- `scripts/backfill_sources.py` — the seven classification rules applied to existing rows, per-rule counts reported, dry run by default, `--live` writes; `--force` reclassifies rows whose `source_kind` is already set (it overwrites a cook's Set source, so use it knowingly).
+- `scripts/restore_source_urls.py` — restores the Paprika archive's per-entry clip URLs that the bulk import dropped, matched by title with `backfill_paprika_metadata`'s rule; ambiguous and unmatched entries are reported, never written. Dry run by default.
 - Shared key fixture `tests/fixtures/citation_keys.json`, the contract `normalise_key` and its Cayenne client twin (`cayenne-web/src/lib/domain/citation.ts`) must both satisfy.
 
 ### ⚠️ Requires — apply the Cayenne migration **before** deploying this version

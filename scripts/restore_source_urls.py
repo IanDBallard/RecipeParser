@@ -36,6 +36,14 @@ from scripts.backfill_paprika_metadata import normalise_title  # noqa: E402
 PAGE = 500
 
 
+def _creds() -> Tuple[str, str]:
+    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not url or not key:
+        raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must both be set.")
+    return url, key
+
+
 @dataclass
 class RestorePlan:
     updates: List[Tuple[str, str, str]] = field(default_factory=list)  # (recipe_id, title, url)
@@ -84,7 +92,7 @@ def main() -> int:
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
     from supabase import create_client  # noqa: PLC0415
-    sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
+    sb = create_client(*_creds())
 
     entries = PaprikaReader().read_entries(args.archive)
     rows: List[Dict[str, Any]] = []

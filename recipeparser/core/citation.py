@@ -62,7 +62,7 @@ def normalise_key(value: str) -> str:
 def host_of(url_or_host: str) -> str:
     """The host, lower-cased, without a leading www.; a bare domain passes through."""
     v = url_or_host.strip()
-    host = urlparse(v).netloc if _HTTP.match(v) else v
+    host = urlparse(v).netloc if _HTTP.match(v) else v.split("/", 1)[0]
     return host.lower().removeprefix("www.")
 
 

@@ -31,6 +31,7 @@ def test_host_of_strips_scheme_path_case_and_www():
     assert host_of("https://www.Cooking.NYTimes.com/recipes/1") == "cooking.nytimes.com"
     assert host_of("thewoksoflife.com") == "thewoksoflife.com"
     assert host_of("www.thewoksoflife.com") == "thewoksoflife.com"
+    assert host_of("cooking.nytimes.com/recipes/1") == "cooking.nytimes.com"
 
 
 def test_book_citation_with_metadata():
