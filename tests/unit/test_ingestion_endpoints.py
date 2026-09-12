@@ -121,3 +121,54 @@ def test_total_chunks_is_not_written_during_a_test_run(monkeypatch):
     api._update_total_chunks("job-1", 5)
 
     assert called == []
+
+
+def _capturing_client(sent: dict):
+    class _Table:
+        def update(self, payload):
+            sent.update(payload)
+            return self
+
+        def eq(self, *_a):
+            return self
+
+        def execute(self):
+            return None
+
+    client = MagicMock()
+    client.table.return_value = _Table()
+    return client
+
+
+def test_total_chunks_update_carries_the_source_hint_when_known(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(api, "_get_supabase_service_client", lambda: _capturing_client(sent))
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+    api._update_total_chunks("job-1", 12, source_hint="the best of jane grigson")
+    assert sent["total_chunks"] == 12
+    assert sent["source_hint"] == "the best of jane grigson"
+
+
+def test_total_chunks_update_leaves_the_hint_alone_when_unknown(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(api, "_get_supabase_service_client", lambda: _capturing_client(sent))
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+    api._update_total_chunks("job-1", 1)
+    assert sent["total_chunks"] == 1
+    assert "source_hint" not in sent
+
+
+def test_source_key_of_takes_the_majority_key_and_ignores_uncited_chunks():
+    from recipeparser.core.citation import book_citation, web_citation
+    from recipeparser.core.models import Chunk, InputType
+
+    book = book_citation("Italian Food", "Elizabeth David")
+    chunks = [
+        Chunk(text="a", input_type=InputType.EPUB, citation=book),
+        Chunk(text="b", input_type=InputType.EPUB, citation=book),
+        Chunk(text="c", input_type=InputType.URL, citation=web_citation("https://x.test/r")),
+        Chunk(text="d", input_type=InputType.IMAGE),
+    ]
+    assert api._source_key_of(chunks) == "italian food"
+    assert api._source_key_of([Chunk(text="d", input_type=InputType.IMAGE)]) is None
+    assert api._source_key_of([]) is None

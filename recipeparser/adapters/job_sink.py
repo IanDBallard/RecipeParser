@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+from collections import Counter
 from typing import Any, Callable, Dict, List, Optional
 
 from recipeparser.core.models import Chunk
@@ -61,6 +62,9 @@ class JobSink:
         # "change" and both 0 and 100 would always be emitted: 101 updates for
         # a job that is supposed to cap at 100.
         self._last_pct = 0
+        # Which source the written recipes carry, so the job row can point the
+        # library at it (design 2026-09-11: source_hint becomes the source_key).
+        self._source_keys: Counter = Counter()
 
     # ── callbacks handed to RecipePipeline.run ────────────────────────────────
 
@@ -79,6 +83,9 @@ class JobSink:
             self._record_skip(getattr(recipe, "title", None), f"write failed: {exc}", -1)
             return
         self.recipe_count += 1
+        key = getattr(recipe, "source_key", None)
+        if key:
+            self._source_keys[key] += 1
 
     def on_skip(self, chunk: Chunk, reason: str, index: int) -> None:
         """Record a chunk that produced nothing because something failed.
@@ -138,6 +145,11 @@ class JobSink:
         }
         if success and not cancelled:
             payload["progress_pct"] = 100
+        if self._source_keys:
+            # Pasted text and photos only learn their source from the model, so
+            # the read-time hint (the chunks' citation) was never set for them;
+            # a job that wrote nothing keyed keeps whatever hint it had.
+            payload["source_hint"] = self._source_keys.most_common(1)[0][0]
         if error_message:
             payload["error_message"] = error_message
         return payload

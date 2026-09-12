@@ -355,6 +355,25 @@ class TestPostJobs:
         upload.assert_awaited_once()
         assert upload.await_args.args[0] == "https://cdn.site.test/uploads/dish.jpg"  # the photo, not the badge
 
+    def test_total_chunks_and_the_hint_land_before_the_pipeline_runs(self) -> None:
+        order: list[str] = []
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
+        mock_pipeline_cls.return_value.run.side_effect = lambda *a, **kw: order.append("run") or []
+
+        def _record(job_id: str, total: int, source_hint: "str | None" = None) -> None:
+            order.append(f"total_chunks={total} hint={source_hint}")
+
+        with stack, patch("recipeparser.adapters.api._update_total_chunks", side_effect=_record), \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"text": "Boil water. Add pasta."})
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+        assert order == ["total_chunks=1 hint=None", "run"]
+
 
 # ===========================================================================
 # Section 2 — POST /jobs/file
@@ -875,11 +894,11 @@ class TestCancelledJobsFinalizeAsCancelled:
 
 class TestTotalChunks:
 
-    def _captured(self, monkeypatch: Any) -> list[tuple[str, int]]:
-        calls: list[tuple[str, int]] = []
+    def _captured(self, monkeypatch: Any) -> list[tuple[str, int, Any]]:
+        calls: list[tuple[str, int, Any]] = []
         monkeypatch.setattr(
             "recipeparser.adapters.api._update_total_chunks",
-            lambda job_id, total: calls.append((job_id, total)),
+            lambda job_id, total, source_hint=None: calls.append((job_id, total, source_hint)),
         )
         return calls
 
@@ -897,7 +916,7 @@ class TestTotalChunks:
             job_id = resp.json()["job_id"]
             self._drain(tc, job_id)
 
-        assert calls == [(job_id, 1)]
+        assert calls == [(job_id, 1, None)]  # plain text carries no citation to hint from
 
     def test_a_file_job_records_what_the_reader_returned(self, monkeypatch: Any) -> None:
         calls = self._captured(monkeypatch)
@@ -917,4 +936,6 @@ class TestTotalChunks:
             job_id = resp.json()["job_id"]
             self._drain(tc, job_id)
 
-        assert calls == [(job_id, 3)]
+        # Each mock chunk carries its own auto-generated (distinct) citation
+        # mock; the tie is broken by first-seen, so chunks[0]'s wins.
+        assert calls == [(job_id, 3, chunks[0].citation.key)]

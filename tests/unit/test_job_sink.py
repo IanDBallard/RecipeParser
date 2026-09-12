@@ -207,3 +207,32 @@ def test_a_cancelled_run_reports_only_the_chunks_it_actually_attempted():
 
     assert payload["skipped_count"] == 1
     assert payload["skipped"] == [{"label": "Lost", "index": 1, "reason": "MAX_TOKENS"}]
+
+
+class _CitedRecipe(_Recipe):
+    def __init__(self, title: str = "R", source_key: "str | None" = None) -> None:
+        super().__init__(title)
+        self.source_key = source_key
+
+
+def test_finalize_carries_the_recipes_source_key_as_the_hint():
+    sink = _sink()
+    for key in ("cooking.nytimes.com", "cooking.nytimes.com", "seriouseats.com"):
+        sink.on_result(_CitedRecipe(source_key=key))
+    assert sink.finalize_payload(True)["source_hint"] == "cooking.nytimes.com"
+
+
+def test_finalize_omits_the_hint_when_no_recipe_carried_a_key():
+    sink = _sink()
+    sink.on_result(_CitedRecipe(source_key=None))
+    sink.on_result(_Recipe())          # no source_key attribute at all
+    assert "source_hint" not in sink.finalize_payload(True)
+
+
+def test_a_recipe_whose_write_failed_does_not_vote():
+    def _boom(recipe, user_id, recipe_id=None, category_ids=None):
+        raise RuntimeError("no")
+
+    sink = JobSink(job_id="job-1", user_id="user-1", category_ids={}, write=_boom, now=lambda: "t")
+    sink.on_result(_CitedRecipe(source_key="the woks of life"))
+    assert "source_hint" not in sink.finalize_payload(True)

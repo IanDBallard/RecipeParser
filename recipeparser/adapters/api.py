@@ -30,9 +30,10 @@ import re
 import tempfile
 import uuid
 import logging
+from collections import Counter
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
@@ -702,8 +703,24 @@ def _make_progress_writer(job_id: str) -> Callable[[int], None]:
     return _write
 
 
-def _update_total_chunks(job_id: str, total: int) -> None:
-    """Record how many chunks this job will attempt.
+def _source_key_of(chunks: List[Chunk]) -> Optional[str]:
+    """The source key the job's chunks carry, when a reader knew it.
+
+    A book's chunks all carry the book; a URL's one chunk carries its host.
+    The most common key wins on a mixed batch; pasted text and photos carry
+    none and answer None, and learn theirs at finalize from the written rows.
+    """
+    keys: Counter = Counter(
+        chunk.citation.key for chunk in chunks
+        if chunk.citation is not None and chunk.citation.key
+    )
+    if not keys:
+        return None
+    return keys.most_common(1)[0][0]
+
+
+def _update_total_chunks(job_id: str, total: int, source_hint: Optional[str] = None) -> None:
+    """Record how many chunks this job will attempt, and which source they carry.
 
     The ingestion_jobs row is inserted before the background task is scheduled
     and the source is only read inside _run(), so the INSERT cannot carry this
@@ -716,6 +733,11 @@ def _update_total_chunks(job_id: str, total: int) -> None:
     is unknowable. The entire body — including building the client, which can
     itself raise — is inside the try, which is also what keeps a deploy that
     ran before Cayenne migration 011 costing one number instead of the import.
+
+    ``source_hint`` rides the same UPDATE (design 2026-09-11): once the reader
+    has returned, the job's hint becomes the recipes' source_key, so a
+    Recent-imports row opens the library on exactly what the job wrote. It is
+    sent only when known; None leaves the row's hint as the endpoint set it.
     """
     if _live_writes_blocked():
         logger.warning("Test run: skipping the total_chunks update for job %s.", job_id)
@@ -726,11 +748,14 @@ def _update_total_chunks(job_id: str, total: int) -> None:
         sb = _get_supabase_service_client()
         if sb is None:
             return
-        sb.table("ingestion_jobs").update({
+        payload: Dict[str, Any] = {
             "total_chunks": total,
             "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
-        }).eq("id", job_id).execute()
-        logger.info("Job %s: total_chunks = %d.", job_id, total)
+        }
+        if source_hint is not None:
+            payload["source_hint"] = source_hint
+        sb.table("ingestion_jobs").update(payload).eq("id", job_id).execute()
+        logger.info("Job %s: total_chunks = %d, source_hint = %r.", job_id, total, source_hint)
     except Exception:
         logger.exception("Job %s: failed to write total_chunks=%d.", job_id, total)
 
@@ -932,7 +957,7 @@ async def submit_job(
                 measure_preference=measure_preference,
                 image_store=SupabaseImageStore(),
             )
-            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks))
+            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
             await asyncio.to_thread(
                 lambda: pipeline.run(
                     chunks,
@@ -1070,7 +1095,7 @@ async def submit_file_job(
                 measure_preference=measure_preference_resolved,
                 image_store=SupabaseImageStore(),
             )
-            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks))
+            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
             await asyncio.to_thread(
                 lambda: pipeline.run(
                     chunks,
