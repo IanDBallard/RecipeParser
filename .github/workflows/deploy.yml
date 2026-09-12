@@ -1,0 +1,61 @@
+name: Deploy
+
+# Builds and, on a merge to master, pushes the ingestion API image and
+# deploys it to the Cayenne VM. On a pull request (including one from a
+# fork) this only builds the image -- no push, no ghcr login, no tailnet,
+# no deploy -- so a broken Dockerfile fails here rather than during a
+# deploy, and no secret is ever reachable from a fork's PR.
+#
+# deploy.sh already lives on the VM, installed there by the Cayenne
+# repository's own CI job. This job calls it directly and never runs
+# sync-from-repo.sh -- that script, and the rest of deploy/, belong to the
+# Cayenne repository, and only its job updates them.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Log in to ghcr
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # On a pull request this builds and does not push, so a broken
+      # Dockerfile fails before the merge rather than during a deploy.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ingestion-api:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/ingestion-api:latest
+
+      - name: Join the tailnet
+        if: github.event_name == 'push'
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      # deploy.sh verifies api through /health -- there is no version.txt
+      # build arg for this image, unlike web.
+      - name: Deploy
+        if: github.event_name == 'push'
+        run: |
+          tailscale ssh "${{ vars.CAYENNE_VM_HOST }}" \
+            "sudo bash -c 'set -a; . /opt/cayenne/site.env; set +a; /opt/cayenne/deploy.sh --service api --sha ${{ github.sha }} --ci'"
