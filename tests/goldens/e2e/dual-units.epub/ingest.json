@@ -47,7 +47,11 @@
       "servings_max": 12,
       "servings_min": 12,
       "servings_note": null,
-      "source": null,
+      "source": "Dual Units",
+      "source_author": null,
+      "source_key": "dual units",
+      "source_kind": "book",
+      "source_title": "Dual Units",
       "source_url": null,
       "structured_ingredients": [
         {
@@ -163,7 +167,11 @@
       "servings_max": 8,
       "servings_min": 8,
       "servings_note": null,
-      "source": null,
+      "source": "Dual Units",
+      "source_author": null,
+      "source_key": "dual units",
+      "source_kind": "book",
+      "source_title": "Dual Units",
       "source_url": null,
       "structured_ingredients": [
         {

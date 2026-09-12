@@ -182,6 +182,13 @@ class CayenneRecipe(BaseModel):
         default=None, description="A short blurb, shown above the directions."
     )
     difficulty: Optional[str] = Field(default=None, description="Free text, e.g. 'Easy', 'Moderate'.")
+    # Citation (design 2026-09-11): written at insert by assemble(), never by the regen worker.
+    source_kind: Optional[str] = Field(default=None, description="book, web, periodical, person, unknown.")
+    source_key: Optional[str] = Field(
+        default=None, description="The identity the library filters and sorts on. Never shown."
+    )
+    source_title: Optional[str] = Field(default=None, description="What the Source pill and the kitchen line show.")
+    source_author: Optional[str] = Field(default=None, description="The book's author or a byline.")
     # Raw, user-owned body (spec 3.2). Empty lists on legacy objects; the writer
     # and regen worker derive them from the structured data when empty.
     ingredient_lines: List[str] = Field(default_factory=list)

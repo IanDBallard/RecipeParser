@@ -39,6 +39,10 @@
     'servings_min': None,
     'servings_note': None,
     'source': None,
+    'source_author': None,
+    'source_key': None,
+    'source_kind': None,
+    'source_title': None,
     'source_url': 'https://example.com/cake',
     'structured_ingredients': list([
       dict({

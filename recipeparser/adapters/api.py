@@ -42,6 +42,7 @@ from pydantic import BaseModel
 
 from recipeparser.adapters.job_sink import JobSink
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
+from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.core.pipeline import RecipePipeline
@@ -802,6 +803,7 @@ async def submit_job(
                     input_type=InputType.URL,
                     source_url=source_url,
                     image_url=stored_image_url,
+                    citation=web_citation(body.url) if body.url else None,
                 )
             ]
 

@@ -202,6 +202,11 @@ def write_recipe_to_supabase(
         "nutritional_info": recipe.nutritional_info,
         "description": recipe.description,
         "difficulty": recipe.difficulty,
+        # Citation columns (migration recipe_source_citation in the Cayenne repo).
+        "source_kind": recipe.source_kind,
+        "source_key": recipe.source_key,
+        "source_title": recipe.source_title,
+        "source_author": recipe.source_author,
         # jsonb columns — send the list itself. json.dumps()ing it here handed
         # Postgres a JSON *string* containing an array, and that is what jsonb
         # stored: on 2026-09-06 jsonb_typeof reported 'string' for all 786 rows

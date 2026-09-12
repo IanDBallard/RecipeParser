@@ -21,6 +21,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
 
+from recipeparser.core.citation import resolve_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.rate_limiter import GlobalRateLimiter
@@ -307,6 +308,7 @@ class RecipePipeline:
                 ingredient_lines=list(getattr(pr, "ingredient_lines", []) or []),
                 direction_steps=list(getattr(pr, "direction_steps", []) or []),
                 servings_text=None,
+                citation=chunk.citation,
             )
             return [result]
 
@@ -334,6 +336,7 @@ class RecipePipeline:
                 ingredient_lines=list(getattr(pr, "ingredient_lines", []) or []),
                 direction_steps=list(getattr(pr, "direction_steps", []) or []),
                 servings_text=None,
+                citation=chunk.citation,
             )
             return [result]
 
@@ -390,6 +393,11 @@ class RecipePipeline:
                 ingredient_lines=list(raw.ingredients),
                 direction_steps=list(raw.directions),
                 servings_text=getattr(raw, "servings", None),
+                citation=resolve_citation(
+                    chunk.citation,
+                    getattr(raw, "stated_source", None),
+                    getattr(raw, "byline", None),
+                ),
             )
             results.append(result)
 
