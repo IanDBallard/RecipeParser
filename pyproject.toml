@@ -94,8 +94,13 @@ select = ["E", "F", "I", "TID"]
 # scripts/ are an outer shell, not core: a one-off repair exists precisely to
 # wire a reader to a writer, which is the composition adapters/ is allowed too.
 "scripts/**" = ["TID"]
+# This test file drives recipeparser.adapters and recipeparser.io directly by design.
+"tests/test_api.py" = ["TID"]
 # Reader unit tests exercise recipeparser.io.readers directly by design.
 "tests/unit/readers/test_readers.py" = ["TID"]
+"tests/unit/readers/test_image_reader.py" = ["TID"]
+"tests/unit/readers/test_pdf_ocr_fallback.py" = ["TID"]
+"tests/unit/readers/test_page_meta.py" = ["TID"]
 # Reader goldens exercise recipeparser.io.readers directly by design (spec §6.1).
 "tests/goldens/test_readers_golden.py" = ["TID"]
 # Stage goldens drive readers directly to build real chunks for the parse path (spec §6.2).

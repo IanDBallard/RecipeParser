@@ -54,6 +54,12 @@
   - stated_source is the publication or book as the text names itself; byline is the author's
     name if one is printed. Never the name of a model or a tool. Leave both null if the text
     does not say.
+  - total_time: the recipe's stated total or overall time, only when the text states one.
+    Never add prep and cook together.
+  - description: the headnote or introduction printed with the recipe, in its own words, at
+    most one paragraph. null when there is none.
+  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
+    text carries none.
   - Do not invent or infer values that are not present in the text.
   
   Text chunk:
@@ -95,6 +101,12 @@
   - stated_source is the publication or book as the text names itself; byline is the author's
     name if one is printed. Never the name of a model or a tool. Leave both null if the text
     does not say.
+  - total_time: the recipe's stated total or overall time, only when the text states one.
+    Never add prep and cook together.
+  - description: the headnote or introduction printed with the recipe, in its own words, at
+    most one paragraph. null when there is none.
+  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
+    text carries none.
   - Do not invent or infer values that are not present in the text.
   - Where ingredients are given with dual measurements (e.g. "2 cups/250g flour"), keep the metric (gram/ml) part. Where ounces or pounds appear, keep those as-is.
   
@@ -137,6 +149,12 @@
   - stated_source is the publication or book as the text names itself; byline is the author's
     name if one is printed. Never the name of a model or a tool. Leave both null if the text
     does not say.
+  - total_time: the recipe's stated total or overall time, only when the text states one.
+    Never add prep and cook together.
+  - description: the headnote or introduction printed with the recipe, in its own words, at
+    most one paragraph. null when there is none.
+  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
+    text carries none.
   - Do not invent or infer values that are not present in the text.
   - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the metric (gram or ml) part and discard the US volume part. Output just "250g flour", "200g butter", etc.
   
@@ -179,6 +197,12 @@
   - stated_source is the publication or book as the text names itself; byline is the author's
     name if one is printed. Never the name of a model or a tool. Leave both null if the text
     does not say.
+  - total_time: the recipe's stated total or overall time, only when the text states one.
+    Never add prep and cook together.
+  - description: the headnote or introduction printed with the recipe, in its own words, at
+    most one paragraph. null when there is none.
+  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
+    text carries none.
   - Do not invent or infer values that are not present in the text.
   - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the US measure part and discard the metric part. Output just "2 cups flour", "14 tablespoons butter", etc.
   
@@ -200,6 +224,12 @@
   - stated_source is the publication or book as the text names itself; byline is the author's
     name if one is printed. Never the name of a model or a tool. Leave both null if the text
     does not say.
+  - total_time: the recipe's stated total or overall time, only when the text states one.
+    Never add prep and cook together.
+  - description: the headnote or introduction printed with the recipe, in its own words, at
+    most one paragraph. null when there is none.
+  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
+    text carries none.
   - Do not invent or infer values not present in the text.
   - photo_filename: always null (no images in plain text).
   
@@ -800,6 +830,19 @@
             'description': "Cook time (e.g., '30 mins').",
             'title': 'Cook Time',
           }),
+          'description': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "The headnote or introduction printed with the recipe, in the source's own words, at most one paragraph. null when there is none.",
+            'title': 'Description',
+          }),
           'directions': dict({
             'description': 'List of step-by-step cooking instructions.',
             'items': dict({
@@ -833,6 +876,19 @@
             'default': None,
             'description': 'Any additional notes or headnotes from the author.',
             'title': 'Notes',
+          }),
+          'nutritional_info': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "The recipe's nutrition statement, verbatim, as one line ('572 calories; 19 grams fat; 35 grams protein'). null when the text carries none.",
+            'title': 'Nutritional Info',
           }),
           'photo_filename': dict({
             'anyOf': list([
@@ -885,6 +941,19 @@
             'default': None,
             'description': 'The publication, website or book this text names as its own source, exactly as the text names it: a masthead, a book title, a site name. Never the name of an AI model or a tool. null when the text does not say.',
             'title': 'Stated Source',
+          }),
+          'total_time': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "The total or overall time when the text states one ('Total Time 8 to 10 hours, plus refrigeration'). Never the sum of prep and cook. null when the text states no total.",
+            'title': 'Total Time',
           }),
         }),
         'required': list([

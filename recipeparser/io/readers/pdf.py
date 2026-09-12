@@ -10,6 +10,7 @@ import fitz  # type: ignore[import-untyped]  # PyMuPDF
 
 from recipeparser.config import (
     MIN_PHOTO_BYTES,
+    PDF_OCR_MAX_PAGES,
     PDF_PREFLIGHT_MAX_PAGES,
     PDF_PREFLIGHT_MIN_CHARS_PER_PAGE,
     PDF_PREFLIGHT_MIN_PAGES,
@@ -19,6 +20,7 @@ from recipeparser.core.citation import Citation, book_citation
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.exceptions import PdfExtractionError
 from recipeparser.io.readers import RecipeReader
+from recipeparser.io.readers.epub import split_large_chunk
 
 log = logging.getLogger(__name__)
 
@@ -37,9 +39,16 @@ class PdfReader(RecipeReader):
     for uploading qualifying images to storage before the ASSEMBLE stage.
     """
 
+    def __init__(self, client: Any = None) -> None:
+        # With a client, a scan is transcribed by vision OCR instead of refused
+        # (Input media 1). Without one — the CLI's text-only paths — the
+        # pre-flight refusal stands.
+        self._client = client
+
     def read(self, source: str) -> List[Chunk]:
         """
-        Parse a PDF file and return page chunks.
+        Parse a PDF file and return page chunks. A scan is transcribed by
+        vision OCR when a client was given.
 
         Args:
             source: File-system path to the .pdf file.
@@ -48,15 +57,20 @@ class PdfReader(RecipeReader):
             List of Chunk objects, one per non-empty page.
 
         Raises:
-            PdfExtractionError: If the PDF fails pre-flight checks (encrypted,
-                                no pages, insufficient text layer, etc.).
+            PdfExtractionError: pre-flight checks (encrypted, no pages, too
+                                many pages), the no-client refusal for a
+                                text-poor document, or that document's page
+                                count over ``PDF_OCR_MAX_PAGES``.
+            RuntimeError: the model returned no text for any page (from
+                         ``extract_text_via_vision``; the job fails with that
+                         message).
         """
         with tempfile.TemporaryDirectory(prefix="cayenne_pdf_") as output_dir:
             return self._read_in_dir(source, output_dir)
 
     def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
         """Internal helper — called with a managed temp directory."""
-        citation, _image_dir, _qualifying, raw_chunks = load_pdf(source, output_dir)
+        citation, _image_dir, _qualifying, raw_chunks = load_pdf(source, output_dir, client=self._client)
 
         chunks: List[Chunk] = []
         for text in raw_chunks:
@@ -77,12 +91,19 @@ class PdfReader(RecipeReader):
         return chunks
 
 
-def load_pdf(path: str, output_dir: str) -> Tuple[Citation, str, Set[str], List[str]]:
+def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, str, Set[str], List[str]]:
     """
     Load a PDF and return the standard book-loader tuple.
 
-    Runs pre-flight (text layer, page count, password), then extracts images
-    and page-based text chunks with [IMAGE: filename] markers.
+    Runs pre-flight (page count, password, page cap), then either extracts
+    images and page-based text chunks with [IMAGE: filename] markers, or — for
+    a document with little or no text layer — transcribes every page through
+    Gemini Vision when ``client`` is given, up to ``PDF_OCR_MAX_PAGES`` (a
+    scan is one vision call per page, and a longer scan is refused rather than
+    billed page by page). A scan read that way yields the transcript split to
+    ``MAX_CHUNK_CHARS``, no images: its page images are the scan itself, not
+    photographs of dishes. Without a client a scan is refused, as it always
+    was.
 
     Returns:
         (citation, image_dir, qualifying_images, raw_chunks)
@@ -93,10 +114,30 @@ def load_pdf(path: str, output_dir: str) -> Tuple[Citation, str, Set[str], List[
         raise PdfExtractionError(f"Failed to open PDF '{path}': {e}") from e
 
     try:
-        _preflight(doc, path)
+        _check_document(doc, path)
         citation = _get_book_citation(doc)
         image_dir = os.path.join(output_dir, "images")
         os.makedirs(image_dir, exist_ok=True)
+
+        avg_chars, sample_pages = _text_density(doc)
+        if avg_chars < PDF_PREFLIGHT_MIN_CHARS_PER_PAGE:
+            if client is None:
+                raise PdfExtractionError(
+                    f"PDF has little or no extractable text (avg {avg_chars:.0f} chars/page "
+                    f"over first {sample_pages} pages). It may be a scan without OCR: '{path}'"
+                )
+            if doc.page_count > PDF_OCR_MAX_PAGES:
+                raise PdfExtractionError(
+                    f"PDF has little or no extractable text and {doc.page_count} pages; "
+                    f"a scan is transcribed page by page, up to {PDF_OCR_MAX_PAGES}: '{path}'"
+                )
+            log.info("Scanned PDF detected (avg %.0f chars/page) — transcribing through Gemini Vision.", avg_chars)
+            from recipeparser.gemini import extract_text_via_vision  # noqa: PLC0415
+
+            transcript = extract_text_via_vision(doc, client)
+            split_chunks = [part for part in split_large_chunk(transcript) if part.strip()]
+            return citation, image_dir, set(), split_chunks
+
         qualifying_images: Set[str] = set()
         page_image_lists: List[List[str]] = []  # per-page list of qualifying image filenames
 
@@ -120,31 +161,25 @@ def load_pdf(path: str, output_dir: str) -> Tuple[Citation, str, Set[str], List[
         doc.close()
 
 
-def _preflight(doc: "fitz.Document", path: str) -> None:
-    """Raise PdfExtractionError if the PDF fails pre-flight checks."""
+def _check_document(doc: "fitz.Document", path: str) -> None:
+    """Raise PdfExtractionError for a document nothing can read: no pages, a password, too many pages."""
     if doc.page_count == 0:
         raise PdfExtractionError(f"PDF has no pages: '{path}'")
     if doc.is_encrypted:
         raise PdfExtractionError(f"PDF is password-protected: '{path}'")
-
-    # Sample first N pages for text
-    sample_pages = min(PDF_PREFLIGHT_SAMPLE_PAGES, doc.page_count)
-    total_chars = 0
-    for i in range(sample_pages):
-        total_chars += len(doc[i].get_text())
-    avg_chars = total_chars / sample_pages if sample_pages else 0
-    if avg_chars < PDF_PREFLIGHT_MIN_CHARS_PER_PAGE:
-        raise PdfExtractionError(
-            f"PDF has little or no extractable text (avg {avg_chars:.0f} chars/page over first {sample_pages} pages). "
-            f"It may be a scan without OCR: '{path}'"
-        )
-
     if doc.page_count < PDF_PREFLIGHT_MIN_PAGES:
         log.warning("PDF has very few pages (%d): %s", doc.page_count, path)
     if PDF_PREFLIGHT_MAX_PAGES is not None and doc.page_count > PDF_PREFLIGHT_MAX_PAGES:
         raise PdfExtractionError(
             f"PDF has too many pages ({doc.page_count}; max {PDF_PREFLIGHT_MAX_PAGES}): '{path}'"
         )
+
+
+def _text_density(doc: "fitz.Document") -> Tuple[float, int]:
+    """Average extractable characters per page over the first sampled pages, and how many were sampled."""
+    sample_pages = min(PDF_PREFLIGHT_SAMPLE_PAGES, doc.page_count)
+    total_chars = sum(len(doc[i].get_text()) for i in range(sample_pages))
+    return (total_chars / sample_pages if sample_pages else 0.0), sample_pages
 
 
 def _get_book_citation(doc: "fitz.Document") -> Citation:

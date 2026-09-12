@@ -1,7 +1,7 @@
 """JobSink bookkeeping (spec 4.2, 4.3, 4.4, 5.1). No network, no FastAPI."""
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from recipeparser.adapters.job_sink import SKIPPED_LIST_CAP, JobSink
 from recipeparser.core.models import Chunk, InputType
@@ -207,3 +207,43 @@ def test_a_cancelled_run_reports_only_the_chunks_it_actually_attempted():
 
     assert payload["skipped_count"] == 1
     assert payload["skipped"] == [{"label": "Lost", "index": 1, "reason": "MAX_TOKENS"}]
+
+
+class _CitedRecipe(_Recipe):
+    def __init__(self, title: str = "R", source_key: Optional[str] = None) -> None:
+        super().__init__(title)
+        self.source_key = source_key
+
+
+def test_finalize_carries_the_recipes_source_key_as_the_hint():
+    sink = _sink()
+    for key in ("cooking.nytimes.com", "cooking.nytimes.com", "cooking.nytimes.com"):
+        sink.on_result(_CitedRecipe(source_key=key))
+    assert sink.finalize_payload(True)["source_hint"] == "cooking.nytimes.com"
+
+
+def test_finalize_omits_the_hint_for_a_mixed_batch():
+    """A Paprika restore's chunks each carry their own recipe's citation; two
+    distinct keys means no single source is true of the batch, so the row
+    keeps whatever hint the endpoint already set rather than filing an
+    800-recipe archive under one of many sites."""
+    sink = _sink()
+    sink.on_result(_CitedRecipe(source_key="cooking.nytimes.com"))
+    sink.on_result(_CitedRecipe(source_key="seriouseats.com"))
+    assert "source_hint" not in sink.finalize_payload(True)
+
+
+def test_finalize_omits_the_hint_when_no_recipe_carried_a_key():
+    sink = _sink()
+    sink.on_result(_CitedRecipe(source_key=None))
+    sink.on_result(_Recipe())          # no source_key attribute at all
+    assert "source_hint" not in sink.finalize_payload(True)
+
+
+def test_a_recipe_whose_write_failed_does_not_vote():
+    def _boom(recipe, user_id, recipe_id=None, category_ids=None):
+        raise RuntimeError("no")
+
+    sink = JobSink(job_id="job-1", user_id="user-1", category_ids={}, write=_boom, now=lambda: "t")
+    sink.on_result(_CitedRecipe(source_key="the woks of life"))
+    assert "source_hint" not in sink.finalize_payload(True)

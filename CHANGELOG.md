@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+Stage D of the Add Recipe workstream (Cayenne `docs/superpowers/plans/2026-09-11-add-recipe-workstream.md`; roadmap Stage 6 row D). No migration: every column written here already exists.
+
+### ✨ Added — the intake reads photos and scans
+- `POST /jobs/file` accepts `image/jpeg` and `image/png`. A new `ImageReader` opens the photo with PyMuPDF and transcribes it through the vision OCR the command-line PDF path already owned; one chunk, routed like a book chunk, no citation of its own (the transcript's stated source is used).
+- `load_pdf` gains the same fallback behind a `client` parameter, so a scanned PDF is transcribed on the job path instead of refused by the pre-flight. Without a client the refusal stands. A scan is transcribed one vision call per page, so `PDF_OCR_MAX_PAGES` (40) caps it; a longer scan is refused before any model call.
+- The 422 for a file the API cannot read is a sentence the client shows verbatim: `Cayenne can't read .docx files yet.`; HEIC is refused plainly: `Cayenne can't read HEIC photos yet. Share it as a JPEG instead.`; WebP the same way: `Cayenne can't read WebP photos yet. Share it as a JPEG instead.` — no decoder for either is in the stack.
+- A present file extension now decides the reader on its own; the content type is consulted only when there is no extension. A `download.bin` sent as `application/pdf` used to reach the PDF reader and is now refused by name — browsers mislabel content types far more often than users misname files.
+
+### ✨ Added — what a page states is no longer lost
+- The URL path fetches the page itself once, with a browser user-agent, and takes `og:image` / `twitter:image` and the meta description from its `<head>` before consulting the scraper's markdown; the markdown fallback refuses badges and logos. On 2026-09-12 an NYT recipe stored the Edamam "Powered by" logo as its hero because the scraper's markdown carried no `og:image` line and that logo was its only image.
+- `RecipeExtraction` gains `total_time`, `description` and `nutritional_info` (all `repr=False`, so the refine prompt body and the golden recordings do not move). `assemble()` fills the structured cook span from a stated total when no cook time is known, and keeps the extracted description and nutrition where no source (a Paprika entry, the page's meta) states them — since `607671d` both columns were Paprika-only, so a URL ingest had neither.
+- A logo served as `og:image` is not the hero either: the page's own image is badge-checked by the same rule as the markdown fallback, and badge words match whole tokens (`iconic-lasagna.jpg` is a photograph).
+
+### ✨ Added — the job row points at its source
+- `ingestion_jobs.source_hint` becomes the recipes' `source_key`: written with `total_chunks` from the chunks' citations (books and sites), and again at finalize from the written rows (pasted text and photos). The Add Recipe screen's Recent-imports rows open the library on it.
+
 ## [8.0.0] — 2026-09-12
 
 The recipe edit backend, the recipe source citation, and everything that landed between them: 47 commits over fourteen pull requests (#24–#37) since v7.0.0, plus #38 and #39.

@@ -121,3 +121,90 @@ def test_total_chunks_is_not_written_during_a_test_run(monkeypatch):
     api._update_total_chunks("job-1", 5)
 
     assert called == []
+
+
+def _capturing_client(sent: dict):
+    class _Table:
+        def update(self, payload):
+            sent.update(payload)
+            return self
+
+        def eq(self, *_a):
+            return self
+
+        def execute(self):
+            return None
+
+    client = MagicMock()
+    client.table.return_value = _Table()
+    return client
+
+
+def test_total_chunks_update_carries_the_source_hint_when_known(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(api, "_get_supabase_service_client", lambda: _capturing_client(sent))
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+    api._update_total_chunks("job-1", 12, source_hint="the best of jane grigson")
+    assert sent["total_chunks"] == 12
+    assert sent["source_hint"] == "the best of jane grigson"
+
+
+def test_total_chunks_update_leaves_the_hint_alone_when_unknown(monkeypatch):
+    sent = {}
+    monkeypatch.setattr(api, "_get_supabase_service_client", lambda: _capturing_client(sent))
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+    api._update_total_chunks("job-1", 1)
+    assert sent["total_chunks"] == 1
+    assert "source_hint" not in sent
+
+
+def test_source_key_of_answers_the_one_key_a_batch_carries():
+    """A book's chunks all carry the book; an uncited chunk (a photo pulled out
+    of the same archive) does not add a second key. But a book key is not
+    itself written before extraction (ruling amended again) — only a web
+    citation's key is (see the next test)."""
+    from recipeparser.core.citation import book_citation
+    from recipeparser.core.models import Chunk, InputType
+
+    book = book_citation("Italian Food", "Elizabeth David")
+    chunks = [
+        Chunk(text="a", input_type=InputType.EPUB, citation=book),
+        Chunk(text="b", input_type=InputType.EPUB, citation=book),
+        Chunk(text="d", input_type=InputType.IMAGE),
+    ]
+    assert api._source_key_of(chunks) is None          # a book key waits for finalize
+    assert api._source_key_of([Chunk(text="d", input_type=InputType.IMAGE)]) is None
+    assert api._source_key_of([]) is None
+
+
+def test_source_key_of_is_none_for_a_batch_with_two_sources():
+    from recipeparser.core.citation import book_citation, web_citation
+    from recipeparser.core.models import Chunk, InputType
+
+    chunks = [
+        Chunk(text="a", input_type=InputType.EPUB, citation=book_citation("Italian Food", "Elizabeth David")),
+        Chunk(text="c", input_type=InputType.URL, citation=web_citation("https://x.test/r")),
+    ]
+    assert api._source_key_of(chunks) is None
+
+
+def test_source_key_of_answers_a_web_citations_key():
+    """The one case the read-time hint is written for: a single web citation."""
+    from recipeparser.core.citation import web_citation
+    from recipeparser.core.models import Chunk, InputType
+
+    chunks = [
+        Chunk(text="a", input_type=InputType.URL, citation=web_citation("https://cooking.nytimes.com/r")),
+    ]
+    assert api._source_key_of(chunks) == "cooking.nytimes.com"
+
+
+def test_source_key_of_is_none_for_two_different_hosts():
+    from recipeparser.core.citation import web_citation
+    from recipeparser.core.models import Chunk, InputType
+
+    chunks = [
+        Chunk(text="a", input_type=InputType.URL, citation=web_citation("https://cooking.nytimes.com/r")),
+        Chunk(text="b", input_type=InputType.URL, citation=web_citation("https://seriouseats.com/r")),
+    ]
+    assert api._source_key_of(chunks) is None

@@ -550,7 +550,8 @@ _CAPTURED_META: dict = {}
 
 def _assemble_capturing_meta(
     *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta,
-    ingredient_lines=None, direction_steps=None, servings_text=None, citation=None
+    ingredient_lines=None, direction_steps=None, servings_text=None, citation=None,
+    total_time=None, description=None, nutritional_info=None
 ):
     """Stand-in for assemble() that records the meta it was handed."""
     _CAPTURED_META["meta"] = meta

@@ -101,6 +101,7 @@
     dict({
       'byline': None,
       'cook_time': '30 mins',
+      'description': None,
       'directions': list([
         'Mix until smooth.',
       ]),
@@ -109,10 +110,12 @@
       ]),
       'name': 'Test Cake',
       'notes': None,
+      'nutritional_info': None,
       'photo_filename': None,
       'prep_time': '10 mins',
       'servings': '4',
       'stated_source': None,
+      'total_time': None,
     }),
   ])
 # ---

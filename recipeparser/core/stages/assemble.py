@@ -31,6 +31,9 @@ def assemble(
     direction_steps: Optional[List[str]] = None,
     servings_text: Optional[str] = None,
     citation: Optional[Citation] = None,
+    total_time: Optional[str] = None,
+    description: Optional[str] = None,
+    nutritional_info: Optional[str] = None,
 ) -> IngestResponse:
     """
     Assemble the final IngestResponse from stage outputs.
@@ -52,7 +55,7 @@ def assemble(
         grid_categories: The validated axis→tags dict from the CATEGORIZE stage.
         prep_time:       Prep time string from the EXTRACT stage (or None).
         cook_time:       Cook time string from the EXTRACT stage (or None).
-        meta:            Fields the source stated for itself (Paprika only). A value
+        meta:            Fields the source stated for itself. A value
                          here wins over the extracted one; a field absent from meta
                          falls back to the argument rather than blanking it.
         ingredient_lines: Raw ingredient lines from EXTRACT. When None or empty,
@@ -65,6 +68,12 @@ def assemble(
                           (core.citation.resolve_citation). Fills the four
                           citation columns and, when nothing else supplies
                           `source`, its display form.
+        total_time:      The total the text stated, when it stated only a total.
+                         Feeds the structured cook span when no cook time is
+                         known; never the cook_time text column.
+        description:     The headnote the extractor read. A source's own
+                         statement (meta) wins over it.
+        nutritional_info: The nutrition line the extractor read. As above.
 
     Returns:
         A fully-populated ``IngestResponse`` ready for persistence.
@@ -84,13 +93,18 @@ def assemble(
     if meta is not None:
         prep_time = meta.prep_time or prep_time
         cook_time = meta.cook_time or cook_time
+        description = meta.description or description
+        nutritional_info = meta.nutritional_info or nutritional_info
 
     derived_lines, derived_steps = raw_lines_from_derived(
         recipe.structured_ingredients, recipe.tokenized_directions
     )
     lines = list(ingredient_lines) if ingredient_lines else derived_lines
     steps = list(direction_steps) if direction_steps else derived_steps
-    cols = duration_columns(prep_time, cook_time, servings_text, recipe.base_servings)
+    # A page that states only a total ("Total Time 8 to 10 hours") gets that
+    # as its cook span; the cook_time text stays what the page said for cook.
+    # durations.py is untouched, so its rules stay those of the Cayenne twin.
+    cols = duration_columns(prep_time, cook_time or total_time, servings_text, recipe.base_servings)
 
     result = IngestResponse(
         title=recipe.title,
@@ -104,8 +118,9 @@ def assemble(
         structured_ingredients=recipe.structured_ingredients,
         tokenized_directions=recipe.tokenized_directions,
         embedding=embedding,
-        # No extracted fallback: only a Paprika entry states these, and nothing
-        # infers them from a book or a web page.
+        # notes, rating and difficulty come only from a Paprika entry: nothing
+        # infers them from a book or a web page. description and nutritional_info
+        # are the source's statement where it made one, else the extractor's.
         # Paprika's own statement first; else the citation's display form, so the
         # library row (which reads `source`) shows the same thing for a fresh
         # insert as for a backfilled row; else null.
@@ -116,8 +131,8 @@ def assemble(
         source_author=citation.author if citation else None,
         notes=meta.notes if meta else None,
         rating=meta.rating if meta else None,
-        nutritional_info=meta.nutritional_info if meta else None,
-        description=meta.description if meta else None,
+        nutritional_info=nutritional_info,
+        description=description,
         difficulty=meta.difficulty if meta else None,
         ingredient_lines=lines,
         direction_steps=steps,

@@ -68,6 +68,30 @@ class RecipeExtraction(BaseModel):
             "null when none is printed."
         ),
     )
+    total_time: Optional[str] = Field(
+        default=None,
+        repr=False,
+        description=(
+            "The total or overall time when the text states one ('Total Time 8 to 10 hours, plus "
+            "refrigeration'). Never the sum of prep and cook. null when the text states no total."
+        ),
+    )
+    description: Optional[str] = Field(
+        default=None,
+        repr=False,
+        description=(
+            "The headnote or introduction printed with the recipe, in the source's own words, at most "
+            "one paragraph. null when there is none."
+        ),
+    )
+    nutritional_info: Optional[str] = Field(
+        default=None,
+        repr=False,
+        description=(
+            "The recipe's nutrition statement, verbatim, as one line ('572 calories; 19 grams fat; "
+            "35 grams protein'). null when the text carries none."
+        ),
+    )
 
     # Populated by the pipeline after extraction — not part of the LLM schema.
     # exclude=True keeps it out of Gemini's response_schema so the model never

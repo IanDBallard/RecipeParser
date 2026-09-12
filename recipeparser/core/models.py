@@ -33,6 +33,9 @@ class InputType(Enum):
     EPUB = "EPUB"
     """One chapter chunk from an EPUB document."""
 
+    IMAGE = "IMAGE"
+    """One photograph of a recipe, transcribed by vision OCR; routed like a book chunk."""
+
     PAPRIKA_LEGACY = "PAPRIKA_LEGACY"
     """A Paprika recipe entry with no _cayenne_meta key — requires full pipeline."""
 
@@ -45,10 +48,12 @@ class SourceMeta:
     """
     Fields a source supplies directly, rather than the extractor inferring them.
 
-    Only a Paprika entry fills these in today: its JSON carries the recipe's own
-    prep and cook times, its source, notes, rating and the rest, all of which the
-    text blob handed to the extractor throws away.  A value here is authoritative
-    and beats the extracted one (see ``assemble()``).
+    A Paprika entry fills these in: its JSON carries the recipe's own prep and
+    cook times, its source, notes, rating and the rest, all of which the text
+    blob handed to the extractor throws away.  The URL path fills ``description``
+    from the page's own meta description (see ``_fetch_page_meta``), which is
+    the page's own statement rather than the model's reading of the text.  A
+    value here is authoritative and beats the extracted one (see ``assemble()``).
 
     Normalisation happens once, here, so every construction site gets it.  Paprika
     writes ``""`` for a field the recipe never filled in and ``0`` for an unrated

@@ -25,6 +25,7 @@ Auth:
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import os
 import re
 import tempfile
@@ -32,7 +33,8 @@ import uuid
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
@@ -44,12 +46,14 @@ from recipeparser.adapters.job_sink import JobSink
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
-from recipeparser.core.models import Chunk, InputType
+from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
+from recipeparser.io.readers.image import ImageReader as _ImageReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
+from recipeparser.io.readers.url import PageMeta, looks_like_badge, page_meta_from_html
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.supabase import write_recipe_to_supabase
 import recipeparser.gemini as _gemini_mod
@@ -360,7 +364,9 @@ def _extract_image_url_from_markdown(md: str) -> Optional[str]:
     Priority:
       1. ``og:image: <url>`` meta line
       2. ``twitter:image: <url>`` meta line
-      3. First Markdown image ``![alt](url)``
+      3. The first Markdown image ``![alt](url)`` that is not a badge or a logo
+         (``looks_like_badge``): on an NYT page the only markdown image is the
+         Edamam "Powered by" logo, and it was the hero for a day.
 
     A trailing ``))`` is cleaned to a single ``)``.
     """
@@ -374,10 +380,11 @@ def _extract_image_url_from_markdown(md: str) -> Optional[str]:
             url = url[:-1]
         return url
 
-    # 3 — first Markdown image tag
-    md_match = re.search(r"!\[[^\]]*\]\((https?://[^)]+)\)", md)
-    if md_match:
-        return md_match.group(1)
+    # 3 — first Markdown image tag that is a photograph
+    for md_match in re.finditer(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)", md):
+        alt, url = md_match.group(1), md_match.group(2)
+        if not looks_like_badge(url, alt):
+            return url
 
     return None
 
@@ -423,6 +430,69 @@ async def _upload_image_to_storage(image_url: str, recipe_id: str) -> Optional[s
         logger.exception("Could not fetch %s for recipe %s — continuing without an image.", image_url, recipe_id)
         return None
     return await asyncio.to_thread(SupabaseImageStore().put, data, recipe_id, content_type)
+
+
+_PAGE_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0 Safari/537.36"
+)
+
+
+def _is_unsafe_fetch_target(url: str) -> bool:
+    """True when ``url`` must not be GET-ed for its meta tags.
+
+    A recipe URL is user-submitted and this fetch runs server-side with no
+    further checks, so it is exactly the shape of an SSRF vector: refuse
+    anything that is not a plain http(s) request to a public host, before the
+    GET. No DNS resolution is performed — a hostname that only resolves to a
+    private address at request time is not caught here, but a bare IP literal
+    (the common probe, e.g. the cloud metadata address) and the obvious
+    hostnames are.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return True
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return True
+    if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
+
+
+async def _fetch_page_meta(url: str) -> PageMeta:
+    """The page's own <meta> tags — its hero image and its description.
+
+    One GET of the page itself, with a browser user-agent (a bare client is
+    served a consent wall or a 403 by the sites that matter), read before the
+    scraper's markdown is consulted. Any failure — unreachable, not HTML, a
+    timeout — is a page without meta, never a failed job. A non-http(s)
+    scheme, an empty host, or a host that is plainly local or private
+    (``_is_unsafe_fetch_target``) is refused before the GET, with no DNS
+    resolution performed.
+    """
+    if _is_unsafe_fetch_target(url):
+        return PageMeta(None, None)
+    try:
+        async with httpx.AsyncClient(
+            timeout=15,
+            follow_redirects=True,
+            headers={"User-Agent": _PAGE_USER_AGENT, "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
+        ) as http:
+            resp = await http.get(url)
+            resp.raise_for_status()
+            ctype = resp.headers.get("content-type", "")
+            if ctype and "html" not in ctype.lower():
+                return PageMeta(None, None)
+            # The head is at the top; a megabyte is more than any head needs.
+            return page_meta_from_html(resp.text[:1_000_000])
+    except Exception as exc:
+        logger.info("Page meta unavailable for %s (%s) — falling back to the scraper's markdown.", url, exc)
+        return PageMeta(None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -665,8 +735,38 @@ def _make_progress_writer(job_id: str) -> Callable[[int], None]:
     return _write
 
 
-def _update_total_chunks(job_id: str, total: int) -> None:
-    """Record how many chunks this job will attempt.
+def _source_key_of(chunks: List[Chunk]) -> Optional[str]:
+    """The source key the job's chunks carry, when they all carry the same one
+    — and only when that one key is a web citation's.
+
+    A book's chunks all carry the book; a URL's one chunk carries its host. A
+    Paprika archive carries many, and answers None: no single key is true of
+    it, so the row keeps the hint the endpoint set. Only a web citation's key
+    is written before extraction, even when the batch carries exactly one
+    book key: a running import's banner shows the hint verbatim, and a book's
+    filename is what a cook expects to see there. The book's key arrives at
+    finalize, once the recipes that justify it exist.
+    """
+    keys = {
+        chunk.citation.key
+        for chunk in chunks
+        if chunk.citation is not None and chunk.citation.key
+    }
+    if len(keys) != 1:
+        return None
+    (key,) = keys
+    citation = next(
+        chunk.citation
+        for chunk in chunks
+        if chunk.citation is not None and chunk.citation.key == key
+    )
+    if citation.kind != "web":
+        return None
+    return key
+
+
+def _update_total_chunks(job_id: str, total: int, source_hint: Optional[str] = None) -> None:
+    """Record how many chunks this job will attempt, and which source they carry.
 
     The ingestion_jobs row is inserted before the background task is scheduled
     and the source is only read inside _run(), so the INSERT cannot carry this
@@ -679,6 +779,11 @@ def _update_total_chunks(job_id: str, total: int) -> None:
     is unknowable. The entire body — including building the client, which can
     itself raise — is inside the try, which is also what keeps a deploy that
     ran before Cayenne migration 011 costing one number instead of the import.
+
+    ``source_hint`` rides the same UPDATE (design 2026-09-11): once the reader
+    has returned, the job's hint becomes the recipes' source_key, so a
+    Recent-imports row opens the library on exactly what the job wrote. It is
+    sent only when known; None leaves the row's hint as the endpoint set it.
     """
     if _live_writes_blocked():
         logger.warning("Test run: skipping the total_chunks update for job %s.", job_id)
@@ -689,11 +794,14 @@ def _update_total_chunks(job_id: str, total: int) -> None:
         sb = _get_supabase_service_client()
         if sb is None:
             return
-        sb.table("ingestion_jobs").update({
+        payload: Dict[str, Any] = {
             "total_chunks": total,
             "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
-        }).eq("id", job_id).execute()
-        logger.info("Job %s: total_chunks = %d.", job_id, total)
+        }
+        if source_hint is not None:
+            payload["source_hint"] = source_hint
+        sb.table("ingestion_jobs").update(payload).eq("id", job_id).execute()
+        logger.info("Job %s: total_chunks = %d, source_hint = %r.", job_id, total, source_hint)
     except Exception:
         logger.exception("Job %s: failed to write total_chunks=%d.", job_id, total)
 
@@ -708,27 +816,75 @@ _active_jobs: Dict[str, tuple[str, PipelineController]] = {}
 # Phase 6 helpers
 # ---------------------------------------------------------------------------
 
-def _select_reader(filename: str, content_type: str) -> str:
-    """Return a reader tag string based on filename extension (primary) or content-type.
+_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png")
+_IMAGE_CONTENT_TYPES = ("image/jpeg", "image/jpg", "image/png")
+_HEIC_EXTENSIONS = (".heic", ".heif")
+_HEIC_CONTENT_TYPES = ("image/heic", "image/heif")
+# The installed PyMuPDF (1.27.2) fails at fitz.open() on a real WebP file, so a
+# WebP upload is refused plainly rather than silently becoming a failed job —
+# same shape as the HEIC refusal below.
+_WEBP_EXTENSIONS = (".webp",)
+_WEBP_CONTENT_TYPES = ("image/webp",)
+# When a photo arrives with no extension, the temp file the reader opens needs
+# one PyMuPDF recognises; the content type is the only clue left.
+_IMAGE_SUFFIX_BY_TYPE = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+}
+_HEIC_SENTENCE = "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
+_WEBP_SENTENCE = "Cayenne can't read WebP photos yet. Share it as a JPEG instead."
 
-    Returns one of: 'pdf', 'epub', 'paprika'.
-    Raises ValueError for unsupported types (caller converts to 422).
+
+def _select_reader(filename: str, content_type: str) -> str:
+    """Return a reader tag from the filename extension, falling back to the content type.
+
+    Returns one of: 'pdf', 'epub', 'paprika', 'image'.
+    A recognised extension decides on its own, whatever the content type says —
+    browsers mislabel content types, and a ``.jpg`` sent as ``image/heic`` is
+    still a JPEG (and a ``.docx`` sent as ``image/jpeg`` is still a ``.docx``).
+    The content type is consulted only when there is no extension at all.
+    Raises ValueError for anything else; its message is the sentence the endpoint
+    sends as the 422 ``detail`` and the client shows verbatim (INGESTION_API.md,
+    *Input media* 2), so it names the type and nothing internal.
     """
     ext = Path(filename).suffix.lower()
-    if ext == ".pdf" or content_type == "application/pdf":
+    if ext:
+        # 1 — an extension is present: it decides on its own, recognised or not.
+        #     Falling through to the content type here would let a mislabeled
+        #     content type override a plainly-named file (see menu.docx below).
+        if ext == ".pdf":
+            return "pdf"
+        if ext == ".epub":
+            return "epub"
+        # .paprikarecipes files are ZIP archives; this catches every one of them
+        # by name, whatever content type the browser or Node sent it as.
+        if ext == ".paprikarecipes":
+            return "paprika"
+        if ext in _HEIC_EXTENSIONS:
+            # The iOS picker hands the browser a JPEG anyway; a HEIC only
+            # arrives through a share or a desktop drop, and there is no
+            # decoder here yet.
+            raise ValueError(_HEIC_SENTENCE)
+        if ext in _WEBP_EXTENSIONS:
+            # PyMuPDF 1.27.2 fails to open a real WebP file at all; refuse it
+            # plainly instead of letting it become a failed job.
+            raise ValueError(_WEBP_SENTENCE)
+        if ext in _IMAGE_EXTENSIONS:
+            return "image"
+        raise ValueError(f"Cayenne can't read {ext} files yet.")
+    # 2 — no extension at all: the content type is the only clue left.
+    if content_type == "application/pdf":
         return "pdf"
-    if ext == ".epub" or content_type == "application/epub+zip":
+    if content_type == "application/epub+zip":
         return "epub"
-    # .paprikarecipes files are ZIP archives; browsers/Node may send them as
-    # application/zip or application/octet-stream — match by extension first,
-    # then fall back to content-type + filename suffix check.
-    if ext == ".paprikarecipes":
-        return "paprika"
-    if content_type in ("application/zip", "application/octet-stream") and filename.lower().endswith(".paprikarecipes"):
-        return "paprika"
-    raise ValueError(
-        f"Unsupported file type: extension='{ext}', content_type='{content_type}'."
-    )
+    if content_type in _HEIC_CONTENT_TYPES:
+        raise ValueError(_HEIC_SENTENCE)
+    if content_type in _WEBP_CONTENT_TYPES:
+        raise ValueError(_WEBP_SENTENCE)
+    if content_type in _IMAGE_CONTENT_TYPES:
+        return "image"
+    raise ValueError("Cayenne can't read this file yet.")
 
 
 # ---------------------------------------------------------------------------
@@ -774,6 +930,7 @@ async def submit_job(
             source_url: Optional[str] = None
             stored_image_url: Optional[str] = None
 
+            page_meta = PageMeta(None, None)
             if body.url:
                 source_url = body.url
                 jina_url = f"https://r.jina.ai/{body.url}"
@@ -781,7 +938,16 @@ async def submit_job(
                     resp = await http.get(jina_url)
                     resp.raise_for_status()
                     markdown_text = resp.text
-                image_url_candidate = _extract_image_url_from_markdown(markdown_text)
+                # The page's own head first (og:image, the description), the
+                # scraper's markdown second: the markdown dropped both on the
+                # NYT page of 2026-09-12 and offered a logo instead.
+                page_meta = await _fetch_page_meta(body.url)
+                page_image = (
+                    page_meta.image_url
+                    if page_meta.image_url and not looks_like_badge(page_meta.image_url)
+                    else None
+                )
+                image_url_candidate = page_image or _extract_image_url_from_markdown(markdown_text)
                 recipe_id_for_img = str(uuid.uuid4())
                 if image_url_candidate:
                     stored_image_url = await _upload_image_to_storage(
@@ -797,6 +963,8 @@ async def submit_job(
             # sequence.  source_url is None for raw-text submissions.
             # A list of one, so the total_chunks write below and the run() call
             # take the same shape here as they do in the file endpoint.
+            # The page's description is the page's own statement, so it rides
+            # SourceMeta and beats the model's reading, as a Paprika entry's does.
             chunks = [
                 Chunk(
                     text=source_text,
@@ -804,6 +972,7 @@ async def submit_job(
                     source_url=source_url,
                     image_url=stored_image_url,
                     citation=web_citation(body.url) if body.url else None,
+                    meta=SourceMeta(description=page_meta.description) if page_meta.description else None,
                 )
             ]
 
@@ -834,7 +1003,7 @@ async def submit_job(
                 measure_preference=measure_preference,
                 image_store=SupabaseImageStore(),
             )
-            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks))
+            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
             await asyncio.to_thread(
                 lambda: pipeline.run(
                     chunks,
@@ -885,8 +1054,9 @@ async def submit_file_job(
 ) -> AsyncJobResponse:
     """Fire-and-forget file upload ingestion job.
 
-    Accepts PDF, EPUB, or .paprikarecipes files.  Routes to the correct
-    reader via ``_select_reader()``.  Returns 202 + ``{ job_id }`` immediately.
+    Accepts PDF, EPUB, .paprikarecipes or a photo (JPEG or PNG).  Routes
+    to the correct reader via ``_select_reader()``.  Returns 202 +
+    ``{ job_id }`` immediately.
     """
     filename = file.filename or ""
     content_type = file.content_type or ""
@@ -914,7 +1084,7 @@ async def submit_file_job(
             client = _get_client()
 
             # Write bytes to a temp file (readers expect a filesystem path)
-            suffix = Path(filename).suffix or ".bin"
+            suffix = Path(filename).suffix or _IMAGE_SUFFIX_BY_TYPE.get(content_type, ".bin")
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 tmp.write(file_bytes)
                 tmp_path = tmp.name
@@ -924,13 +1094,18 @@ async def submit_file_job(
                 # The pipeline's stage router (_get_stages) inspects each
                 # chunk's input_type and routes accordingly:
                 #   PDF / EPUB          → full pipeline (EXTRACT→…→ASSEMBLE)
+                #   IMAGE               → full pipeline (EXTRACT→…→ASSEMBLE)
                 #   PAPRIKA_LEGACY      → full pipeline (EXTRACT→…→ASSEMBLE)
                 #   PAPRIKA_CAYENNE + embedding  → ASSEMBLE only ($0)
                 #   PAPRIKA_CAYENNE no embedding → EMBED + ASSEMBLE (1 call)
                 if reader_tag == "pdf":
-                    chunks = await asyncio.to_thread(_PdfReader().read, tmp_path)
+                    # With the client, a scan is transcribed rather than refused (Input media 1).
+                    chunks = await asyncio.to_thread(_PdfReader(client=client).read, tmp_path)
                 elif reader_tag == "epub":
                     chunks = await asyncio.to_thread(_EpubReader().read, tmp_path)
+                elif reader_tag == "image":
+                    # A model call inside the reader: the OCR is the read.
+                    chunks = await asyncio.to_thread(_ImageReader(client).read, tmp_path)
                 else:  # paprika
                     chunks = await asyncio.to_thread(_PaprikaReader().read, tmp_path)
             finally:
@@ -966,7 +1141,7 @@ async def submit_file_job(
                 measure_preference=measure_preference_resolved,
                 image_store=SupabaseImageStore(),
             )
-            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks))
+            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
             await asyncio.to_thread(
                 lambda: pipeline.run(
                     chunks,
