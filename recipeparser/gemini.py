@@ -401,6 +401,12 @@ Rules:
 - stated_source is the publication or book as the text names itself; byline is the author's
   name if one is printed. Never the name of a model or a tool. Leave both null if the text
   does not say.
+- total_time: the recipe's stated total or overall time, only when the text states one.
+  Never add prep and cook together.
+- description: the headnote or introduction printed with the recipe, in its own words, at
+  most one paragraph. null when there is none.
+- nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
+  text carries none.
 - Do not invent or infer values not present in the text.
 - photo_filename: always null (no images in plain text).
 
@@ -471,6 +477,12 @@ Rules:
 - stated_source is the publication or book as the text names itself; byline is the author's
   name if one is printed. Never the name of a model or a tool. Leave both null if the text
   does not say.
+- total_time: the recipe's stated total or overall time, only when the text states one.
+  Never add prep and cook together.
+- description: the headnote or introduction printed with the recipe, in its own words, at
+  most one paragraph. null when there is none.
+- nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
+  text carries none.
 - Do not invent or infer values that are not present in the text.{units_section}
 
 Text chunk:

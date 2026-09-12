@@ -14,6 +14,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': '14 mins',
+          'description': None,
           'directions': list([
             'Heat the oven to 425F. Line a tray with parchment.',
             'Rub the butter into the flour, baking powder and salt until it looks like coarse crumbs.',
@@ -29,10 +30,12 @@
           ]),
           'name': 'Buttermilk Scones',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': 'scones.jpg',
           'prep_time': '15 mins',
           'servings': '8',
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': 8,
@@ -134,6 +137,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': '40 mins',
+          'description': None,
           'directions': list([
             'Brown the butter in a pale pan until it smells of hazelnuts, then cool until thick.',
             'Beat in the sugar, then the flour and salt, to a stiff paste.',
@@ -148,10 +152,12 @@
           ]),
           'name': 'Brown Butter Shortbread',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': 'shortbread.jpg',
           'prep_time': '20 mins',
           'servings': '12',
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': 12,
@@ -247,6 +253,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'Chop, mix well, and serve.',
           ]),
@@ -272,10 +279,12 @@
           ]),
           'name': 'Tartar Sauce',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -503,6 +512,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'Chop, mix, whip well.',
           ]),
@@ -534,10 +544,12 @@
           ]),
           'name': 'Special Fruit Salad with Mayonnaise Mousseuse',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -829,6 +841,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'INTO A COPPER BOWL PUT 6 SEXTARII [1] OF HONEY AND 2 SEXTARII OF WINE; HEAT ON A SLOW FIRE, CONSTANTLY STIRRING THE MIXTURE WITH A WHIP.',
             'AT THE BOILING POINT ADD A DASH OF COLD WINE, RETIRE FROM STOVE AND SKIM.',
@@ -851,10 +864,12 @@
           ]),
           'name': 'FINE SPICED WINE',
           'notes': 'Sextarii. Tor. partes XV; G.-V. pondo XV; List. partes XV ... pondo lib.... qui continent sextarios sex. One sextarius (a “sixth”) equals about 1 1/2 pint English. Pepper. Piperis uncias IV—ordinarily our black or white pepper grains, but in connection with honey, sweets, and so forth, the term “pepper” may just as well stand for our allspice, or even for any spicing in general. Charcoal. Still a favorite filterer for liquors. List. Apicius is correct in starting his book with this formula, as all meals were started with this sort of mixed drink. Tor. deviates from the other texts in that he elaborates on the cooking process.',
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -1011,6 +1026,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'FLAVOR HONEY WITH GROUND PEPPER AND SKIM.',
             'IN THE MOMENT OF SERVING PUT HONEY IN A CUP, AS MUCH AS IS DESIRED TO OBTAIN THE RIGHT DEGREE OF SWEETNESS, AND MIX SPICED WINE NOT MORE THAN A NEEDED QUANTITY; ALSO ADD SOME WINE TO THE SPICED HONEY TO FACILITATE ITS FLOW AND THE MIXING.',
@@ -1022,10 +1038,12 @@
           ]),
           'name': 'HONEY REFRESHER FOR TRAVELERS',
           'notes': 'Tor. Melirhomum; non extat. G.-V. M. perpetuum, i.e., having good keeping qualities. Tor. reads thus whereas others apply “endurance” to the honey itself. The honey could not be preserved (perpetuum) by the addition of pepper. Any addition, as a matter of fact, would hasten its deterioration unless the honey were boiled and sealed tight, which the original takes for granted.',
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -1093,6 +1111,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'ACCORDING TO THE RECIPE OF CAMERINUM YOU NEED WORMWOOD FROM SANTO FOR ROMAN VERMOUTH OR, AS A SUBSTITUTE, WORMWOOD FROM THE PONTUS CLEANED AND CRUSHED, 1 THEBAN OUNCE OF IT, 6 SCRUPLES OF MASTICH, 3 EACH OF [nard] LEAVES, COSTMARY AND SAFFRON AND 18 QUARTS OF ANY KIND OF MILD WINE.',
             '[Filter cold] CHARCOAL IS NOT REQUIRED BECAUSE OF THE BITTERNESS.',
@@ -1108,10 +1127,12 @@
           ]),
           'name': 'ROMAN VERMOUTH',
           'notes': 'G.-V. Apsinthium. The mention of a name in a recipe is very infrequent. Camerinum is a town in Umbria. Now Saintonge, Southern France. Black Sea Region. Weight of indefinite volume, from Thebæ, one of the several ancient cities by that name. List. thinks it is an Egyptian ounce, and that the author of the recipe must be an African. Wanting in Tor.; G.-V. costi scripulos senos.',
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -1210,6 +1231,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'ROSE PETALS, THE LOWER WHITE PART REMOVED, SEWED INTO A LINEN BAG AND IMMERSED IN WINE FOR SEVEN DAYS.',
             'THEREUPON ADD A SACK OF NEW PETALS WHICH ALLOW TO DRAW FOR ANOTHER SEVEN DAYS.',
@@ -1224,10 +1246,12 @@
           ]),
           'name': 'ROSE WINE',
           'notes': 'Used principally as a laxative medicine. List. These wines compounded of roses and violets move the bowels strongly.',
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -1818,6 +1842,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'Scald the milk.',
             'Beat the eggs and sugar together.',
@@ -1833,10 +1858,12 @@
           ]),
           'name': 'Boiled Custard',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': '6',
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': 6,
@@ -1937,6 +1964,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': '40 mins',
+          'description': None,
           'directions': list([
             '**PHASE 1**',
             'Mix the levain ingredients and leave at room temperature for 10 hours.',
@@ -1958,10 +1986,12 @@
           ]),
           'name': 'Overnight Country Loaf',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': '14 hours',
           'servings': '10 servings',
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': 10,
@@ -2111,6 +2141,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': '35 mins',
+          'description': None,
           'directions': list([
             'Mix everything to a smooth dough and knead for 8 minutes.',
             'Prove until doubled, shape into a pan loaf, and prove again.',
@@ -2125,10 +2156,12 @@
           ]),
           'name': 'Sandwich Loaf',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': '3 hours',
           'servings': '12',
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': 12,
@@ -2230,6 +2263,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'CRUSH BARLEY, SOAKED THE DAY BEFORE, WELL WASHED, PLACE ON THE FIRE TO BE COOKED [in a double boiler]',
             'WHEN HOT ADD ENOUGH OIL, A BUNCH OF DILL, DRY ONION, SATURY AND COLOCASIUM TO BE COOKED TOGETHER BECAUSE FOR THE BETTER JUICE, ADD GREEN CORIANDER AND A LITTLE SALT; BRING IT TO A BOILING POINT.',
@@ -2259,10 +2293,12 @@
           ]),
           'name': 'BARLEY BROTH, PAP, PORRIDGE, GRUEL TISANA SIVE CREMORE',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -2492,6 +2528,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'THE CEREAL IS SOAKED; CHICKPEAS, LENTILS AND PEAS ARE CRUSHED AND BOILED WITH IT;',
             'WHEN WELL COOKED, ADD PLENTY OF OIL.',
@@ -2523,10 +2560,12 @@
           ]),
           'name': 'ANOTHER TISANA TISANA TARICHA',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -2783,6 +2822,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'THE MOVEABLE APPETIZERS ARE THUS MADE:',
           ]),
@@ -2797,10 +2837,12 @@
           ]),
           'name': '?MOVEABLE? APPETIZERS GUSTUM VERSATILE',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -2893,6 +2935,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'Fry the bulbs.',
             'Serve with wine sauce (Oenogarum).',
@@ -2903,10 +2946,12 @@
           ]),
           'name': 'FRIED BULBS',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -2959,6 +3004,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'Cook morels quickly in garum and pepper.',
             'Take out and allow to drip.',
@@ -2972,10 +3018,12 @@
           ]),
           'name': 'MORELS',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -3054,6 +3102,7 @@
         'raw': dict({
           'byline': None,
           'cook_time': None,
+          'description': None,
           'directions': list([
             'Combine pepper, reduced wine, vinegar, and oil.',
             'Serve with morels.',
@@ -3067,10 +3116,12 @@
           ]),
           'name': 'FOR MORELS',
           'notes': None,
+          'nutritional_info': None,
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
           'stated_source': None,
+          'total_time': None,
         }),
         'refined': dict({
           'base_servings': None,

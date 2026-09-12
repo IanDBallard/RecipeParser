@@ -77,3 +77,35 @@ def test_extraction_source_fields_stay_out_of_repr():
     ))
     assert "stated_source" not in text and "byline" not in text
     assert "NYT Cooking" not in text
+
+
+def test_extraction_asks_for_a_total_time_a_description_and_nutrition():
+    from recipeparser.models import RecipeExtraction
+
+    props = RecipeExtraction.model_json_schema()["properties"]
+    assert "total_time" in props and "description" in props and "nutritional_info" in props
+    # The one instruction the pulled-pork ingest needed: a stated total is never invented.
+    assert "Never the sum" in props["total_time"]["description"]
+    assert "verbatim" in props["nutritional_info"]["description"]
+    r = RecipeExtraction(name="x", ingredients=[], directions=[])
+    assert (r.total_time, r.description, r.nutritional_info) == (None, None, None)
+
+
+def test_the_three_new_extraction_fields_stay_out_of_repr():
+    # Same invariant as stated_source/byline: the refine prompt's body is
+    # str(raw_recipe), and the golden recordings are keyed by it.
+    from recipeparser.models import RecipeExtraction
+
+    text = str(RecipeExtraction(
+        name="x", ingredients=[], directions=[],
+        total_time="8 to 10 hours", description="A weeknight dish.", nutritional_info="572 calories",
+    ))
+    for needle in ("total_time", "description", "nutritional_info", "8 to 10 hours", "weeknight", "572"):
+        assert needle not in text
+
+
+def test_both_extract_prompts_name_the_three_fields():
+    from recipeparser import gemini
+
+    for prompt in (gemini.build_plain_text_prompt("x"), gemini.build_extract_prompt("x")):
+        assert "total_time:" in prompt and "description:" in prompt and "nutritional_info:" in prompt
