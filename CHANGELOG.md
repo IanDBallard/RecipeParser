@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — recipe source citation
+
+### ✨ Added
+- Four citation columns — `source_kind`, `source_key`, `source_title`, `source_author` — written on every insert, derived reader-first in `core/citation.py` (`resolve_citation`): a book or an unknown book is settled entirely by the reader (EPUB/PDF metadata); a page keeps its host as the key and takes the site's stated name and byline from the model; with nothing known from the reader, the model's stated source is classified by the same seven rules the backfill uses.
+- The EPUB and PDF readers no longer write `"Title — Author"` into `source_url`; the string form stays only as `Citation.display()`, used by the Paprika export.
+- `Chunk.citation`, carried alongside `source_url` from every reader through to `assemble()`.
+- The extraction model states `stated_source` and `byline` (both `repr=False`, so the refine prompt and the golden corpus are unchanged) and is told never to name itself as the source.
+- `scripts/backfill_sources.py` — the seven classification rules applied to existing rows, per-rule counts reported, dry run by default, `--force` to write.
+- `scripts/restore_source_urls.py` — restores book `source_url`s the backfill's predecessor overwrote; dry run by default.
+- Shared key fixture `tests/fixtures/citation_keys.json`, the contract `normalise_key` and its Cayenne client twin (`cayenne-web/src/lib/domain/citation.ts`) must both satisfy.
+
+### ⚠️ Requires — apply the Cayenne migration **before** deploying this version
+- **Cayenne migration `recipe_source_citation` (Cayenne PR #58) is required before deploying this version.** `SupabaseWriter` puts the four citation columns into **every** recipe INSERT, unconditionally. Against the pre-migration schema PostgREST rejects the row with `PGRST204` ("column … does not exist"), so every ingest fails, for every user, on every path — URL, file, and Paprika alike.
+
+---
+
 ## [Unreleased] — recipe edit backend
 
 ### ✨ Added

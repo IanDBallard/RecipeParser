@@ -12,7 +12,8 @@ Usage::
 
     reader = UrlReader()
     chunks = reader.read("https://www.seriouseats.com/some-recipe")
-    # → [Chunk(text="...", input_type=InputType.URL, source_url="https://...")]
+    # → [Chunk(text="...", input_type=InputType.URL, source_url="https://...",
+    #          citation=Citation("web", "seriouseats.com", "seriouseats.com", None))]
 """
 
 from __future__ import annotations
@@ -59,6 +60,7 @@ class UrlReader(RecipeReader):
             - ``text``: The Markdown content returned by r.jina.ai.
             - ``input_type``: ``InputType.URL``
             - ``source_url``: The original (non-proxied) URL.
+            - ``citation``: a ``web_citation`` of the URL (host-derived key and title)
 
         Raises:
             requests.HTTPError: If the r.jina.ai request returns a non-2xx status.

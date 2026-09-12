@@ -4,8 +4,9 @@ core/models.py — Shared data models for the hexagonal pipeline.
 This module defines the Chunk dataclass and InputType enum that form the
 contract between I/O readers and the RecipePipeline orchestrator.
 
-Design rule: this module imports ONLY from stdlib and recipeparser.models.
-It must never import from recipeparser.io or recipeparser.adapters.
+Design rule: this module imports ONLY from stdlib, recipeparser.models and
+recipeparser.core.citation (core→core is allowed). It must never import from
+recipeparser.io or recipeparser.adapters.
 """
 from __future__ import annotations
 

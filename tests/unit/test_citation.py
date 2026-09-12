@@ -23,6 +23,10 @@ def test_normalise_key_matches_the_shared_fixture(case):
     assert normalise_key(case["input"]) == case["key"]
 
 
+def test_normalise_key_strips_a_backtick_like_the_client_does():
+    assert normalise_key("`Perfect`") == "perfect"
+
+
 def test_host_of_strips_scheme_path_case_and_www():
     assert host_of("https://www.Cooking.NYTimes.com/recipes/1") == "cooking.nytimes.com"
     assert host_of("thewoksoflife.com") == "thewoksoflife.com"
