@@ -1,0 +1,34 @@
+rows 787
+kinds {'book': 454, 'unknown': 216, 'web': 113, 'person': 4}
+unclassified 0
+source_url http 119
+source == 'Gemini' 0
+source Auto-Import 166
+distinct keys 25
+   166  'unknown-book'
+   123  'the food of sichuan'
+    84  'an invitation to indian cooking'
+    75  'cooking.nytimes.com'
+    63  'the art of living according to joe beef a cookbook of sorts'
+    52  'the woks of life'
+    50  None
+    48  'flour + water'
+    38  'completely perfect 120 essential recipes for every cook'
+    19  'paul hollywoods pies and puds'
+    19  'seriouseats.com'
+    11  'paul hollywoods bread'
+    11  'paul hollywoods british baking'
+     7  'thewoksoflife.com'
+     5  'classic german baking'
+     5  'theguardian.com'
+     2  'nik sharma'
+     2  'washingtonpost.com'
+     1  'jamieoliver.com'
+     1  'completely perfect'
+     1  'epicurious.com'
+     1  'perfect'
+     1  'nigella.com'
+     1  'womanandhome.com'
+     1  'salu-salo.com'
+web key->title pairs: [('cooking.nytimes.com', 'Cooking.nytimes.com', 75), ('seriouseats.com', 'Seriouseats.com', 19), ('theguardian.com', 'Theguardian.com', 5), ('thewoksoflife.com', 'Thewoksoflife.com', 7), ('washingtonpost.com', 'Washingtonpost.com', 2), ('jamieoliver.com', 'Jamieoliver.com', 1), ('epicurious.com', 'Epicurious.com', 1), ('nigella.com', 'Nigella.com', 1), ('womanandhome.com', 'womanandhome.com', 1), ('salu-salo.com', 'Salu-salo.com', 1)]
+authors {'Bill Leung': 52, 'Madhur Jaffrey': 84, 'Fuchsia Dunlop': 123, 'Thomas McNaughton': 48, 'Paul Hollywood': 41, 'David McMillan': 63, 'Luisa Weiss': 5, 'Felicity Cloake': 38, 'Justin Gellatly': 1}

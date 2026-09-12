@@ -1,0 +1,86 @@
+787 recipes
+
+Coverage
+  source present        740   94.0%
+  source_url present      5    0.6%
+  both                    0    0.0%
+  neither                42    5.3%
+
+What source holds
+  book: Title — Author      454   57.7%
+  book: no metadata         166   21.1%
+  domain                    112   14.2%
+  empty                      47    6.0%
+  other text                  8    1.0%
+
+What source_url holds
+  empty                     782   99.4%
+  http                        5    0.6%
+
+Domains (11 distinct, 117 recipes)
+     77  cooking.nytimes.com
+     20  seriouseats.com
+      7  thewoksoflife.com
+      5  theguardian.com
+      2  washingtonpost.com
+      1  allrecipes.com
+      1  example.com
+      1  nigella.com
+      1  salu-salo.com
+      1  jamieoliver.com
+      1  epicurious.com
+
+Raw source strings (27 distinct over 740 recipes)
+    166  EPUB Auto-Import
+    123  The Food of Sichuan — Fuchsia Dunlop
+     84  An Invitation to Indian Cooking — Madhur Jaffrey
+     71  Cooking.nytimes.com
+     63  The Art of Living According to Joe Beef: A Cookbook of Sorts — David McMillan
+     52  The Woks of Life — Bill Leung
+     48  Flour + Water — Thomas McNaughton
+     38  Completely Perfect: 120 Essential Recipes for Every Cook — Felicity Cloake
+     19  Seriouseats.com
+     19  Paul Hollywood's Pies and Puds — Paul Hollywood
+     11  Paul Hollywood's British Baking — Paul Hollywood
+     11  Paul Hollywood's Bread — Paul Hollywood
+      5  Thewoksoflife.com
+      5  Classic German Baking — Luisa Weiss
+      5  Theguardian.com
+      4  cooking.nytimes.com
+      3  Gemini
+      2  thewoksoflife.com
+      2  Nik Sharma
+      2  Washingtonpost.com
+      1  Nigella.com
+      1  Salu-salo.com
+      1  Perfect
+      1  Completely Perfect
+      1  Jamieoliver.com
+      1  Womanandhome.com Justin Gellatly
+      1  Epicurious.com
+
+Normalised source keys: 25 distinct; 2 keys absorb more than one raw spelling
+     75  'cooking nytimes com'  <-  'Cooking.nytimes.com', 'cooking.nytimes.com'
+      7  'thewoksoflife com'  <-  'thewoksoflife.com', 'Thewoksoflife.com'
+
+Books, from the Title — Author strings (10 distinct strings, 10 titles, 454 recipes; 166 more from a book with no metadata)
+    123  The Food of Sichuan — Fuchsia Dunlop
+     84  An Invitation to Indian Cooking — Madhur Jaffrey
+     63  The Art of Living According to Joe Beef: A Cookbook of Sorts — David McMillan
+     52  The Woks of Life — Bill Leung
+     48  Flour + Water — Thomas McNaughton
+     38  Completely Perfect: 120 Essential Recipes for Every Cook — Felicity Cloake
+     19  Paul Hollywood's Pies and Puds — Paul Hollywood
+     11  Paul Hollywood's British Baking — Paul Hollywood
+     11  Paul Hollywood's Bread — Paul Hollywood
+      5  Classic German Baking — Luisa Weiss
+
+Authors (8 distinct)
+    123  Fuchsia Dunlop
+     84  Madhur Jaffrey
+     63  David McMillan
+     52  Bill Leung
+     48  Thomas McNaughton
+     41  Paul Hollywood
+     38  Felicity Cloake
+      5  Luisa Weiss

@@ -1,0 +1,14 @@
+python : Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+At line:1 char:791
++ ... -live.txt"; python scripts\backfill_sources.py --user-id $env:TEST_US ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 
+787 recipes read, 0 already classified and skipped
+  rule 1     47  no source
+  rule 2    454  book: Title — Author
+  rule 3    166  unknown book (Auto-Import)
+  rule 4    112  site domain or URL
+  rule 5      1  domain then author
+  rule 6      3  Gemini (cleared)
+  rule 7      4  person / other text
+updated 787 recipe(s)

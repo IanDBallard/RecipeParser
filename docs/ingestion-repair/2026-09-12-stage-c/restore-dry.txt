@@ -1,0 +1,122 @@
+python : Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+At line:1 char:789
++ ... e-dry.txt"; python scripts\restore_source_urls.py --archive "C:\Users ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 
+  e8368906-b66b-4ed9-90ce-9be28b1ebc8d  'Asparagus, Goat Cheese and Tarragon Tart'  <- https://cooking.nytimes.com/recipes/1020920-asparagus-goat-cheese-and-tarragon-tart
+  8cd1884b-27b6-4e8a-aeaf-4d4870650bc2  'Asparagus, Mushroom, Leek, and Cheese Galette'  <- https://www.seriouseats.com/savory-asparagus-mushroom-leek-and-cheese-galette
+  f1475f26-0beb-48b0-a6d8-fb4bad63df03  'Baked Chicken Ricotta Pasta'  <- https://cooking.nytimes.com/recipes/761755560-baked-chicken-ricotta-pasta
+  ac53b65a-e005-4f38-a21c-8e005727029f  'Baked Potatoes with Crab, Jalapeño and Mint'  <- https://cooking.nytimes.com/recipes/1016871-baked-potatoes-with-crab-jalapeno-and-mint
+  caafb8ea-55c4-41c0-b567-52a82de8deba  'Beef Enchiladas'  <- https://cooking.nytimes.com/recipes/1018152-enchiladas-con-carne
+  c605474f-68a3-4c02-867e-2a7a452944e4  'Blond Puttanesca (Linguine with Tuna, Arugula and Capers)'  <- https://cooking.nytimes.com/recipes/1019399-blond-puttanesca-linguine-with-tuna-arugula-and-capers
+  e037dae8-41e8-49e1-b8ec-6660f71229a4  'Boeuf Bourguignon (Beef Stew with Red Wine, Mushrooms, and Bacon)'  <- https://www.seriouseats.com/beef-bourguignon-red-wine-stew-recipe
+  31f3ee17-9719-4005-9bf8-ca397be5234e  'Braised Oxtail Noodles'  <- https://thewoksoflife.com/braised-oxtail-noodles/
+  8155da5f-0a45-4232-89c3-f9349ad3706a  'Brisket with Horseradish Gremolata'  <- https://cooking.nytimes.com/recipes/1017312-brisket-with-horseradish-gremolata
+  67097fa9-ccbe-4604-b53b-2dd9332dcf0e  'Butternut Squash Pasta with Bacon and Parmesan'  <- https://cooking.nytimes.com/recipes/1021510-butternut-squash-pasta-with-bacon-and-parmesan
+  fb4f2ebf-2a2f-4ad5-bd92-e9f95f0c8e55  'Cabbage and Glass Noodles'  <- https://thewoksoflife.com/cabbage-and-glass-noodle-stir-fry/
+  6783caec-4a4f-47e9-b867-0a61fd568ac9  'Cantonese Slippery Eggs with Tofu and Peas'  <- https://www.seriouseats.com/cantonese-eggs-with-tofu-and-peas-recipe-5218067
+  12f42f1f-8aac-4336-b9be-09f2811e7588  'Caramelized Shallot Pasta'  <- https://cooking.nytimes.com/recipes/1020830-caramelized-shallot-pasta
+  d5110f4c-1abe-416f-abba-fc2807fec362  'Cashew Butter Chicken Korma'  <- https://cooking.nytimes.com/recipes/1026005-cashew-butter-chicken-korma
+  c2b2ee3d-8e7c-45c8-80a8-e1d23cb31337  'Cauliflower Pasta with Anchovies and Bread Crumbs'  <- https://cooking.nytimes.com/recipes/1024143-cauliflower-pasta-with-anchovies-and-bread-crumbs
+  d930f632-098a-4e17-84fa-3c774088f09e  'Char Siu (Chinese Bbq Pork)'  <- https://thewoksoflife.com/chinese-bbq-pork-cha-siu/
+  b2c578d5-da1d-4766-b9fb-87032fcb2be4  'Chicken Chow Mein'  <- https://thewoksoflife.com/chicken-chow-mein-2/
+  47a0169b-e8aa-48c3-9988-29c25d098a7d  'Chicken Fried Rice'  <- https://thewoksoflife.com/classic-chicken-fried-rice/
+  dfa6a958-2a74-496b-95a3-63a6d8b1c7ed  'Chicken in a Pot with Lemon and Orzo'  <- https://www.nigella.com/recipes/chicken-in-a-pot-with-lemon-and-orzo
+  cd850dd5-f930-4478-8ec3-c5eab5470701  'Chicken Lo Mein'  <- https://cooking.nytimes.com/recipes/1026362-chicken-lo-mein
+  1ebaf293-a96c-4f1b-89fd-d63cb25e70fe  'Chicken Meatballs with Yogurt Sauce'  <- https://cooking.nytimes.com/recipes/1027194-chicken-meatballs-with-yogurt-sauce
+  db945ed0-1c5f-448e-aa52-a0e4dd3cf91d  'Chicken Pan-Fried Noodles (Gai See Chow Mein)'  <- https://thewoksoflife.com/pan-fried-noodles-w-chicken-gai-see-chow-mein/
+  dc4c73aa-d242-460f-92ab-3cfd4a208b27  'Chicken-Tarragon Pot Pie'  <- https://cooking.nytimes.com/recipes/7378-chicken-tarragon-pot-pie
+  0ad190e8-a097-4dc5-a6ae-ba450b055b7e  'Chili'  <- https://cooking.nytimes.com/recipes/1023921-chili
+  72e7a496-94b0-4595-bafa-002729748718  'Chili Oil Noodles with Steamed Bok Choy'  <- https://www.washingtonpost.com/recipes/chili-oil-noodles-steamed-bok-choy/?itid=hp_food_p014_f003
+  74714170-86a0-4852-bbf8-7027b126dd05  "Choucroute Garnie à l'Alsacienne (Alsatian Braised Sauerkraut with Mixed Meats and Sausages)"  <- https://www.seriouseats.com/choucroute-garnie-alsatian-braised-sauerkraut-meat-sausage-recipe
+  c34ac50a-83ed-4e0f-8232-91700d6a4745  'Coconut Red Curry with Tofu'  <- https://cooking.nytimes.com/recipes/1016196-coconut-red-curry-with-tofu
+  5a54eac6-14eb-40db-969f-09bd27b8594c  'Cold Noodle Salad with Spicy Peanut Sauce'  <- https://cooking.nytimes.com/recipes/1022329-cold-noodle-salad-with-spicy-peanut-sauce
+  ffac1c76-e6a3-4559-a7b6-897a4f6a5783  'Creamy Asparagus Pasta'  <- https://cooking.nytimes.com/recipes/1022038-creamy-asparagus-pasta
+  ad09fd8b-a55b-4662-80dd-ff12ea5d7910  'Crispy Pan-Fried Noodles with Seafood'  <- https://www.seriouseats.com/crispy-pan-fried-noodle-cake-seafood-recipe
+  0f321201-b5bc-4ca2-ac02-6011d3509847  'Crispy Potato Kugel'  <- https://cooking.nytimes.com/recipes/1020959-crispy-potato-kugel?campaign_id=58&emc=edit_ck_20220925&instance_id=72755&nl=cooking&regi_id=81395275&segment_id=108099&te=1&user_id=8408812e64411438add1d740b408792e
+  0a850d84-6956-4789-bae4-fe5d02ff8c2f  'Cumin Tofu Stir-Fry'  <- https://cooking.nytimes.com/recipes/1022438-cumin-tofu-stir-fry
+  fa8c1e19-c494-4afe-9b58-d6b273803ac4  'Dry-Brined Turkey'  <- https://cooking.nytimes.com/recipes/1012869-dry-brined-turkey
+  e86c3047-088e-45c9-8f88-8efdb019fa50  'Easy Skillet Lemon Chicken'  <- https://www.seriouseats.com/one-skillet-lemon-chicken-recipe-8739370
+  e583ee3a-09c1-44b3-a096-4e52c88669fd  'Filipino Pork Empanada'  <- https://salu-salo.com/pork-empanada/
+  bbaddb3d-7db5-409a-81b2-80a0e1a142a2  'Fish Pie'  <- https://cooking.nytimes.com/recipes/10204-fish-pie
+  d5b31905-afbe-4604-8788-78fbec4da5c9  'Fresh Tomato, Basil and Prosciutto Pasta'  <- https://cooking.nytimes.com/recipes/1025662-fresh-tomato-basil-and-prosciutto-pasta
+  449b3cf9-4ca9-4711-9698-0dad7c1cfbbd  'Garlicky Chicken Thighs with Scallion and Lime'  <- https://cooking.nytimes.com/recipes/1018911-garlicky-chicken-thighs-with-scallion-and-lime
+  e9b554f1-32d0-48af-916b-3feabbcb00cd  'Garlicky Chicken with Lemon-Anchovy Sauce'  <- https://cooking.nytimes.com/recipes/1015290-garlicky-chicken-with-lemon-anchovy-sauce?campaign_id=58&emc=edit_ck_20240318&instance_id=117752&nl=cooking&regi_id=81395275&segment_id=161097&te=1&user_id=8408812e64411438add1d740b408792ehttps://www.paprikaapp.com/sites/
+  ae69e6e2-177d-411d-ac4d-1fa6f3c82343  'Greens Frittata with Mozzarella and Prosciutto'  <- https://cooking.nytimes.com/recipes/12146-greens-frittata-with-mozzarella-and-prosciutto?algo=cooking_search_relevance_metric_ios_and_web&fellback=false&imp_id=6470987525079018&req_id=8475916255585596&surface=cooking-search-web&variant=0_relevance_reranking
+  41e9b049-5192-4c3d-9cac-d8fafbb97486  'Grilled Italian Sausage with Sweet-And-Sour Peppers and Onions'  <- https://www.seriouseats.com/grilled-italian-sausage-with-sweet-and-sour-peppers-and-onions-recipe
+  026544a3-b889-4476-9608-83edb9ebc88b  'Grilled Merguez and Onions with Mint-Lemon Couscous'  <- https://cooking.nytimes.com/recipes/1022246-grilled-merguez-and-onions-with-mint-lemon-couscous
+  9d778f09-fe27-47b5-a8be-ba8208a5aae4  'Grilled Shrimp Skewers with Garlic and Lemon'  <- https://www.seriouseats.com/grilled-shrimp-garlic-lemon-food-lab-recipe
+  34f0f060-7552-47fc-b12c-ae6cb08120ef  'Guinness and Beef Pie'  <- https://cooking.nytimes.com/recipes/1012397-guinness-pie?action=click&module=Global%20Search%20Recipe%20Card&pgType=search&rank=1
+  2413de4d-e0b8-4eb4-ba1c-b0e0b698d43b  'Hoisin Garlic Noodles'  <- https://cooking.nytimes.com/recipes/1026260-hoisin-garlic-noodles
+  06f4c5df-d303-49e2-bce9-3c40d4751631  'Homemade Rice Noodles'  <- https://thewoksoflife.com/homemade-rice-noodles/
+  a74c5d41-7978-4f5c-93c9-b3d7f4beef3a  'Honey Garlic Shrimp'  <- https://cooking.nytimes.com/recipes/1026055-honey-garlic-shrimp
+  c634114f-3d2b-49ca-91bd-b6877b1dbd9d  "Jamie Oliver's Eggplant Parmesan"  <- https://cooking.nytimes.com/recipes/1901-jamie-olivers-eggplant-parmesan?algo=identity&fellback=true&imp_id=7781116436289607&req_id=7063943431553906&surface=cooking-search-web&variant=0_relevance_reranking
+  6a5fadae-483e-4607-b759-aa7ac5362d1e  'Loaded Baked Frittata'  <- https://cooking.nytimes.com/recipes/1019519-loaded-baked-frittata
+  75fc752a-4f4b-4780-978d-eee0a554b073  'Maple-Baked Salmon'  <- https://cooking.nytimes.com/recipes/1021718-maple-baked-salmon
+  37af8e9d-c1aa-4ebf-9388-10c12cd2178a  'Midnight Pasta with Garlic, Anchovy, Capers and Red Pepper'  <- https://cooking.nytimes.com/recipes/12168-midnight-pasta-with-garlic-anchovy-capers-and-red-pepper
+  840c2d75-9862-4e6f-814b-c42c88a1f300  'Miso-Butter Pasta with Butternut Squash'  <- https://cooking.nytimes.com/recipes/1022636-miso-butter-pasta-with-butternut-squash
+  591e8d41-f0a8-4f2c-ab02-b6d8f5edcef2  'Modern Baked Mac and Cheese with Cheddar and Gruyère'  <- https://www.seriouseats.com/sodium-citrate-baked-mac-and-cheese
+  758cb6e0-55da-4000-9d74-7872e7cba172  'Nigel Slater’s Cauliflower Cheese Pie'  <- https://www.theguardian.com/food/2023/mar/26/nigel-slater-cauliflower-cheese-pie-recipe
+  ad74d294-86c8-4505-9757-10a91ceecdf8  'One-Pot Ginger Salmon and Rice'  <- https://cooking.nytimes.com/recipes/1024085-one-pot-ginger-salmon-and-rice
+  1bffc0cb-1c27-4228-a26d-851a661a16dd  'Oven-Roasted Chicken Shawarma'  <- https://cooking.nytimes.com/recipes/1017161-oven-roasted-chicken-shawarma
+  bc066858-f68a-4445-a01d-b6e404c7f027  'Pad Kee Mao'  <- https://cooking.nytimes.com/recipes/1016835-pad-kee-mao
+  080420f5-c45c-4e09-8474-06ff0c18330c  'Pad Kee Mao (Drunken Noodles)'  <- https://cooking.nytimes.com/recipes/1023044-pad-kee-mao-drunken-noodles
+  05fa03bc-1cff-46ca-9eaf-b35f30338899  'Pasta Alla Norma Sorta'  <- https://cooking.nytimes.com/recipes/1020419-pasta-alla-norma-sorta
+  9c08df44-37e3-40bd-aa6c-b8f4404e0d39  'Pasta with Sardines, Bread Crumbs and Capers'  <- https://cooking.nytimes.com/recipes/1013094-pasta-with-sardines-bread-crumbs-and-capers
+  9118ce6d-1af4-490d-873d-6003a120a33a  'Pasta with Tuna, Capers and Scallions'  <- https://cooking.nytimes.com/recipes/1020949-pasta-with-tuna-capers-and-scallions
+  eb3c74b5-2df7-4411-bfff-ebb109d79e59  'Pasta, Green Beans and Potatoes with Pesto'  <- https://cooking.nytimes.com/recipes/6078-pasta-green-beans-and-potatoes-with-pesto
+  eb64e109-32f2-46ab-a4ee-6ea8c680f18b  'Peanut Noodles with Shrimp'  <- https://cooking.nytimes.com/recipes/1012747-peanut-noodles-with-shrimp
+  a5a5be4a-64a3-4d9b-8d76-4851afed8de3  'Pesto Pasta with Shrimp and Salmon'  <- https://cooking.nytimes.com/recipes/1024546-pesto-pasta-with-shrimp-and-salmon
+  59c7176d-a0a0-4a98-a692-2207523ddba7  'Pork Bulgogi with Spring Vegetables'  <- https://cooking.nytimes.com/recipes/1024135-pork-bulgogi-with-spring-vegetables
+  a901eafc-6239-4852-ab10-a20a1b540060  'Pork Chops in Lemon-Caper Sauce'  <- https://cooking.nytimes.com/recipes/1020583-pork-chops-in-lemon-caper-sauce
+  bb6aca10-4184-4e15-b054-e07fd542c127  'Pork Chops with Tamarind and Ginger'  <- https://cooking.nytimes.com/recipes/1018798-pork-chops-with-tamarind-and-ginger?surface=cooking-carousel&fellback=false&req_id=18870437&algo=cooking_preranked_all_MiniLM_L12_v2_title_desc_step_ing&variant=2_cooking_pretrained_title_desc_step_ing&imp_id=678165440
+  ee927eac-c97f-4231-86b7-d10c63f5bed8  'Pork Meatballs with Ginger and Fish Sauce'  <- https://cooking.nytimes.com/recipes/1019764-pork-meatballs-with-ginger-and-fish-sauce
+  73ad52fb-609c-415e-b814-74e45c833acf  'Pork-Fennel Burger'  <- https://cooking.nytimes.com/recipes/1013160-pork-fennel-burger
+  41726cb0-1b8e-4511-92e9-08ec3d4b9708  'Roasted and Reverse Seared Prime Rib'  <- https://www.seriouseats.com/perfect-prime-rib-beef-recipe
+  16b10d66-e65c-4f0e-aa7c-6d0f0bd845a4  'Roquefort, Leek and Walnut Tart'  <- https://cooking.nytimes.com/recipes/1019198-roquefort-leek-and-walnut-tart
+  c0c88a20-8510-4026-8b1f-bb6554da8f93  'Rosemary Rack of Lamb with Crushed Potatoes'  <- https://cooking.nytimes.com/recipes/1019078-rosemary-rack-of-lamb-with-crushed-potatoes
+  a708319b-da37-40c0-9bf3-783f3e308564  'Salmon and Pea Risotto'  <- https://cooking.nytimes.com/recipes/4131-salmon-and-pea-risotto
+  57d226ae-f7ae-4ae7-846e-2802a9ce2f1f  'Salmon Roasted in Butter'  <- https://cooking.nytimes.com/recipes/5703-salmon-roasted-in-butter
+  bf96cf58-efd2-4d1f-9228-80c7e2d17aca  'Salmon with Anchovy-Garlic Butter'  <- https://cooking.nytimes.com/recipes/1017329-salmon-with-anchovy-garlic-butter
+  e7f5bf74-bee3-4176-abc1-14d767256bb6  'Samosa Pie'  <- https://cooking.nytimes.com/recipes/1022081-samosa-pie
+  784e9866-882e-4edf-846d-87c4589cf14a  'Sardine Pasta Puttanesca'  <- https://cooking.nytimes.com/recipes/1024285-sardine-pasta-puttanesca
+  56336ce1-5d19-4b20-b569-7d55d8d29a19  'Sardine Toasts with Tomato and Sweet Onion'  <- https://cooking.nytimes.com/recipes/1020464-sardine-toasts-with-tomato-and-sweet-onion
+  bb2179b8-27c0-4308-9e3a-874bec144fd1  'Sausage Ragù'  <- https://cooking.nytimes.com/recipes/1017729-sausage-ragu
+  0f4d3afa-2d63-4e1b-953d-ae65d8c8e56d  'Savoury Prosciutto and Tomato Galette'  <- https://g.co/gemini/share/e03f39d3a760
+  89155b18-90c5-4ca7-9db5-813df6e1bbbd  'Seared Halibut with Anchovies, Capers and Garlic'  <- https://cooking.nytimes.com/recipes/10603-seared-halibut-with-anchovies-capers-and-garlic?surface=cooking-carousel&fellback=false&req_id=279550024&algo=cooking_doc2vec_weight_1&variant=0_cooking_doc2vec_weight_1&imp_id=822613303
+  e7445095-2d4f-4443-9ed9-3501430bca03  'Sesame-Tonnato Noodles'  <- https://www.washingtonpost.com/recipes/sesame-tonnato-noodles/
+  bca639ac-3935-48bb-ad91-30f9bd360b25  'Shakshuka with Feta'  <- https://cooking.nytimes.com/recipes/1014721-shakshuka-with-feta
+  711f5f8e-a14d-4569-8818-75376b820a70  "Shepherd's Pie"  <- https://www.jamieoliver.com/recipes/lamb-recipes/shepherd-s-pie/
+  57196757-cc3a-4d04-bf82-a940be81c112  'Singapore Rice Noodles'  <- https://www.seriouseats.com/singapore-curry-noodles-stir-fry-recipe
+  d39d2ef3-8640-41d1-8f30-25a74ed138b9  'Skillet Eggs with Garam Masala and Tomatoes'  <- https://cooking.nytimes.com/recipes/1025194-skillet-eggs-with-garam-masala-and-tomatoes?action=click&module=RelatedLinks&pgtype=Article
+  9425b1f6-9e3f-45ef-af38-b3743c47ea0d  'Slow Cooker Short Ribs with Chinese Flavors'  <- https://cooking.nytimes.com/recipes/1017176-slow-cooker-short-ribs-with-chinese-flavors
+  72830f51-1e5a-4159-be16-0d9566fee2ad  'Somen Noodles with Poached Egg, Bok Choy and Mushrooms'  <- https://cooking.nytimes.com/recipes/1020047-somen-noodles-with-poached-egg-bok-choy-and-mushrooms
+  588b9015-4cc9-4028-9715-6e20eab073ad  'Soy Sauce Noodles with Cabbage and Fried Eggs'  <- https://cooking.nytimes.com/recipes/1023889-soy-sauce-noodles-with-cabbage-and-fried-eggs
+  6d0f2c1d-a61b-4806-8796-3a1992a23447  'Spaghetti Al Limone with Shrimp'  <- https://cooking.nytimes.com/recipes/1022216-spaghetti-al-limone-with-shrimp
+  0d50eaeb-1ef9-48d3-928a-182f91f32c8c  'Spaghetti Alle Vongole in Bianco (Spaghetti with White Clam Sauce)'  <- https://www.seriouseats.com/spaghetti-pasta-alle-vongole-clams-recipe
+  f6735843-1c4c-41d1-9049-269960c33494  'Spaghetti and Meatballs'  <- https://www.seriouseats.com/spaghetti-with-meatballs
+  8c5f4250-5c4e-4164-91d5-1b82ebc6ba90  'Spaghetti with Carbonara Sauce'  <- https://www.seriouseats.com/pasta-carbonara-sauce-recipe
+  7bf2120a-a2ff-48cb-be2e-c5822974e03a  'Spaghetti with Fried Eggs'  <- https://cooking.nytimes.com/recipes/8357-spaghetti-with-fried-eggs
+  8132f929-f767-4ba8-b1e9-8cb70a9a1790  'Spatchcocked (Butterflied) Roast Chicken'  <- https://www.seriouseats.com/butterflied-roasted-chicken-with-quick-jus-recipe
+  7abba2ff-e0bf-4496-8033-66e634945470  'Spice-Rubbed Spatchcocked Chicken'  <- https://cooking.nytimes.com/recipes/1018778-spice-rubbed-spatchcocked-chicken
+  53de5358-ccba-47ee-aff9-cea5f54cdeb2  'Spicy Ginger Pork Noodles with Bok Choy'  <- https://cooking.nytimes.com/recipes/1016023-spicy-ginger-pork-noodles-with-bok-choy
+  0d01b50b-2c7f-4c57-a131-a44859996c69  'Spicy Grilled Pork with Fennel, Cumin and Red Onion'  <- https://cooking.nytimes.com/recipes/1021185-spicy-grilled-pork-with-fennel-cumin-and-red-onion
+  c414358f-0939-4175-94a7-bca43397f044  'Sticky Coconut Chicken and Rice'  <- https://cooking.nytimes.com/recipes/1023047-sticky-coconut-chicken-and-rice
+  a0dac17d-e446-4348-a04b-447a7a6c3dbc  'Stir-Fried Tofu with Ginger'  <- https://cooking.nytimes.com/recipes/1023819-stir-fried-tofu-with-ginger
+  6e363471-db44-4c30-898b-d8190c8bfdce  'Sundubu Jjigae, or Spicy Korean Tofu and Seafood Stew'  <- https://www.theguardian.com/food/2024/nov/04/sundubu-jjigae-recipe-seji-hong-spicy-tofu-and-seafood-stew
+  826cbca7-c33f-40ae-9c9c-08fbdfd2bd04  'Swedish Meatballs with Rich Gravy'  <- https://www.seriouseats.com/the-best-swedish-meatballs-recipe
+  6199abb0-ef9e-405e-a5b5-0ba28e0272f7  'Takeout-Style Sesame Noodles'  <- https://cooking.nytimes.com/recipes/9558-takeout-style-sesame-noodles
+  99a69eba-e63b-400e-a3e4-10a8aad3700a  'Tender Braised Lamb Shanks with Bitter Herb Salad'  <- https://www.seriouseats.com/braised-lamb-shanks-herb-salad-recipe
+  b1beedf6-6314-4078-bc29-adea99db0146  'The Best Moules Marinières (Sailor-Style Mussels)'  <- https://www.seriouseats.com/the-best-moules-mariniere-sailor-style-mussels-recipe
+  19f4510f-0fc7-42c5-9d60-38289976b269  'The Best Simple Roast Turkey with Gravy'  <- https://www.seriouseats.com/the-best-simple-roast-turkey-gravy-recipe
+  28eb6b1c-8db6-40d4-97f4-463de1c6d367  'Thomasina Miers’ Recipe for a Leek, Tarragon and Cheese Pie'  <- https://www.theguardian.com/food/2023/mar/04/leek-tarragon-ticklemore-cheese-pie-recipe-thomasina-miers
+  d02a3c3f-7d7e-4111-8c60-ae5984b5c01d  'Thomasina Miers’ Recipe for Tomato, Cheese and Tarragon Galette'  <- https://www.theguardian.com/food/2019/sep/02/thomasina-miers-recipe-for-tomato-cheese-and-tarragon-galette
+  aa95e380-4451-4c91-9af5-d62ac1b90915  'Tomato Basil Chicken Breasts'  <- https://cooking.nytimes.com/recipes/1027093-tomato-basil-chicken-breasts
+  07a54335-fd65-4d2e-828b-e7317d028122  'Tomato Risotto'  <- https://cooking.nytimes.com/recipes/1020378-tomato-risotto
+  bdf5818d-3132-4ee8-aa08-03bda66e1aa4  'Truffle, Cheese and Potato Pie'  <- https://www.womanandhome.com/recipes/truffle-cheese-and-potato-pie/
+  3dfc8810-d4aa-41f0-a2aa-1587611dcbdc  'Tuna Mayo Rice Bowl'  <- https://cooking.nytimes.com/recipes/1023224-tuna-mayo-rice-bowl
+  3ed391a2-302e-49cf-a81a-d98a63eb118e  'Turkey Enchiladas'  <- https://www.epicurious.com/recipes/food/views/turkey-enchiladas-51197020
+  864971e0-6ed3-483a-9e20-199e88a72441  'Yotam Ottolenghi’s Jacket Potatoes with Egg and Tonnato Sauce'  <- https://www.theguardian.com/food/2023/jan/30/yotam-ottolenghi-jacket-potatoes-egg-tonnato-sauce
+827 archive entries, 787 rows; 629 untouched, 9 ambiguous, 68 unmatched
+would update 114 recipe(s)
+DRY RUN — nothing was written. Re-run with --live to apply.
