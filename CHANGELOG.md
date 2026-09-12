@@ -5,9 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased] — recipe source citation
+## [8.0.0] — 2026-09-12
 
-### ✨ Added
+The recipe edit backend, the recipe source citation, and everything that landed between them: 47 commits over fourteen pull requests (#24–#37) since v7.0.0, plus #38 and #39.
+
+### ⚠️ Requires — apply the Cayenne migrations **before** deploying this version
+`SupabaseWriter` puts every new column into **every** recipe INSERT, unconditionally and behind no feature flag. Against a schema missing any of them PostgREST rejects the row with `PGRST204` ("column … does not exist") and `write_recipe_to_supabase` raises `RuntimeError`, so every ingest fails, for every user, on every path — URL, file, and Paprika alike. `REGEN_WORKER_ENABLED` does **not** protect the writer; leaving the flag unset changes nothing here.
+
+- **Cayenne migration 013 (`recipe_edit_columns`)** — `ingredient_lines`, `direction_steps`, `body_rev`, `derived_rev`, `amount_overrides`, and the nine `prep_*` / `cook_*` / `servings_*` duration columns.
+- **Cayenne migration `recipe_source_citation` (Cayenne PR #58)** — `source_kind`, `source_key`, `source_title`, `source_author`.
+- **Cayenne migration 014 (`regen_rpcs`)** is required in addition before setting `REGEN_WORKER_ENABLED=1`: `claim_stale_recipes` and `regen_failed` do not exist without it and every poll raises. The RPCs' required semantics are in `docs/sql/regen-rpcs.md`; they were implemented, verified against a real Postgres, and applied 2026-09-09 (#27).
+- **The live API's environment must carry both `REGEN_WORKER_ENABLED=1` and the service-role key, or the process will not come up** (#34). With the flag set and no service client the server refuses to start with a `RuntimeError` naming `SUPABASE_URL` and the key, instead of answering every request while draining nothing; with the flag unset it warns.
+
+All three migrations are applied to the live project (013 and 014 on 2026-09-09, the citation columns on 2026-09-12). The warnings stand for every other environment.
+
+### ✨ Added — recipe edit backend (#26, #27, #32, #34)
+- `StructuredIngredient.line_index`, emitted by REFINE and normalised (in range, unique). The field is optional by design, so an out-of-range or duplicated index degrades that entry to `null` with a warning rather than failing the recipe; the client falls back to `fallback_string` matching (spec 4.3).
+- `core/durations.py`: deterministic duration and servings parser; shared fixture `tests/fixtures/duration_cases.json`, byte-identical with the Cayenne client's copy, including the `"2.5 min"` → 2 case that pins round-half-even on both sides.
+- Raw `ingredient_lines` / `direction_steps` and structured duration/servings columns carried through ASSEMBLE and written by `SupabaseWriter`.
+- `RegenWorker` and `RecatWorker` background workers behind `REGEN_WORKER_ENABLED`, started from the FastAPI lifespan.
+- `gemini.categorize_batch()` — categorise-only call for bulk recategorise.
+- Ingestion reads `uom_system` / `measure_preference` from `profiles`; request values are the fallback.
+- **`/health` publishes `regen_workers`** — `disabled` (the flag is not truthy), `misconfigured` (the flag is on but no service-role client resolves — the silent failure worth naming), or `started`. It initialises to `disabled` at module scope, so a server whose lifespan never ran never claims to have started workers. An empty regen queue looks identical whether the workers are running or were never started, so the state is published rather than inferred, the same argument `auth_mode` already makes (#32).
+- `scripts/backfill_durations.py` one-off backfill. Run `--live` 2026-09-10 over 788 rows: `cook_min_minutes` 0 → 199, `prep_min_minutes` 0 → 3, `servings_min` 0 → 69.
+- `docs/sql/regen-rpcs.md`: the required semantics and reference SQL for `claim_stale_recipes` / `regen_failed` — the 20-second quiet window, the 5-minute lease, three failures per `body_rev` — restated as what the implementation must keep satisfying now that it exists (#27).
+
+### ✨ Added — recipe source citation (#36)
 - Four citation columns — `source_kind`, `source_key`, `source_title`, `source_author` — written on every insert, derived reader-first in `core/citation.py` (`resolve_citation`): a book or an unknown book is settled entirely by the reader (EPUB/PDF metadata); a page keeps its host as the key and takes the site's stated name and byline from the model; with nothing known from the reader, the model's stated source is classified by the same seven rules the backfill uses.
 - The EPUB and PDF readers no longer write `"Title — Author"` into `source_url`; the string form stays only as `Citation.display()`, used by the Paprika export.
 - `Chunk.citation`, carried alongside `source_url` from every reader through to `assemble()`.
@@ -16,26 +39,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `scripts/restore_source_urls.py` — restores the Paprika archive's per-entry clip URLs that the bulk import dropped, matched by title with `backfill_paprika_metadata`'s rule; ambiguous and unmatched entries are reported, never written. Dry run by default.
 - Shared key fixture `tests/fixtures/citation_keys.json`, the contract `normalise_key` and its Cayenne client twin (`cayenne-web/src/lib/domain/citation.ts`) must both satisfy.
 
-### ⚠️ Requires — apply the Cayenne migration **before** deploying this version
-- **Cayenne migration `recipe_source_citation` (Cayenne PR #58) is required before deploying this version.** `SupabaseWriter` puts the four citation columns into **every** recipe INSERT, unconditionally. Against the pre-migration schema PostgREST rejects the row with `PGRST204` ("column … does not exist"), so every ingest fails, for every user, on every path — URL, file, and Paprika alike.
+### ✨ Added — REFINE emits the other measure for every quantified line (#29)
+- One rule in `build_refine_prompt`: always give the equivalent in the other measure, for every quantified volume-or-weight line, **regardless of the cook's Measure Preference**. Previously `converted_*` was filled only when the preference was Weight and the source was Volume, so a line a cook later re-entered in the other measure permanently lost its volume rendering for every reader. No schema change — `converted_amount`, `converted_unit` and `is_ai_converted` already exist — and no backfill: existing rows keep what they have until next regenerated. Only the refine-prompt snapshot moved; the recorded Gemini replies are unchanged.
 
----
+### ✨ Added — one-off scripts, each already run against the live library
+- `scripts/backfill_paprika_metadata.py` (#24) — fills `source`, `notes`, `rating`, `nutritional_info`, `description` and `difficulty` from a Paprika archive onto rows that predate migration 012. Titles are the only key, compared on letters and digits alone; ambiguity is skipped, nulls only, dry run by default, `--archive` and `--user-id` required. Run 2026-09-08: 743 of 788 rows filled, 9 ambiguous, 68 archive entries with no row in the library (reported, never created).
+- `scripts/backfill_recipe_images.py` (#28) — uploads the photographs a Paprika archive carries for recipes ingested before the image path existed. Run 2026-09-08: 2 → 417 of 788 recipes with an image; 17 blocked on duplicated titles.
+- `scripts/measure_match_band.py` (#31) — **read-only**; measures the cosine band a corpus and embedding model actually produce, so Cayenne's match-strength bar has a floor and ceiling that were measured rather than guessed. Deterministic (`--seed`), twenty fixed queries. Measured 2026-09-10 against `gemini-embedding-001` at 1536 dimensions over 788 recipes: `MATCH_FLOOR = 0.535548`, `MATCH_CEILING = 0.837484`. Committed because the constants expire with the model, the dimensionality, or the embedded text.
 
-## [Unreleased] — recipe edit backend
+### 🐛 Fixed
+- **The unparseable-duration fallback tidies its note** (`core/durations.py`, #33) — `parse_duration` and `parse_servings` normalised every successful path but returned the raw input on failure, so a malformed source field reached `prep_note` / `cook_note` / `servings_note` verbatim. Three live rows carried 37,114, 10,242 and 5,562 characters of newline padding in **synced** columns, and the same leak was live on every ingest through `SupabaseWriter`. The fallback now collapses whitespace runs and nothing else — not `_normalise`, which also lowercases and rewrites fraction glyphs, and this note is display text. Worst note after: 60 characters.
+- **The refine prompt no longer instructs the model to null a non-nullable boolean** (`gemini.py`, in #29) — `is_ai_converted` is `bool` and the schema handed to Gemini has no null variant, so "leave all three null" asked for exactly what the schema forbids.
 
-### ✨ Added
-- `StructuredIngredient.line_index`, emitted by REFINE and normalised (in range, unique). The field is optional by design, so an out-of-range or duplicated index degrades that entry to `null` with a warning rather than failing the recipe; the client falls back to `fallback_string` matching (spec 4.3).
-- `core/durations.py`: deterministic duration and servings parser; shared fixture `tests/fixtures/duration_cases.json`.
-- Raw `ingredient_lines` / `direction_steps` and structured duration/servings columns carried through ASSEMBLE and written by `SupabaseWriter`.
-- `RegenWorker` and `RecatWorker` background workers behind `REGEN_WORKER_ENABLED`, started from the FastAPI lifespan.
-- `gemini.categorize_batch()` — categorise-only call for bulk recategorise.
-- Ingestion reads `uom_system` / `measure_preference` from `profiles`; request values are the fallback.
-- `scripts/backfill_durations.py` one-off backfill.
-- `docs/sql/regen-rpcs.md`: required semantics and reference SQL for the `claim_stale_recipes` / `regen_failed` RPCs that Cayenne migration 014 must implement.
+### 🧪 Testing
+- **The suite runs in parallel by default** (#25): `pytest-xdist` is declared in `pyproject.toml`, the worker count is capped at 6 and scales down on small hosts (xdist's own `auto` counts logical cores and was slower than serial at 16). `--record-gemini`, `--update-goldens` and `--snapshot-update` demote the run to serial, each for a stated reason, and say so.
+- **The suite decides its own worker state** (#38): `tests/conftest.py` sets `REGEN_WORKER_ENABLED` empty for the session, so a developer's `.env` carrying `=1` no longer collides with the test-time refusal to build a live service client and fail seven `tests/test_api.py` tests that CI, having no `.env`, never sees.
+- 970 passed at this version.
 
-### ⚠️ Requires — apply migration 013 **before** deploying this version
-- **Cayenne migration 013 (`recipe_edit_columns`) is required before deploying this version. Without it every ingest fails with `PGRST204` — this is not limited to the background workers.** `SupabaseWriter` puts the new columns (`ingredient_lines`, `direction_steps`, `body_rev`, `derived_rev`, `amount_overrides`, and the nine `prep_*` / `cook_*` / `servings_*` duration columns) into **every** recipe INSERT, unconditionally and behind no feature flag. Against the pre-013 schema PostgREST rejects the row with `PGRST204` ("column … does not exist") and `write_recipe_to_supabase` raises `RuntimeError`, so every ingest fails, for every user, on every path — URL, file, and Paprika alike. `REGEN_WORKER_ENABLED` does **not** protect the writer; leaving the flag unset changes nothing here.
-- Cayenne migration 014 (`regen_rpcs`) is required in addition before setting `REGEN_WORKER_ENABLED=1`: `claim_stale_recipes` and `regen_failed` do not exist without it and every poll raises. The RPCs' required semantics are in `docs/sql/regen-rpcs.md`.
+### 📝 Documentation
+- The philosophy spec: the five repairs the recipe-edit seams design found and two they imply (#30), and `prep_time` / `cook_time` staying on the server as the duration text as imported, out of sync, never displayed (#35). Both copies — this repository's and Cayenne's — are byte-identical and merged together.
+- The extraction goldens, recipe edit backend, and source citation plans carry `**Merged:**` headers recording what execution changed and why (#37, #39) — including the one deliberate override of the recipe edit plan (`line_index` degrades rather than raises) and the migration requirement that three documents had stated backwards until `5d07702`.
 
 ---
 
