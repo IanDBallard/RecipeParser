@@ -90,7 +90,7 @@ class TestSelectReaderFallbackContentType:
 
     def test_non_paprika_zip_not_misrouted(self):
         """A plain .zip file must raise ValueError — it is not a supported type."""
-        with pytest.raises(ValueError, match="Unsupported file type"):
+        with pytest.raises(ValueError, match=r"Cayenne can't read \.zip files yet\."):
             _select_reader("archive.zip", "application/zip")
 
     def test_pdf_via_octet_stream_still_routes_to_pdf(self):
@@ -102,3 +102,50 @@ class TestSelectReaderFallbackContentType:
         """EPUB with octet-stream content-type should still route to epub."""
         result = _select_reader("cookbook.epub", "application/octet-stream")
         assert result == "epub"
+
+
+class TestSelectReaderImages:
+    """Stage D (INGESTION_API.md, *Input media* 1): photos route to the image reader."""
+
+    @pytest.mark.parametrize(
+        "filename,content_type",
+        [
+            ("IMG_4021.jpg", "image/jpeg"),
+            ("page.jpeg", "image/jpeg"),
+            ("page.png", "image/png"),
+            ("page.webp", "image/webp"),
+            ("PAGE.JPG", "application/octet-stream"),   # extension wins
+            ("blob", "image/jpeg"),                      # no extension: content type decides
+            ("blob", "image/jpg"),                       # the non-standard spelling some browsers send
+        ],
+    )
+    def test_photo_routes_to_image(self, filename, content_type):
+        assert _select_reader(filename, content_type) == "image"
+
+    @pytest.mark.parametrize(
+        "filename,content_type",
+        [("IMG_1.heic", "image/heic"), ("IMG_1.HEIF", "application/octet-stream"), ("blob", "image/heif")],
+    )
+    def test_heic_is_refused_plainly(self, filename, content_type):
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader(filename, content_type)
+        assert str(excinfo.value) == "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
+
+
+class TestSelectReaderSentence:
+    """Input media 2: the refusal names the type in a sentence the client shows verbatim."""
+
+    def test_names_the_extension(self):
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader("menu.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        assert str(excinfo.value) == "Cayenne can't read .docx files yet."
+
+    def test_lower_cases_the_extension(self):
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader("MENU.DOCX", "application/octet-stream")
+        assert str(excinfo.value) == "Cayenne can't read .docx files yet."
+
+    def test_no_extension(self):
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader("blob", "application/octet-stream")
+        assert str(excinfo.value) == "Cayenne can't read this file yet."

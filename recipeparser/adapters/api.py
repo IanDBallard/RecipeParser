@@ -708,11 +708,27 @@ _active_jobs: Dict[str, tuple[str, PipelineController]] = {}
 # Phase 6 helpers
 # ---------------------------------------------------------------------------
 
-def _select_reader(filename: str, content_type: str) -> str:
-    """Return a reader tag string based on filename extension (primary) or content-type.
+_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+_IMAGE_CONTENT_TYPES = ("image/jpeg", "image/jpg", "image/png", "image/webp")
+_HEIC_EXTENSIONS = (".heic", ".heif")
+_HEIC_CONTENT_TYPES = ("image/heic", "image/heif")
+# When a photo arrives with no extension, the temp file the reader opens needs
+# one PyMuPDF recognises; the content type is the only clue left.
+_IMAGE_SUFFIX_BY_TYPE = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
 
-    Returns one of: 'pdf', 'epub', 'paprika'.
-    Raises ValueError for unsupported types (caller converts to 422).
+
+def _select_reader(filename: str, content_type: str) -> str:
+    """Return a reader tag from the filename extension (primary) or the content type.
+
+    Returns one of: 'pdf', 'epub', 'paprika', 'image'.
+    Raises ValueError for anything else; its message is the sentence the endpoint
+    sends as the 422 ``detail`` and the client shows verbatim (INGESTION_API.md,
+    *Input media* 2), so it names the type and nothing internal.
     """
     ext = Path(filename).suffix.lower()
     if ext == ".pdf" or content_type == "application/pdf":
@@ -726,9 +742,15 @@ def _select_reader(filename: str, content_type: str) -> str:
         return "paprika"
     if content_type in ("application/zip", "application/octet-stream") and filename.lower().endswith(".paprikarecipes"):
         return "paprika"
-    raise ValueError(
-        f"Unsupported file type: extension='{ext}', content_type='{content_type}'."
-    )
+    if ext in _HEIC_EXTENSIONS or content_type in _HEIC_CONTENT_TYPES:
+        # The iOS picker hands the browser a JPEG anyway; a HEIC only arrives
+        # through a share or a desktop drop, and there is no decoder here yet.
+        raise ValueError("Cayenne can't read HEIC photos yet. Share it as a JPEG instead.")
+    if ext in _IMAGE_EXTENSIONS or content_type in _IMAGE_CONTENT_TYPES:
+        return "image"
+    if ext:
+        raise ValueError(f"Cayenne can't read {ext} files yet.")
+    raise ValueError("Cayenne can't read this file yet.")
 
 
 # ---------------------------------------------------------------------------
