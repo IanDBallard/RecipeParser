@@ -97,6 +97,7 @@ select = ["E", "F", "I", "TID"]
 # Reader unit tests exercise recipeparser.io.readers directly by design.
 "tests/unit/readers/test_readers.py" = ["TID"]
 "tests/unit/readers/test_image_reader.py" = ["TID"]
+"tests/unit/readers/test_pdf_ocr_fallback.py" = ["TID"]
 # Reader goldens exercise recipeparser.io.readers directly by design (spec §6.1).
 "tests/goldens/test_readers_golden.py" = ["TID"]
 # Stage goldens drive readers directly to build real chunks for the parse path (spec §6.2).

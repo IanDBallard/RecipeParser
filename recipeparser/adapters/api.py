@@ -979,7 +979,8 @@ async def submit_file_job(
                 #   PAPRIKA_CAYENNE + embedding  → ASSEMBLE only ($0)
                 #   PAPRIKA_CAYENNE no embedding → EMBED + ASSEMBLE (1 call)
                 if reader_tag == "pdf":
-                    chunks = await asyncio.to_thread(_PdfReader().read, tmp_path)
+                    # With the client, a scan is transcribed rather than refused (Input media 1).
+                    chunks = await asyncio.to_thread(_PdfReader(client=client).read, tmp_path)
                 elif reader_tag == "epub":
                     chunks = await asyncio.to_thread(_EpubReader().read, tmp_path)
                 elif reader_tag == "image":
