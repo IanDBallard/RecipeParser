@@ -7,8 +7,8 @@ import tempfile
 from typing import List, Optional, Set, Tuple
 
 import ebooklib  # type: ignore[import-untyped]
-from ebooklib import epub
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
+from ebooklib import epub
 
 from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
 from recipeparser.core.citation import Citation, book_citation
