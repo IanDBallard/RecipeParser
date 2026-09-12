@@ -1611,6 +1611,23 @@ git commit -m "docs: changelog for the Stage D intake changes"
 
 ---
 
+## Rulings made during execution (2026-09-12)
+
+Executed by subagent-driven development: a fresh implementer per task, a task review per task, one fix round where a review asked for it, a whole-branch review, one fix wave and one scoped re-review. What the execution decided that this plan did not, each with what it costs if wrong:
+
+- **The lint gate is "no new findings in a touched file".** The repository carries about 130 pre-existing ruff findings, so the plan's "ruff clean before every commit" had no clean baseline. Cost: a pre-existing finding in a touched file could mask a new one of the same code.
+- **A present extension decides the reader on its own; the content type only when there is none.** The plan's `ext in X or content_type in Y` per category let `image/heic` refuse a `.jpg`. The old paprika content-type branch, unreachable by the test file's own account, went. Cost: a file with a lying extension is routed by its name, as pdf/epub always were.
+- **WebP is refused plainly, like HEIC.** PyMuPDF 1.27 fails at `fitz.open()` on WebP and Pillow is not a dependency; the sentence is `Cayenne can't read WebP photos yet. Share it as a JPEG instead.` Cost: Android Chrome shares WebP, so those users get a sentence until a decoder lands. `INGESTION_API.md`'s "image/webp" is amended at housekeeping.
+- **`PDF_OCR_MAX_PAGES = 40` caps the OCR path**, refused before any vision call; the 2000-page read cap was the only bound. Cost: a 41-page scan is refused with a sentence; one constant to raise.
+- **Ruling 3 amended: the OCR transcript is split to `MAX_CHUNK_CHARS`** with the EPUB reader's `split_large_chunk`, still no images, no page attribution. One 40-page transcript in one chunk was two to four times the cap on exactly the path this plan opens. Cost: a recipe straddling a split boundary is lost, the risk every EPUB chapter already carries.
+- **`og:image` is badge-checked too**, else the markdown fallback runs; **badge words match whole tokens** (`iconic-lasagna.jpg` is a photograph), and `button`/`avatar` left the list; the wrapper is parsed before it is unquoted; an absent Content-Type is parsed anyway; `_fetch_page_meta` refuses non-http schemes and private, loopback, link-local and reserved IP-literal hosts without DNS. Cost: a decimal-encoded loopback or a DNS-rebinding host still passes; recorded.
+- **Ruling 4's rationale corrected:** until Task 6 landed, `assemble()` read `description` only from `meta`, so the page's description was additive then and beats the model's now.
+- **Ruling 7 amended twice: the hint is written only when the batch carries exactly one distinct key** (a Paprika archive carries many and keeps the filename the endpoint set), **and at read time only for a web citation's key**; a book's key arrives at finalize, because Cayenne's import banner shows `source_hint` verbatim while a job runs and a running `Italian Food.epub` must not read "italian food". Cost: a Recent-imports row for a running book job opens on nothing until the job is done, which Stage E handles regardless; a two-source photo job keeps its filename.
+- **The stage snapshots gained three `None` keys per entry** because they record `raw.model_dump()`, which lists every field regardless of `repr=False`. Accepted; cost none.
+- **Parked from the fix wave's re-review:** `urlparse` in the private-host check sits outside `_fetch_page_meta`'s `try`, so an unbalanced-bracket URL raises `ValueError` and fails the job instead of degrading to no meta. A one-line fix, carried on the pull request as a residual. Deferred minors from every task review are on the pull request too; none blocks the merge.
+
+Follow-ups this execution recorded and did not take: the CLI's `extract_text_from_pdf` still holds a second copy of the scanned-PDF detection; the jina fetch and the page-meta fetch could run concurrently; `RecipeExtraction.notes` is still extracted and dropped; Gate D's eyes-on items gain a multi-page scan.
+
 ## Notes for the whole-branch review
 
 - **Ruling 4 in practice:** a site whose `<meta name="description">` is SEO boilerplate will put that boilerplate in `description`. Accepted: it is the page's own statement, and the editor can change it; the alternative — the model's reading of markdown that may not carry the headnote at all — was null on the case that prompted this.
