@@ -12,6 +12,7 @@
           ]),
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': '14 mins',
           'directions': list([
             'Heat the oven to 425F. Line a tray with parchment.',
@@ -31,6 +32,7 @@
           'photo_filename': 'scones.jpg',
           'prep_time': '15 mins',
           'servings': '8',
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': 8,
@@ -130,6 +132,7 @@
           ]),
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': '40 mins',
           'directions': list([
             'Brown the butter in a pale pan until it smells of hazelnuts, then cool until thick.',
@@ -148,6 +151,7 @@
           'photo_filename': 'shortbread.jpg',
           'prep_time': '20 mins',
           'servings': '12',
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': 12,
@@ -241,6 +245,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'Chop, mix well, and serve.',
@@ -270,6 +275,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -495,6 +501,7 @@
           ]),
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'Chop, mix, whip well.',
@@ -530,6 +537,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -819,6 +827,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'INTO A COPPER BOWL PUT 6 SEXTARII [1] OF HONEY AND 2 SEXTARII OF WINE; HEAT ON A SLOW FIRE, CONSTANTLY STIRRING THE MIXTURE WITH A WHIP.',
@@ -845,6 +854,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -999,6 +1009,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'FLAVOR HONEY WITH GROUND PEPPER AND SKIM.',
@@ -1014,6 +1025,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -1079,6 +1091,7 @@
           ]),
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'ACCORDING TO THE RECIPE OF CAMERINUM YOU NEED WORMWOOD FROM SANTO FOR ROMAN VERMOUTH OR, AS A SUBSTITUTE, WORMWOOD FROM THE PONTUS CLEANED AND CRUSHED, 1 THEBAN OUNCE OF IT, 6 SCRUPLES OF MASTICH, 3 EACH OF [nard] LEAVES, COSTMARY AND SAFFRON AND 18 QUARTS OF ANY KIND OF MILD WINE.',
@@ -1098,6 +1111,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -1194,6 +1208,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'ROSE PETALS, THE LOWER WHITE PART REMOVED, SEWED INTO A LINEN BAG AND IMMERSED IN WINE FOR SEVEN DAYS.',
@@ -1212,6 +1227,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -1800,6 +1816,7 @@
           ]),
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'Scald the milk.',
@@ -1819,6 +1836,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': '6',
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': 6,
@@ -1917,6 +1935,7 @@
           ]),
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': '40 mins',
           'directions': list([
             '**PHASE 1**',
@@ -1942,6 +1961,7 @@
           'photo_filename': None,
           'prep_time': '14 hours',
           'servings': '10 servings',
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': 10,
@@ -2089,6 +2109,7 @@
           ]),
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': '35 mins',
           'directions': list([
             'Mix everything to a smooth dough and knead for 8 minutes.',
@@ -2107,6 +2128,7 @@
           'photo_filename': None,
           'prep_time': '3 hours',
           'servings': '12',
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': 12,
@@ -2206,6 +2228,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'CRUSH BARLEY, SOAKED THE DAY BEFORE, WELL WASHED, PLACE ON THE FIRE TO BE COOKED [in a double boiler]',
@@ -2239,6 +2262,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -2466,6 +2490,7 @@
           ]),
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'THE CEREAL IS SOAKED; CHICKPEAS, LENTILS AND PEAS ARE CRUSHED AND BOILED WITH IT;',
@@ -2501,6 +2526,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -2755,6 +2781,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'THE MOVEABLE APPETIZERS ARE THUS MADE:',
@@ -2773,6 +2800,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -2863,6 +2891,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'Fry the bulbs.',
@@ -2877,6 +2906,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -2927,6 +2957,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'Cook morels quickly in garum and pepper.',
@@ -2944,6 +2975,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,
@@ -3020,6 +3052,7 @@
         'categories': dict({
         }),
         'raw': dict({
+          'byline': None,
           'cook_time': None,
           'directions': list([
             'Combine pepper, reduced wine, vinegar, and oil.',
@@ -3037,6 +3070,7 @@
           'photo_filename': None,
           'prep_time': None,
           'servings': None,
+          'stated_source': None,
         }),
         'refined': dict({
           'base_servings': None,

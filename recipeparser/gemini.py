@@ -13,7 +13,7 @@ import time
 from typing import Any, Dict, List, Optional, Type
 
 from google.genai import errors as genai_errors
-from pydantic import BaseModel, create_model, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, create_model
 
 from recipeparser.config import (
     BACKOFF_BASE_SECS,
@@ -27,7 +27,7 @@ from recipeparser.config import (
     THINKING_BUDGET,
 )
 from recipeparser.exceptions import ExtractionParseError
-from recipeparser.models import RecipeList, CayenneRefinement
+from recipeparser.models import CayenneRefinement, RecipeList
 
 log = logging.getLogger(__name__)
 
@@ -398,6 +398,9 @@ Rules:
 - Ingredients: one item per list entry. Convert unicode fractions (½, ¼, ¾) to plain text (1/2, 1/4, 3/4).
 - Directions: one step per list entry.
 - If a field is absent from the text, leave it null.
+- stated_source is the publication or book as the text names itself; byline is the author's
+  name if one is printed. Never the name of a model or a tool. Leave both null if the text
+  does not say.
 - Do not invent or infer values not present in the text.
 - photo_filename: always null (no images in plain text).
 
@@ -465,6 +468,9 @@ Rules:
   ingredients or steps as normal list items.
   Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
 - If a field is entirely absent from the text, leave it null.
+- stated_source is the publication or book as the text names itself; byline is the author's
+  name if one is printed. Never the name of a model or a tool. Leave both null if the text
+  does not say.
 - Do not invent or infer values that are not present in the text.{units_section}
 
 Text chunk:

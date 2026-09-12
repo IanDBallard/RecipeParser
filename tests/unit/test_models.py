@@ -51,3 +51,15 @@ class TestChunkMeta:
         meta = SourceMeta(prep_time="10 min")
         chunk = Chunk(text="x", input_type=InputType.PAPRIKA_LEGACY, meta=meta)
         assert chunk.meta is meta
+
+
+def test_extraction_asks_for_a_stated_source_and_a_byline():
+    from recipeparser.models import RecipeExtraction
+
+    schema = RecipeExtraction.model_json_schema()
+    assert "stated_source" in schema["properties"]
+    assert "byline" in schema["properties"]
+    # The instruction the prompt defect needs: the model must never name itself.
+    assert "Never the name of an AI model" in schema["properties"]["stated_source"]["description"]
+    r = RecipeExtraction(name="x", ingredients=[], directions=[])
+    assert r.stated_source is None and r.byline is None

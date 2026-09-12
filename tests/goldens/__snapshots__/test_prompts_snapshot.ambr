@@ -51,6 +51,9 @@
     ingredients or steps as normal list items.
     Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
   - If a field is entirely absent from the text, leave it null.
+  - stated_source is the publication or book as the text names itself; byline is the author's
+    name if one is printed. Never the name of a model or a tool. Leave both null if the text
+    does not say.
   - Do not invent or infer values that are not present in the text.
   
   Text chunk:
@@ -89,6 +92,9 @@
     ingredients or steps as normal list items.
     Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
   - If a field is entirely absent from the text, leave it null.
+  - stated_source is the publication or book as the text names itself; byline is the author's
+    name if one is printed. Never the name of a model or a tool. Leave both null if the text
+    does not say.
   - Do not invent or infer values that are not present in the text.
   - Where ingredients are given with dual measurements (e.g. "2 cups/250g flour"), keep the metric (gram/ml) part. Where ounces or pounds appear, keep those as-is.
   
@@ -128,6 +134,9 @@
     ingredients or steps as normal list items.
     Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
   - If a field is entirely absent from the text, leave it null.
+  - stated_source is the publication or book as the text names itself; byline is the author's
+    name if one is printed. Never the name of a model or a tool. Leave both null if the text
+    does not say.
   - Do not invent or infer values that are not present in the text.
   - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the metric (gram or ml) part and discard the US volume part. Output just "250g flour", "200g butter", etc.
   
@@ -167,6 +176,9 @@
     ingredients or steps as normal list items.
     Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
   - If a field is entirely absent from the text, leave it null.
+  - stated_source is the publication or book as the text names itself; byline is the author's
+    name if one is printed. Never the name of a model or a tool. Leave both null if the text
+    does not say.
   - Do not invent or infer values that are not present in the text.
   - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the US measure part and discard the metric part. Output just "2 cups flour", "14 tablespoons butter", etc.
   
@@ -185,6 +197,9 @@
   - Ingredients: one item per list entry. Convert unicode fractions (½, ¼, ¾) to plain text (1/2, 1/4, 3/4).
   - Directions: one step per list entry.
   - If a field is absent from the text, leave it null.
+  - stated_source is the publication or book as the text names itself; byline is the author's
+    name if one is printed. Never the name of a model or a tool. Leave both null if the text
+    does not say.
   - Do not invent or infer values not present in the text.
   - photo_filename: always null (no images in plain text).
   
@@ -751,6 +766,19 @@
     '$defs': dict({
       'RecipeExtraction': dict({
         'properties': dict({
+          'byline': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "The recipe author's name when a byline is printed ('By Melissa Clark' gives 'Melissa Clark'). null when none is printed.",
+            'title': 'Byline',
+          }),
           'categories': dict({
             'description': 'Paprika taxonomy categories assigned by the categorisation pass.',
             'items': dict({
@@ -844,6 +872,19 @@
             'default': None,
             'description': "Number of servings (e.g., '4 servings', '2-4').",
             'title': 'Servings',
+          }),
+          'stated_source': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'The publication, website or book this text names as its own source, exactly as the text names it: a masthead, a book title, a site name. Never the name of an AI model or a tool. null when the text does not say.',
+            'title': 'Stated Source',
           }),
         }),
         'required': list([

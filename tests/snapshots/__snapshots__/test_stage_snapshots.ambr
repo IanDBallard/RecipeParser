@@ -95,6 +95,7 @@
 # name: test_extract_output_shape
   list([
     dict({
+      'byline': None,
       'cook_time': '30 mins',
       'directions': list([
         'Mix until smooth.',
@@ -107,6 +108,7 @@
       'photo_filename': None,
       'prep_time': '10 mins',
       'servings': '4',
+      'stated_source': None,
     }),
   ])
 # ---

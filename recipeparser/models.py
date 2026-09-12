@@ -1,5 +1,6 @@
 """Pydantic models for structured Gemini output."""
 from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -48,6 +49,24 @@ class RecipeExtraction(BaseModel):
     notes: Optional[str] = Field(
         default=None,
         description="Any additional notes or headnotes from the author.",
+    )
+
+    stated_source: Optional[str] = Field(
+        default=None,
+        repr=False,
+        description=(
+            "The publication, website or book this text names as its own source, exactly as the "
+            "text names it: a masthead, a book title, a site name. Never the name of an AI model or "
+            "a tool. null when the text does not say."
+        ),
+    )
+    byline: Optional[str] = Field(
+        default=None,
+        repr=False,
+        description=(
+            "The recipe author's name when a byline is printed ('By Melissa Clark' gives 'Melissa Clark'). "
+            "null when none is printed."
+        ),
     )
 
     # Populated by the pipeline after extraction — not part of the LLM schema.
