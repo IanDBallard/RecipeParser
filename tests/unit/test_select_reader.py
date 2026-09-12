@@ -149,3 +149,24 @@ class TestSelectReaderSentence:
         with pytest.raises(ValueError) as excinfo:
             _select_reader("blob", "application/octet-stream")
         assert str(excinfo.value) == "Cayenne can't read this file yet."
+
+
+class TestSelectReaderExtensionWins:
+    """A recognised extension decides first; the content type only fills in when
+
+    the extension is absent or unrecognised (browsers mislabel content types).
+    """
+
+    def test_extension_wins_over_mislabeled_heic_content_type(self):
+        assert _select_reader("photo.jpg", "image/heic") == "image"
+
+    def test_extension_wins_over_mislabeled_image_content_type(self):
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader("menu.docx", "image/jpeg")
+        assert str(excinfo.value) == "Cayenne can't read .docx files yet."
+
+    def test_content_type_decides_with_no_extension(self):
+        assert _select_reader("blob", "application/pdf") == "pdf"
+
+    def test_pdf_extension_wins_over_image_content_type(self):
+        assert _select_reader("scan.pdf", "image/jpeg") == "pdf"

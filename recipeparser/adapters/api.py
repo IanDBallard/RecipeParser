@@ -720,36 +720,51 @@ _IMAGE_SUFFIX_BY_TYPE = {
     "image/png": ".png",
     "image/webp": ".webp",
 }
+_HEIC_SENTENCE = "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
 
 
 def _select_reader(filename: str, content_type: str) -> str:
-    """Return a reader tag from the filename extension (primary) or the content type.
+    """Return a reader tag from the filename extension, falling back to the content type.
 
     Returns one of: 'pdf', 'epub', 'paprika', 'image'.
+    A recognised extension decides on its own, whatever the content type says —
+    browsers mislabel content types, and a ``.jpg`` sent as ``image/heic`` is
+    still a JPEG (and a ``.docx`` sent as ``image/jpeg`` is still a ``.docx``).
+    The content type is consulted only when there is no extension at all.
     Raises ValueError for anything else; its message is the sentence the endpoint
     sends as the 422 ``detail`` and the client shows verbatim (INGESTION_API.md,
     *Input media* 2), so it names the type and nothing internal.
     """
     ext = Path(filename).suffix.lower()
-    if ext == ".pdf" or content_type == "application/pdf":
-        return "pdf"
-    if ext == ".epub" or content_type == "application/epub+zip":
-        return "epub"
-    # .paprikarecipes files are ZIP archives; browsers/Node may send them as
-    # application/zip or application/octet-stream — match by extension first,
-    # then fall back to content-type + filename suffix check.
-    if ext == ".paprikarecipes":
-        return "paprika"
-    if content_type in ("application/zip", "application/octet-stream") and filename.lower().endswith(".paprikarecipes"):
-        return "paprika"
-    if ext in _HEIC_EXTENSIONS or content_type in _HEIC_CONTENT_TYPES:
-        # The iOS picker hands the browser a JPEG anyway; a HEIC only arrives
-        # through a share or a desktop drop, and there is no decoder here yet.
-        raise ValueError("Cayenne can't read HEIC photos yet. Share it as a JPEG instead.")
-    if ext in _IMAGE_EXTENSIONS or content_type in _IMAGE_CONTENT_TYPES:
-        return "image"
     if ext:
+        # 1 — an extension is present: it decides on its own, recognised or not.
+        #     Falling through to the content type here would let a mislabeled
+        #     content type override a plainly-named file (see menu.docx below).
+        if ext == ".pdf":
+            return "pdf"
+        if ext == ".epub":
+            return "epub"
+        # .paprikarecipes files are ZIP archives; this catches every one of them
+        # by name, whatever content type the browser or Node sent it as.
+        if ext == ".paprikarecipes":
+            return "paprika"
+        if ext in _HEIC_EXTENSIONS:
+            # The iOS picker hands the browser a JPEG anyway; a HEIC only
+            # arrives through a share or a desktop drop, and there is no
+            # decoder here yet.
+            raise ValueError(_HEIC_SENTENCE)
+        if ext in _IMAGE_EXTENSIONS:
+            return "image"
         raise ValueError(f"Cayenne can't read {ext} files yet.")
+    # 2 — no extension at all: the content type is the only clue left.
+    if content_type == "application/pdf":
+        return "pdf"
+    if content_type == "application/epub+zip":
+        return "epub"
+    if content_type in _HEIC_CONTENT_TYPES:
+        raise ValueError(_HEIC_SENTENCE)
+    if content_type in _IMAGE_CONTENT_TYPES:
+        return "image"
     raise ValueError("Cayenne can't read this file yet.")
 
 
