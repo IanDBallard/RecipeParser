@@ -83,7 +83,7 @@ def page_meta_from_html(html: str) -> PageMeta:
 
 
 _BADGE_WORDS = frozenset(
-    {"logo", "badge", "icon", "sprite", "avatar", "powered", "button", "pixel", "spacer", "placeholder"}
+    {"logo", "badge", "icon", "sprite", "powered", "pixel", "spacer", "placeholder"}
 )
 
 

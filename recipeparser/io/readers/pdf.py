@@ -20,6 +20,7 @@ from recipeparser.core.citation import Citation, book_citation
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.exceptions import PdfExtractionError
 from recipeparser.io.readers import RecipeReader
+from recipeparser.io.readers.epub import split_large_chunk
 
 log = logging.getLogger(__name__)
 
@@ -99,8 +100,8 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
     a document with little or no text layer — transcribes every page through
     Gemini Vision when ``client`` is given, up to ``PDF_OCR_MAX_PAGES`` (a
     scan is one vision call per page, and a longer scan is refused rather than
-    billed page by page). A scan read that way yields one chunk for the whole
-    document and no images: its page images are the scan itself, not
+    billed page by page). A scan read that way yields the transcript split to
+    ``MAX_CHUNK_CHARS``, no images: its page images are the scan itself, not
     photographs of dishes. Without a client a scan is refused, as it always
     was.
 
@@ -133,7 +134,9 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
             log.info("Scanned PDF detected (avg %.0f chars/page) — transcribing through Gemini Vision.", avg_chars)
             from recipeparser.gemini import extract_text_via_vision  # noqa: PLC0415
 
-            return citation, image_dir, set(), [extract_text_via_vision(doc, client)]
+            transcript = extract_text_via_vision(doc, client)
+            split_chunks = [part for part in split_large_chunk(transcript) if part.strip()]
+            return citation, image_dir, set(), split_chunks
 
         qualifying_images: Set[str] = set()
         page_image_lists: List[List[str]] = []  # per-page list of qualifying image filenames

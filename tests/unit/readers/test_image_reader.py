@@ -59,6 +59,22 @@ def test_a_file_pymupdf_cannot_open_is_an_image_extraction_error(tmp_path):
         ImageReader(_client("x")).read(str(bad))
 
 
+def test_a_multi_page_pdf_renamed_jpg_is_refused_before_any_vision_call(tmp_path):
+    """PyMuPDF sniffs content, not the extension, so a PDF saved as .jpg opens
+    fine — and without this check would become one vision call per page."""
+    doc = fitz.open()
+    doc.new_page()
+    doc.new_page()
+    path = tmp_path / "menu.jpg"
+    doc.save(str(path))
+    doc.close()
+
+    client = _client("must not be read")
+    with pytest.raises(ImageExtractionError, match=r"not a single image \(2 pages\)"):
+        ImageReader(client).read(str(path))
+    client.models.generate_content.assert_not_called()
+
+
 def test_a_photo_the_model_cannot_read_raises_the_vision_error(tmp_path):
     with pytest.raises(RuntimeError, match="no text"):
         ImageReader(_client("")).read(_png(tmp_path))

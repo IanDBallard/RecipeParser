@@ -51,6 +51,12 @@ class ImageReader(RecipeReader):
         try:
             if doc.page_count == 0:
                 raise ImageExtractionError(f"Could not open '{Path(source).name}' as an image: no pages.")
+            if doc.page_count != 1:
+                # A PDF renamed .jpg opens fine here — PyMuPDF sniffs content, not
+                # the extension — and would otherwise become one vision call per
+                # page instead of the single photo this reader promises.
+                name = Path(source).name
+                raise ImageExtractionError(f"'{name}' is not a single image ({doc.page_count} pages).")
             try:
                 text = extract_text_via_vision(doc, self._client)
             except RuntimeError:

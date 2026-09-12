@@ -17,7 +17,7 @@ import io
 import os
 import time
 import uuid
-from typing import Any
+from typing import Any, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -360,7 +360,7 @@ class TestPostJobs:
         stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
         mock_pipeline_cls.return_value.run.side_effect = lambda *a, **kw: order.append("run") or []
 
-        def _record(job_id: str, total: int, source_hint: "str | None" = None) -> None:
+        def _record(job_id: str, total: int, source_hint: Optional[str] = None) -> None:
             order.append(f"total_chunks={total} hint={source_hint}")
 
         with stack, patch("recipeparser.adapters.api._update_total_chunks", side_effect=_record), \
@@ -821,6 +821,78 @@ class TestFetchPageMeta:
 
         assert result == PageMeta("https://static01.nyt.com/hero.jpg", None)
 
+    def _refusing_http(self, get_calls: list) -> type:
+        """An AsyncClient stand-in whose `get` records every call it did NOT refuse to make."""
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> Any:
+                get_calls.append(url)
+                raise AssertionError("must not be reached for a refused target")
+
+        return _Http
+
+    def test_a_cloud_metadata_ip_is_refused_before_any_get(self) -> None:
+        calls: list = []
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
+            result = asyncio.run(_fetch_page_meta("http://169.254.169.254/latest/meta-data"))
+        assert result == PageMeta(None, None)
+        assert calls == []
+
+    def test_a_non_http_scheme_is_refused_before_any_get(self) -> None:
+        calls: list = []
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
+            result = asyncio.run(_fetch_page_meta("file:///etc/passwd"))
+        assert result == PageMeta(None, None)
+        assert calls == []
+
+    def test_localhost_is_refused_before_any_get(self) -> None:
+        calls: list = []
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
+            result = asyncio.run(_fetch_page_meta("http://localhost:8000/x"))
+        assert result == PageMeta(None, None)
+        assert calls == []
+
+    def test_a_public_url_is_still_fetched(self) -> None:
+        html = '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
+
+        class _Resp:
+            text = html
+            headers = {"content-type": "text/html"}
+
+            def raise_for_status(self) -> None:
+                return None
+
+        calls: list = []
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> _Resp:
+                calls.append(url)
+                return _Resp()
+
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
+            result = asyncio.run(_fetch_page_meta("https://example.com/recipe"))
+
+        assert result == PageMeta("https://static01.nyt.com/hero.jpg", None)
+        assert calls == ["https://example.com/recipe"]
+
 
 # ===========================================================================
 # Cancellation reaches the terminal payload
@@ -919,10 +991,18 @@ class TestTotalChunks:
         assert calls == [(job_id, 1, None)]  # plain text carries no citation to hint from
 
     def test_a_file_job_records_what_the_reader_returned(self, monkeypatch: Any) -> None:
+        """A book citation is not written as the read-time hint even when every
+        chunk carries the same one (a single-book PDF): only a web citation's
+        key is written before extraction — the book's key arrives at finalize,
+        once the recipes that justify it exist."""
+        from recipeparser.core.citation import book_citation
+
         calls = self._captured(monkeypatch)
+        citation = book_citation("Some Book", "Some Author")
         chunks = [MagicMock() for _ in range(3)]
         for chunk in chunks:
             chunk.text = "pasta"
+            chunk.citation = citation
         stack, _mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
 
         with stack, \
@@ -936,6 +1016,4 @@ class TestTotalChunks:
             job_id = resp.json()["job_id"]
             self._drain(tc, job_id)
 
-        # Each mock chunk carries its own auto-generated (distinct) citation
-        # mock; the tie is broken by first-seen, so chunks[0]'s wins.
-        assert calls == [(job_id, 3, chunks[0].citation.key)]
+        assert calls == [(job_id, 3, None)]

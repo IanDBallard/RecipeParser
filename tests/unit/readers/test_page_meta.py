@@ -67,6 +67,11 @@ class TestLooksLikeBadge:
         )
         assert not looks_like_badge("https://cdn.site.test/uploads/2024/dish.jpg", "")
 
+    def test_button_and_avatar_are_photographs_not_furniture(self):
+        # button-mushroom-soup.jpg and avatar-cake.jpg are dishes, not site chrome.
+        assert not looks_like_badge("https://cdn.site.test/recipes/button-mushroom-soup.jpg")
+        assert not looks_like_badge("https://cdn.site.test/recipes/avatar-cake.jpg")
+
     def test_badge_words_match_whole_tokens_not_substrings(self):
         assert not looks_like_badge("https://cdn.site.test/recipes/iconic-lasagna.jpg")
         assert not looks_like_badge("https://cdn.site.test/uploads/silicone-mold-cookies.jpg")

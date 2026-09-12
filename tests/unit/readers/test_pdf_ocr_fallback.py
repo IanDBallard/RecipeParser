@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import fitz  # PyMuPDF
 import pytest
 
+from recipeparser.config import MAX_CHUNK_CHARS
 from recipeparser.core.models import InputType
 from recipeparser.exceptions import PdfExtractionError
 from recipeparser.io.readers.pdf import PdfReader, load_pdf
@@ -24,9 +25,29 @@ def _pdf(tmp_path: Path, text: str, name: str = "scan.pdf") -> str:
     return str(path)
 
 
+def _two_page_pdf(tmp_path: Path, name: str = "scan.pdf") -> str:
+    """A two-page (blank) PDF — pages carry no text layer, so pre-flight still sees a scan."""
+    doc = fitz.open()
+    doc.new_page()
+    doc.new_page()
+    doc.set_metadata({"title": "Scanned Book", "author": "A. Cook"})
+    path = tmp_path / name
+    doc.save(str(path))
+    doc.close()
+    return str(path)
+
+
 def _client(text: str) -> MagicMock:
     client = MagicMock()
     client.models.generate_content.return_value = MagicMock(text=text)
+    return client
+
+
+def _client_per_page(texts: list) -> MagicMock:
+    """A client whose vision call returns the next text in ``texts`` each time
+    it is called — one call per page, as ``extract_text_via_vision`` makes."""
+    client = MagicMock()
+    client.models.generate_content.side_effect = [MagicMock(text=t) for t in texts]
     return client
 
 
@@ -35,13 +56,44 @@ def test_a_scan_without_a_client_is_still_refused(tmp_path):
         load_pdf(_pdf(tmp_path, ""), str(tmp_path / "out"))
 
 
-def test_a_scan_with_a_client_is_transcribed_into_one_chunk(tmp_path):
+def test_a_scan_with_a_client_is_transcribed_into_one_chunk_when_short(tmp_path):
     client = _client("Soup\n\n2 onions\n\nSimmer.")
     citation, _image_dir, images, raw_chunks = load_pdf(_pdf(tmp_path, ""), str(tmp_path / "out"), client=client)
-    assert raw_chunks == ["Soup\n\n2 onions\n\nSimmer."]     # ruling 3: one transcript, one chunk
+    assert raw_chunks == ["Soup\n\n2 onions\n\nSimmer."]     # ruling 3 amended: split to the chunk cap
     assert images == set()                                    # the page images are the scan itself
     assert (citation.kind, citation.title, citation.author) == ("book", "Scanned Book", "A. Cook")
     client.models.generate_content.assert_called_once()
+
+
+def test_a_long_transcript_is_split_to_the_chunk_cap(tmp_path):
+    """The OCR branch used to return one chunk for the whole document, up to
+    four times MAX_CHUNK_CHARS — exactly the shape that made EXTRACT return
+    truncated JSON. It must come back split to the repo's chunk cap instead
+    (ruling 3 amended)."""
+    # Each page's transcript is comfortably under the cap on its own, but the
+    # two together (joined by extract_text_via_vision's blank-line separator)
+    # clear it — the shape that lets pack() group them back apart cleanly.
+    # One vision call per page, so the mock client returns one page's text per
+    # call rather than the whole multi-page transcript in one go.
+    unit = "Soup recipe filler. "
+    target_len = int(MAX_CHUNK_CHARS * 0.6)
+    page_text = (unit * (target_len // len(unit) + 1))[:target_len]
+    page_one = f"PAGE-ONE {page_text}"
+    page_two = f"PAGE-TWO {page_text}"
+    assert len(page_one) + len(page_two) > MAX_CHUNK_CHARS
+
+    client = _client_per_page([page_one, page_two])
+    _citation, _image_dir, _images, raw_chunks = load_pdf(
+        _two_page_pdf(tmp_path), str(tmp_path / "out"), client=client
+    )
+
+    assert len(raw_chunks) > 1
+    assert all(chunk.strip() for chunk in raw_chunks)
+    assert all(len(chunk) <= MAX_CHUNK_CHARS for chunk in raw_chunks)
+    joined = "".join(raw_chunks)
+    assert "PAGE-ONE" in joined
+    assert "PAGE-TWO" in joined
+    assert client.models.generate_content.call_count == 2   # one vision call per page
 
 
 def test_a_text_pdf_never_calls_the_client(tmp_path):

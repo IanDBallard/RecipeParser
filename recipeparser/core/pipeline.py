@@ -260,7 +260,7 @@ class RecipePipeline:
             if chunk.pre_parsed_embedding is not None:
                 return ["ASSEMBLE"]          # $0 — skip all Gemini calls
             return ["EMBED", "ASSEMBLE"]     # Only embed, skip extract/refine/categorize
-        # URL, PDF, EPUB, PAPRIKA_LEGACY — full pipeline
+        # URL, PDF, EPUB, IMAGE, PAPRIKA_LEGACY — full pipeline
         return ["EXTRACT", "REFINE", "CATEGORIZE", "EMBED", "ASSEMBLE"]
 
     # ──────────────────────────────────────────────────────────────────────────

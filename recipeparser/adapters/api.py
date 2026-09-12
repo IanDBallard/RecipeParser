@@ -25,15 +25,16 @@ Auth:
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import os
 import re
 import tempfile
 import uuid
 import logging
-from collections import Counter
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
@@ -437,14 +438,45 @@ _PAGE_USER_AGENT = (
 )
 
 
+def _is_unsafe_fetch_target(url: str) -> bool:
+    """True when ``url`` must not be GET-ed for its meta tags.
+
+    A recipe URL is user-submitted and this fetch runs server-side with no
+    further checks, so it is exactly the shape of an SSRF vector: refuse
+    anything that is not a plain http(s) request to a public host, before the
+    GET. No DNS resolution is performed — a hostname that only resolves to a
+    private address at request time is not caught here, but a bare IP literal
+    (the common probe, e.g. the cloud metadata address) and the obvious
+    hostnames are.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return True
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return True
+    if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
+
+
 async def _fetch_page_meta(url: str) -> PageMeta:
     """The page's own <meta> tags — its hero image and its description.
 
     One GET of the page itself, with a browser user-agent (a bare client is
     served a consent wall or a 403 by the sites that matter), read before the
     scraper's markdown is consulted. Any failure — unreachable, not HTML, a
-    timeout — is a page without meta, never a failed job.
+    timeout — is a page without meta, never a failed job. A non-http(s)
+    scheme, an empty host, or a host that is plainly local or private
+    (``_is_unsafe_fetch_target``) is refused before the GET, with no DNS
+    resolution performed.
     """
+    if _is_unsafe_fetch_target(url):
+        return PageMeta(None, None)
     try:
         async with httpx.AsyncClient(
             timeout=15,
@@ -704,19 +736,33 @@ def _make_progress_writer(job_id: str) -> Callable[[int], None]:
 
 
 def _source_key_of(chunks: List[Chunk]) -> Optional[str]:
-    """The source key the job's chunks carry, when a reader knew it.
+    """The source key the job's chunks carry, when they all carry the same one
+    — and only when that one key is a web citation's.
 
-    A book's chunks all carry the book; a URL's one chunk carries its host.
-    The most common key wins on a mixed batch; pasted text and photos carry
-    none and answer None, and learn theirs at finalize from the written rows.
+    A book's chunks all carry the book; a URL's one chunk carries its host. A
+    Paprika archive carries many, and answers None: no single key is true of
+    it, so the row keeps the hint the endpoint set. Only a web citation's key
+    is written before extraction, even when the batch carries exactly one
+    book key: a running import's banner shows the hint verbatim, and a book's
+    filename is what a cook expects to see there. The book's key arrives at
+    finalize, once the recipes that justify it exist.
     """
-    keys: Counter = Counter(
-        chunk.citation.key for chunk in chunks
+    keys = {
+        chunk.citation.key
+        for chunk in chunks
         if chunk.citation is not None and chunk.citation.key
-    )
-    if not keys:
+    }
+    if len(keys) != 1:
         return None
-    return keys.most_common(1)[0][0]
+    (key,) = keys
+    citation = next(
+        chunk.citation
+        for chunk in chunks
+        if chunk.citation is not None and chunk.citation.key == key
+    )
+    if citation.kind != "web":
+        return None
+    return key
 
 
 def _update_total_chunks(job_id: str, total: int, source_hint: Optional[str] = None) -> None:
