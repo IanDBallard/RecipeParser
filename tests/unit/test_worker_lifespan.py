@@ -87,3 +87,24 @@ def test_health_reports_workers_started(monkeypatch):
          patch.object(api, "_get_client", return_value=MagicMock()):
         with TestClient(api.app) as client:
             assert client.get("/health").json()["regen_workers"] == "started"
+
+
+# ---------------------------------------------------------------------------
+# The suite owns its environment
+#
+# A developer's .env carries REGEN_WORKER_ENABLED=1 so their container runs the
+# workers. load_dotenv() puts it in os.environ for the test session too, where
+# _get_supabase_service_client() always returns None (live_writes_blocked), so
+# the lifespan hit its "flag set, no client" refusal and 7 tests/test_api.py
+# tests failed on that machine while CI, which has no .env, stayed green.
+# ---------------------------------------------------------------------------
+
+def test_the_session_does_not_inherit_a_developer_worker_flag():
+    assert not api._worker_enabled(os.environ)
+
+
+def test_the_app_starts_when_no_test_touches_the_worker_flag():
+    """Every test that builds a TestClient without monkeypatching the flag depends on this."""
+    with patch("recipeparser.adapters.regen_worker.run_workers", new=AsyncMock()):
+        with TestClient(api.app) as client:
+            assert client.get("/health").json()["regen_workers"] == "disabled"

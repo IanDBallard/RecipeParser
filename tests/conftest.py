@@ -262,6 +262,18 @@ if "tkinter" not in sys.modules:
 # without a real .env file present.
 os.environ.setdefault("GOOGLE_API_KEY", "dummy-key-for-tests")
 
+# A developer's .env sets REGEN_WORKER_ENABLED so their container drains the regen
+# queue; load_dotenv() then hands it to the test session too. There, the lifespan
+# asks for a service-role client, live_writes_blocked() refuses to build one against
+# a real project, and the "flag set but no client" guard raises -- so the suite fails
+# on a developer's machine and passes in CI, which has no .env. The suite decides its
+# own worker state: every test that wants the workers sets the flag itself.
+#
+# Set empty rather than popped: load_dotenv() runs on the recipeparser import below and
+# fills in any name it does not already find, so a popped key comes straight back. An
+# empty one is present, left alone, and falsy to _worker_enabled.
+os.environ["REGEN_WORKER_ENABLED"] = ""
+
 # The API refuses to boot with DISABLE_AUTH set but no UUID TEST_USER_ID, so
 # supply one here for every test module that imports recipeparser.adapters.api
 # (not just tests/test_api.py, whichever pytest collects first).
