@@ -245,7 +245,7 @@ class PaprikaReader(RecipeReader):
                     # Some exporters write uncompressed JSON directly
                     try:
                         entry = json.loads(compressed)
-                    except json.JSONDecodeError as exc:
+                    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                         log.warning(
                             "Skipping entry %r — not valid gzip or JSON: %s", name, exc
                         )

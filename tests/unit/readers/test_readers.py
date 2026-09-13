@@ -385,6 +385,19 @@ def test_unreadable_photo_data_is_dropped_not_raised(tmp_path):
     assert chunks[0].image_bytes is None
 
 
+def test_read_entries_skips_a_member_whose_bytes_are_not_gzip_or_utf8_json(tmp_path):
+    """A member that is neither valid gzip nor UTF-8 JSON must be skipped, not
+    abort the whole archive (mirrors scripts/extract_unmatched_paprika.py)."""
+    archive = tmp_path / "e.paprikarecipes"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("a.paprikarecipe", gzip.compress(json.dumps({"name": "Kept"}).encode("utf-8")))
+        zf.writestr("b.paprikarecipe", b"\xff\xfe\x00not json")
+
+    entries = PaprikaReader().read_entries(str(archive))
+
+    assert [e["name"] for e in entries] == ["Kept"]
+
+
 class TestPaprikaLegacyMetadata:
     """Design §5.2 — what a legacy entry carries through to the chunk."""
 

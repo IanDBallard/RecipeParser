@@ -35,6 +35,7 @@ from recipeparser.adapters.api import (  # noqa: E402
     _active_jobs,
     _extract_image_url_from_markdown,
     _fetch_page_meta,
+    _too_large_sentence,
     app,
 )
 from recipeparser.core.fsm import PipelineController, PipelineStatus  # noqa: E402
@@ -396,6 +397,10 @@ class TestPostJobsFile:
         resp = self._upload(client, "recipe.txt", b"hello", "text/plain")
         assert resp.status_code == 422
 
+    def test_the_ceiling_sentence_is_the_one_the_client_shows(self) -> None:
+        # The exact string Cayenne's intake shows before the upload; the two repos must agree.
+        assert _too_large_sentence(120_300_000) == "This file is 120.3 MB. Cayenne takes files up to 50 MB."
+
     def test_pdf_returns_202(self, client: TestClient) -> None:
         with _patch_pipeline_and_writer()[0], \
              patch("recipeparser.io.readers.pdf.extract_text_from_pdf", return_value="pasta"):
@@ -462,6 +467,27 @@ class TestPostJobsFile:
         resp = self._upload(client, "menu.docx", b"PK\x03\x04", "application/octet-stream")
         assert resp.status_code == 422
         assert resp.json()["detail"] == "Cayenne can't read .docx files yet."
+
+    def test_a_body_over_the_ceiling_is_a_413_with_the_sentence(self, client: TestClient) -> None:
+        # The ceiling is patched down so the test does not build fifty megabytes; the sentence
+        # is built from the same constant, so it names the patched number.
+        with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            resp = self._upload(client, "big.pdf", b"%PDF-1.4" + b"\x00" * 9, "application/pdf")
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "This file is 0.0 MB. Cayenne takes files up to 0 MB."
+
+    def test_the_type_is_refused_before_the_size(self, client: TestClient) -> None:
+        with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            resp = self._upload(client, "menu.docx", b"\x00" * 17, "application/octet-stream")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Cayenne can't read .docx files yet."
+
+    def test_a_body_at_the_ceiling_is_accepted(self, client: TestClient) -> None:
+        with _patch_pipeline_and_writer()[0], \
+             patch("recipeparser.io.readers.pdf.extract_text_from_pdf", return_value="pasta"), \
+             patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            resp = self._upload(client, "recipe.pdf", b"%PDF-1.4" + b"\x00" * 8, "application/pdf")
+        assert resp.status_code == 202
 
     def test_paprikarecipes_flow_b_writes_pre_parsed_directly(self) -> None:
         """PAPRIKA_CAYENNE chunks (text="" + pre_parsed_embedding) must be routed
@@ -858,6 +884,14 @@ class TestFetchPageMeta:
         calls: list = []
         with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
             result = asyncio.run(_fetch_page_meta("http://localhost:8000/x"))
+        assert result == PageMeta(None, None)
+        assert calls == []
+
+    def test_a_malformed_url_is_no_meta_not_a_failed_job(self) -> None:
+        # urlparse raises ValueError on an unbalanced bracket; the docstring promises degradation.
+        calls: list = []
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
+            result = asyncio.run(_fetch_page_meta("http://[::1"))
         assert result == PageMeta(None, None)
         assert calls == []
 

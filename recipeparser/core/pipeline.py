@@ -401,6 +401,7 @@ class RecipePipeline:
                 total_time=getattr(raw, "total_time", None),
                 description=getattr(raw, "description", None),
                 nutritional_info=getattr(raw, "nutritional_info", None),
+                notes=getattr(raw, "notes", None),
             )
             results.append(result)
 

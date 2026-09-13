@@ -43,7 +43,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from recipeparser.adapters.job_sink import JobSink
-from recipeparser.config import live_writes_blocked as _live_writes_blocked
+from recipeparser.config import MAX_UPLOAD_BYTES, live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
@@ -475,9 +475,11 @@ async def _fetch_page_meta(url: str) -> PageMeta:
     (``_is_unsafe_fetch_target``) is refused before the GET, with no DNS
     resolution performed.
     """
-    if _is_unsafe_fetch_target(url):
-        return PageMeta(None, None)
     try:
+        # Inside the try: urlparse raises on a malformed address ("http://[::1"), and a malformed
+        # address is a page without meta, not a failed job.
+        if _is_unsafe_fetch_target(url):
+            return PageMeta(None, None)
         async with httpx.AsyncClient(
             timeout=15,
             follow_redirects=True,
@@ -836,6 +838,16 @@ _HEIC_SENTENCE = "Cayenne can't read HEIC photos yet. Share it as a JPEG instead
 _WEBP_SENTENCE = "Cayenne can't read WebP photos yet. Share it as a JPEG instead."
 
 
+def _too_large_sentence(size: int) -> str:
+    """The 413 detail: the client shows it verbatim, like the 422 sentences above."""
+    # Always MB with one decimal; Cayenne's formatBytes agrees at or above 1 MB —
+    # the two must stay in step if the ceiling ever drops below that.
+    return (
+        f"This file is {size / 1_000_000:.1f} MB. "
+        f"Cayenne takes files up to {MAX_UPLOAD_BYTES // 1_000_000} MB."
+    )
+
+
 def _select_reader(filename: str, content_type: str) -> str:
     """Return a reader tag from the filename extension, falling back to the content type.
 
@@ -1069,7 +1081,20 @@ async def submit_file_job(
             detail=str(exc),
         ) from exc
 
-    file_bytes = await file.read()
+    # The ceiling (config.MAX_UPLOAD_BYTES), after the type check so a small .docx is still a 422.
+    # Starlette's multipart parser sets `size`; when it did not, the body's length is the size.
+    size = file.size
+    file_bytes: Optional[bytes] = None
+    if size is None:
+        file_bytes = await file.read()
+        size = len(file_bytes)
+    if size > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=_too_large_sentence(size),
+        )
+    if file_bytes is None:
+        file_bytes = await file.read()
     user_id: str = user.get("sub", "")
     job_id = str(uuid.uuid4())
     controller = PipelineController(on_stage_change=_make_stage_callback(job_id))

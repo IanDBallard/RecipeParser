@@ -107,6 +107,8 @@ select = ["E", "F", "I", "TID"]
 "tests/goldens/test_stages_golden.py" = ["TID"]
 # E2E goldens drive RecipePipeline and both zip writers directly (spec §6.4).
 "tests/goldens/test_e2e_golden.py" = ["TID"]
+# This test verifies the unmatched archive round-trips through PaprikaReader by design.
+"tests/unit/scripts/test_extract_unmatched_paprika.py" = ["TID"]
 
 [tool.mypy]
 python_version = "3.9"
