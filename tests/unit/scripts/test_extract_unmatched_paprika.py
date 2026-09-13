@@ -50,3 +50,13 @@ def test_write_archive_produces_a_paprikarecipes_the_reader_opens(tmp_path):
     out = tmp_path / "e-unmatched.paprikarecipes"
     assert write_archive(out, members) == 1
     assert [e["name"] for e in PaprikaReader().read_entries(out)] == ["Lost Cake"]
+
+
+def test_read_members_skips_a_member_whose_gzip_body_is_truncated(tmp_path):
+    path = tmp_path / "e.paprikarecipes"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("a.paprikarecipe", gzip.compress(json.dumps({"name": "Kept"}).encode("utf-8")))
+        truncated = gzip.compress(json.dumps({"name": "Cut"}).encode("utf-8"))[:12]
+        zf.writestr("b.paprikarecipe", truncated)
+    members = read_members(path)
+    assert [m[0] for m in members] == ["a.paprikarecipe"]

@@ -74,6 +74,9 @@ def read_members(path: Path | str) -> List[Member]:
             except json.JSONDecodeError:
                 print(f"  skipping {name!r}: JSON decode error")
                 continue
+            except Exception as exc:  # noqa: BLE001
+                print(f"  skipping {name!r}: {exc}")
+                continue
             members.append((name, raw, entry))
     return members
 
