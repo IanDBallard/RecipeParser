@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Merged:** PR [#46](https://github.com/IanDBallard/RecipeParser/pull/46), merged 2026-09-13T20:21:29Z (`94208f2`), onto `master`. The record is Cayenne's `SpecificationDocumentation/ROADMAP.md` Stage 7, row 7C. **Gate 7C is partly unmet and stays so until the production cut-over:** the post-merge `Deploy` workflow is green and its `Build and push` step ran, so the image is on ghcr, but `Join the tailnet` and `Deploy` are skipped by design while `CAYENNE_VM_HOST` is unset — the cut-over sets it last, and that cut-over has not started. So the container redeploy and the live `curl` job are owed, and are the repository owner's, not a session's.
+
 **Status: executed 2026-09-13**, on `claude/recategorise-endpoint`. Suite 1109 passed, from a 1071 baseline. What landed differently is under *Rulings made during execution* at the end. **Gate 7C is partly unmet on merge** — see ruling 5.
 
 **Goal:** Make the bulk recategorise reachable and make it survive its first real run. The capability has been schema-complete and worker-complete since RecipeParser#26 and has never been callable: nothing queued a job, because the path the philosophy spec chose could not work. Stage 7B fixed the schema and the specification; this stage builds the endpoint that queues the job, the cancel that stops it, and the four worker defects that bite the first time a real job runs.
