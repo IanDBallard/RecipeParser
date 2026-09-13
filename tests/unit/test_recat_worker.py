@@ -145,11 +145,21 @@ def test_job_runs_in_batches_and_inserts_additively():
     assert final["recipe_count"] == 3
 
 
-def test_cancel_between_batches():
+def test_cancel_between_batches_finishes_the_job_as_cancelled():
+    # The old assertion was only that "done" never appeared, which was true before
+    # the fix as well: the worker returned without writing a terminal state at all,
+    # leaving the row at stage CATEGORIZING and mid-flight progress -- exactly what
+    # a worker that died looks like. What matters is that it FINISHES.
     fake = _fake_with_job(["running", "cancelled"], _recipes(25), count=25)
     cat = MagicMock(return_value={})
     _worker(fake, cat).run_once()
     assert cat.call_count == 2
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "cancelled"
+    # DONE, not ERROR: a cook stopped it, it did not fail.
+    assert final["stage"] == "DONE"
+    # The counts it reached survive, so the screen can say "N recipes tagged so far".
+    assert "recipe_count" in final and "progress_pct" in final
     statuses = [o[0][1][0].get("status") for o in _ops(fake, "ingestion_jobs") if o[0][0] == "update"]
     assert "done" not in statuses
 
@@ -260,3 +270,143 @@ def test_real_categorize_batch_success_finishes_the_job():
     assert [r["recipe_id"] for r in rows] == [_rid(0)]
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "done" and final["recipe_count"] == 1
+
+
+# ── Stage 7C: the four defects that bite on the first real run ──────────────
+
+THREE_DEEP = [
+    {"id": "A", "name": "Cuisine", "parent_id": None},
+    {"id": "F", "name": "Asian", "parent_id": "A"},
+    {"id": "L", "name": "Thai", "parent_id": "F"},
+]
+
+
+def test_resolve_new_axes_uses_the_root_not_the_immediate_parent():
+    # The bug this fixes: ingest's _build_axes flattens every descendant into its
+    # ROOT's axis, so it offered Thai under "Cuisine". resolve_new_axes read
+    # parent_id once and offered the same tag under "Asian". Two descriptions of
+    # one taxonomy, in two prompts that are meant to be interchangeable.
+    from recipeparser.adapters.recat_worker import resolve_new_axes
+    axes, ids = resolve_new_axes(THREE_DEEP, ["L"])
+    assert axes == {"Cuisine": ["Thai"]}
+    assert ids == {"Thai": "L"}
+
+
+def test_resolve_new_axes_and_build_axes_agree_on_a_three_deep_tree():
+    # The two paths must name the same axis for the same tag. This is the
+    # assertion that would have caught the divergence, and it is why the walk
+    # now lives in one module.
+    from recipeparser.adapters.recat_worker import resolve_new_axes
+    from recipeparser.core.taxonomy import axes_from_rows
+    axes, _ = resolve_new_axes(THREE_DEEP, ["L"])
+    ingest_axes = axes_from_rows(THREE_DEEP)
+    assert list(axes) == ["Cuisine"]
+    assert "Thai" in ingest_axes["Cuisine"]
+
+
+def test_resolve_new_axes_raises_on_a_duplicate_name():
+    # D6: the unique (user_id, name) index makes this unrepresentable today, so it
+    # cannot fire yet. It is asserted now so that scoping names per axis fails
+    # loudly instead of last-write-wins silently choosing a category.
+    from recipeparser.adapters.recat_worker import resolve_new_axes
+    rows = [{"id": "a", "name": "Quick", "parent_id": None},
+            {"id": "b", "name": "Quick", "parent_id": None}]
+    with pytest.raises(ValueError, match="Quick"):
+        resolve_new_axes(rows, ["a", "b"])
+
+
+def test_a_stale_running_job_is_reclaimed_and_resumes_from_its_cursor():
+    # Without the lease a job a restart left `running` is never touched again: the
+    # poll asks only for `pending`, so it sits at whatever progress it reached.
+    fake = FakeSupabase()
+    fake.responses["categories"] = CATS
+    stale = {"id": "j1", "user_id": "u1", "kind": "recategorize", "status": "running",
+             "params": {"category_ids": ["t2"], "cursor": _rid(9)}}
+
+    def jobs(q):
+        names = [o[0] for o in q.ops]
+        if names[0] == "select" and ("eq", ("status", "pending"), {}) in q.ops:
+            return _Result([])                                  # nothing waiting
+        if names[0] == "select" and ("eq", ("status", "running"), {}) in q.ops:
+            return _Result([stale])                             # the abandoned one
+        if names[0] == "select":
+            return _Result([{"status": "running"}])             # cancel check
+        return _Result([{"id": "j1"}])
+    fake.handlers["ingestion_jobs"] = jobs
+
+    def recipes_h(q):
+        if any(o[0] == "select" and o[2].get("count") == "exact" for o in q.ops):
+            return _Result([], count=25)
+        cursor = next((o[1][1] for o in q.ops if o[0] == "gt"), None)
+        return _Result([r for r in _recipes(25) if r["id"] > _uuid_cursor(cursor)][:10])
+    fake.handlers["recipes"] = recipes_h
+
+    assert _worker(fake, MagicMock(return_value={})).run_once() == 1
+    # Claimed by compare-and-swap on `running`, not on `pending`.
+    claims = [o for o in _ops(fake, "ingestion_jobs")
+              if o[0][0] == "update" and ("eq", ("status", "running"), {}) in o]
+    assert claims, "a stale running job must be claimed on its running status"
+    # It resumed rather than restarting: the first page asked for ids above the
+    # stored cursor, not above the nil uuid.
+    first_gt = next(o[1][1] for q in fake.queries if q.table == "recipes"
+                    for o in q.ops if o[0] == "gt")
+    assert first_gt == _rid(9)
+
+
+def test_a_fresh_running_job_is_not_reclaimed():
+    # Only a job past the lease is fair game; the query must carry the cutoff.
+    fake = FakeSupabase()
+    fake.responses["categories"] = CATS
+
+    def jobs(q):
+        if ("eq", ("status", "pending"), {}) in q.ops:
+            return _Result([])
+        return _Result([])                                       # nothing stale either
+    fake.handlers["ingestion_jobs"] = jobs
+    assert _worker(fake, MagicMock()).run_once() == 0
+    stale_queries = [q for q in fake.queries if q.table == "ingestion_jobs"
+                     and ("eq", ("status", "running"), {}) in q.ops]
+    assert stale_queries, "the poll must look for a stale running job"
+    assert any(o[0] == "lt" and o[1][0] == "updated_at" for o in stale_queries[0].ops), \
+        "the stale query must be bounded by updated_at, or it would steal a live job"
+
+
+def test_a_batch_that_fails_twice_is_recorded_in_skipped():
+    fake = _fake_with_job(["running"], _recipes(5), count=5)
+    cat = MagicMock(side_effect=RuntimeError("gemini down"))
+    _worker(fake, cat).run_once()
+    assert cat.call_count == 2, "the batch must be retried exactly once"
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["skipped_count"] == 5
+    assert [e["recipe_id"] for e in final["skipped"]] == [_rid(i) for i in range(5)]
+    assert "gemini down" in final["skipped"][0]["reason"]
+
+
+def test_a_batch_that_fails_once_then_succeeds_is_not_recorded():
+    fake = _fake_with_job(["running"], _recipes(5), count=5)
+    cat = MagicMock(side_effect=[RuntimeError("blip"), {_rid(0): ["Thai"]}])
+    _worker(fake, cat).run_once()
+    assert cat.call_count == 2
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "done"
+    assert final["skipped_count"] == 0 and final["skipped"] == []
+    assert final["recipe_count"] == 1
+
+
+def test_a_job_whose_categories_have_all_gone_errors():
+    # Finishing `done` here reads as "checked everything, nothing matched".
+    # Nothing was checked at all.
+    fake = _fake_with_job(["running"], _recipes(5), count=5, category_ids=("ghost",))
+    _worker(fake, MagicMock()).run_once()
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "error"
+    assert final["error_message"] == "The categories no longer exist"
+
+
+def test_a_job_with_some_missing_categories_proceeds_on_the_rest():
+    fake = _fake_with_job(["running"] * 3, _recipes(5), count=5, category_ids=("t2", "ghost"))
+    cat = MagicMock(return_value={})
+    assert _worker(fake, cat).run_once() == 1
+    assert cat.call_args.args[1] == {"Cuisine": ["Thai"]}     # the ghost is not offered
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "done"
