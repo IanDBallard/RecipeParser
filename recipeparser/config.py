@@ -120,6 +120,13 @@ PDF_PREFLIGHT_MAX_PAGES: Optional[int] = 2000  # Optional cap to avoid runaway c
 # A scan is transcribed one vision call per page; a photo or a few pages is the use case, not a scanned book.
 PDF_OCR_MAX_PAGES: int = 40
 
+# The largest upload POST /jobs/file takes, refused with a 413 and a sentence. The same number
+# sits in Cayenne's domain/ingestion.ts (MAX_UPLOAD_BYTES), where the intake refuses a file before
+# the upload with the same sentence; change one, change both. Fifty megabytes is a phone photo
+# (3–8), a cookbook EPUB with images (2–20) or a multi-page scan (10–20) with room, and the OCR
+# cap above already bounds what a scan can cost.
+MAX_UPLOAD_BYTES: int = 50_000_000
+
 # ---------------------------------------------------------------------------
 # Phase 3 — Pipeline control and rate-limit auto-pause
 # ---------------------------------------------------------------------------

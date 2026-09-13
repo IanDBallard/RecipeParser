@@ -463,6 +463,27 @@ class TestPostJobsFile:
         assert resp.status_code == 422
         assert resp.json()["detail"] == "Cayenne can't read .docx files yet."
 
+    def test_a_body_over_the_ceiling_is_a_413_with_the_sentence(self, client: TestClient) -> None:
+        # The ceiling is patched down so the test does not build fifty megabytes; the sentence
+        # is built from the same constant, so it names the patched number.
+        with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            resp = self._upload(client, "big.pdf", b"%PDF-1.4" + b"\x00" * 9, "application/pdf")
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "This file is 0.0 MB. Cayenne takes files up to 0 MB."
+
+    def test_the_type_is_refused_before_the_size(self, client: TestClient) -> None:
+        with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            resp = self._upload(client, "menu.docx", b"\x00" * 17, "application/octet-stream")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Cayenne can't read .docx files yet."
+
+    def test_a_body_at_the_ceiling_is_accepted(self, client: TestClient) -> None:
+        with _patch_pipeline_and_writer()[0], \
+             patch("recipeparser.io.readers.pdf.extract_text_from_pdf", return_value="pasta"), \
+             patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            resp = self._upload(client, "recipe.pdf", b"%PDF-1.4" + b"\x00" * 8, "application/pdf")
+        assert resp.status_code == 202
+
     def test_paprikarecipes_flow_b_writes_pre_parsed_directly(self) -> None:
         """PAPRIKA_CAYENNE chunks (text="" + pre_parsed_embedding) must be routed
         through RecipePipeline which handles them via the cheap ASSEMBLE-only path
