@@ -34,6 +34,7 @@ def assemble(
     total_time: Optional[str] = None,
     description: Optional[str] = None,
     nutritional_info: Optional[str] = None,
+    notes: Optional[str] = None,
 ) -> IngestResponse:
     """
     Assemble the final IngestResponse from stage outputs.
@@ -74,6 +75,8 @@ def assemble(
         description:     The headnote the extractor read. A source's own
                          statement (meta) wins over it.
         nutritional_info: The nutrition line the extractor read. As above.
+        notes:            The author's notes or headnote the extractor read. A source's own
+                          statement (meta) wins over it, as for description.
 
     Returns:
         A fully-populated ``IngestResponse`` ready for persistence.
@@ -95,6 +98,7 @@ def assemble(
         cook_time = meta.cook_time or cook_time
         description = meta.description or description
         nutritional_info = meta.nutritional_info or nutritional_info
+        notes = meta.notes or notes
 
     derived_lines, derived_steps = raw_lines_from_derived(
         recipe.structured_ingredients, recipe.tokenized_directions
@@ -118,9 +122,9 @@ def assemble(
         structured_ingredients=recipe.structured_ingredients,
         tokenized_directions=recipe.tokenized_directions,
         embedding=embedding,
-        # notes, rating and difficulty come only from a Paprika entry: nothing
-        # infers them from a book or a web page. description and nutritional_info
-        # are the source's statement where it made one, else the extractor's.
+        # rating and difficulty come only from a Paprika entry: nothing infers them
+        # from a book or a web page. description, nutritional_info and notes are the
+        # source's statement where it made one, else the extractor's.
         # Paprika's own statement first; else the citation's display form, so the
         # library row (which reads `source`) shows the same thing for a fresh
         # insert as for a backfilled row; else null.
@@ -129,7 +133,7 @@ def assemble(
         source_key=citation.key if citation else None,
         source_title=citation.title if citation else None,
         source_author=citation.author if citation else None,
-        notes=meta.notes if meta else None,
+        notes=notes,
         rating=meta.rating if meta else None,
         nutritional_info=nutritional_info,
         description=description,

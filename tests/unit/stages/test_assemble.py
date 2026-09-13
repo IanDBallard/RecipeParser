@@ -88,12 +88,27 @@ def test_nothing_stated_anywhere_stays_null():
     assert (r.description, r.nutritional_info, r.cook_min_minutes) == (None, None, None)
 
 
-def test_the_full_pipeline_hands_assemble_the_three_extracted_fields(monkeypatch):
-    """The call site in RecipePipeline._process_chunk passes total_time, description and nutritional_info."""
+def test_the_extracted_notes_are_kept_when_no_source_states_them():
+    r = _assemble(notes="Best the next day.")
+    assert r.notes == "Best the next day."
+
+
+def test_a_source_statement_beats_the_extracted_notes():
+    r = _assemble(notes="model's note", meta=SourceMeta(notes="The cook's own note."))
+    assert r.notes == "The cook's own note."
+
+
+def test_a_source_with_no_notes_does_not_blank_the_extracted_ones():
+    r = _assemble(notes="Best the next day.", meta=SourceMeta(description="A blurb."))
+    assert r.notes == "Best the next day."
+
+
+def test_the_full_pipeline_hands_assemble_the_four_extracted_fields(monkeypatch):
+    """The call site in RecipePipeline._process_chunk passes total_time, description, nutritional_info and notes."""
     import inspect
 
     from recipeparser.core import pipeline as pipeline_mod
 
     src = inspect.getsource(pipeline_mod.RecipePipeline._process_chunk)
-    for name in ("total_time", "description", "nutritional_info"):
+    for name in ("total_time", "description", "nutritional_info", "notes"):
         assert f'{name}=getattr(raw, "{name}", None)' in src, name

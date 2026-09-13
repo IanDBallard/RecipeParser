@@ -25,6 +25,7 @@ Stage D of the Add Recipe workstream (Cayenne `docs/superpowers/plans/2026-09-11
 
 ### 🐛 Fixed — the bulk fix after Stage E (2026-09-13)
 - A malformed page address (`http://[::1`) no longer fails a URL job: the private-host check runs inside `_fetch_page_meta`'s `try`, so it degrades to no meta as the docstring promises.
+- The author's notes the extractor reads reach the row: `assemble()` takes `notes` with the rule `description` has — a Paprika entry's own notes win, else the extracted ones, else null. Since 2026-09-07 they were extracted and dropped on every path but Paprika.
 
 ## [8.0.0] — 2026-09-12
 
