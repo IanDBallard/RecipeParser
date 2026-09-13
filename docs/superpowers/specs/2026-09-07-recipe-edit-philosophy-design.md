@@ -347,14 +347,37 @@ their fallbacks. Ingestion reads `uom_system` / `measure_preference` from
 ## 6. Bulk recategorise
 
 ### 6.1 Trigger
-After a taxonomy save in Cayenne that **added** tags or an axis, the app offers
-"Apply to existing recipes". Accepting inserts a row into `ingestion_jobs`
-through PowerSync with `kind = 'recategorize'` and
-`params = {"category_ids": [...]}`. The existing user-fence RLS policy allows
-the write. Nothing runs without the tap.
+**Amended 2026-09-13 (stage 7B).** As first written, this section described a
+trigger that could not work, and the capability sat schema-complete and
+worker-complete but unreachable for it. Two things were wrong. The offer was a
+one-shot notice after a taxonomy save, so a category created last month could
+never be applied. And the write was a PowerSync insert justified by the
+sentence "The existing user-fence RLS policy allows the write" — which is
+false: `ingestion_jobs` carries only a `for select` policy
+(`008_profiles_and_constraints.sql:103-105`), so the insert is rejected 42501
+and the connector drops it as a permanent failure, silently.
+
+**Apply to existing recipes** is a fourth action in any node's overflow sheet,
+beside Rename, Move and Delete. It is repeatable and always reachable, so a
+category created long before the recipes it should hold can still be applied.
+
+Accepting calls `POST /jobs/recategorize` on RecipeParser with
+`{"category_ids": [...]}`. The API holds the service role: it resolves the
+caller from the bearer token, rejects with 422 any id that caller does not own,
+expands each id to itself plus its descendants so a folder offers its subtree,
+and inserts the `ingestion_jobs` row itself with `kind = 'recategorize'` and
+`params = {"category_ids": [...]}`. **The client only ever reads that table.**
+No RLS change is needed, and none should be made: an INSERT policy would put
+the ownership and subtree-expansion rules on the device, where a client could
+queue work over rows it does not own.
+
+The scope is additive. A job adds categories where they fit and removes none.
+Nothing runs without the tap.
 
 Renames, moves between axes, and deletes need no job: junction rows reference
-category UUIDs and cascade on delete.
+category UUIDs. Since stage 7A a delete relinks its recipes to the deleted
+node's parent rather than dropping them, which is a stronger reason than the
+cascade this section first cited, not a weaker one.
 
 ### 6.2 Worker
 The same polling loop runs a second query for pending recategorise jobs. Per
@@ -372,9 +395,24 @@ job:
 5. Update `progress_pct` and `recipe_count` on the job row.
 
 ### 6.3 Control and failure
-The client cancels by setting `status = 'cancelled'`; the worker checks between
-batches. A failed batch is logged and skipped. The job errors only if more than
-10% of batches fail.
+**Amended 2026-09-13 (stage 7B).** As first written, this section had the
+client set `status = 'cancelled'` directly. The same SELECT-only policy that
+blocked §6.1's insert blocks that update — and until stage 7B's migration the
+column's CHECK admitted only `pending`, `running`, `done` and `error`, so even
+the server could not have stored the value.
+
+Cancelling calls `POST /jobs/{id}/cancel`, which looks the job up by id and
+owner. For `kind = 'recategorize'` it writes `status = 'cancelled'` when the row
+is `pending` or `running` and answers 200 with the row's status; a terminal row
+answers 409. (For `kind = 'ingest'` it keeps the in-memory controller path it
+already had.) The worker's between-batch check reads that value and stops, and
+finishes the job on the normal path so its counts survive — a job a cook
+stopped is not a job that failed, and the row is what tells a reader which
+happened.
+
+A failed batch is retried once, then its recipe ids are recorded in `skipped`
+with the reason before the cursor advances, so nothing is silently passed over.
+The job errors only if more than 10% of batches fail.
 
 ### 6.4 New code
 - `gemini.categorize_batch(recipes, new_axes, client) -> dict[id, list[str]]`
