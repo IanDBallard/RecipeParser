@@ -7,6 +7,8 @@ Endpoints (canonical — Phase 6):
   POST /jobs/{job_id}/pause   — pause a running job
   POST /jobs/{job_id}/resume  — resume a paused job
   POST /jobs/{job_id}/cancel  — cancel a job
+  POST /recipes/{recipe_id}/image   — store the picture a cook chose (200 + { image_url })
+  DELETE /recipes/{recipe_id}/image — clear it (200 + { image_url: null })
   POST /embed             — generate a 1536-dim embedding (returns 200 + {embedding})
   GET  /health            — liveness probe + the auth mode the app booted with
 
@@ -29,6 +31,7 @@ import ipaddress
 import os
 import re
 import tempfile
+import time
 import datetime
 import uuid
 
@@ -1439,3 +1442,194 @@ def _recategorize_row(job_id: str, user: dict[str, Any]) -> Optional[dict[str, A
         logger.exception("Could not read job %s while cancelling.", job_id)
         return None
     return rows[0] if rows else None
+
+
+# ---------------------------------------------------------------------------
+# POST/DELETE /recipes/{recipe_id}/image — the cook's own picture
+# ---------------------------------------------------------------------------
+
+class RecipeImageResponse(BaseModel):
+    """Returned by POST and DELETE /recipes/{recipe_id}/image."""
+    image_url: Optional[str] = None
+
+
+# A picture chosen in the editor is never read by the extractor: it is stored
+# and handed back to the browser, which is why this list is wider than
+# `_select_reader`'s. WebP and GIF are refused there because PyMuPDF cannot open
+# them for OCR; nothing opens this one, so every format a browser renders is
+# welcome. HEIC is not one of them — no browser decodes it — so the OCR path's
+# sentence is reused verbatim rather than letting a cook store a picture that
+# would show as a broken image on every device.
+_PICTURE_TYPE_BY_EXTENSION = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+_PICTURE_CONTENT_TYPES = {
+    "image/jpeg": "image/jpeg",
+    "image/jpg": "image/jpeg",
+    "image/png": "image/png",
+    "image/webp": "image/webp",
+    "image/gif": "image/gif",
+}
+
+
+def _select_picture_type(filename: str, content_type: str) -> str:
+    """Return the content type to store a cook's picture under.
+
+    The extension decides when there is one, for `_select_reader`'s reason: a
+    browser's content type is a guess and a plainly named file is not. Raises
+    ValueError whose message is the 422 ``detail`` the client shows verbatim.
+    """
+    ext = Path(filename).suffix.lower()
+    if ext:
+        if ext in _HEIC_EXTENSIONS:
+            raise ValueError(_HEIC_SENTENCE)
+        if ext in _PICTURE_TYPE_BY_EXTENSION:
+            return _PICTURE_TYPE_BY_EXTENSION[ext]
+        raise ValueError(f"Cayenne can't use {ext} files as a picture.")
+    if content_type in _HEIC_CONTENT_TYPES:
+        raise ValueError(_HEIC_SENTENCE)
+    if content_type in _PICTURE_CONTENT_TYPES:
+        return _PICTURE_CONTENT_TYPES[content_type]
+    raise ValueError("Cayenne can't use this file as a picture.")
+
+
+def _versioned(url: str, stamp: int) -> str:
+    """``url`` with a cache-busting ``v`` parameter.
+
+    The object key is the recipe id, so a replacement picture lands on the
+    address the old one had: without this the browser, the service worker and
+    Supabase's CDN all keep showing the picture the cook has just replaced. The
+    stamp travels in ``recipes.image_url``, so every device that syncs the row
+    fetches the new picture and none of them fetch it twice.
+    """
+    return f"{url}{'&' if '?' in url else '?'}v={stamp}"
+
+
+async def _owned_recipe_client(recipe_id: str, user_id: str) -> Any:
+    """The service client, having confirmed the caller owns ``recipe_id``.
+
+    404, never 403, for a recipe the caller does not own — `_owned_controller`'s
+    reasoning: a row someone else owns must not be distinguishable from one that
+    does not exist, or the table becomes enumerable by id.
+    """
+    sb = _get_supabase_service_client()
+    if sb is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Recipe AI is not configured to store pictures.",
+        )
+    try:
+        query = sb.table("recipes").select("id").eq("id", recipe_id).eq("user_id", user_id).limit(1)
+        rows = await asyncio.to_thread(lambda: query.execute().data or [])
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Could not read recipe %s while changing its picture.", recipe_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not reach the recipe.",
+        ) from exc
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Recipe '{recipe_id}' not found.")
+    return sb
+
+
+async def _write_image_url(sb: Any, recipe_id: str, user_id: str, image_url: Optional[str]) -> None:
+    """Write ``image_url`` on the recipe, or fail the request.
+
+    Raised, not logged and swallowed as the ingestion path does with a hero
+    image: there the picture is a bonus on a recipe that is being created
+    anyway, here it is the whole request, and a cook told "saved" over a row
+    that did not change would have no way to tell.
+    """
+    try:
+        update = sb.table("recipes").update({"image_url": image_url}).eq("id", recipe_id).eq("user_id", user_id)
+        await asyncio.to_thread(update.execute)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Could not write image_url for recipe %s.", recipe_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not save the picture.",
+        ) from exc
+
+
+@app.post("/recipes/{recipe_id}/image", response_model=RecipeImageResponse, status_code=200)
+async def set_recipe_image(
+    recipe_id: str,
+    file: UploadFile = File(...),
+    user: dict[str, Any] = Depends(_verify_supabase_jwt),
+) -> RecipeImageResponse:
+    """Store a picture the cook chose in the editor and hand back its URL.
+
+    The bucket keeps its single writer: the client holds no service-role key and
+    no storage policy is widened for it (Cayenne's SUPABASE_CONFIGURATION.md,
+    *Storage*). The device does not write ``image_url`` for its own sake either
+    — PowerSync delivers the row this endpoint updates — so one place decides
+    what a recipe's picture is.
+
+    422 for a file that is not a picture, 413 over the ceiling, 404 for a recipe
+    the caller does not own, 200 + ``{ image_url }`` otherwise.
+    """
+    filename = file.filename or ""
+    try:
+        content_type = _select_picture_type(filename, file.content_type or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    # The ceiling and its sentence are `/jobs/file`'s, after the type check for
+    # the same reason: a small file of the wrong kind is a 422, not a 413.
+    size = file.size
+    data: Optional[bytes] = None
+    if size is None:
+        data = await file.read()
+        size = len(data)
+    if size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=_too_large_sentence(size))
+    if data is None:
+        data = await file.read()
+    if not data:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="That picture is empty.")
+
+    user_id: str = user.get("sub", "")
+    sb = await _owned_recipe_client(recipe_id, user_id)
+
+    store = SupabaseImageStore()
+    public_url = await asyncio.to_thread(store.put, data, recipe_id, content_type)
+    if not public_url:
+        # put() logs and returns None rather than raising, so this covers both a
+        # storage failure and credentials the process does not have.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not store the picture.",
+        )
+    # A JPEG replaced by a PNG is a second object under a second key; the old one
+    # is now unreachable and would be paid for for ever.
+    await asyncio.to_thread(store.remove, recipe_id, SupabaseImageStore.path_for(recipe_id, content_type))
+
+    image_url = _versioned(public_url, int(time.time()))
+    await _write_image_url(sb, recipe_id, user_id, image_url)
+    logger.info("Recipe %s took a new picture (%s, %d bytes).", recipe_id, content_type, len(data))
+    return RecipeImageResponse(image_url=image_url)
+
+
+@app.delete("/recipes/{recipe_id}/image", response_model=RecipeImageResponse, status_code=200)
+async def clear_recipe_image(
+    recipe_id: str,
+    user: dict[str, Any] = Depends(_verify_supabase_jwt),
+) -> RecipeImageResponse:
+    """Clear a recipe's picture: the objects go, and ``image_url`` becomes null.
+
+    404 for a recipe the caller does not own, 200 + ``{ image_url: null }``
+    otherwise — including for a recipe that had no picture, since the state the
+    caller asked for is the state it is in.
+    """
+    user_id: str = user.get("sub", "")
+    sb = await _owned_recipe_client(recipe_id, user_id)
+    await _write_image_url(sb, recipe_id, user_id, None)
+    # After the column, not before: a cook whose objects were deleted and whose
+    # row still cited them would see a broken image on every device.
+    await asyncio.to_thread(SupabaseImageStore().remove, recipe_id)
+    logger.info("Recipe %s lost its picture.", recipe_id)
+    return RecipeImageResponse(image_url=None)

@@ -56,3 +56,29 @@ class SupabaseImageStore(ImageStore):
         except Exception:
             log.exception("SupabaseImageStore: failed to store the image for %s — continuing without it.", recipe_id)
             return None
+
+    def remove(self, recipe_id: str, keep: Optional[str] = None) -> None:
+        """Delete this recipe's stored pictures, optionally keeping one path.
+
+        Replacing a JPEG with a PNG writes a second object -- the extension is
+        part of the key -- so without this the old picture stays in the bucket
+        for ever, paid for and unreachable. Best effort by design: the picture
+        the caller has just written, or the ``image_url`` it has just cleared,
+        is the result that matters, and a failed cleanup must not undo it.
+        """
+        if not self._url or not self._key:
+            return
+        paths = [f"{recipe_id}.{ext}" for ext in sorted(set(_EXTENSIONS.values())) if f"{recipe_id}.{ext}" != keep]
+        if not paths:
+            return
+        try:
+            from supabase import create_client  # noqa: PLC0415
+
+            create_client(self._url, self._key).storage.from_(BUCKET).remove(paths)
+        except Exception:
+            log.exception("SupabaseImageStore: could not remove the old pictures for %s — continuing.", recipe_id)
+
+    @staticmethod
+    def path_for(recipe_id: str, content_type: str) -> str:
+        """The object key ``put`` writes for this recipe and content type."""
+        return f"{recipe_id}.{_EXTENSIONS.get(content_type.lower(), 'jpg')}"

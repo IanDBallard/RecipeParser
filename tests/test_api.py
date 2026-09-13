@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import io
 import os
+import re
 import time
 import uuid
 from typing import Any, Optional
@@ -35,7 +36,9 @@ from recipeparser.adapters.api import (  # noqa: E402
     _active_jobs,
     _extract_image_url_from_markdown,
     _fetch_page_meta,
+    _select_picture_type,
     _too_large_sentence,
+    _versioned,
     app,
 )
 from recipeparser.core.fsm import PipelineController, PipelineStatus  # noqa: E402
@@ -1051,3 +1054,167 @@ class TestTotalChunks:
             self._drain(tc, job_id)
 
         assert calls == [(job_id, 3, None)]
+
+
+# ===========================================================================
+# Section 9 — POST/DELETE /recipes/{recipe_id}/image
+# ===========================================================================
+
+_IMAGE_STORE = "recipeparser.adapters.api.SupabaseImageStore"
+_SERVICE_CLIENT = "recipeparser.adapters.api._get_supabase_service_client"
+_RECIPE_ID = "11111111-1111-1111-1111-111111111111"
+
+
+def _service_client(owned: bool = True) -> MagicMock:
+    """A Supabase service client whose recipes table answers the ownership read."""
+    sb = MagicMock()
+    table = sb.table.return_value
+    select = table.select.return_value.eq.return_value.eq.return_value.limit.return_value
+    select.execute.return_value.data = [{"id": _RECIPE_ID}] if owned else []
+    table.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = [{"id": _RECIPE_ID}]
+    return sb
+
+
+def _updated_column(sb: MagicMock) -> Any:
+    """The dict handed to recipes.update()."""
+    return sb.table.return_value.update.call_args.args[0]
+
+
+class TestRecipeImage:
+    def _post(
+        self, client: TestClient, filename: str, content: bytes,
+        content_type: str, recipe_id: str = _RECIPE_ID,
+    ) -> Any:
+        return client.post(
+            f"/recipes/{recipe_id}/image",
+            files={"file": (filename, io.BytesIO(content), content_type)},
+        )
+
+    def test_a_picture_is_stored_and_the_row_takes_its_url(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = "https://x.supabase.co/storage/v1/object/public/recipe-images/r.jpg"
+            store_cls.path_for.return_value = f"{_RECIPE_ID}.jpg"
+            resp = self._post(client, "dinner.jpg", b"\xff\xd8\xff\xe0", "image/jpeg")
+
+        assert resp.status_code == 200
+        image_url = resp.json()["image_url"]
+        assert image_url.startswith("https://x.supabase.co/storage/v1/object/public/recipe-images/r.jpg?v=")
+        # The row carries exactly what the client was told, or the device that
+        # syncs the row and the device that made the change disagree.
+        assert _updated_column(sb) == {"image_url": image_url}
+
+    def test_the_url_is_cache_busted_so_a_replacement_is_seen(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = "https://x/r.jpg"
+            resp = self._post(client, "dinner.jpg", b"\xff\xd8", "image/jpeg")
+        # The object key is the recipe id, so the address never changes: without
+        # the stamp the browser keeps showing the picture that was replaced.
+        assert re.fullmatch(r"https://x/r\.jpg\?v=\d+", resp.json()["image_url"])
+
+    def test_the_old_picture_under_another_extension_is_removed(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = "https://x/r.png"
+            store_cls.path_for.return_value = f"{_RECIPE_ID}.png"
+            self._post(client, "dinner.png", b"\x89PNG", "image/png")
+        store_cls.return_value.remove.assert_called_once_with(_RECIPE_ID, f"{_RECIPE_ID}.png")
+
+    def test_webp_and_gif_are_pictures_even_though_the_reader_refuses_them(self, client: TestClient) -> None:
+        for filename, content_type in (("dinner.webp", "image/webp"), ("dinner.gif", "image/gif")):
+            sb = _service_client()
+            with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+                store_cls.return_value.put.return_value = "https://x/r"
+                resp = self._post(client, filename, b"RIFF", content_type)
+            # Nothing OCRs this file: /jobs/file refuses both because PyMuPDF
+            # cannot open them, and that reason does not apply here.
+            assert resp.status_code == 200, filename
+
+    def test_heic_is_a_422_with_the_readers_sentence(self, client: TestClient) -> None:
+        resp = self._post(client, "IMG_1.heic", b"\x00\x00\x00\x18ftypheic", "image/heic")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
+
+    def test_a_pdf_is_a_422_naming_the_extension(self, client: TestClient) -> None:
+        resp = self._post(client, "menu.pdf", b"%PDF-1.4", "application/pdf")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Cayenne can't use .pdf files as a picture."
+
+    def test_a_body_over_the_ceiling_is_a_413_with_the_sentence(self, client: TestClient) -> None:
+        with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            resp = self._post(client, "big.jpg", b"\xff\xd8" + b"\x00" * 20, "image/jpeg")
+        assert resp.status_code == 413
+        assert resp.json()["detail"] == "This file is 0.0 MB. Cayenne takes files up to 0 MB."
+
+    def test_the_type_is_refused_before_the_size(self, client: TestClient) -> None:
+        with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            resp = self._post(client, "menu.pdf", b"\x00" * 17, "application/pdf")
+        assert resp.status_code == 422
+
+    def test_a_recipe_the_caller_does_not_own_is_a_404_and_nothing_is_stored(self, client: TestClient) -> None:
+        sb = _service_client(owned=False)
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            resp = self._post(client, "dinner.jpg", b"\xff\xd8", "image/jpeg")
+        assert resp.status_code == 404
+        # 404 rather than 403 (the _owned_controller rule), and the picture of a
+        # recipe the caller does not own is never written.
+        store_cls.return_value.put.assert_not_called()
+
+    def test_a_storage_failure_is_a_503_and_the_row_is_left_alone(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = None   # put() logs and returns None
+            resp = self._post(client, "dinner.jpg", b"\xff\xd8", "image/jpeg")
+        assert resp.status_code == 503
+        sb.table.return_value.update.assert_not_called()
+
+    def test_no_supabase_configured_is_a_503(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=None):
+            resp = self._post(client, "dinner.jpg", b"\xff\xd8", "image/jpeg")
+        assert resp.status_code == 503
+
+    def test_delete_nulls_the_column_and_removes_every_object(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            resp = client.delete(f"/recipes/{_RECIPE_ID}/image")
+        assert resp.status_code == 200
+        assert resp.json() == {"image_url": None}
+        assert _updated_column(sb) == {"image_url": None}
+        store_cls.return_value.remove.assert_called_once_with(_RECIPE_ID)
+
+    def test_delete_on_a_recipe_the_caller_does_not_own_is_a_404(self, client: TestClient) -> None:
+        sb = _service_client(owned=False)
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            resp = client.delete(f"/recipes/{_RECIPE_ID}/image")
+        assert resp.status_code == 404
+        store_cls.return_value.remove.assert_not_called()
+
+
+class TestSelectPictureType:
+    def test_the_extension_decides_over_a_mislabeled_content_type(self) -> None:
+        assert _select_picture_type("dinner.png", "image/jpeg") == "image/png"
+
+    def test_the_content_type_is_used_when_there_is_no_extension(self) -> None:
+        assert _select_picture_type("clipboard", "image/png") == "image/png"
+
+    def test_jpg_and_jpeg_are_one_type(self) -> None:
+        assert _select_picture_type("a.jpeg", "") == _select_picture_type("b.jpg", "") == "image/jpeg"
+
+    def test_an_unknown_file_raises_the_sentence_the_client_shows(self) -> None:
+        with pytest.raises(ValueError, match=r"can't use \.docx files as a picture"):
+            _select_picture_type("menu.docx", "image/jpeg")
+
+    def test_no_extension_and_no_usable_content_type_raises(self) -> None:
+        with pytest.raises(ValueError, match="can't use this file as a picture"):
+            _select_picture_type("clipboard", "application/octet-stream")
+
+
+class TestVersionedUrl:
+    def test_a_plain_url_takes_a_query(self) -> None:
+        assert _versioned("https://x/r.jpg", 7) == "https://x/r.jpg?v=7"
+
+    def test_a_url_that_already_has_a_query_takes_a_parameter(self) -> None:
+        # get_public_url() has been seen to return a trailing "?"; either way the
+        # stamp must not orphan the parameters already there.
+        assert _versioned("https://x/r.jpg?token=a", 7) == "https://x/r.jpg?token=a&v=7"
