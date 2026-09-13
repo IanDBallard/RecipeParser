@@ -840,6 +840,8 @@ _WEBP_SENTENCE = "Cayenne can't read WebP photos yet. Share it as a JPEG instead
 
 def _too_large_sentence(size: int) -> str:
     """The 413 detail: the client shows it verbatim, like the 422 sentences above."""
+    # Always MB with one decimal; Cayenne's formatBytes agrees at or above 1 MB —
+    # the two must stay in step if the ceiling ever drops below that.
     return (
         f"This file is {size / 1_000_000:.1f} MB. "
         f"Cayenne takes files up to {MAX_UPLOAD_BYTES // 1_000_000} MB."

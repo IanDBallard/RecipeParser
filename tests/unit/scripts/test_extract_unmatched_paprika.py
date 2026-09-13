@@ -4,7 +4,7 @@ import zipfile
 from pathlib import Path
 
 from recipeparser.io.readers.paprika import PaprikaReader
-from scripts.extract_unmatched_paprika import read_members, select_unmatched, write_archive
+from scripts.extract_unmatched_paprika import read_members, select_unmatched, summarise, write_archive
 
 
 def _archive(path: Path, entries: dict[str, dict]) -> Path:
@@ -60,3 +60,41 @@ def test_read_members_skips_a_member_whose_gzip_body_is_truncated(tmp_path):
         zf.writestr("b.paprikarecipe", truncated)
     members = read_members(path)
     assert [m[0] for m in members] == ["a.paprikarecipe"]
+
+
+def test_read_members_skips_a_member_whose_bytes_are_not_gzip_or_utf8_json(tmp_path):
+    path = tmp_path / "e.paprikarecipes"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("a.paprikarecipe", gzip.compress(json.dumps({"name": "Kept"}).encode("utf-8")))
+        zf.writestr("b.paprikarecipe", b"\xff\xfe\x00not json")
+    members = read_members(path)
+    assert [m[0] for m in members] == ["a.paprikarecipe"]
+
+
+def test_summarise_counts_titles_members_and_blanks():
+    members = [
+        ("a.paprikarecipe", b"a", {"name": "Ghost Soup"}),
+        ("b.paprikarecipe", b"b", {"name": "Ghost Soup"}),
+        ("c.paprikarecipe", b"c", {"name": "Vanished Tart"}),
+        ("d.paprikarecipe", b"d", {"name": ""}),
+    ]
+    rows = [_row(0, "Tomato Soup")]
+    summary = summarise(members, rows)
+    assert summary.unmatched_members == 3
+    assert summary.unmatched_titles == 2
+    assert summary.blank_titles == 1
+    assert summary.surplus_titles == []
+
+
+def test_summarise_flags_a_title_with_more_entries_than_rows():
+    # Two "Lost Cake" entries, one row: one of them is a lost recipe, but
+    # select_unmatched cannot tell which, so it writes neither and this is
+    # the only place that reports the group at all.
+    members = [
+        ("a.paprikarecipe", b"a", {"name": "Lost Cake"}),
+        ("b.paprikarecipe", b"b", {"name": "Lost Cake"}),
+    ]
+    rows = [_row(0, "Lost Cake")]
+    summary = summarise(members, rows)
+    assert summary.surplus_titles == ["Lost Cake"]
+    assert select_unmatched(members, rows) == []

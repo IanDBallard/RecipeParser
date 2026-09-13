@@ -4,8 +4,8 @@ import lost into a smaller archive, for one re-import through Add Recipe.
 
 Stage C (2026-09-12) found 68 archive entries with no recipe row and only
 counted them: `restore_source_urls.py` restores URLs and never creates a recipe.
-Re-importing the whole export would duplicate the other 759. This writes the
-unmatched members — the original gzip bytes, untouched — into
+Re-importing the whole export would duplicate every recipe already imported.
+This writes the unmatched members — the original gzip bytes, untouched — into
 `<archive stem>-unmatched.paprikarecipes` beside the archive and prints their
 titles; the cook drops that one file on Add Recipe.
 
@@ -28,11 +28,13 @@ import os
 import sys
 import zipfile
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from recipeparser.io.readers.paprika import PaprikaReader  # noqa: E402
 from scripts.backfill_paprika_metadata import normalise_title  # noqa: E402
 
 PAGE = 500
@@ -68,7 +70,7 @@ def read_members(path: Path | str) -> List[Member]:
             except gzip.BadGzipFile:
                 try:
                     entry = json.loads(raw)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, UnicodeDecodeError):
                     print(f"  skipping {name!r}: not gzip or JSON")
                     continue
             except json.JSONDecodeError:
@@ -94,6 +96,60 @@ def select_unmatched(members: Sequence[Member], rows: Sequence[Dict[str, Any]]) 
         if not rows_by_title.get(key):
             unmatched.append((name, raw, entry))
     return unmatched
+
+
+@dataclass
+class Summary:
+    """The restore's own accounting, so its 68 can be reconciled against this script's.
+
+    `unmatched_members` is what select_unmatched returns the count of (entries,
+    blanks excluded); `unmatched_titles` is the count restore_source_urls.py's
+    plan_restore would report — one per distinct title, which is what the "68"
+    actually was. `surplus_titles` are titles with more archive entries than
+    rows: select_unmatched writes none of them (it cannot tell which entry is
+    the lost one), so this is the only place that reports the group at all.
+    """
+
+    unmatched_members: int
+    unmatched_titles: int
+    blank_titles: int
+    surplus_titles: List[str] = field(default_factory=list)
+
+
+def summarise(members: Sequence[Member], rows: Sequence[Dict[str, Any]]) -> Summary:
+    """Group members and rows by normalised title, mirroring plan_restore's grouping."""
+    rows_by_title: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        rows_by_title[normalise_title(row.get("title"))].append(row)
+
+    members_by_title: Dict[str, List[Member]] = defaultdict(list)
+    blank_titles = 0
+    for name, raw, entry in members:
+        key = normalise_title(entry.get("name"))
+        if key == "":
+            blank_titles += 1
+            continue
+        members_by_title[key].append((name, raw, entry))
+
+    unmatched_members = 0
+    unmatched_titles = 0
+    surplus_titles: List[str] = []
+    for key, matched_members in members_by_title.items():
+        matched_rows = rows_by_title.get(key, [])
+        title = str(matched_members[0][2].get("name") or "")
+        if not matched_rows:
+            unmatched_members += len(matched_members)
+            unmatched_titles += 1
+            continue
+        if len(matched_members) > len(matched_rows):
+            surplus_titles.append(title)
+
+    return Summary(
+        unmatched_members=unmatched_members,
+        unmatched_titles=unmatched_titles,
+        blank_titles=blank_titles,
+        surplus_titles=surplus_titles,
+    )
 
 
 def write_archive(out_path: Path | str, members: Sequence[Member]) -> int:
@@ -127,15 +183,30 @@ def main() -> int:
     archive = Path(args.archive)
     members = read_members(archive)
     unmatched = select_unmatched(members, rows)
+    summary = summarise(members, rows)
     for _name, _raw, entry in unmatched:
         print(f"  {entry.get('name')!r}")
-    print(f"{len(members)} archive entries, {len(rows)} rows; {len(unmatched)} unmatched")
+    print(
+        f"{len(members)} archive entries, {len(rows)} rows; "
+        f"{summary.unmatched_members} unmatched entries across {summary.unmatched_titles} titles; "
+        f"{summary.blank_titles} skipped: blank title"
+    )
+    if summary.surplus_titles:
+        print(f"{len(summary.surplus_titles)} titles have more archive entries than rows — check by hand:")
+        for title in summary.surplus_titles:
+            print(f"  {title!r}")
     if not args.write:
         print("LISTED ONLY — nothing was written. Re-run with --write to produce the archive.")
         return 0
     out = Path(args.out) if args.out else archive.with_name(f"{archive.stem}-unmatched.paprikarecipes")
+    out.parent.mkdir(parents=True, exist_ok=True)
     written = write_archive(out, unmatched)
     print(f"wrote {written} entries to {out}")
+    read_back = len(PaprikaReader().read_entries(out))
+    print(f"read back {read_back} entries from {out}")
+    if read_back != written:
+        print(f"WARNING: wrote {written} entries but read back {read_back} — the archive may be corrupt.")
+        return 1
     return 0
 
 

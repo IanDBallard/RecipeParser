@@ -35,6 +35,7 @@ from recipeparser.adapters.api import (  # noqa: E402
     _active_jobs,
     _extract_image_url_from_markdown,
     _fetch_page_meta,
+    _too_large_sentence,
     app,
 )
 from recipeparser.core.fsm import PipelineController, PipelineStatus  # noqa: E402
@@ -395,6 +396,10 @@ class TestPostJobsFile:
     def test_unsupported_type_returns_422(self, client: TestClient) -> None:
         resp = self._upload(client, "recipe.txt", b"hello", "text/plain")
         assert resp.status_code == 422
+
+    def test_the_ceiling_sentence_is_the_one_the_client_shows(self) -> None:
+        # The exact string Cayenne's intake shows before the upload; the two repos must agree.
+        assert _too_large_sentence(120_300_000) == "This file is 120.3 MB. Cayenne takes files up to 50 MB."
 
     def test_pdf_returns_202(self, client: TestClient) -> None:
         with _patch_pipeline_and_writer()[0], \
