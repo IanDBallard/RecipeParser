@@ -65,3 +65,27 @@ def test_categorize_batch_no_matches_is_not_a_failure():
     with patch("recipeparser.gemini._call_with_retry", return_value=reply):
         assert categorize_batch([{"id": "r1", "title": "x", "ingredient_lines": [], "direction_steps": []}],
                                 {"Cuisine": ["Italian"]}, client=MagicMock()) == {"r1": []}
+
+
+def test_the_batch_prompt_refuses_a_double_encoded_body_column():
+    """A double-encoded jsonb column arrives as a str, and iterating a str yields
+    characters: the prompt would carry one "ingredient" per character and the
+    model would classify the result without complaint. All 786 rows in the live
+    library once carried exactly this encoding on structured_ingredients, so the
+    raise is the point -- RecatWorker records such a batch in `skipped`.
+    """
+    import pytest
+
+    from recipeparser.gemini import build_categorize_batch_prompt
+
+    bad = [{"id": "r1", "title": "T", "ingredient_lines": '["flour","water"]', "direction_steps": []}]
+    with pytest.raises(TypeError, match="ingredient_lines"):
+        build_categorize_batch_prompt(bad, {"Cuisine": ["Thai"]})
+
+
+def test_the_batch_prompt_still_renders_a_normal_recipe():
+    from recipeparser.gemini import build_categorize_batch_prompt
+
+    ok = [{"id": "r1", "title": "Pad Thai", "ingredient_lines": ["noodles"], "direction_steps": ["fry"]}]
+    prompt = build_categorize_batch_prompt(ok, {"Cuisine": ["Thai"]})
+    assert "RECIPE ID: r1" in prompt and "- noodles" in prompt and "1. fry" in prompt

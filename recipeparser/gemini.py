@@ -819,12 +819,24 @@ def build_categorize_batch_prompt(
     recipes: List[Dict[str, Any]],
     new_axes: Dict[str, List[str]],
 ) -> str:
-    """The bulk-recategorise prompt: several recipes against newly added tags only."""
+    """The bulk-recategorise prompt: several recipes against newly added tags only.
+
+    The body columns are read through ``raw_body_column``, which raises on a
+    double-encoded jsonb column rather than letting it through. Iterating a
+    ``str`` yields characters, so a double-encoded ``ingredient_lines`` would
+    put forty single-character "ingredients" in this prompt and the model would
+    classify the result without complaint. That encoding is not hypothetical:
+    all 786 rows in the live library once carried it on
+    ``structured_ingredients``. The raise is the point -- a batch that cannot be
+    described honestly is a batch for ``RecatWorker`` to record in ``skipped``.
+    """
+    from recipeparser.core.regen import raw_body_column  # noqa: PLC0415
+
     axes_text = "\n".join(f"- {axis}: {', '.join(tags)}" for axis, tags in new_axes.items())
     recipes_text = "\n\n".join(
         f"RECIPE ID: {r['id']}\nTITLE: {r.get('title', '')}\n"
-        "INGREDIENTS:\n" + "\n".join(f"  - {line}" for line in r.get("ingredient_lines", [])) + "\n"
-        "DIRECTIONS:\n" + "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(r.get("direction_steps", [])))
+        "INGREDIENTS:\n" + "\n".join(f"  - {line}" for line in raw_body_column(r, "ingredient_lines")) + "\n"
+        "DIRECTIONS:\n" + "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(raw_body_column(r, "direction_steps")))
         for r in recipes
     )
     return f"""

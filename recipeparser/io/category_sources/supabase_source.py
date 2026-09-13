@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Set
 import httpx
 
 from recipeparser.io.category_sources.base import CategorySource
+from recipeparser.core.taxonomy import axes_from_rows
 
 log = logging.getLogger(__name__)
 
@@ -100,13 +101,25 @@ class SupabaseCategorySource(CategorySource):
         if not rows:
             return {}
 
-        # Build name → id map (last-write-wins for duplicate names)
+        # Build name → id map. A duplicate name raises rather than last-write-wins
+        # (D6, 2026-09-13): this map is how the writer turns a model's tag name back
+        # into a category id, so two categories sharing a name means every recipe
+        # tagged with it lands under whichever row was read last — a misfiling with
+        # no error and no trace. The unique (user_id, name) index makes duplicates
+        # unrepresentable today, which is exactly why this is cheap to assert now,
+        # before anyone scopes names per axis and makes it possible.
         name_to_id: Dict[str, str] = {}
         for row in rows:
             name = row.get("name", "").strip()
             cat_id = row.get("id", "")
-            if name and cat_id:
-                name_to_id[name] = cat_id
+            if not (name and cat_id):
+                continue
+            if name in name_to_id and name_to_id[name] != cat_id:
+                raise ValueError(
+                    "Two categories are named {!r} ({} and {}) for user {}: a tag name "
+                    "must identify one category.".format(name, name_to_id[name], cat_id, user_id)
+                )
+            name_to_id[name] = cat_id
 
         log.debug(
             "SupabaseCategorySource: %d category name→id mappings for user %s.",
@@ -183,60 +196,15 @@ class SupabaseCategorySource(CategorySource):
 
         Mapping:
         - parent_id IS NULL → axis (Level 1)
-        - direct children of an axis → tags (Level 2)
-        - deeper descendants are flattened into their nearest Level-2 ancestor
+        - every descendant of an axis, at any depth → a tag of that axis
+        - axes with no children become a single-tag axis (axis name == tag name),
+          preserving the Zero-Tag Mandate semantics while still letting the LLM
+          match against them
 
-        Axes with no children are treated as a single-tag axis
-        (axis name == tag name) to preserve the Zero-Tag Mandate semantics
-        while still allowing the LLM to match against them.
+        The walk itself lives in ``core.taxonomy`` (2026-09-13, stage 7C) because
+        the bulk-recategorise worker has to describe the same taxonomy the same
+        way, and it did not: it read a node's immediate parent, so a level-3 tag
+        was offered under a different axis at ingest and at recategorise. This is
+        a delegation, not a behaviour change.
         """
-        # Build lookup structures
-        id_to_name: Dict[str, str] = {}
-        id_to_parent: Dict[str, Optional[str]] = {}
-        children_by_parent: Dict[str, List[str]] = {}  # parent_id → [child_id, ...]
-
-        for row in rows:
-            cat_id = row.get("id", "")
-            name = (row.get("name") or "").strip()
-            parent_id = row.get("parent_id")  # None for top-level
-
-            if not cat_id or not name:
-                continue
-
-            id_to_name[cat_id] = name
-            id_to_parent[cat_id] = parent_id
-
-            if parent_id is not None:
-                children_by_parent.setdefault(parent_id, []).append(cat_id)
-
-        # Identify top-level (axis) nodes
-        top_level_ids = [cid for cid, parent in id_to_parent.items() if parent is None]
-
-        axes: Dict[str, List[str]] = {}
-        for axis_id in top_level_ids:
-            axis_name = id_to_name.get(axis_id, "")
-            if not axis_name:
-                continue
-
-            # Collect all descendants (BFS), flatten to tag names
-            tag_names: List[str] = []
-            queue = list(children_by_parent.get(axis_id, []))
-            visited: Set[str] = set()
-            while queue:
-                child_id = queue.pop(0)
-                if child_id in visited:
-                    continue
-                visited.add(child_id)
-                child_name = id_to_name.get(child_id, "")
-                if child_name:
-                    tag_names.append(child_name)
-                # Recurse into grandchildren (flattened)
-                queue.extend(children_by_parent.get(child_id, []))
-
-            if tag_names:
-                axes[axis_name] = sorted(tag_names)
-            else:
-                # Leaf axis — single-tag axis (axis name == tag)
-                axes[axis_name] = [axis_name]
-
-        return axes
+        return axes_from_rows(rows)

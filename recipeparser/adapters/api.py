@@ -29,7 +29,10 @@ import ipaddress
 import os
 import re
 import tempfile
+import datetime
 import uuid
+
+from recipeparser.core.taxonomy import descendants_of
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -1232,6 +1235,111 @@ def _owned_controller(job_id: str, user: dict[str, Any]) -> PipelineController:
 
 
 # ---------------------------------------------------------------------------
+# POST /jobs/recategorize  — queue a bulk recategorise (philosophy spec 6.1)
+# ---------------------------------------------------------------------------
+
+class RecategorizeRequest(BaseModel):
+    """Request body for POST /jobs/recategorize."""
+    category_ids: list[str]
+
+
+@app.post("/jobs/recategorize", response_model=AsyncJobResponse, status_code=202)
+def submit_recategorize_job(
+    body: RecategorizeRequest,
+    user: dict[str, Any] = Depends(_verify_supabase_jwt),
+) -> AsyncJobResponse:
+    """Queue a bulk recategorise over the caller's whole library.
+
+    The client does NOT insert this row. ``ingestion_jobs`` carries a
+    SELECT-only policy, so a PowerSync insert is rejected 42501 and the
+    connector drops it silently — which is why the capability sat unreachable
+    from the day it was specified until 2026-09-13. This endpoint holds the
+    service role and does the two things that must not be trusted to a device:
+    it checks the caller owns every id, and it expands each one to its subtree.
+
+    Returns 202 + ``{ job_id }``; ``RecatWorker`` picks the row up on its next
+    poll. Nothing runs without this call.
+    """
+    user_id: str = user.get("sub", "")
+    requested = [cid for cid in dict.fromkeys(body.category_ids) if cid]
+    if not requested:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No categories given: a recategorise job needs at least one.",
+        )
+
+    sb = _get_supabase_service_client()
+    if sb is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Recipe AI is not configured to queue this job.",
+        )
+
+    rows = (
+        sb.table("categories").select("id,name,parent_id").eq("user_id", user_id).execute().data or []
+    )
+    owned = {r["id"] for r in rows if r.get("id")}
+    unknown = [cid for cid in requested if cid not in owned]
+    if unknown:
+        # The count, never the ids: echoing them back would confirm which of a
+        # guessed set exist, and this is the one place a caller names rows it may
+        # not own. Same reasoning as _owned_controller's 404-not-403.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{len(unknown)} of {len(requested)} categories were not found.",
+        )
+
+    # D4: a folder offers its subtree. Expanded here, with the same walk the
+    # worker builds its axes from, so what the job carries and what the model is
+    # offered cannot drift apart.
+    expanded: list[str] = []
+    for cid in requested:
+        for descendant in descendants_of(cid, rows):
+            if descendant not in expanded:
+                expanded.append(descendant)
+
+    names = [r["name"] for r in rows if r.get("id") in set(requested)]
+    hint = ", ".join(n for n in names if n)[:80]
+
+    job_id = str(uuid.uuid4())
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    try:
+        sb.table("ingestion_jobs").insert({
+            "id": job_id,
+            "user_id": user_id,
+            "kind": "recategorize",
+            # pending, not running: the worker claims it, and the claim is the
+            # compare-and-swap that stops two workers taking the same job.
+            "status": "pending",
+            "stage": "IDLE",
+            "progress_pct": 0,
+            "recipe_count": 0,
+            "skipped_count": 0,
+            "skipped": [],
+            "params": {"category_ids": expanded},
+            "source_hint": hint,
+            "error_message": None,
+            "created_at": now,
+            "updated_at": now,
+        }).execute()
+    except Exception as exc:  # noqa: BLE001
+        # Unlike the ingest insert, this one IS raised: there is no background work
+        # already running that the row merely describes. If the row is not there,
+        # nothing will ever happen, and the caller needs to know now.
+        logger.exception("Could not queue recategorise job for user %s.", user_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not queue the job.",
+        ) from exc
+
+    logger.info(
+        "Recategorise job %s queued (user=%s, %d requested -> %d with descendants).",
+        job_id, user_id, len(requested), len(expanded),
+    )
+    return AsyncJobResponse(job_id=job_id)
+
+
+# ---------------------------------------------------------------------------
 # GET /jobs/{job_id}  — status polling
 # ---------------------------------------------------------------------------
 
@@ -1271,7 +1379,63 @@ def resume_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)
 
 @app.post("/jobs/{job_id}/cancel", status_code=200)
 def cancel_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> dict[str, str]:
-    """Cancel the caller's running or paused job."""
+    """Cancel the caller's job.
+
+    Two kinds, two mechanisms. An ingest job runs in this process, so it is
+    cancelled through its in-memory controller, exactly as before. A
+    recategorise job runs in the background worker -- possibly in a different
+    process, and possibly not started yet -- so the only thing both sides can
+    see is the row, and cancelling means writing `status = 'cancelled'` to it.
+    The worker reads that between batches.
+
+    The client cannot make that write itself: `ingestion_jobs` is SELECT-only
+    to it (philosophy spec 6.3, amended 2026-09-13), and the value was not even
+    storable until Cayenne's 20260913125453 migration widened the CHECK.
+    """
+    row = _recategorize_row(job_id, user)
+    if row is not None:
+        current = row.get("status")
+        if current not in ("pending", "running"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Job '{job_id}' has already finished ({current}).",
+            )
+        sb = _get_supabase_service_client()
+        sb.table("ingestion_jobs").update({
+            "status": "cancelled",
+            "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        }).eq("id", job_id).eq("user_id", user.get("sub", "")).execute()
+        logger.info("Recategorise job %s cancelled by its owner.", job_id)
+        return {"job_id": job_id, "status": "cancelled"}
+
     controller = _owned_controller(job_id, user)
     controller.request_cancel()
     return {"job_id": job_id, "status": controller.status.value}
+
+
+def _recategorize_row(job_id: str, user: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """The caller's own recategorise job row, or None.
+
+    None covers three cases deliberately: not a recategorise job, not the
+    caller's, and no Supabase configured. The first falls through to the
+    in-memory controller path; the other two end at `_owned_controller`, which
+    answers 404 rather than 403 -- someone else's job must not be
+    distinguishable from one that does not exist, or the registry becomes
+    enumerable. That reasoning is `_owned_controller`'s and it holds here too.
+    """
+    sub = user.get("sub", "")
+    if _blank_subject(sub):
+        return None
+    sb = _get_supabase_service_client()
+    if sb is None:
+        return None
+    try:
+        rows = (
+            sb.table("ingestion_jobs").select("id,status,kind")
+            .eq("id", job_id).eq("user_id", sub).eq("kind", "recategorize")
+            .limit(1).execute().data or []
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not read job %s while cancelling.", job_id)
+        return None
+    return rows[0] if rows else None
