@@ -861,6 +861,14 @@ class TestFetchPageMeta:
         assert result == PageMeta(None, None)
         assert calls == []
 
+    def test_a_malformed_url_is_no_meta_not_a_failed_job(self) -> None:
+        # urlparse raises ValueError on an unbalanced bracket; the docstring promises degradation.
+        calls: list = []
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
+            result = asyncio.run(_fetch_page_meta("http://[::1"))
+        assert result == PageMeta(None, None)
+        assert calls == []
+
     def test_a_public_url_is_still_fetched(self) -> None:
         html = '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
 

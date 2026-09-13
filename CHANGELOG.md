@@ -23,6 +23,9 @@ Stage D of the Add Recipe workstream (Cayenne `docs/superpowers/plans/2026-09-11
 ### ✨ Added — the job row points at its source
 - `ingestion_jobs.source_hint` becomes the recipes' `source_key`: written with `total_chunks` from the chunks' citations (books and sites), and again at finalize from the written rows (pasted text and photos). The Add Recipe screen's Recent-imports rows open the library on it.
 
+### 🐛 Fixed — the bulk fix after Stage E (2026-09-13)
+- A malformed page address (`http://[::1`) no longer fails a URL job: the private-host check runs inside `_fetch_page_meta`'s `try`, so it degrades to no meta as the docstring promises.
+
 ## [8.0.0] — 2026-09-12
 
 The recipe edit backend, the recipe source citation, and everything that landed between them: 47 commits over fourteen pull requests (#24–#37) since v7.0.0, plus #38 and #39.

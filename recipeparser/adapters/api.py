@@ -475,9 +475,11 @@ async def _fetch_page_meta(url: str) -> PageMeta:
     (``_is_unsafe_fetch_target``) is refused before the GET, with no DNS
     resolution performed.
     """
-    if _is_unsafe_fetch_target(url):
-        return PageMeta(None, None)
     try:
+        # Inside the try: urlparse raises on a malformed address ("http://[::1"), and a malformed
+        # address is a page without meta, not a failed job.
+        if _is_unsafe_fetch_target(url):
+            return PageMeta(None, None)
         async with httpx.AsyncClient(
             timeout=15,
             follow_redirects=True,
