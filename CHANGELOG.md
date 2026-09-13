@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### ✨ Added — a cook can change a recipe's picture
+- `POST /recipes/{recipe_id}/image` (multipart `file`) stores a picture chosen in Cayenne's recipe editor and answers `200 { image_url }`; `DELETE /recipes/{recipe_id}/image` removes it and answers `{ image_url: null }`. Both verify the caller owns the recipe and answer **404, never 403**, when they do not — `_owned_controller`'s rule, so the table cannot be enumerated by id. The service keeps its place as the bucket's only writer: no storage policy is widened for the browser, and the device never writes `image_url` itself — PowerSync delivers the row this endpoint updates.
+- Accepts JPEG, PNG, WebP and GIF. Wider than `/jobs/file` on purpose: that list is what PyMuPDF can open for OCR, and nothing OCRs a picture the cook chose — the browser renders it. HEIC is refused with the reader's own sentence, since no browser decodes it either. The ceiling and its 413 sentence are `/jobs/file`'s (`config.MAX_UPLOAD_BYTES`), checked after the type so a small file of the wrong kind is still a 422.
+- The stored URL carries a `v=<epoch>` stamp. The object key is the recipe id, so a replacement lands on the address the old picture had, and without the stamp the browser, the service worker and Supabase's CDN would all go on showing the picture that was just replaced. `SupabaseImageStore` gains `remove()`, which drops the recipe's objects under the other extensions — a JPEG replaced by a PNG left the first one in the bucket for ever.
+
+
 Stage D of the Add Recipe workstream (Cayenne `docs/superpowers/plans/2026-09-11-add-recipe-workstream.md`; roadmap Stage 6 row D). No migration: every column written here already exists.
 
 ### ✨ Added — the intake reads photos and scans
