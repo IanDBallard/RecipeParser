@@ -25,6 +25,7 @@ Stage D of the Add Recipe workstream (Cayenne `docs/superpowers/plans/2026-09-11
 
 ### ✨ Added — the bulk fix after Stage E (2026-09-13)
 - `POST /jobs/file` refuses a body over 50 MB (`config.MAX_UPLOAD_BYTES`) with a 413 whose `detail` is a sentence the client shows verbatim: "This file is 120.3 MB. Cayenne takes files up to 50 MB." The type check still runs first. Cayenne refuses the same size before the upload with the same sentence.
+- `scripts/extract_unmatched_paprika.py`: the Paprika export's entries with no recipe row (Stage C counted 68), written into a small `.paprikarecipes` for one re-import through Add Recipe. The restore script's matching rule; the original member bytes.
 
 ### 🐛 Fixed — the bulk fix after Stage E (2026-09-13)
 - A malformed page address (`http://[::1`) no longer fails a URL job: the private-host check runs inside `_fetch_page_meta`'s `try`, so it degrades to no meta as the docstring promises.

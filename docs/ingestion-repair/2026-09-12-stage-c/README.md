@@ -20,3 +20,5 @@ Left for the by-hand *Set source* passes once Stage B ships the sheet: the 166
 and the two truncated `Perfect` / `Completely Perfect` rows now filed as `person`.
 `source` still reads `EPUB Auto-Import` on the 166 until then; the kitchen line
 shows nothing for them (no title, and the fallback text is the reader's marker).
+
+**Recovering the 68 (2026-09-13).** `scripts/extract_unmatched_paprika.py --archive <export> --user-id <uuid> --write` writes those entries, bytes untouched, into `<export stem>-unmatched.paprikarecipes` beside the export; that one file goes through Add Recipe, and *Set source* afterwards if a site needs naming. Run it after the restore, against the same archive; the run's own output (titles and counts) is recorded here as `extract-unmatched.txt` when it is done.
