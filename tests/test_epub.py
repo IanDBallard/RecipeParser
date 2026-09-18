@@ -555,5 +555,4 @@ class TestEpubRefusals:
         path.write_bytes(b"hello")
         with pytest.raises(EpubExtractionError) as excinfo:
             load_epub(str(path), str(tmp_path / "out"))
-        assert str(excinfo.value).startswith("could not be opened as an EPUB: ")
-        assert str(tmp_path) not in str(excinfo.value)
+        assert str(excinfo.value) == "could not be opened as an EPUB."

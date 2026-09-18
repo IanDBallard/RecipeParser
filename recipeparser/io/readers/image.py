@@ -50,7 +50,10 @@ class ImageReader(RecipeReader):
         try:
             doc = fitz.open(source)
         except Exception as exc:
-            raise ImageExtractionError(f"could not be opened as an image: {exc}") from exc
+            # The library's own text can carry the server path; it goes to the
+            # log, and the user sees the predicate.
+            log.warning("Image could not be opened: %s", exc)
+            raise ImageExtractionError("could not be opened as an image.") from exc
         try:
             if doc.page_count == 0:
                 raise ImageExtractionError("could not be opened as an image: no pages.")
@@ -69,7 +72,8 @@ class ImageReader(RecipeReader):
                 # PyMuPDF defers format validation past fitz.open(): a file
                 # that isn't really an image only fails once a page is
                 # decoded, which happens inside extract_text_via_vision.
-                raise ImageExtractionError(f"could not be opened as an image: {exc}") from exc
+                log.warning("Image could not be decoded: %s", exc)
+                raise ImageExtractionError("could not be opened as an image.") from exc
         finally:
             doc.close()
 

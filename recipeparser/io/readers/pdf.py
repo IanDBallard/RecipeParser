@@ -111,7 +111,10 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
     try:
         doc = fitz.open(path)
     except Exception as e:
-        raise PdfExtractionError(f"could not be opened as a PDF: {e}") from e
+        # The library's own text can carry the server path (PyMuPDF names the
+        # file on Linux); it goes to the log, and the user sees the predicate.
+        log.warning("PDF could not be opened: %s", e)
+        raise PdfExtractionError("could not be opened as a PDF.") from e
 
     try:
         _check_document(doc, path)
@@ -231,7 +234,8 @@ def extract_text_from_pdf(pdf_path: str, client: Any = None) -> str:
     try:
         doc = fitz.open(pdf_path)
     except Exception as e:
-        raise PdfExtractionError(f"could not be opened as a PDF: {e}")
+        log.warning("PDF could not be opened: %s", e)
+        raise PdfExtractionError("could not be opened as a PDF.") from e
 
     try:
         if doc.page_count == 0:

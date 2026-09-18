@@ -59,8 +59,7 @@ def test_a_file_pymupdf_cannot_open_is_an_image_extraction_error(tmp_path):
         ImageReader(_client("x")).read(str(bad))
     # A predicate about the file, without the server's temp name: the API
     # prefixes the user's own filename.
-    assert str(excinfo.value).startswith("could not be opened as an image: ")
-    assert "not-a-photo.png" not in str(excinfo.value)
+    assert str(excinfo.value) == "could not be opened as an image."
 
 
 def test_a_multi_page_pdf_renamed_jpg_is_refused_before_any_vision_call(tmp_path):

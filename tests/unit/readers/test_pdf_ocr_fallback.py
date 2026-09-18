@@ -174,5 +174,5 @@ def test_a_file_that_is_not_a_pdf_is_refused_without_the_path(tmp_path):
     path.write_bytes(b"hello")
     with pytest.raises(PdfExtractionError) as excinfo:
         load_pdf(str(path), str(tmp_path / "out"))
-    assert str(excinfo.value).startswith("could not be opened as a PDF: ")
-    assert str(tmp_path) not in str(excinfo.value)
+    # PyMuPDF's own text names the file on Linux, so it must not be echoed.
+    assert str(excinfo.value) == "could not be opened as a PDF."

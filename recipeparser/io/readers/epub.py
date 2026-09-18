@@ -167,14 +167,18 @@ def _open_book(epub_path: str) -> epub.EpubBook:
     try:
         algorithms = _drm_algorithms(epub_path)
     except Exception as e:
-        raise EpubExtractionError(f"could not be opened as an EPUB: {e}") from e
+        # The library's own text may carry the server path; it goes to the
+        # log, and the user sees the predicate.
+        log.warning("EPUB could not be opened: %s", e)
+        raise EpubExtractionError("could not be opened as an EPUB.") from e
     if algorithms:
         log.warning("EPUB declares %s in its encryption manifest — refusing as DRM.", algorithms)
         raise EpubExtractionError("is DRM-protected: its chapters are encrypted and cannot be read.")
     try:
         return read_epub(epub_path)
     except Exception as e:
-        raise EpubExtractionError(f"could not be opened as an EPUB: {e}") from e
+        log.warning("EPUB could not be opened: %s", e)
+        raise EpubExtractionError("could not be opened as an EPUB.") from e
 
 
 def load_epub(epub_path: str, output_dir: str) -> Tuple[Citation, str, Set[str], List[str]]:
