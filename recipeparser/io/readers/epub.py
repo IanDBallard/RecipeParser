@@ -9,6 +9,7 @@ from typing import List, Optional, Set, Tuple
 import ebooklib  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 from ebooklib import epub
+from lxml import etree  # type: ignore[import-untyped]
 
 from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
 from recipeparser.core.citation import Citation, book_citation
@@ -16,6 +17,43 @@ from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
+
+
+class _TolerantEpubReader(epub.EpubReader):  # type: ignore[misc]
+    """ebooklib's reader, except an NCX that is not a table of contents leaves the TOC empty.
+
+    ebooklib parses the NCX named by the spine's ``toc`` attribute with a recovering
+    parser and dereferences the result. A file holding no element at all (a bare XML
+    declaration, plain text, nothing) therefore sinks the whole book with
+    ``'NoneType' object has no attribute 'find'`` or an XMLSyntaxError. Its
+    ``ignore_ncx`` option is no escape: the NCX is still read whenever the book has
+    no EPUB3 nav document, which is every EPUB2. The chapters and metadata of such a
+    book are intact, and ``recipeparser.toc`` already falls back to the text when the
+    TOC is empty, so the TOC is the only thing worth losing.
+    """
+
+    def _parse_ncx(self, data: bytes) -> None:
+        try:
+            root = epub.parse_string(data).getroot()
+        except etree.XMLSyntaxError as exc:
+            log.warning("EPUB NCX is not parseable XML (%s); table of contents left empty.", exc)
+            return
+        if root is None or root.find("{%s}navMap" % epub.NAMESPACES["DAISY"]) is None:
+            log.warning("EPUB NCX holds no navMap; table of contents left empty.")
+            return
+        super()._parse_ncx(data)
+
+
+def read_epub(epub_path: str, options: Optional[dict] = None) -> epub.EpubBook:
+    """``ebooklib.epub.read_epub``, through the reader that tolerates an unreadable NCX.
+
+    Every EPUB the package opens goes through here, so the tolerance cannot drift
+    between the chapter reader and the TOC extractor.
+    """
+    reader = _TolerantEpubReader(epub_path, options)
+    book = reader.load()
+    reader.process()
+    return book
 
 
 class EpubReader(RecipeReader):
@@ -85,7 +123,7 @@ def load_epub(epub_path: str, output_dir: str) -> Tuple[Citation, str, Set[str],
     """
     from recipeparser.exceptions import EpubExtractionError
     try:
-        book = epub.read_epub(epub_path)
+        book = read_epub(epub_path)
     except Exception as e:
         raise EpubExtractionError(f"Failed to open EPUB '{epub_path}': {e}") from e
     citation = get_book_citation(book)
@@ -259,7 +297,7 @@ def extract_text_from_epub(epub_path: str) -> str:
     """
     from recipeparser.exceptions import EpubExtractionError
     try:
-        book = epub.read_epub(epub_path)
+        book = read_epub(epub_path)
     except Exception as e:
         raise EpubExtractionError(f"Failed to open EPUB: {e}")
 

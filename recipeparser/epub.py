@@ -7,5 +7,6 @@ from recipeparser.io.readers.epub import (  # noqa: F401
     get_book_source,
     is_recipe_candidate,
     load_epub,
+    read_epub,
     split_large_chunk,
 )
