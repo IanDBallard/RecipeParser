@@ -18,16 +18,34 @@ class GeminiConnectionError(RecipeParserError):
     """Raised when the Gemini API is unreachable or returns an auth error."""
 
 
-class EpubExtractionError(RecipeParserError):
+class UnreadableInputError(RecipeParserError):
+    """A reader could not turn its input into text, before any model call.
+
+    The message is a predicate about the input — "is password-protected.",
+    "contains no readable text." — and never names the server's temp path, so
+    the API can prefix the user's own filename or URL and show the result as
+    the job's error message.
+    """
+
+
+class EpubExtractionError(UnreadableInputError):
     """Raised when the EPUB file cannot be opened or parsed."""
 
 
-class PdfExtractionError(RecipeParserError):
+class PdfExtractionError(UnreadableInputError):
     """Raised when the PDF cannot be opened, parsed, or fails pre-flight (e.g. no text layer, password-protected)."""
 
 
-class ImageExtractionError(RecipeParserError):
+class ImageExtractionError(UnreadableInputError):
     """Raised when a photo cannot be opened as an image."""
+
+
+class PaprikaExtractionError(UnreadableInputError):
+    """Raised when a .paprikarecipes archive cannot be opened or holds no recipe."""
+
+
+class UrlFetchError(UnreadableInputError):
+    """Raised when a page cannot be fetched, or fetched but holds no text."""
 
 
 class ExportError(RecipeParserError):

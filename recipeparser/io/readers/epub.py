@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tempfile
+import unicodedata
+import zipfile
 from typing import List, Optional, Set, Tuple
 
 import ebooklib  # type: ignore[import-untyped]
@@ -114,6 +117,66 @@ class EpubReader(RecipeReader):
         return chunks
 
 
+# Font obfuscation is the one use of the EPUB encryption manifest that leaves the
+# chapters readable; anything else in it (Adobe ADEPT's AES, LCP, …) is DRM.
+_FONT_OBFUSCATION_ALGORITHMS = frozenset({
+    "http://www.idpf.org/2008/embedding",
+    "http://ns.adobe.com/pdf/enc#RC",
+})
+_ENCRYPTION_MANIFEST = "META-INF/encryption.xml"
+# Above this share of replacement and control characters the "text" is
+# ciphertext or binary decoded by force: measured 0.48–1.0 for such chapters,
+# 0.0 for prose.
+_MAX_UNREADABLE_RATIO = 0.05
+
+
+def _drm_algorithms(epub_path: str) -> List[str]:
+    """The encryption algorithms the manifest declares that are not font obfuscation."""
+    with zipfile.ZipFile(epub_path) as archive:
+        if _ENCRYPTION_MANIFEST not in archive.namelist():
+            return []
+        manifest = archive.read(_ENCRYPTION_MANIFEST).decode("utf-8", "replace")
+    declared = set(re.findall(r'Algorithm="([^"]+)"', manifest))
+    return sorted(a for a in declared if a not in _FONT_OBFUSCATION_ALGORITHMS)
+
+
+def _unreadable_ratio(text: str) -> float:
+    """The share of characters that are U+FFFD or control characters (tabs and newlines excepted)."""
+    if not text:
+        return 0.0
+    bad = sum(
+        1 for ch in text
+        if ch == "\ufffd" or (unicodedata.category(ch) == "Cc" and ch not in "\t\n\r")
+    )
+    return bad / len(text)
+
+
+def _assert_readable(raw_chunks: List[str]) -> None:
+    """Refuse a book whose chapters hold no prose, so ciphertext never reaches the model."""
+    from recipeparser.exceptions import EpubExtractionError
+
+    text = "\n".join(raw_chunks)
+    if not text.strip() or _unreadable_ratio(text) > _MAX_UNREADABLE_RATIO:
+        raise EpubExtractionError("contains no readable text.")
+
+
+def _open_book(epub_path: str) -> epub.EpubBook:
+    """The book, or an EpubExtractionError whose message is a predicate without the path."""
+    from recipeparser.exceptions import EpubExtractionError
+
+    try:
+        algorithms = _drm_algorithms(epub_path)
+    except Exception as e:
+        raise EpubExtractionError(f"could not be opened as an EPUB: {e}") from e
+    if algorithms:
+        log.warning("EPUB declares %s in its encryption manifest — refusing as DRM.", algorithms)
+        raise EpubExtractionError("is DRM-protected: its chapters are encrypted and cannot be read.")
+    try:
+        return read_epub(epub_path)
+    except Exception as e:
+        raise EpubExtractionError(f"could not be opened as an EPUB: {e}") from e
+
+
 def load_epub(epub_path: str, output_dir: str) -> Tuple[Citation, str, Set[str], List[str]]:
     """
     Load an EPUB and return the standard book-loader tuple.
@@ -121,14 +184,11 @@ def load_epub(epub_path: str, output_dir: str) -> Tuple[Citation, str, Set[str],
     Returns:
         (citation, image_dir, qualifying_images, raw_chunks)
     """
-    from recipeparser.exceptions import EpubExtractionError
-    try:
-        book = read_epub(epub_path)
-    except Exception as e:
-        raise EpubExtractionError(f"Failed to open EPUB '{epub_path}': {e}") from e
+    book = _open_book(epub_path)
     citation = get_book_citation(book)
     image_dir, qualifying_images = extract_all_images(book, output_dir)
     raw_chunks = extract_chapters_with_image_markers(book, qualifying_images)
+    _assert_readable(raw_chunks)
     return citation, image_dir, qualifying_images, raw_chunks
 
 
@@ -295,15 +355,10 @@ def extract_text_from_epub(epub_path: str) -> str:
     - Filters to recipe-candidate chapters using is_recipe_candidate().
     - Returns a single concatenated string.
     """
-    from recipeparser.exceptions import EpubExtractionError
-    try:
-        book = read_epub(epub_path)
-    except Exception as e:
-        raise EpubExtractionError(f"Failed to open EPUB: {e}")
+    book = _open_book(epub_path)
 
     chapters = extract_chapters_with_image_markers(book, qualifying_images=None)
-    if not chapters:
-        return ""
+    _assert_readable(chapters)
 
     # Filter to recipe-candidate chapters to reduce token count
     recipe_chapters = [c for c in chapters if is_recipe_candidate(c)]
