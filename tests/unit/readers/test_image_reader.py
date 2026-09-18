@@ -55,8 +55,11 @@ def test_the_vision_call_carries_the_photo_as_png_bytes(tmp_path):
 def test_a_file_pymupdf_cannot_open_is_an_image_extraction_error(tmp_path):
     bad = tmp_path / "not-a-photo.png"
     bad.write_bytes(b"this is not an image")
-    with pytest.raises(ImageExtractionError, match="not-a-photo.png"):
+    with pytest.raises(ImageExtractionError) as excinfo:
         ImageReader(_client("x")).read(str(bad))
+    # A predicate about the file, without the server's temp name: the API
+    # prefixes the user's own filename.
+    assert str(excinfo.value) == "could not be opened as an image."
 
 
 def test_a_multi_page_pdf_renamed_jpg_is_refused_before_any_vision_call(tmp_path):

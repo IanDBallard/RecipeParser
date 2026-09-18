@@ -1220,6 +1220,96 @@ class TestVersionedUrl:
         assert _versioned("https://x/r.jpg?token=a", 7) == "https://x/r.jpg?token=a&v=7"
 
 
+# ===========================================================================
+# Section 10 — the job's error_message names the user's file or URL
+# ===========================================================================
+
+class TestUnreadableInputMessages:
+    """A reader's refusal is a predicate about the input ("is DRM-protected…"),
+    so the job row reads "<the user's filename> is DRM-protected…". Anything
+    else that fails keeps the "<name>: <error>" shape. Neither ever shows the
+    server's temp path."""
+
+    def _finalized(self, monkeypatch: Any) -> dict[str, Any]:
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(
+            "recipeparser.adapters.api._finalize_ingestion_job",
+            lambda job_id, payload: captured.update(payload),
+        )
+        return captured
+
+    def _drain(self, job_id: str) -> None:
+        deadline = time.monotonic() + 5.0
+        while job_id in _active_jobs and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+    def _upload_epub(self, tc: TestClient) -> str:
+        resp = tc.post(
+            "/jobs/file",
+            files={"file": ("The Minimalist Cooks Dinner.epub", io.BytesIO(b"PK\x03\x04"), "application/epub+zip")},
+        )
+        assert resp.status_code == 202
+        return resp.json()["job_id"]
+
+    def test_a_readers_refusal_is_prefixed_with_the_filename(self, monkeypatch: Any) -> None:
+        from recipeparser.exceptions import EpubExtractionError
+
+        captured = self._finalized(monkeypatch)
+        stack, _client, _pipeline = _patch_pipeline_and_writer()
+        with stack, \
+             patch("recipeparser.adapters.api._EpubReader") as reader_cls, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            reader_cls.return_value.read.side_effect = EpubExtractionError(
+                "is DRM-protected: its chapters are encrypted and cannot be read."
+            )
+            self._drain(self._upload_epub(tc))
+
+        assert captured["status"] == "error"
+        assert captured["error_message"] == (
+            "The Minimalist Cooks Dinner.epub is DRM-protected: its chapters are encrypted and cannot be read."
+        )
+
+    def test_any_other_failure_keeps_the_name_colon_error_shape(self, monkeypatch: Any) -> None:
+        captured = self._finalized(monkeypatch)
+        stack, _client, _pipeline = _patch_pipeline_and_writer()
+        with stack, \
+             patch("recipeparser.adapters.api._EpubReader") as reader_cls, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            reader_cls.return_value.read.side_effect = RuntimeError("boom")
+            self._drain(self._upload_epub(tc))
+
+        assert captured["error_message"] == "The Minimalist Cooks Dinner.epub: boom"
+
+    def test_a_url_that_cannot_be_fetched_is_named_in_one_sentence(self, monkeypatch: Any) -> None:
+        import httpx
+
+        captured = self._finalized(monkeypatch)
+        stack, _client, _pipeline = _patch_pipeline_and_writer()
+
+        class _Response:
+            status_code = 404
+            text = ""
+
+            def raise_for_status(self) -> None:
+                raise httpx.HTTPStatusError("404", request=MagicMock(), response=MagicMock(status_code=404))
+
+        class _Http:
+            def __init__(self, *a: Any, **k: Any) -> None: ...
+            async def __aenter__(self) -> "_Http": return self
+            async def __aexit__(self, *a: Any) -> None: ...
+            async def get(self, url: str) -> _Response: return _Response()
+
+        with stack, \
+             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://example.com/gone"})
+            assert resp.status_code == 202
+            self._drain(resp.json()["job_id"])
+
+        assert captured["status"] == "error"
+        assert captured["error_message"] == "https://example.com/gone could not be fetched (HTTP 404)."
+
+
 class TestCors:
     """The preflight a browser sends before each verb this API answers.
 

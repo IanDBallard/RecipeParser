@@ -111,7 +111,10 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
     try:
         doc = fitz.open(path)
     except Exception as e:
-        raise PdfExtractionError(f"Failed to open PDF '{path}': {e}") from e
+        # The library's own text can carry the server path (PyMuPDF names the
+        # file on Linux); it goes to the log, and the user sees the predicate.
+        log.warning("PDF could not be opened: %s", e)
+        raise PdfExtractionError("could not be opened as a PDF.") from e
 
     try:
         _check_document(doc, path)
@@ -123,13 +126,13 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
         if avg_chars < PDF_PREFLIGHT_MIN_CHARS_PER_PAGE:
             if client is None:
                 raise PdfExtractionError(
-                    f"PDF has little or no extractable text (avg {avg_chars:.0f} chars/page "
-                    f"over first {sample_pages} pages). It may be a scan without OCR: '{path}'"
+                    f"has little or no extractable text (avg {avg_chars:.0f} chars/page "
+                    f"over the first {sample_pages} pages); it may be a scan without OCR."
                 )
             if doc.page_count > PDF_OCR_MAX_PAGES:
                 raise PdfExtractionError(
-                    f"PDF has little or no extractable text and {doc.page_count} pages; "
-                    f"a scan is transcribed page by page, up to {PDF_OCR_MAX_PAGES}: '{path}'"
+                    f"has little or no extractable text and {doc.page_count} pages; "
+                    f"a scan is transcribed page by page, up to {PDF_OCR_MAX_PAGES}."
                 )
             log.info("Scanned PDF detected (avg %.0f chars/page) — transcribing through Gemini Vision.", avg_chars)
             from recipeparser.gemini import extract_text_via_vision  # noqa: PLC0415
@@ -162,16 +165,20 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
 
 
 def _check_document(doc: "fitz.Document", path: str) -> None:
-    """Raise PdfExtractionError for a document nothing can read: no pages, a password, too many pages."""
+    """Raise PdfExtractionError for a document nothing can read: no pages, a password, too many pages.
+
+    The messages are predicates about the file and never name ``path``, which
+    is the server's temp file: the API prefixes the user's own filename.
+    """
     if doc.page_count == 0:
-        raise PdfExtractionError(f"PDF has no pages: '{path}'")
+        raise PdfExtractionError("has no pages.")
     if doc.is_encrypted:
-        raise PdfExtractionError(f"PDF is password-protected: '{path}'")
+        raise PdfExtractionError("is password-protected.")
     if doc.page_count < PDF_PREFLIGHT_MIN_PAGES:
         log.warning("PDF has very few pages (%d): %s", doc.page_count, path)
     if PDF_PREFLIGHT_MAX_PAGES is not None and doc.page_count > PDF_PREFLIGHT_MAX_PAGES:
         raise PdfExtractionError(
-            f"PDF has too many pages ({doc.page_count}; max {PDF_PREFLIGHT_MAX_PAGES}): '{path}'"
+            f"has too many pages ({doc.page_count}; the limit is {PDF_PREFLIGHT_MAX_PAGES})."
         )
 
 
@@ -227,13 +234,14 @@ def extract_text_from_pdf(pdf_path: str, client: Any = None) -> str:
     try:
         doc = fitz.open(pdf_path)
     except Exception as e:
-        raise PdfExtractionError(f"Failed to open PDF: {e}")
+        log.warning("PDF could not be opened: %s", e)
+        raise PdfExtractionError("could not be opened as a PDF.") from e
 
     try:
         if doc.page_count == 0:
-            raise PdfExtractionError("PDF has no pages.")
+            raise PdfExtractionError("has no pages.")
         if doc.is_encrypted:
-            raise PdfExtractionError("PDF is password-protected.")
+            raise PdfExtractionError("is password-protected.")
 
         # Pre-flight: detect scanned vs. text PDF.
         sample_pages = min(PDF_PREFLIGHT_SAMPLE_PAGES, doc.page_count)

@@ -54,6 +54,7 @@ from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.pipeline import RecipePipeline
+from recipeparser.exceptions import UnreadableInputError, UrlFetchError
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
@@ -62,8 +63,12 @@ from recipeparser.io.readers.pdf import PdfReader as _PdfReader
 from recipeparser.io.readers.url import PageMeta, looks_like_badge, page_meta_from_html
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.supabase import write_recipe_to_supabase
+from recipeparser.logging_setup import configure_logging
 import recipeparser.gemini as _gemini_mod
 
+# Before the first logger call in this module: uvicorn leaves the root logger
+# bare, so without this every INFO line in the package is silent.
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -649,6 +654,20 @@ def _create_ingestion_job(
         )
 
 
+def _job_error_message(name: Optional[str], exc: BaseException) -> str:
+    """The job row's error_message: the user's file or URL, then what went wrong.
+
+    A reader's refusal is a predicate about the input ("is DRM-protected: …"),
+    so the two join as a sentence. Anything else keeps the "<name>: <error>"
+    shape. A pasted-text job has no name and reports the error alone.
+    """
+    if not name:
+        return str(exc)
+    if isinstance(exc, UnreadableInputError):
+        return f"{name} {exc}"
+    return f"{name}: {exc}"
+
+
 def _finalize_ingestion_job(job_id: str, payload: dict[str, Any]) -> None:
     """UPDATE ingestion_jobs to the terminal state the JobSink built.
 
@@ -955,10 +974,19 @@ async def submit_job(
             if body.url:
                 source_url = body.url
                 jina_url = f"https://r.jina.ai/{body.url}"
-                async with httpx.AsyncClient(timeout=30) as http:
-                    resp = await http.get(jina_url)
-                    resp.raise_for_status()
-                    markdown_text = resp.text
+                try:
+                    async with httpx.AsyncClient(timeout=30) as http:
+                        resp = await http.get(jina_url)
+                        resp.raise_for_status()
+                        markdown_text = resp.text
+                except httpx.HTTPStatusError as exc:
+                    raise UrlFetchError(f"could not be fetched (HTTP {exc.response.status_code}).") from exc
+                except httpx.TimeoutException as exc:
+                    raise UrlFetchError("did not respond in time.") from exc
+                except httpx.HTTPError as exc:
+                    raise UrlFetchError(f"could not be fetched: {exc}") from exc
+                if not markdown_text.strip():
+                    raise UrlFetchError("contains no readable text.")
                 # The page's own head first (og:image, the description), the
                 # scraper's markdown second: the markdown dropped both on the
                 # NYT page of 2026-09-12 and offered a logo instead.
@@ -1048,10 +1076,11 @@ async def submit_job(
         except Exception as exc:
             logger.error("Job %s failed: %s", job_id, exc, exc_info=True)
             controller.transition("error")
+            message = _job_error_message(body.url, exc)
             payload = (
-                sink.finalize_payload(False, str(exc))
+                sink.finalize_payload(False, message)
                 if sink is not None
-                else {"status": "error", "stage": "ERROR", "error_message": str(exc)}
+                else {"status": "error", "stage": "ERROR", "error_message": message}
             )
             await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:
@@ -1203,10 +1232,11 @@ async def submit_file_job(
             # started (e.g. reader raised before pipeline.run()), the controller
             # is still IDLE and the transition is a no-op (logs a warning).
             controller.transition("error")
+            message = _job_error_message(filename, exc)
             payload = (
-                sink.finalize_payload(False, str(exc))
+                sink.finalize_payload(False, message)
                 if sink is not None
-                else {"status": "error", "stage": "ERROR", "error_message": str(exc)}
+                else {"status": "error", "stage": "ERROR", "error_message": message}
             )
             await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:

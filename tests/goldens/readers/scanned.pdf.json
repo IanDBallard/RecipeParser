@@ -1,4 +1,4 @@
 {
   "error": "PdfExtractionError",
-  "message_prefix": "PDF has little or no extractable text (avg 0 cha"
+  "message_prefix": "has little or no extractable text (avg 0 chars/p"
 }

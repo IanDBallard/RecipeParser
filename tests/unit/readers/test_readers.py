@@ -564,3 +564,67 @@ class TestReaderCitations:
         # A blank source with a URL is the site, not "no source".
         assert by_label["B"].citation.kind == "web" and by_label["B"].citation.key == "cooking.nytimes.com"
         assert by_label["C"].citation.kind == "unknown" and by_label["C"].citation.key is None
+
+
+# ---------------------------------------------------------------------------
+# Refusals — every reader turns "cannot read this" into one predicate sentence
+# (the API prefixes the user's filename or URL), and never finishes empty.
+# ---------------------------------------------------------------------------
+
+
+def test_paprika_reader_refuses_a_file_that_is_not_a_zip(tmp_path: Path) -> None:
+    from recipeparser.exceptions import PaprikaExtractionError, UnreadableInputError
+
+    path = tmp_path / "recipes.paprikarecipes"
+    path.write_bytes(b"hello")
+    with pytest.raises(PaprikaExtractionError) as excinfo:
+        PaprikaReader().read(str(path))
+    assert isinstance(excinfo.value, UnreadableInputError)
+    assert str(excinfo.value) == "is not a Paprika export: not a ZIP archive."
+
+
+def test_paprika_reader_refuses_an_archive_with_no_recipes(tmp_path: Path) -> None:
+    from recipeparser.exceptions import PaprikaExtractionError
+
+    path = tmp_path / "recipes.paprikarecipes"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("readme.txt", "nothing here")
+    with pytest.raises(PaprikaExtractionError) as excinfo:
+        PaprikaReader().read(str(path))
+    assert str(excinfo.value) == "contains no recipes."
+
+
+def test_url_reader_turns_an_http_error_into_one_sentence() -> None:
+    import requests
+
+    from recipeparser.exceptions import UnreadableInputError, UrlFetchError
+
+    response = MagicMock(status_code=404)
+    response.raise_for_status.side_effect = requests.HTTPError(response=response)
+    with patch("recipeparser.io.readers.url.requests.get", return_value=response):
+        with pytest.raises(UrlFetchError) as excinfo:
+            UrlReader().read("https://example.com/gone")
+    assert isinstance(excinfo.value, UnreadableInputError)
+    assert str(excinfo.value) == "could not be fetched (HTTP 404)."
+
+
+def test_url_reader_turns_a_timeout_into_one_sentence() -> None:
+    import requests
+
+    from recipeparser.exceptions import UrlFetchError
+
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=requests.Timeout()):
+        with pytest.raises(UrlFetchError) as excinfo:
+            UrlReader().read("https://example.com/slow")
+    assert str(excinfo.value) == "did not respond in time."
+
+
+def test_url_reader_refuses_an_empty_page() -> None:
+    from recipeparser.exceptions import UrlFetchError
+
+    response = MagicMock(text="   \n", status_code=200)
+    response.raise_for_status = MagicMock()
+    with patch("recipeparser.io.readers.url.requests.get", return_value=response):
+        with pytest.raises(UrlFetchError) as excinfo:
+            UrlReader().read("https://example.com/blank")
+    assert str(excinfo.value) == "contains no readable text."

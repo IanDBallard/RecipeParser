@@ -146,3 +146,33 @@ def test_a_password_protected_document_is_refused_before_any_ocr(tmp_path):
     with pytest.raises(PdfExtractionError, match="password-protected"):
         load_pdf(str(path), str(tmp_path / "out"), client=client)
     client.models.generate_content.assert_not_called()
+
+
+# The refusal sentences are predicates about the file, and never name the
+# server's temp path: the API prefixes the user's own filename.
+
+def test_the_password_refusal_is_one_sentence_without_the_path(tmp_path):
+    doc = fitz.open()
+    doc.new_page()
+    path = tmp_path / "locked.pdf"
+    doc.save(str(path), encryption=fitz.PDF_ENCRYPT_AES_256, user_pw="secret", owner_pw="secret")
+    doc.close()
+    with pytest.raises(PdfExtractionError) as excinfo:
+        load_pdf(str(path), str(tmp_path / "out"), client=_client("x"))
+    assert str(excinfo.value) == "is password-protected."
+
+
+def test_the_scan_refusal_names_no_path(tmp_path):
+    with pytest.raises(PdfExtractionError) as excinfo:
+        load_pdf(_pdf(tmp_path, ""), str(tmp_path / "out"))
+    assert str(tmp_path) not in str(excinfo.value)
+    assert str(excinfo.value).startswith("has little or no extractable text")
+
+
+def test_a_file_that_is_not_a_pdf_is_refused_without_the_path(tmp_path):
+    path = tmp_path / "not-a-document.pdf"
+    path.write_bytes(b"hello")
+    with pytest.raises(PdfExtractionError) as excinfo:
+        load_pdf(str(path), str(tmp_path / "out"))
+    # PyMuPDF's own text names the file on Linux, so it must not be echoed.
+    assert str(excinfo.value) == "could not be opened as a PDF."

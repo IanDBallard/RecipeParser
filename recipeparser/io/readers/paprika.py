@@ -35,6 +35,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from recipeparser.core.citation import classify_source, web_citation
 from recipeparser.core.models import Chunk, InputType, SourceMeta
+from recipeparser.exceptions import PaprikaExtractionError
 from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
@@ -99,6 +100,8 @@ class PaprikaReader(RecipeReader):
             A list of Chunk objects, one per recipe entry.
         """
         entries = self.read_entries(source)
+        if not entries:
+            raise PaprikaExtractionError("contains no recipes.")
         chunks: List[Chunk] = []
 
         for entry in entries:
@@ -227,7 +230,7 @@ class PaprikaReader(RecipeReader):
         """
         path = Path(path)
         if not zipfile.is_zipfile(path):
-            raise ValueError(f"Not a valid ZIP archive: {path}")
+            raise PaprikaExtractionError("is not a Paprika export: not a ZIP archive.")
 
         entries: List[Dict[str, Any]] = []
 
@@ -296,7 +299,7 @@ class PaprikaReader(RecipeReader):
         """
         path = Path(path)
         if not zipfile.is_zipfile(path):
-            raise ValueError(f"Not a valid ZIP archive: {path}")
+            raise PaprikaExtractionError("is not a Paprika export: not a ZIP archive.")
 
         results: List[Dict[str, Any]] = []
 

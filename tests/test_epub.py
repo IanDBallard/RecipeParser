@@ -472,3 +472,87 @@ class TestEpubWithUnreadableNcx:
         )
         assert citation.title == "Broken Contents"
         assert len(chunks) == 1 and "2 cups stock" in chunks[0]
+
+
+# ---------------------------------------------------------------------------
+# A reader refuses what it cannot turn into text, in one sentence that never
+# names the server's path — the convention every file reader follows
+# ---------------------------------------------------------------------------
+
+def _rewrite_epub(src: str, dst, replace: Optional[dict] = None, add: Optional[dict] = None) -> str:
+    """``src`` with members whose name ends with a ``replace`` key rewritten, and ``add`` members added."""
+    replace = replace or {}
+    add = add or {}
+    with zipfile.ZipFile(src) as zi, zipfile.ZipFile(dst, "w") as zo:
+        for info in zi.infolist():
+            data = zi.read(info.filename)
+            for suffix, new_bytes in replace.items():
+                if info.filename.endswith(suffix):
+                    data = new_bytes
+            compress = zipfile.ZIP_STORED if info.filename == "mimetype" else zipfile.ZIP_DEFLATED
+            zo.writestr(info, data, compress_type=compress)
+        for name, data in add.items():
+            zo.writestr(name, data)
+    return str(dst)
+
+
+_ENCRYPTION_XML = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"'
+    ' xmlns:enc="http://www.w3.org/2001/04/xmlenc#">'
+    '<enc:EncryptedData><enc:EncryptionMethod Algorithm="{algorithm}"/>'
+    '<enc:CipherData><enc:CipherReference URI="{uri}"/></enc:CipherData></enc:EncryptedData>'
+    '</encryption>'
+)
+_ADEPT = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"
+_FONT_OBFUSCATION = "http://www.idpf.org/2008/embedding"
+
+
+class TestEpubRefusals:
+
+    def test_a_drm_protected_book_is_refused_by_name(self, tmp_path):
+        from recipeparser.exceptions import EpubExtractionError
+
+        manifest = _ENCRYPTION_XML.format(algorithm=_ADEPT, uri="EPUB/soup.xhtml").encode()
+        path = _rewrite_epub(_write_epub(tmp_path / "book.epub"), tmp_path / "drm.epub",
+                             add={"META-INF/encryption.xml": manifest})
+        with pytest.raises(EpubExtractionError) as excinfo:
+            load_epub(path, str(tmp_path / "out"))
+        assert str(excinfo.value) == "is DRM-protected: its chapters are encrypted and cannot be read."
+
+    def test_font_obfuscation_alone_is_not_drm(self, tmp_path):
+        manifest = _ENCRYPTION_XML.format(algorithm=_FONT_OBFUSCATION, uri="EPUB/fonts/x.otf").encode()
+        path = _rewrite_epub(_write_epub(tmp_path / "book.epub"), tmp_path / "fonts.epub",
+                             add={"META-INF/encryption.xml": manifest})
+        _citation, _image_dir, _qualifying, chunks = load_epub(path, str(tmp_path / "out"))
+        assert len(chunks) == 1
+
+    def test_chapters_that_decode_to_garbage_are_no_readable_text(self, tmp_path):
+        import random
+
+        from recipeparser.exceptions import EpubExtractionError
+
+        garbage = random.Random(0).randbytes(4000)  # an encrypted chapter, as the reader sees it
+        path = _rewrite_epub(_write_epub(tmp_path / "book.epub"), tmp_path / "garbage.epub",
+                             replace={"soup.xhtml": garbage})
+        with pytest.raises(EpubExtractionError) as excinfo:
+            load_epub(path, str(tmp_path / "out"))
+        assert str(excinfo.value) == "contains no readable text."
+
+    def test_a_book_whose_chapters_hold_no_text_is_no_readable_text(self, tmp_path):
+        from recipeparser.exceptions import EpubExtractionError
+
+        path = _rewrite_epub(_write_epub(tmp_path / "book.epub"), tmp_path / "blank.epub",
+                             replace={"soup.xhtml": b"<html><body></body></html>"})
+        with pytest.raises(EpubExtractionError) as excinfo:
+            load_epub(path, str(tmp_path / "out"))
+        assert str(excinfo.value) == "contains no readable text."
+
+    def test_a_file_that_is_not_an_epub_is_refused_without_the_server_path(self, tmp_path):
+        from recipeparser.exceptions import EpubExtractionError
+
+        path = tmp_path / "not-a-book.epub"
+        path.write_bytes(b"hello")
+        with pytest.raises(EpubExtractionError) as excinfo:
+            load_epub(str(path), str(tmp_path / "out"))
+        assert str(excinfo.value) == "could not be opened as an EPUB."

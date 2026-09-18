@@ -143,17 +143,30 @@ class UrlReader(RecipeReader):
             - ``citation``: a ``web_citation`` of the URL (host-derived key and title)
 
         Raises:
-            requests.HTTPError: If the r.jina.ai request returns a non-2xx status.
-            requests.Timeout: If the request exceeds ``self.timeout`` seconds.
-            requests.RequestException: For any other network-level failure.
+            UrlFetchError: the page could not be fetched (a non-2xx status, a
+                timeout, any other network failure), or was fetched but holds
+                no text. The message is a predicate about the URL: the caller
+                prefixes the URL itself.
         """
+        from recipeparser.exceptions import UrlFetchError
+
         jina_url = f"{_JINA_PREFIX}{source}"
         log.info("UrlReader: fetching %s via %s", source, jina_url)
 
-        response = requests.get(jina_url, timeout=self.timeout)
-        response.raise_for_status()
+        try:
+            response = requests.get(jina_url, timeout=self.timeout)
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            status = getattr(exc.response, "status_code", "?")
+            raise UrlFetchError(f"could not be fetched (HTTP {status}).") from exc
+        except requests.Timeout as exc:
+            raise UrlFetchError("did not respond in time.") from exc
+        except requests.RequestException as exc:
+            raise UrlFetchError(f"could not be fetched: {exc}") from exc
 
         text = response.text
+        if not text.strip():
+            raise UrlFetchError("contains no readable text.")
         log.info(
             "UrlReader: received %d chars for %s", len(text), source
         )

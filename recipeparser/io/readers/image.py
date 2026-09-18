@@ -37,6 +37,9 @@ class ImageReader(RecipeReader):
 
         Raises:
             ImageExtractionError: PyMuPDF could not open the file as an image.
+                The message is a predicate about the file and never names
+                ``source``, the server's temp file: the API prefixes the
+                user's own filename.
             RuntimeError: the model returned no text for it (from
                 ``extract_text_via_vision``; the job fails with that message).
         """
@@ -47,16 +50,18 @@ class ImageReader(RecipeReader):
         try:
             doc = fitz.open(source)
         except Exception as exc:
-            raise ImageExtractionError(f"Could not open '{Path(source).name}' as an image: {exc}") from exc
+            # The library's own text can carry the server path; it goes to the
+            # log, and the user sees the predicate.
+            log.warning("Image could not be opened: %s", exc)
+            raise ImageExtractionError("could not be opened as an image.") from exc
         try:
             if doc.page_count == 0:
-                raise ImageExtractionError(f"Could not open '{Path(source).name}' as an image: no pages.")
+                raise ImageExtractionError("could not be opened as an image: no pages.")
             if doc.page_count != 1:
                 # A PDF renamed .jpg opens fine here — PyMuPDF sniffs content, not
                 # the extension — and would otherwise become one vision call per
                 # page instead of the single photo this reader promises.
-                name = Path(source).name
-                raise ImageExtractionError(f"'{name}' is not a single image ({doc.page_count} pages).")
+                raise ImageExtractionError(f"is not a single image ({doc.page_count} pages).")
             try:
                 text = extract_text_via_vision(doc, self._client)
             except RuntimeError:
@@ -67,7 +72,8 @@ class ImageReader(RecipeReader):
                 # PyMuPDF defers format validation past fitz.open(): a file
                 # that isn't really an image only fails once a page is
                 # decoded, which happens inside extract_text_via_vision.
-                raise ImageExtractionError(f"Could not open '{Path(source).name}' as an image: {exc}") from exc
+                log.warning("Image could not be decoded: %s", exc)
+                raise ImageExtractionError("could not be opened as an image.") from exc
         finally:
             doc.close()
 
