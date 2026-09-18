@@ -20,7 +20,7 @@ class TestExtractTocEpub:
         section2 = MagicMock(title="Beef Stew", href="ch2.xhtml")
         mock_toc = [(section1, []), (section2, [])]
 
-        with patch("ebooklib.epub.read_epub") as mock_read, \
+        with patch("recipeparser.toc.read_epub") as mock_read, \
              patch("recipeparser.toc.filter_toc_to_recipe_entries", side_effect=lambda entries, _: entries):
             mock_book = MagicMock()
             mock_book.toc = mock_toc
@@ -38,7 +38,7 @@ class TestExtractTocEpub:
         mock_book = MagicMock()
         mock_book.toc = []
 
-        with patch("ebooklib.epub.read_epub", return_value=mock_book), \
+        with patch("recipeparser.toc.read_epub", return_value=mock_book), \
              patch("recipeparser.toc._parse_toc_from_text_fallback") as mock_fallback, \
              patch("recipeparser.toc.filter_toc_to_recipe_entries", side_effect=lambda entries, _: entries):
             mock_fallback.return_value = [("Recipe A", 1), ("Recipe B", 2)]

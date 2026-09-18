@@ -1,12 +1,18 @@
 """Tests for recipeparser.epub — EPUB parsing, chunking, image extraction."""
+import zipfile
+from typing import Optional
+from unittest.mock import MagicMock
+
 import ebooklib
 import pytest
-from unittest.mock import MagicMock
+from ebooklib import epub
 
 from recipeparser.epub import (
     extract_all_images,
     extract_chapters_with_image_markers,
     is_recipe_candidate,
+    load_epub,
+    read_epub,
     split_large_chunk,
 )
 from recipeparser.config import MIN_PHOTO_BYTES
@@ -398,3 +404,71 @@ class TestExtractAllImages:
         book = _make_epub_with_images({})
         _, qualifying = extract_all_images(book, str(tmp_path))
         assert qualifying == set()
+
+
+# ---------------------------------------------------------------------------
+# load_epub / read_epub — an NCX that is not XML must not sink the whole book
+# ---------------------------------------------------------------------------
+
+def _write_epub(path, ncx_bytes: Optional[bytes] = None) -> str:
+    """A one-chapter EPUB2 (NCX only, no nav document) built with ebooklib.
+
+    When ``ncx_bytes`` is given the NCX entry is rewritten with those bytes
+    after ebooklib has produced a valid archive, so the spine's ``toc``
+    attribute still points at it — the shape of a book whose TOC file was
+    replaced by something that is not a table of contents.
+    """
+    book = epub.EpubBook()
+    book.set_identifier("ncx-test")
+    book.set_title("Broken Contents")
+    book.add_author("A. Cook")
+    book.set_language("en")
+    chapter = epub.EpubHtml(title="Soup", file_name="soup.xhtml", lang="en")
+    chapter.content = (
+        "<html><body><h1>Soup</h1>"
+        "<p>2 cups stock</p><p>1 tbsp butter</p>"
+        "<p>Directions</p><p>Simmer for 20 minutes.</p></body></html>"
+    )
+    book.add_item(chapter)
+    book.add_item(epub.EpubNcx())
+    book.toc = (chapter,)
+    book.spine = [chapter]
+    epub.write_epub(str(path), book)
+
+    if ncx_bytes is None:
+        return str(path)
+
+    rewritten = path.with_name("rewritten.epub")
+    with zipfile.ZipFile(path) as src, zipfile.ZipFile(rewritten, "w") as dst:
+        for info in src.infolist():
+            data = ncx_bytes if info.filename.endswith(".ncx") else src.read(info.filename)
+            compress = zipfile.ZIP_STORED if info.filename == "mimetype" else zipfile.ZIP_DEFLATED
+            dst.writestr(info, data, compress_type=compress)
+    return str(rewritten)
+
+
+NOT_A_TOC = {
+    "declaration-only": b'<?xml version="1.0" encoding="utf-8"?>',
+    "plain-text": b"Not Found",
+    "empty": b"",
+}
+
+
+class TestEpubWithUnreadableNcx:
+
+    def test_intact_ncx_still_yields_its_toc(self, tmp_path):
+        book = read_epub(_write_epub(tmp_path / "book.epub"))
+        assert [entry.title for entry in book.toc] == ["Soup"]
+
+    @pytest.mark.parametrize("ncx_bytes", NOT_A_TOC.values(), ids=NOT_A_TOC.keys())
+    def test_unreadable_ncx_leaves_toc_empty(self, tmp_path, ncx_bytes):
+        book = read_epub(_write_epub(tmp_path / "book.epub", ncx_bytes))
+        assert list(book.toc) == []
+
+    @pytest.mark.parametrize("ncx_bytes", NOT_A_TOC.values(), ids=NOT_A_TOC.keys())
+    def test_chapters_and_citation_survive_unreadable_ncx(self, tmp_path, ncx_bytes):
+        citation, _image_dir, _qualifying, chunks = load_epub(
+            _write_epub(tmp_path / "book.epub", ncx_bytes), str(tmp_path / "out")
+        )
+        assert citation.title == "Broken Contents"
+        assert len(chunks) == 1 and "2 cups stock" in chunks[0]

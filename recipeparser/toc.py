@@ -18,7 +18,7 @@ from recipeparser.config import (
     MIN_TOC_RECIPE_RATIO,
     TOC_PDF_FRONT_MATTER_PAGES,
 )
-from recipeparser.epub import split_large_chunk
+from recipeparser.epub import read_epub, split_large_chunk
 from recipeparser.gemini import _call_with_retry
 from recipeparser.models import TocEntry, TocList, TocRecipeClassification
 
@@ -78,10 +78,8 @@ def extract_toc_epub(epub_path: str, raw_chunks: List[str], client) -> List[Tupl
     or None for EPUB (we use section/href for matching but normalize to None
     for unified handling). For segment-by-TOC we only need titles.
     """
-    from ebooklib import epub
-
     try:
-        book = epub.read_epub(epub_path)
+        book = read_epub(epub_path)
     except Exception as e:
         log.warning("Could not open EPUB for TOC extraction: %s", e)
         fallback = _parse_toc_from_text_fallback(raw_chunks[:2], client)
