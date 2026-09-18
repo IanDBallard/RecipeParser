@@ -1308,3 +1308,34 @@ class TestUnreadableInputMessages:
 
         assert captured["status"] == "error"
         assert captured["error_message"] == "https://example.com/gone could not be fetched (HTTP 404)."
+
+
+class TestCors:
+    """The preflight a browser sends before each verb this API answers.
+
+    Server-side tests reach the endpoints directly and never see CORS, so a verb
+    missing from `allow_methods` passes every one of them and still fails in the
+    only place it matters. DELETE was missing when the picture endpoints shipped.
+    """
+
+    def _preflight(self, client: TestClient, method: str) -> Any:
+        return client.options(
+            "/recipes/r1/image",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+
+    @pytest.mark.parametrize("method", ["GET", "POST", "DELETE"])
+    def test_every_verb_the_client_uses_survives_the_preflight(self, client: TestClient, method: str) -> None:
+        resp = self._preflight(client, method)
+        assert resp.status_code == 200, method
+        assert method in resp.headers.get("access-control-allow-methods", ""), method
+
+    def test_an_unlisted_verb_is_still_refused(self, client: TestClient) -> None:
+        # The list is a list, not a wildcard: allow_credentials with "*" is
+        # rejected by browsers, and this API writes to a user's library.
+        resp = self._preflight(client, "PUT")
+        assert "PUT" not in resp.headers.get("access-control-allow-methods", "")

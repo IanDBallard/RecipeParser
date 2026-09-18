@@ -249,7 +249,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    # DELETE since 2026-09-14, for DELETE /recipes/{id}/image: without it the
+    # browser's preflight refuses the only verb that clears a recipe's picture,
+    # so Remove would fail in a browser while passing every server-side test.
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 logger.info("CORS enabled for: %s", ", ".join(_cors_origins))
