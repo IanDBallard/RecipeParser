@@ -7,7 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### 🐛 Fixed — a book's photos reach its recipes again
+### 🐛 Fixed — a book's photos reach its recipes again (#53)
 - EPUB and PDF recipes never got their photo. The readers extracted images to a temporary directory deleted before `read()` returned, and the pipeline never read the `photo_filename` the extract reply names — the legacy monolith did both; `PIPELINE_REFACTOR.md` marked the hero-image logic MOVE and `90a4a54` deleted it instead. Each book `Chunk` now carries the bytes of the photos its text marks (`Chunk.images`), and each recipe takes the one the model named: stored through the `ImageStore` when there is one (the API), kept on the result either way.
 - A photo-only page or chapter hands its photo to the recipe after it as `[HERO IMAGE: …]` again (`HERO_INJECT_MAX_STUB_CHARS`, which had outlived its only reader).
 - The `.paprikarecipes` export (`PaprikaWriter`, the CLI's and GUI's output) embeds each recipe's photo as `photo` + `photo_data`, for book photos and a Paprika entry's own. The keys are still omitted when there is no photo. The bytes ride `IngestResponse.photo`, a private attribute, so they never reach an API response or a `_cayenne_meta`.
