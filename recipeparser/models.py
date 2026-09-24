@@ -1,7 +1,7 @@
 """Pydantic models for structured Gemini output."""
-from typing import Dict, List, Optional
+from typing import Dict, List, NamedTuple, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 
 class RecipeExtraction(BaseModel):
@@ -246,9 +246,29 @@ class CayenneRecipe(BaseModel):
     tokenized_directions: List[TokenizedDirection]
 
 
+class Photo(NamedTuple):
+    """A recipe's hero photograph, as bytes, with the name its source gave it."""
+    data: bytes
+    content_type: str = "image/jpeg"
+    #: The source's own filename ("scones.jpg"), or None when it gave none.
+    filename: Optional[str] = None
+
+
 class IngestResponse(CayenneRecipe):
     """Final envelope for the /ingest endpoint."""
     embedding: List[float]
+    # The photo's bytes, for a writer that embeds them (a Paprika archive).
+    # Private so they never reach an API response, a model_dump or a
+    # _cayenne_meta: the durable reference is image_url.
+    _photo: Optional[Photo] = PrivateAttr(default=None)
+
+    @property
+    def photo(self) -> Optional[Photo]:
+        """The hero photo the pipeline recovered from the source, or None."""
+        return self._photo
+
+    def attach_photo(self, photo: Optional[Photo]) -> None:
+        self._photo = photo
 
 
 class JobResponse(BaseModel):

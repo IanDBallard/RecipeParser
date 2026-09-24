@@ -17,6 +17,8 @@ TID rule: this module lives in ``core/`` and therefore MUST NOT import from
 from __future__ import annotations
 
 import logging
+import mimetypes
+import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, Optional
@@ -31,7 +33,7 @@ from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.core.ports import CategorySource, ImageStore
-from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse
+from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse, Photo
 
 log = logging.getLogger(__name__)
 
@@ -310,6 +312,7 @@ class RecipePipeline:
                 servings_text=None,
                 citation=chunk.citation or _citation_from(pr),
             )
+            result.attach_photo(_chunk_photo(chunk))
             return [result]
 
         # ── Fast-path: PAPRIKA_CAYENNE without embedding ──────────────────────
@@ -338,6 +341,7 @@ class RecipePipeline:
                 servings_text=None,
                 citation=chunk.citation or _citation_from(pr),
             )
+            result.attach_photo(_chunk_photo(chunk))
             return [result]
 
         # ── Full pipeline: EXTRACT → REFINE → CATEGORIZE → EMBED → ASSEMBLE ──
@@ -380,12 +384,23 @@ class RecipePipeline:
             self._limiter.wait_then_record_start()
             embedding = embed(recipe=refined, client=self._client)
 
+            # The photo the model picked from the book's markers, stored per
+            # recipe (one chunk can hold several); else the chunk's own.
+            photo = _book_photo(chunk, getattr(raw, "photo_filename", None))
+            image_url = chunk.image_url
+            if photo is not None and self._image_store is not None:
+                image_url = (
+                    self._image_store.put(photo.data, str(uuid.uuid4()), photo.content_type) or chunk.image_url
+                )
+            elif photo is None:
+                photo = _chunk_photo(chunk)
+
             # ASSEMBLE (no separate DB stage — stays at EMBEDDING per §7.2)
             result = assemble(
                 recipe=refined,
                 embedding=embedding,
                 source_url=chunk.source_url,
-                image_url=chunk.image_url,
+                image_url=image_url,
                 grid_categories=grid_cats,
                 prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
                 cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
@@ -403,6 +418,7 @@ class RecipePipeline:
                 nutritional_info=getattr(raw, "nutritional_info", None),
                 notes=getattr(raw, "notes", None),
             )
+            result.attach_photo(photo)
             results.append(result)
 
         return results
@@ -411,6 +427,30 @@ class RecipePipeline:
 # ──────────────────────────────────────────────────────────────────────────────
 # Private helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _book_photo(chunk: Chunk, photo_filename: Optional[str]) -> Optional[Photo]:
+    """The photo the model named, if the chunk really carries it.
+
+    A name the chunk does not carry (the model misread a marker, or invented
+    one) is a recipe without a picture, never a failure.
+    """
+    if not photo_filename:
+        return None
+    name = os.path.basename(photo_filename.strip())
+    data = chunk.images.get(name)
+    if data is None:
+        log.info("_process_chunk: the model named photo %r, which this chunk does not carry.", name)
+        return None
+    content_type = mimetypes.guess_type(name)[0] or "image/jpeg"
+    return Photo(data=data, content_type=content_type, filename=name)
+
+
+def _chunk_photo(chunk: Chunk) -> Optional[Photo]:
+    """The photo a reader attached to the chunk itself (a Paprika entry's photo_data)."""
+    if not chunk.image_bytes:
+        return None
+    return Photo(data=chunk.image_bytes, content_type=chunk.image_content_type)
+
 
 def _uom_to_units_key(uom_system: str) -> str:
     """Map user-facing UOM system name to the extract() ``units`` key."""

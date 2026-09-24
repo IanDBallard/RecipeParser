@@ -727,3 +727,73 @@ def test_a_worker_timeouterror_is_reported_accurately_not_as_a_segment_timeout()
     assert "300" not in reason, (
         f"skip reason invents a 300s per-chunk bound the pipeline never enforced: {reason!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test: a book's hero photo, named by the model, reaches its own recipe
+# ---------------------------------------------------------------------------
+
+
+def _run_book_chunk(chunk: Chunk, extractions, store: Optional[ImageStore] = None):
+    pipeline = _make_pipeline(image_store=store)
+    with patch(_PATCH_EXTRACT, return_value=extractions), \
+         patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)), \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        return sorted(pipeline.run([chunk]), key=lambda r: r.title)
+
+
+def _book_chunk() -> Chunk:
+    return Chunk(
+        text="[IMAGE: a.jpg]\nA ...\n[IMAGE: b.png]\nB ...",
+        input_type=InputType.EPUB,
+        images={"a.jpg": b"A-bytes", "b.png": b"B-bytes"},
+    )
+
+
+def _named(name: str, photo: Optional[str]) -> RecipeExtraction:
+    return RecipeExtraction(name=name, photo_filename=photo, ingredients=["x"], directions=["y"])
+
+
+def test_each_recipe_in_a_book_chunk_gets_the_photo_the_model_named():
+    store = _FakeImageStore()
+    a, b = _run_book_chunk(_book_chunk(), [_named("A", "a.jpg"), _named("B", "b.png")], store)
+
+    assert store.calls == [b"A-bytes", b"B-bytes"] or store.calls == [b"B-bytes", b"A-bytes"]
+    assert (a.image_url, b.image_url) == ("https://example.test/stored.jpg",) * 2
+    assert a.photo.data == b"A-bytes" and a.photo.filename == "a.jpg"
+    assert b.photo.data == b"B-bytes" and b.photo.content_type == "image/png"
+
+
+def test_a_book_photo_is_kept_for_the_writer_when_there_is_no_store():
+    """The CLI runs without an ImageStore; its Paprika export still needs the photo."""
+    [a] = _run_book_chunk(_book_chunk(), [_named("A", "a.jpg")])
+    assert a.image_url is None
+    assert a.photo.data == b"A-bytes"
+
+
+def test_a_photo_name_the_chunk_does_not_carry_is_a_recipe_without_a_picture():
+    store = _FakeImageStore()
+    [a] = _run_book_chunk(_book_chunk(), [_named("A", "invented.jpg")], store)
+    assert store.calls == []
+    assert a.image_url is None and a.photo is None
+
+
+def test_a_photo_name_with_a_path_is_matched_by_its_basename():
+    [a] = _run_book_chunk(_book_chunk(), [_named("A", " images/a.jpg ")])
+    assert a.photo.data == b"A-bytes"
+
+
+def test_a_book_photo_is_never_serialised():
+    """Bytes stay out of API responses and _cayenne_meta: image_url is the durable reference."""
+    [a] = _run_book_chunk(_book_chunk(), [_named("A", "a.jpg")])
+    assert "photo" not in a.model_dump() and "_photo" not in a.model_dump()
+    assert "A-bytes" not in a.model_dump_json()
+
+
+def test_a_legacy_paprika_photo_rides_the_result_as_well_as_its_url():
+    store = _FakeImageStore()
+    chunk = Chunk(text="Pie", input_type=InputType.PAPRIKA_LEGACY, image_bytes=b"P", image_content_type="image/png")
+    [pie] = _run_book_chunk(chunk, [_named("Pie", None)], store)
+    assert pie.image_url == "https://example.test/stored.jpg"
+    assert pie.photo == (b"P", "image/png", None)
