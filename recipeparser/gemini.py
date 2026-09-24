@@ -689,6 +689,12 @@ RULES:
    - "line_index" is the 0-based position of the source line in the RAW RECIPE
      ingredients list. Every ingredient line gets exactly one entry with its
      index. A section header line (e.g. "For the sauce:") gets no entry.
+   - STATE: for every ingredient with an amount and a volume or weight unit, say whether it is
+     "liquid" - pourable as the recipe uses it: water, milk, cream, stock, oil, wine, juice,
+     vinegar, honey, syrup, melted butter - or "solid" - everything else, including flour,
+     sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
+     null when the line has no amount or its unit is neither a volume nor a weight.
+     Use the state when you compute the conversion below.
    - CONVERSION: Always give the equivalent in the OTHER measure, regardless of the Measure
      Preference below: a weight for a volume ("1 cup" -> 120, "g"), a volume for a weight
      ("150 g" -> 1.25, "cups"). Put it in "converted_amount" and "converted_unit" and set
@@ -739,8 +745,8 @@ def refine_recipe_for_cayenne(
     Args:
         raw_recipe:        The raw RecipeExtraction object from Pass 1.
         client:            Initialised Gemini client.
-        uom_system:        "US", "Metric", or "Imperial".
-        measure_preference: "Volume" or "Weight".
+        uom_system:        "US", "UK", "EU" or "AU".
+        measure_preference: "Natural", "Weight" or "Volume".
         user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
                            When None or empty, grid_categories will be {} in the result.
     """

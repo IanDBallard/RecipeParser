@@ -56,8 +56,8 @@ def run_cli_pipeline(
                             Defaults to ``get_default_output_dir()``.
         client:             An initialised ``google.genai.Client`` instance.
                             Required — raises ``ValueError`` if None.
-        uom_system:         "US" | "Metric" | "Imperial" (default "US").
-        measure_preference: "Volume" | "Weight" (default "Volume").
+        uom_system:         "US" | "UK" | "EU" | "AU" (default "US").
+        measure_preference: "Natural" | "Weight" | "Volume" (default "Volume").
         concurrency:        Max parallel Gemini API calls (default: pipeline default).
         rpm:                Optional RPM cap for the GlobalRateLimiter.
         verbose:            If True, print per-chunk progress to stdout.

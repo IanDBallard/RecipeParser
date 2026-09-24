@@ -1,5 +1,5 @@
 """Pydantic models for structured Gemini output."""
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, Literal, NamedTuple, Optional
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
@@ -149,6 +149,14 @@ class StructuredIngredient(BaseModel):
     converted_amount: Optional[float] = Field(default=None, description="Converted amount (e.g. Volume -> Weight)")
     converted_unit: Optional[str] = Field(default=None, description="Converted unit, e.g., \"g\"")
     is_ai_converted: bool = Field(default=False, description="True if AI calculated the conversion.")
+    state: Optional[Literal["liquid", "solid"]] = Field(
+        default=None,
+        description=(
+            "Whether the ingredient is pourable as the recipe uses it (liquid) or not (solid). "
+            "Stated before the conversion is computed, because the conversion depends on it "
+            "(cookbook locales D13). null when the line has no amount or no volume/weight unit."
+        ),
+    )
     line_index: Optional[int] = Field(
         default=None,
         description=(

@@ -453,12 +453,13 @@ def _chunk_photo(chunk: Chunk) -> Optional[Photo]:
 
 
 def _uom_to_units_key(uom_system: str) -> str:
-    """Map user-facing UOM system name to the extract() ``units`` key."""
-    mapping = {
-        "US": "us",
-        "Metric": "metric",
-        "Imperial": "imperial",
-    }
+    """Map the profile's cookbook locale to the extract() ``units`` key (cookbook locales D9).
+
+    The three metric locales all keep the metric part of a dual-measure line; the ``imperial``
+    key stays reachable from the CLI and GUI only. An unknown word preserves the book's own
+    units, which is why either deploy order is safe.
+    """
+    mapping = {"US": "us", "UK": "metric", "EU": "metric", "AU": "metric"}
     return mapping.get(uom_system, "book")
 
 
