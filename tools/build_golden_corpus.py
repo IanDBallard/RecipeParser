@@ -145,7 +145,8 @@ PHASES_BAKERS_CHAPTERS = [
 
 SAVED_PAGE_HTML = """<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Weeknight Tomato Soup</title></head>
+<head><meta charset="utf-8"><title>Weeknight Tomato Soup</title>
+<meta property="og:image" content="https://example.invalid/images/tomato-soup-hero.jpg"></head>
 <body>
 <nav><a href="/">Home</a> <a href="/recipes">Recipes</a></nav>
 <article>
@@ -168,7 +169,8 @@ SAVED_PAGE_HTML = """<!doctype html>
 <li>Simmer for 15 minutes, blend smooth, and season.</li>
 </ol>
 </article>
-<footer><p>&copy; 2026 Example Kitchen</p></footer>
+<footer><p><img src="https://example.invalid/static/logo.png" alt="Example Kitchen logo">
+&copy; 2026 Example Kitchen</p></footer>
 </body>
 </html>
 """
@@ -183,7 +185,7 @@ TINY_JPEG = base64.b64decode(
 )
 
 
-def _make_hero_jpeg() -> bytes:
+def _make_hero_jpeg(seed: int = 20260907) -> bytes:
     """A real, deterministically-generated JPEG comfortably over
     MIN_PHOTO_BYTES (config.py, 20_000 bytes).
 
@@ -194,12 +196,14 @@ def _make_hero_jpeg() -> bytes:
     "hero image" marker never actually would. Random pixel noise (not a flat
     colour) is used so JPEG compression can't shrink the output back under
     the threshold; the seed is pinned so a rebuild reproduces the same bytes.
+    A fixture with more than one photo passes a different seed per photo, so
+    a golden can tell which photo landed on which recipe.
     """
     import random
 
     import fitz
 
-    rng = random.Random(20260907)
+    rng = random.Random(seed)
     size = 120
     samples = bytes(rng.getrandbits(8) for _ in range(size * size * 3))
     pixmap = fitz.Pixmap(fitz.csRGB, size, size, samples, False)
@@ -245,12 +249,13 @@ def _write_epub(path: Path, title: str, chapters, images) -> None:
 
 
 def build_dual_units() -> None:
-    hero = _make_hero_jpeg()
+    # Two different photos: tests/goldens/test_image_recovery_golden.py checks
+    # each recipe gets its own, which identical bytes could never show.
     _write_epub(
         CORPUS / "dual-units.epub",
         "Dual Units",
         DUAL_UNITS_CHAPTERS,
-        {"scones.jpg": hero, "shortbread.jpg": hero},
+        {"scones.jpg": _make_hero_jpeg(20260907), "shortbread.jpg": _make_hero_jpeg(20260924)},
     )
 
 
