@@ -324,10 +324,10 @@ except RecipeParserError as e:
 ## How It Works
 
 ### 1. EPUB Parsing
-The EPUB is opened with `ebooklib`. Each HTML chapter is parsed with BeautifulSoup: `<img>` tags are replaced with plain-text `[IMAGE: filename.jpg]` breadcrumb markers, then the HTML is stripped to plain text. Images smaller than 20 KB (decorative separators, icons) are discarded; qualifying photos are extracted to a temporary directory.
+The EPUB is opened with `ebooklib`. Each HTML chapter is parsed with BeautifulSoup: `<img>` tags are replaced with plain-text `[IMAGE: filename.jpg]` breadcrumb markers, then the HTML is stripped to plain text. Images smaller than 20 KB (decorative separators, icons) are discarded; qualifying photos are extracted to a temporary directory, and each chunk carries the bytes of the photos its markers name, so the photo the model picks for a recipe is still there when it is stored or embedded in the export. PDFs follow the same path, one chunk per page.
 
 ### 2. Hero-Image Look-Ahead Injection
-Some books (e.g. Paul Hollywood's *Pies & Puds*) place the hero photograph on a standalone page immediately before the recipe text. That tiny page contains no recipe content, so it would normally be skipped. The pipeline detects these "image-only stubs" and prepends the image filename as a `[HERO IMAGE: ...]` marker into the following recipe chunk, giving the LLM a definitive signal.
+Some books (e.g. Paul Hollywood's *Pies & Puds*) place the hero photograph on a standalone page immediately before the recipe text. That tiny page contains no recipe content, so it would normally be skipped. The reader (EPUB and PDF alike) detects these "image-only stubs" and prepends the image filename as a `[HERO IMAGE: ...]` marker into the following recipe chunk, giving the LLM a definitive signal.
 
 ### 3. Recipe Candidate Filtering
 A fast heuristic (`is_recipe_candidate`) checks each chunk for the co-presence of quantity keywords (`cup`, `tbsp`, `gram`, `ml`, `oz`, etc.) and structural keywords (`preheat`, `bake`, `stir`, `method`, `ingredients`, etc.) before any API call is made. Table-of-contents pages, author bios, glossaries, and copyright pages are all rejected without spending any API quota.

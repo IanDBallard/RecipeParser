@@ -918,7 +918,7 @@ This file contains hard-won prompt engineering and retry logic. **Nothing in it 
 | `_process_segment()` | Semaphore + rate limiter + Baker's % + extract call | `core/pipeline.py` (inlined into `RecipePipeline._process_chunk_safe()`) | **ABSORB** |
 | `PipelineContext` | Bundles shared state for workers | Replaced by `RecipePipeline` instance attributes | **DELETE** (superseded) |
 | Checkpoint load/save logic | `controller.load_checkpoint()` / `controller.save_checkpoint()` | `core/pipeline.py` | **MOVE** verbatim |
-| Hero-image look-ahead injection | `_IMAGE_ONLY_RE` regex + prepend logic | `io/readers/epub.py` (inside `EpubReader.read()`) | **MOVE** to reader |
+| Hero-image look-ahead injection | `_IMAGE_ONLY_RE` regex + prepend logic | `io/readers/epub.py` (inside `EpubReader.read()`) | **MOVE** to reader — *not moved: deleted with the monolith in `90a4a54`, together with the photo-to-recipe mapping; restored in PR #53 as `io/readers/book_images.py`, used by both `EpubReader` and `PdfReader`* |
 | `candidate_chunks` filter | `is_recipe_candidate()` filter before thread pool | `io/readers/epub.py` (inside `EpubReader.read()`) | **MOVE** to reader |
 | Deduplication call | `deduplicate_recipes(all_recipes)` | `core/pipeline.py` (after all chunks processed) | **KEEP** |
 | Recon call | `run_recon(toc_entries, extracted_names)` | `core/pipeline.py` (after dedup) | **KEEP** |
@@ -997,6 +997,8 @@ The existing `write_recipe_to_supabase()` function contains all the correct Supa
 The existing `create_paprika_export()` function contains the correct ZIP/gzip format. Wrap it in `PaprikaWriter` class — do not rewrite the ZIP logic.
 
 > **Phase 5 Implementation Note — Justified Deviation:** The spec mandated wrapping `create_paprika_export()` directly. This was not possible because `create_paprika_export()` takes `List[RecipeExtraction]` (the legacy model with `photo_filename`, `directions: List[str]`, `name`, etc.) while `PaprikaWriter.write()` takes `List[IngestResponse]` (the new model with `structured_ingredients`, `tokenized_directions`, `title`, etc.). The types are structurally incompatible — a direct call would require converting `IngestResponse` back to `RecipeExtraction`, which would be a lossy round-trip. Instead, `PaprikaWriter` uses a new helper `_ingest_to_paprika_dict()` that produces the identical Paprika 3 JSON dict format using the new model's fields. The ZIP/gzip format, field names, and output structure are identical to `create_paprika_export()` — only the input model changed. `create_paprika_export()` is preserved verbatim for legacy `RecipeExtraction` callers (CLI/GUI adapters not yet migrated to Phase 6).
+>
+> **Correction (PR #53):** the output was not identical — `_ingest_to_paprika_dict()` never wrote `photo` / `photo_data`, so every `.paprikarecipes` export from the new pipeline had no pictures. It now embeds the photo the pipeline recovered (`IngestResponse.photo`).
 
 ---
 
