@@ -1309,6 +1309,54 @@ class TestUnreadableInputMessages:
         assert captured["status"] == "error"
         assert captured["error_message"] == "https://example.com/gone could not be fetched (HTTP 404)."
 
+    def test_a_url_blocked_by_bot_protection_is_named_in_one_sentence(self, monkeypatch: Any) -> None:
+        """
+        The real /jobs endpoint has its own inline Jina fetch (it does not go
+        through UrlReader), so the challenge-page check has to live here too.
+        Regression for thewoksoflife.com, 2026-09-24: Jina returned HTTP 200
+        with a "Just a moment..." interstitial instead of raising, and the
+        job silently finished as "0 recipes" instead of naming the block.
+        """
+        captured = self._finalized(monkeypatch)
+        stack, _client, _pipeline = _patch_pipeline_and_writer()
+
+        challenge_body = (
+            "Title: Just a moment...\n\n"
+            "URL Source: https://example.com/some-recipe\n\n"
+            "Markdown Content:\n"
+            "**Requested Host:**example.com  \n"
+            "**Ray ID:**a4030a307d38d990  \n"
+            "**Client IP:**2600:1900:0:2d12::1d00\n\n"
+            "[Open Support Ticket](https://portal.example.com/tickets/new)\n\n"
+            "Please include these details when opening a support ticket so "
+            "we can quickly locate the challenged request."
+        )
+
+        class _Response:
+            status_code = 200
+            text = challenge_body
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **k: Any) -> None: ...
+            async def __aenter__(self) -> "_Http": return self
+            async def __aexit__(self, *a: Any) -> None: ...
+            async def get(self, url: str) -> _Response: return _Response()
+
+        with stack, \
+             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://example.com/some-recipe"})
+            assert resp.status_code == 202
+            self._drain(resp.json()["job_id"])
+
+        assert captured["status"] == "error"
+        assert captured["error_message"] == (
+            "https://example.com/some-recipe is blocked by the site's bot-protection challenge page."
+        )
+
 
 class TestCors:
     """The preflight a browser sends before each verb this API answers.

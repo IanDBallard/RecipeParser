@@ -48,7 +48,7 @@ class PageMeta:
 _CHALLENGE_TITLE_RE = re.compile(r"^Title:\s*Just a moment", re.IGNORECASE)
 
 
-def _looks_like_bot_challenge(text: str) -> bool:
+def looks_like_bot_challenge(text: str) -> bool:
     """True for a Jina-rendered bot-protection interstitial, not real content.
 
     Cloudflare-style JS challenges (and clones, e.g. BigScoots' "Security
@@ -183,7 +183,7 @@ class UrlReader(RecipeReader):
         text = response.text
         if not text.strip():
             raise UrlFetchError("contains no readable text.")
-        if _looks_like_bot_challenge(text):
+        if looks_like_bot_challenge(text):
             raise UrlFetchError("is blocked by the site's bot-protection challenge page.")
         log.info(
             "UrlReader: received %d chars for %s", len(text), source

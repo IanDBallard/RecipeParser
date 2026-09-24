@@ -60,7 +60,7 @@ from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
-from recipeparser.io.readers.url import PageMeta, looks_like_badge, page_meta_from_html
+from recipeparser.io.readers.url import PageMeta, looks_like_bot_challenge, looks_like_badge, page_meta_from_html
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.supabase import write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
@@ -987,6 +987,8 @@ async def submit_job(
                     raise UrlFetchError(f"could not be fetched: {exc}") from exc
                 if not markdown_text.strip():
                     raise UrlFetchError("contains no readable text.")
+                if looks_like_bot_challenge(markdown_text):
+                    raise UrlFetchError("is blocked by the site's bot-protection challenge page.")
                 # The page's own head first (og:image, the description), the
                 # scraper's markdown second: the markdown dropped both on the
                 # NYT page of 2026-09-12 and offered a logo instead.
