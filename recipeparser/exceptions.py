@@ -45,7 +45,9 @@ class PaprikaExtractionError(UnreadableInputError):
 
 
 class UrlFetchError(UnreadableInputError):
-    """Raised when a page cannot be fetched, or fetched but holds no text."""
+    """Raised when a page cannot be fetched, fetched but holds no text, or
+    fetched but is a bot-protection challenge page rather than the article.
+    """
 
 
 class ExportError(RecipeParserError):
