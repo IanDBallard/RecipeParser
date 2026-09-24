@@ -45,6 +45,20 @@ class PageMeta:
     description: Optional[str]
 
 
+_CHALLENGE_TITLE_RE = re.compile(r"^Title:\s*Just a moment", re.IGNORECASE)
+
+
+def _looks_like_bot_challenge(text: str) -> bool:
+    """True for a Jina-rendered bot-protection interstitial, not real content.
+
+    Cloudflare-style JS challenges (and clones, e.g. BigScoots' "Security
+    Verification") title themselves "Just a moment..." and always print a
+    Ray ID for support tickets. A recipe page combining both by coincidence
+    is vanishingly unlikely, so together they're a safe fingerprint.
+    """
+    return bool(_CHALLENGE_TITLE_RE.match(text[:200])) and "Ray ID" in text
+
+
 _META_TAG_RE = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
 _ATTR_RE = re.compile(r"""([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
 _IMAGE_KEYS = ("og:image", "og:image:secure_url", "og:image:url", "twitter:image", "twitter:image:src")
@@ -144,9 +158,11 @@ class UrlReader(RecipeReader):
 
         Raises:
             UrlFetchError: the page could not be fetched (a non-2xx status, a
-                timeout, any other network failure), or was fetched but holds
-                no text. The message is a predicate about the URL: the caller
-                prefixes the URL itself.
+                timeout, any other network failure), was fetched but holds
+                no text, or was fetched but is a bot-protection challenge
+                page (Jina itself got challenged and rendered that instead
+                of the article). The message is a predicate about the URL:
+                the caller prefixes the URL itself.
         """
         from recipeparser.exceptions import UrlFetchError
 
@@ -167,6 +183,8 @@ class UrlReader(RecipeReader):
         text = response.text
         if not text.strip():
             raise UrlFetchError("contains no readable text.")
+        if _looks_like_bot_challenge(text):
+            raise UrlFetchError("is blocked by the site's bot-protection challenge page.")
         log.info(
             "UrlReader: received %d chars for %s", len(text), source
         )

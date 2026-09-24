@@ -628,3 +628,32 @@ def test_url_reader_refuses_an_empty_page() -> None:
         with pytest.raises(UrlFetchError) as excinfo:
             UrlReader().read("https://example.com/blank")
     assert str(excinfo.value) == "contains no readable text."
+
+
+def test_url_reader_refuses_a_bot_protection_challenge_page() -> None:
+    """
+    Jina fetches a page on our behalf, so a site's Cloudflare-style JS
+    challenge (a "Just a moment..." interstitial with a Ray ID) comes back
+    as a 200 with real-looking but non-recipe text. That must be refused,
+    not silently treated as a zero-recipe page — see thewoksoflife.com,
+    2026-09-24.
+    """
+    from recipeparser.exceptions import UrlFetchError
+
+    challenge_body = (
+        "Title: Just a moment...\n\n"
+        "URL Source: https://example.com/some-recipe\n\n"
+        "Markdown Content:\n"
+        "**Requested Host:**example.com  \n"
+        "**Ray ID:**a4030a307d38d990  \n"
+        "**Client IP:**2600:1900:0:2d12::1d00\n\n"
+        "[Open Support Ticket](https://portal.example.com/tickets/new)\n\n"
+        "Please include these details when opening a support ticket so we "
+        "can quickly locate the challenged request."
+    )
+    response = MagicMock(text=challenge_body, status_code=200)
+    response.raise_for_status = MagicMock()
+    with patch("recipeparser.io.readers.url.requests.get", return_value=response):
+        with pytest.raises(UrlFetchError) as excinfo:
+            UrlReader().read("https://example.com/some-recipe")
+    assert str(excinfo.value) == "is blocked by the site's bot-protection challenge page."
