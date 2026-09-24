@@ -20,6 +20,7 @@ from recipeparser.core.citation import Citation, book_citation
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.exceptions import PdfExtractionError
 from recipeparser.io.readers import RecipeReader
+from recipeparser.io.readers.book_images import images_named_in, inject_hero_markers
 from recipeparser.io.readers.epub import split_large_chunk
 
 log = logging.getLogger(__name__)
@@ -34,9 +35,10 @@ class PdfReader(RecipeReader):
     - ``input_type``: InputType.PDF
     - ``source_url``: None (a book has no URL)
     - ``citation``: the PDF's title and author metadata, if any
+    - ``images``: the bytes of every photo the text marks, keyed by filename
 
-    Images are extracted to a temporary directory.  The caller is responsible
-    for uploading qualifying images to storage before the ASSEMBLE stage.
+    Images are extracted to a temporary directory that is gone once read()
+    returns, so each chunk carries the bytes of the photos it marks.
     """
 
     def __init__(self, client: Any = None) -> None:
@@ -70,10 +72,12 @@ class PdfReader(RecipeReader):
 
     def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
         """Internal helper — called with a managed temp directory."""
-        citation, _image_dir, _qualifying, raw_chunks = load_pdf(source, output_dir, client=self._client)
+        citation, image_dir, _qualifying, raw_chunks = load_pdf(source, output_dir, client=self._client)
 
         chunks: List[Chunk] = []
-        for text in raw_chunks:
+        # A photo-only page's image moves onto the page after it; the bytes are
+        # read now because image_dir is deleted when read() returns.
+        for text in inject_hero_markers(raw_chunks):
             if text.strip():
                 chunks.append(
                     Chunk(
@@ -85,6 +89,7 @@ class PdfReader(RecipeReader):
                         # returning raw_chunks, so no true page range is in scope here;
                         # a null label is honest, an invented one is not.
                         label=None,
+                        images=images_named_in(text, image_dir),
                     )
                 )
 

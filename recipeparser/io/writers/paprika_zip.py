@@ -250,6 +250,9 @@ def _ingest_to_paprika_dict(recipe: IngestResponse) -> Dict[str, Any]:
     - ``tokenized_directions`` → plain-text ``directions`` (Fat Tokens stripped
       to their fallback strings).
     - ``categories`` flat list → Paprika ``categories`` list.
+    - the recovered photo (``recipe.photo``) → ``photo`` + base64 ``photo_data``.
+      Both keys are omitted when there is none: an empty ``photo`` key crashes
+      Paprika for Windows with "Access is denied".
     """
     recipe_uid = str(uuid.uuid4()).upper()
     created = datetime.datetime.now(datetime.timezone.utc).strftime(
@@ -292,7 +295,25 @@ def _ingest_to_paprika_dict(recipe: IngestResponse) -> Dict[str, Any]:
         "hash": hashlib.sha256(recipe_uid.encode()).hexdigest(),
         "photo_hash": "",
         "photo_large": None,
+        **_photo_keys(recipe),
     }
+
+
+_PHOTO_EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
+
+
+def _photo_keys(recipe: IngestResponse) -> Dict[str, str]:
+    """``photo`` and ``photo_data`` for a recipe with a recovered photo; nothing otherwise.
+
+    A photo its source never named (Paprika's photo_data) is named by its own
+    digest, so the same photo gets the same name on every export.
+    """
+    photo = recipe.photo
+    if photo is None or not photo.data:
+        return {}
+    ext = _PHOTO_EXTENSIONS.get(photo.content_type, "jpg")
+    name = photo.filename or f"{hashlib.sha256(photo.data).hexdigest()[:16]}.{ext}"
+    return {"photo": name, "photo_data": base64.b64encode(photo.data).decode("ascii")}
 
 
 class PaprikaWriter(RecipeWriter):

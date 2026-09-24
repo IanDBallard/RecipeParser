@@ -41,7 +41,7 @@ fixtures.
 | test_prompts_snapshot.py | The six prompt builders across the units, axes and measure-preference matrix, and `_schema_for_gemini` for every response model. This is the only guard that `additionalProperties` cannot creep back. |
 | test_stages_golden.py | Real recorded replies through `json.loads`, `model_validate`, the dynamic grid round-trip, clean-grid tag stripping and fat-token validation; the baker's-table branch; the vision OCR fallback. |
 | test_e2e_golden.py | `RecipePipeline` at pool size 4 through both zip writers, compared as an order-independent multiset; the Cayenne archive's round trip back through `PaprikaReader`. |
-| test_image_recovery_golden.py | Which source image each recipe ends up with, per corpus fixture, through `RecipePipeline` with an in-memory ImageStore; the Cayenne round trip of `image_url`; the URL path's hero choice. Known losses are strict xfails. |
+| test_image_recovery_golden.py | Which source image each recipe ends up with, per corpus fixture: as `image_url` through an in-memory ImageStore, and as `photo_data` in a Paprika export with no store (the CLI's path); the Cayenne round trip of `image_url`; the URL path's hero choice. Known losses are strict xfails. |
 | test_golden_client.py | The keying rules — which recording a call belongs to, at any pool size. |
 | test_golden_harness.py | The corpus/README cross-check, the 2 MB budget, and that every recording is named by its own key. |
 

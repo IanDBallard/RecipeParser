@@ -1,18 +1,20 @@
 """Image-recovery goldens — does each recipe come out with the photo its source gave it?
 
 The e2e goldens compare whole recipes, but they run without an ImageStore, so
-``image_url`` is null for every fixture and a lost photo is invisible there.
-This family runs the same readers and recorded Gemini replies through
-``RecipePipeline`` with an in-memory ImageStore and checks, per recipe, which
-source image (by its bytes) ended up as ``image_url``.
+``image_url`` is null for every fixture there. This family runs the same
+readers and recorded Gemini replies through ``RecipePipeline`` and checks, per
+recipe, which source image (by its bytes) it ends up with: as ``image_url``
+with an in-memory ImageStore (the API's path), and as ``photo_data`` in a
+``.paprikarecipes`` export with no store at all (the CLI's and GUI's path).
 
-A case marked ``xfail(strict=True)`` is a known loss: the test states what the
-output should be and fails the suite the moment the pipeline starts meeting it,
-so the mark has to be removed in the same change as the fix.
+A fixture listed in ``KNOWN_LOSSES`` runs as ``xfail(strict=True)``: the test
+states what the output should be and fails the suite the moment the pipeline
+starts meeting it, so the entry goes in the same change as the fix.
 
 Not covered here, and why:
-- ``ImageReader`` (a photo of a recipe page) has no corpus fixture, and whether
-  that photo should become the recipe's picture is undecided.
+- ``ImageReader`` (a photo of a recipe page) has no corpus fixture, and by
+  decision that photo does not become the recipe's picture: it is usually a
+  page of text, not the dish.
 - ``scanned.pdf``: its page images *are* the text (vision OCR); see
   ``NOT_APPLICABLE`` below.
 - ``text-pages.pdf`` carries one qualifying image, but on a front-matter page
@@ -41,6 +43,7 @@ from recipeparser.io.readers.paprika import PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader
 from recipeparser.io.readers.url import looks_like_badge, page_meta_from_html
 from recipeparser.io.writers.cayenne_zip import CayenneZipWriter
+from recipeparser.io.writers.paprika_zip import PaprikaWriter
 from tests.goldens.conftest import FIXED_AXES
 from tests.goldens.paths import CORPUS_FIXTURES, corpus_path
 
@@ -48,14 +51,6 @@ from tests.goldens.paths import CORPUS_FIXTURES, corpus_path
 PAPRIKA_PHOTO = "<photo_data>"
 #: A key meaning "every recipe this fixture yields".
 EVERY_RECIPE = "*"
-
-_EPUB_LOSS = (
-    "EPUB hero images are dropped: EpubReader extracts them to a TemporaryDirectory "
-    "that is deleted before read() returns, Chunk has no field for them, and the full "
-    "pipeline passes chunk.image_url (always None here) to assemble() and never reads "
-    "the photo_filename the extract reply names. The legacy monolith did this; "
-    "PIPELINE_REFACTOR.md marked it MOVE and it was deleted in 90a4a54."
-)
 
 #: fixture -> {recipe title (or EVERY_RECIPE) -> the source image it must carry, or None}.
 #: An EPUB image is named by its basename inside the book.
@@ -69,7 +64,8 @@ HERO_IMAGES: Dict[str, Dict[str, Optional[str]]] = {
     "legacy-photo.paprikarecipes": {"Boiled Custard": PAPRIKA_PHOTO},
 }
 
-KNOWN_LOSSES = {"dual-units.epub": _EPUB_LOSS}
+#: fixture -> why its expectation is not met yet. Empty: every expectation holds.
+KNOWN_LOSSES: Dict[str, str] = {}
 
 #: Corpus fixtures this family deliberately does not run, with the reason.
 NOT_APPLICABLE = {
@@ -156,7 +152,7 @@ def _describe(url: Optional[str], store: _MemoryImageStore, sources: Dict[str, b
     return f"image {names[0]!r}" if names else "an image that is not in the source"
 
 
-def _run(fixture: str, golden_client, store: ImageStore):
+def _run(fixture: str, golden_client, store: Optional[ImageStore]):
     GlobalRateLimiter().reset()
     pipeline = RecipePipeline(
         client=golden_client(fixture),
@@ -204,6 +200,33 @@ def test_each_recipe_carries_its_source_image(fixture, golden_client):
                 f"{recipe.title!r}: expected {'no image' if ref is None else repr(ref)}, "
                 f"got {_describe(recipe.image_url, store, sources)}"
             )
+    assert not wrong, f"{fixture}: " + "; ".join(wrong)
+
+
+@pytest.mark.parametrize("fixture", [pytest.param(f, marks=_REPLAY_WARNINGS, id=f) for f in HERO_IMAGES])
+def test_the_paprika_export_embeds_each_recipes_photo(fixture, golden_client, tmp_path):
+    """The CLI's path: no ImageStore, and the photo still reaches the .paprikarecipes."""
+    expected = HERO_IMAGES[fixture]
+    out = tmp_path / "out.paprikarecipes"
+    PaprikaWriter(out).write(_run(fixture, golden_client, store=None))
+
+    wrong = []
+    with zipfile.ZipFile(out) as zf:
+        entries = [json.loads(gzip.decompress(zf.read(n))) for n in sorted(zf.namelist())]
+    assert entries, f"{fixture} exported nothing"
+    for entry in entries:
+        title = entry["name"]
+        ref = expected.get(title, expected.get(EVERY_RECIPE))
+        if ref is None:
+            # An empty photo key crashes Paprika for Windows: absent, not blank.
+            if "photo" in entry or "photo_data" in entry:
+                wrong.append(f"{title!r}: expected no photo keys, got {entry.get('photo')!r}")
+            continue
+        got = base64.b64decode(entry.get("photo_data") or "")
+        if got != _source_image(fixture, title, ref):
+            wrong.append(f"{title!r}: photo_data is not {ref!r}")
+        if not entry.get("photo"):
+            wrong.append(f"{title!r}: photo_data without a photo name")
     assert not wrong, f"{fixture}: " + "; ".join(wrong)
 
 

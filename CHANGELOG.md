@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### 🐛 Fixed — a book's photos reach its recipes again
+- EPUB and PDF recipes never got their photo. The readers extracted images to a temporary directory deleted before `read()` returned, and the pipeline never read the `photo_filename` the extract reply names — the legacy monolith did both; `PIPELINE_REFACTOR.md` marked the hero-image logic MOVE and `90a4a54` deleted it instead. Each book `Chunk` now carries the bytes of the photos its text marks (`Chunk.images`), and each recipe takes the one the model named: stored through the `ImageStore` when there is one (the API), kept on the result either way.
+- A photo-only page or chapter hands its photo to the recipe after it as `[HERO IMAGE: …]` again (`HERO_INJECT_MAX_STUB_CHARS`, which had outlived its only reader).
+- The `.paprikarecipes` export (`PaprikaWriter`, the CLI's and GUI's output) embeds each recipe's photo as `photo` + `photo_data`, for book photos and a Paprika entry's own. The keys are still omitted when there is no photo. The bytes ride `IngestResponse.photo`, a private attribute, so they never reach an API response or a `_cayenne_meta`.
+- A photo of a recipe page (`ImageReader`) still does not become the recipe's picture, by decision.
+- New `tests/goldens/test_image_recovery_golden.py`: per corpus fixture, which source image each recipe ends up with, through a store and through the Paprika export. The e2e goldens had pinned `image_url: null`, so the loss passed CI. `dual-units.epub`'s two photos now differ byte for byte, and `saved-page.html` carries an `og:image` hero and a decoy logo.
+
 ### ✨ Added — a cook can change a recipe's picture
 - `POST /recipes/{recipe_id}/image` (multipart `file`) stores a picture chosen in Cayenne's recipe editor and answers `200 { image_url }`; `DELETE /recipes/{recipe_id}/image` removes it and answers `{ image_url: null }`. Both verify the caller owns the recipe and answer **404, never 403**, when they do not — `_owned_controller`'s rule, so the table cannot be enumerated by id. The service keeps its place as the bucket's only writer: no storage policy is widened for the browser, and the device never writes `image_url` itself — PowerSync delivers the row this endpoint updates.
 - Accepts JPEG, PNG, WebP and GIF. Wider than `/jobs/file` on purpose: that list is what PyMuPDF can open for OCR, and nothing OCRs a picture the cook chose — the browser renders it. HEIC is refused with the reader's own sentence, since no browser decodes it either. The ceiling and its 413 sentence are `/jobs/file`'s (`config.MAX_UPLOAD_BYTES`), checked after the type so a small file of the wrong kind is still a 422.

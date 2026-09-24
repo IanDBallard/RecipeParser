@@ -68,10 +68,10 @@ class EpubReader(RecipeReader):
     - ``input_type``: InputType.EPUB
     - ``source_url``: None (a book has no URL)
     - ``citation``: the book's title and author, from EPUB DC metadata
+    - ``images``: the bytes of every photo the text marks, keyed by filename
 
-    Images are extracted to a temporary directory managed by this reader.
-    The caller is responsible for uploading qualifying images to storage
-    before the pipeline's ASSEMBLE stage.
+    Images are extracted to a temporary directory that is gone once read()
+    returns, so each chunk carries the bytes of the photos it marks.
     """
 
     def read(self, source: str) -> List[Chunk]:
@@ -92,29 +92,35 @@ class EpubReader(RecipeReader):
 
     def _read_in_dir(self, source: str, output_dir: str) -> List[Chunk]:
         """Internal helper — called with a managed temp directory."""
-        citation, _image_dir, _qualifying, raw_chunks = load_epub(source, output_dir)
+        # Lazy: book_images imports is_recipe_candidate from this module.
+        from recipeparser.io.readers.book_images import images_named_in, inject_hero_markers  # noqa: PLC0415
+
+        citation, image_dir, _qualifying, raw_chunks = load_epub(source, output_dir)
+
+        # A photo-only chapter's image moves onto the chapter after it before
+        # the filter below drops the photo-only one.
+        chapters = inject_hero_markers(raw_chunks)
 
         # Filter to recipe-candidate chapters
-        candidate_chunks = [c for c in raw_chunks if is_recipe_candidate(c)]
+        candidate_chunks = [c for c in chapters if is_recipe_candidate(c)]
         if not candidate_chunks:
             # Fallback: return all chapters rather than an empty list
-            candidate_chunks = raw_chunks
+            candidate_chunks = chapters
 
-        chunks: List[Chunk] = []
-        for text in candidate_chunks:
-            # Split oversized chapters at paragraph boundaries
-            for part in split_large_chunk(text):
-                chunks.append(
-                    Chunk(
-                        text=part,
-                        input_type=InputType.EPUB,
-                        source_url=None,
-                        citation=citation,
-                        label=None,
-                    )
-                )
-
-        return chunks
+        # Split oversized chapters at paragraph boundaries. The photo bytes are
+        # read now: image_dir is deleted when read() returns.
+        return [
+            Chunk(
+                text=part,
+                input_type=InputType.EPUB,
+                source_url=None,
+                citation=citation,
+                label=None,
+                images=images_named_in(part, image_dir),
+            )
+            for text in candidate_chunks
+            for part in split_large_chunk(text)
+        ]
 
 
 # Font obfuscation is the one use of the EPUB encryption manifest that leaves the
