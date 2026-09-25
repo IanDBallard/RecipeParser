@@ -74,3 +74,29 @@ def test_refine_recipe_for_cayenne_failure_returns_none():
 
     result = refine_recipe_for_cayenne("raw text", mock_client)
     assert result is None
+
+
+from recipeparser.gemini import build_refine_prompt
+from recipeparser.models import RecipeExtraction, StructuredIngredient
+
+
+def test_refine_prompt_states_liquid_or_solid_before_it_converts():
+    # Cookbook locales D13: the state is a prerequisite of the conversion, so it is asked first.
+    raw = RecipeExtraction(
+        name="Cake", photo_filename="cake.jpg", servings="4", prep_time="5 mins", cook_time="30 mins",
+        ingredients=["1 cup milk", "2 cups flour"], directions=["Mix."],
+    )
+    prompt = build_refine_prompt(raw, "UK", "Natural")
+    state_at = prompt.index("STATE:")
+    conversion_at = prompt.index("CONVERSION:")
+    assert 0 < state_at < conversion_at
+    assert '"liquid"' in prompt and '"solid"' in prompt
+    assert "Use the state when you compute the conversion" in prompt
+
+
+def test_structured_ingredient_carries_an_optional_state():
+    ing = StructuredIngredient(id="ing_01", name="milk", fallback_string="1 cup milk", state="liquid")
+    assert ing.state == "liquid"
+    assert StructuredIngredient(id="ing_02", name="flour", fallback_string="2 cups flour").state is None
+    with pytest.raises(ValueError):
+        StructuredIngredient(id="ing_03", name="x", fallback_string="x", state="wet")

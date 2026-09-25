@@ -96,8 +96,8 @@ def refine(
     Args:
         raw:               The RecipeExtraction from the EXTRACT stage.
         client:            An initialised ``google.genai.Client`` instance.
-        uom_system:        "US", "Metric", or "Imperial".
-        measure_preference: "Volume" or "Weight".
+        uom_system:        "US", "UK", "EU" or "AU".
+        measure_preference: "Natural", "Weight" or "Volume".
         user_axes:         Optional dict of axis_name → [tag, ...].
                            When None or empty, grid_categories will be {} in
                            the result.

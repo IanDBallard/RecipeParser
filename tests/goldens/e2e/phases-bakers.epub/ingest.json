@@ -66,6 +66,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "PHASE 1 — Levain",
+          "state": null,
           "unit": null
         },
         {
@@ -77,6 +78,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "whole wheat flour",
+          "state": null,
           "unit": "oz"
         },
         {
@@ -88,6 +90,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "water",
+          "state": null,
           "unit": "tablespoons"
         },
         {
@@ -99,6 +102,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "ripe starter",
+          "state": null,
           "unit": "teaspoon"
         },
         {
@@ -110,6 +114,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "PHASE 2 — Final Dough",
+          "state": null,
           "unit": null
         },
         {
@@ -121,6 +126,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "bread flour",
+          "state": null,
           "unit": "lb"
         },
         {
@@ -132,6 +138,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "whole wheat flour",
+          "state": null,
           "unit": "cup"
         },
         {
@@ -143,6 +150,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "water",
+          "state": null,
           "unit": "cups"
         },
         {
@@ -154,6 +162,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "fine salt",
+          "state": null,
           "unit": "teaspoons"
         }
       ],
@@ -244,6 +253,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "Bread flour",
+          "state": null,
           "unit": "cups"
         },
         {
@@ -255,6 +265,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "Water",
+          "state": null,
           "unit": "cups"
         },
         {
@@ -266,6 +277,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "Salt",
+          "state": null,
           "unit": "tsp"
         },
         {
@@ -277,6 +289,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "Instant yeast",
+          "state": null,
           "unit": "tsp"
         },
         {
@@ -288,6 +301,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "Butter",
+          "state": null,
           "unit": "tbsp"
         }
       ],

@@ -797,3 +797,15 @@ def test_a_legacy_paprika_photo_rides_the_result_as_well_as_its_url():
     [pie] = _run_book_chunk(chunk, [_named("Pie", None)], store)
     assert pie.image_url == "https://example.test/stored.jpg"
     assert pie.photo == (b"P", "image/png", None)
+
+
+from recipeparser.core.pipeline import _uom_to_units_key
+
+
+@pytest.mark.parametrize(
+    "uom, units",
+    [("US", "us"), ("UK", "metric"), ("EU", "metric"), ("AU", "metric"), ("Metric", "book"), ("Imperial", "book"), ("", "book")],
+)
+def test_uom_to_units_key_maps_the_four_locales_and_falls_to_book(uom, units):
+    # Cookbook locales D9: the client stores US/UK/EU/AU; an unknown word preserves the book's units.
+    assert _uom_to_units_key(uom) == units

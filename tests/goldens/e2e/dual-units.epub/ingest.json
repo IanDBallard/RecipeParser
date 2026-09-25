@@ -63,6 +63,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "butter",
+          "state": null,
           "unit": "tablespoons"
         },
         {
@@ -74,6 +75,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "caster sugar",
+          "state": null,
           "unit": "cup"
         },
         {
@@ -85,6 +87,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "plain flour",
+          "state": null,
           "unit": "cups"
         },
         {
@@ -96,6 +99,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "fine salt",
+          "state": null,
           "unit": "teaspoon"
         }
       ],
@@ -183,6 +187,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "plain flour",
+          "state": null,
           "unit": "cups"
         },
         {
@@ -194,6 +199,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "baking powder",
+          "state": null,
           "unit": "tablespoon"
         },
         {
@@ -205,6 +211,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "fine salt",
+          "state": null,
           "unit": "teaspoon"
         },
         {
@@ -216,6 +223,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "cold butter",
+          "state": null,
           "unit": "tablespoons"
         },
         {
@@ -227,6 +235,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "buttermilk",
+          "state": null,
           "unit": "cup"
         }
       ],
