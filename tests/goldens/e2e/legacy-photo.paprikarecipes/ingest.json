@@ -60,6 +60,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "milk",
+          "state": null,
           "unit": "quart"
         },
         {
@@ -71,6 +72,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "eggs",
+          "state": null,
           "unit": null
         },
         {
@@ -82,6 +84,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "sugar",
+          "state": null,
           "unit": "cup"
         },
         {
@@ -93,6 +96,7 @@
           "is_ai_converted": false,
           "line_index": null,
           "name": "vanilla",
+          "state": null,
           "unit": "teaspoon"
         }
       ],
