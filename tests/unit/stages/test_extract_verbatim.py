@@ -65,3 +65,43 @@ def test_plain_text_mode_retries_through_the_plain_text_prompt():
         result = extract(NYT_PAGE, client=MagicMock(), plain_text_mode=True)
     assert result.recipes[0].ingredients == VERBATIM
     assert fn.call_count == 2
+
+
+# The retry replaces only the recipes that failed, and every failed name not recovered is named (D2).
+_A_OK = RecipeExtraction(name="A", ingredients=["2 eggs"], directions=["Cook."])
+_A_BAD = RecipeExtraction(name="A", ingredients=["99 eggs"], directions=["Cook."])
+_B_OK = RecipeExtraction(name="B", ingredients=["3 cups flour"], directions=["Bake."])
+_B_BAD = RecipeExtraction(name="B", ingredients=["340g flour"], directions=["Bake."])
+_AB_PAGE = "A\n2 eggs\nB\n3 cups flour\n"
+
+
+def _run_ab(first, retry):
+    with patch(_EXTRACT, side_effect=[RecipeList(recipes=first), RecipeList(recipes=retry)]) as fn:
+        result = extract(_AB_PAGE, client=MagicMock())
+    assert fn.call_count == 2
+    return result
+
+
+def test_the_retry_recovers_only_the_recipe_that_failed():
+    result = _run_ab([_A_OK, _B_BAD], [_B_OK])
+    assert [r.name for r in result.recipes] == ["A", "B"]
+    assert result.recipes[1].ingredients == ["3 cups flour"]
+    assert result.rewritten == []
+
+
+def test_a_clean_first_attempt_survives_a_retry_that_rewrites_it():
+    result = _run_ab([_A_OK, _B_BAD], [_A_BAD, _B_BAD])
+    assert result.recipes == [_A_OK]
+    assert result.rewritten == ["B"]
+
+
+def test_a_retry_that_omits_the_failed_recipe_names_it():
+    result = _run_ab([_A_OK, _B_BAD], [])
+    assert result.recipes == [_A_OK]
+    assert result.rewritten == ["B"]
+
+
+def test_a_recipe_only_the_retry_found_is_ignored():
+    stray = RecipeExtraction(name="C", ingredients=["2 eggs"], directions=["Mix."])
+    result = _run_ab([_A_OK, _B_BAD], [_B_OK, stray])
+    assert [r.name for r in result.recipes] == ["A", "B"]

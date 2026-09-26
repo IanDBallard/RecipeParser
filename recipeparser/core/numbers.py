@@ -37,8 +37,9 @@ _FRACTION_WORDS = {
     "eighth": 1 / 8, "eighths": 1 / 8,
 }
 _PLURAL_FRACTION_WORDS = {"halves", "thirds", "quarters", "fourths", "eighths"}
-# Whole words only: "often" is one word, so it never yields "ten".
-_WORD = re.compile(r"[a-z]+")
+_TENS_WORDS = {"twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"}
+# Whole words only, letters in any script: "often" never yields "ten", nor "tenía".
+_WORD = re.compile(r"[^\W\d_]+")
 
 
 def _normalise(text: str) -> str:
@@ -79,19 +80,28 @@ def written_values(text: str) -> List[float]:
 
 def _word_values(text: str) -> List[float]:
     """
-    Every number ``text`` spells as a word, by value. A cardinal before a plural fraction word
-    ("two thirds") also yields their product, as well as each part.
+    Every number ``text`` spells as a word, by value. Each word counts alone, and a compound also
+    yields its whole: "two thirds" 2/3, "two hundred" 200, "twenty-five" 25, "half a dozen" 6.
+    "a"/"an" alone is never 1.
     """
     words = _WORD.findall(text.lower())
     values: List[float] = []
     for i, word in enumerate(words):
+        following = words[i + 1] if i + 1 < len(words) else ""
         if word in _CARDINAL_WORDS:
-            values.append(float(_CARDINAL_WORDS[word]))
-            following = words[i + 1] if i + 1 < len(words) else ""
+            n = _CARDINAL_WORDS[word]
+            values.append(float(n))
             if following in _PLURAL_FRACTION_WORDS:
-                values.append(_CARDINAL_WORDS[word] * _FRACTION_WORDS[following])
+                values.append(n * _FRACTION_WORDS[following])
+            if following == "hundred":
+                values.append(n * 100.0)
+            if word in _TENS_WORDS and 1 <= _CARDINAL_WORDS.get(following, 0) <= 9:
+                values.append(float(n + _CARDINAL_WORDS[following]))
         elif word in _FRACTION_WORDS:
             values.append(_FRACTION_WORDS[word])
+            after_article = words[i + 2] if following in ("a", "an") and i + 2 < len(words) else ""
+            if "dozen" in (following, after_article):
+                values.append(_FRACTION_WORDS[word] * 12)
     return values
 
 

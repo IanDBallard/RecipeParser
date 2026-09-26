@@ -48,6 +48,15 @@ class ChunkResult(NamedTuple):
     skipped: List[str]
 
 
+class _ChunkFailed(Exception):
+    """A chunk that failed after EXTRACT named its drops, carrying them so they are still reported (D2)."""
+
+    def __init__(self, cause: Exception, skipped: List[str]) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.skipped = skipped
+
+
 
 class RecipePipeline:
     """
@@ -235,6 +244,10 @@ class RecipePipeline:
                     for reason in outcome.skipped:
                         _report_skip(chunk, reason, index)
                 except Exception as exc:
+                    if isinstance(exc, _ChunkFailed):
+                        for reason in exc.skipped:
+                            _report_skip(chunk, reason, index)
+                        exc = exc.cause
                     log.error("RecipePipeline: chunk worker raised unexpectedly — skipping. Error: %s", exc)
                     _report_skip(chunk, f"{type(exc).__name__}: {exc}", index)
                 finally:
@@ -371,66 +384,72 @@ class RecipePipeline:
             log.info("_process_chunk: no recipes kept from chunk — skipping.")
             return ChunkResult([], skipped)
 
-        for raw in extraction.recipes:
-            # REFINE
-            self._controller.notify_stage_change("REFINING")
-            self._limiter.wait_then_record_start()
-            refined = refine(
-                raw=raw,
-                client=self._client,
-                uom_system=self._uom_system,
-                measure_preference=self._measure_preference,
-                user_axes=user_axes,
-            )
-
-            # CATEGORIZE (result is already embedded in refined via refine())
-            self._controller.notify_stage_change("CATEGORIZING")
-            grid_cats = categorize(
-                recipe=refined,
-                user_axes=user_axes,
-            )
-
-            # EMBED
-            self._controller.notify_stage_change("EMBEDDING")
-            self._limiter.wait_then_record_start()
-            embedding = embed(recipe=refined, client=self._client)
-
-            # The photo the model picked from the book's markers, stored per
-            # recipe (one chunk can hold several); else the chunk's own.
-            photo = _book_photo(chunk, getattr(raw, "photo_filename", None))
-            image_url = chunk.image_url
-            if photo is not None and self._image_store is not None:
-                image_url = (
-                    self._image_store.put(photo.data, str(uuid.uuid4()), photo.content_type) or chunk.image_url
+        # A later stage failing the chunk must not swallow the drops EXTRACT named (D2).
+        try:
+            for raw in extraction.recipes:
+                # REFINE
+                self._controller.notify_stage_change("REFINING")
+                self._limiter.wait_then_record_start()
+                refined = refine(
+                    raw=raw,
+                    client=self._client,
+                    uom_system=self._uom_system,
+                    measure_preference=self._measure_preference,
+                    user_axes=user_axes,
                 )
-            elif photo is None:
-                photo = _chunk_photo(chunk)
 
-            # ASSEMBLE (no separate DB stage — stays at EMBEDDING per §7.2)
-            result = assemble(
-                recipe=refined,
-                embedding=embedding,
-                source_url=chunk.source_url,
-                image_url=image_url,
-                grid_categories=grid_cats,
-                prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
-                cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
-                meta=chunk.meta,
-                ingredient_lines=list(raw.ingredients),
-                direction_steps=list(raw.directions),
-                servings_text=getattr(raw, "servings", None),
-                citation=resolve_citation(
-                    chunk.citation,
-                    getattr(raw, "stated_source", None),
-                    getattr(raw, "byline", None),
-                ),
-                total_time=getattr(raw, "total_time", None),
-                description=getattr(raw, "description", None),
-                nutritional_info=getattr(raw, "nutritional_info", None),
-                notes=getattr(raw, "notes", None),
-            )
-            result.attach_photo(photo)
-            results.append(result)
+                # CATEGORIZE (result is already embedded in refined via refine())
+                self._controller.notify_stage_change("CATEGORIZING")
+                grid_cats = categorize(
+                    recipe=refined,
+                    user_axes=user_axes,
+                )
+
+                # EMBED
+                self._controller.notify_stage_change("EMBEDDING")
+                self._limiter.wait_then_record_start()
+                embedding = embed(recipe=refined, client=self._client)
+
+                # The photo the model picked from the book's markers, stored per
+                # recipe (one chunk can hold several); else the chunk's own.
+                photo = _book_photo(chunk, getattr(raw, "photo_filename", None))
+                image_url = chunk.image_url
+                if photo is not None and self._image_store is not None:
+                    image_url = (
+                        self._image_store.put(photo.data, str(uuid.uuid4()), photo.content_type) or chunk.image_url
+                    )
+                elif photo is None:
+                    photo = _chunk_photo(chunk)
+
+                # ASSEMBLE (no separate DB stage — stays at EMBEDDING per §7.2)
+                result = assemble(
+                    recipe=refined,
+                    embedding=embedding,
+                    source_url=chunk.source_url,
+                    image_url=image_url,
+                    grid_categories=grid_cats,
+                    prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
+                    cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
+                    meta=chunk.meta,
+                    ingredient_lines=list(raw.ingredients),
+                    direction_steps=list(raw.directions),
+                    servings_text=getattr(raw, "servings", None),
+                    citation=resolve_citation(
+                        chunk.citation,
+                        getattr(raw, "stated_source", None),
+                        getattr(raw, "byline", None),
+                    ),
+                    total_time=getattr(raw, "total_time", None),
+                    description=getattr(raw, "description", None),
+                    nutritional_info=getattr(raw, "nutritional_info", None),
+                    notes=getattr(raw, "notes", None),
+                )
+                result.attach_photo(photo)
+                results.append(result)
+        except Exception as exc:
+            if not skipped:
+                raise
+            raise _ChunkFailed(exc, skipped) from exc
 
         return ChunkResult(results, skipped)
 

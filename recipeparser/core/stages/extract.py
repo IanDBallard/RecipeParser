@@ -3,8 +3,10 @@ recipeparser/core/stages/extract.py — EXTRACT stage.
 
 Wraps gemini.extract_recipes() / gemini.extract_recipe_from_text() and holds the model to the
 verbatim rule (verbatim-ingestion D1, D2): every number an ingredient line writes must be one the
-source writes. A chunk whose extraction breaks that is extracted once more; a recipe that breaks it
-again is dropped and named, and the rest of the chunk is kept.
+source writes. The first attempt's clean recipes are kept. When some recipe breaks the rule the
+chunk is extracted once more, and from that retry only a clean recipe of the same name as a failed
+one is taken. Every failed recipe the retry does not recover is dropped and named, so no drop is
+silent (D2). A recipe only the retry found is ignored.
 
 No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
@@ -74,22 +76,33 @@ def extract(
         # counts as the writer's: the source is both texts.
         source_text = f"{source_text}\n{chunk_text}"
 
-    recipes = _run(chunk_text, client, plain_text_mode)
-    if any(unmatched_numbers(source_text, r.ingredients) for r in recipes):
-        log.warning("extract(): ingredient lines did not match the source — extracting once more.")
-        recipes = _run(chunk_text, client, plain_text_mode)
+    def clean(recipe: RecipeExtraction) -> bool:
+        return not unmatched_numbers(source_text, recipe.ingredients)
+
+    first = _run(chunk_text, client, plain_text_mode)
+    if all(clean(r) for r in first):
+        log.info("extract(): kept %d recipe(s).", len(first))
+        return Extraction(first, [])
+
+    log.warning("extract(): ingredient lines did not match the source — extracting once more.")
+    # Only a clean retry recipe of a failed recipe's exact name replaces it; each is used once.
+    recovered = [r for r in _run(chunk_text, client, plain_text_mode) if clean(r)]
 
     kept: List[RecipeExtraction] = []
     rewritten: List[str] = []
-    for recipe in recipes:
-        missing = unmatched_numbers(source_text, recipe.ingredients)
-        if missing:
-            log.warning(
-                "extract(): dropped %r — its ingredient lines write %s, which the source never does.",
-                recipe.name, ", ".join(missing),
-            )
-            rewritten.append(recipe.name)
-        else:
+    for recipe in first:
+        if clean(recipe):
             kept.append(recipe)
+            continue
+        replacement = next((r for r in recovered if r.name == recipe.name), None)
+        if replacement is not None:
+            recovered.remove(replacement)
+            kept.append(replacement)
+            continue
+        log.warning(
+            "extract(): dropped %r — its ingredient lines write %s, which the source never does.",
+            recipe.name, ", ".join(unmatched_numbers(source_text, recipe.ingredients)),
+        )
+        rewritten.append(recipe.name)
     log.info("extract(): kept %d recipe(s), dropped %d as rewritten.", len(kept), len(rewritten))
     return Extraction(kept, rewritten)

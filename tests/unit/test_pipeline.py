@@ -813,3 +813,17 @@ def test_a_rewritten_recipe_is_reported_by_name_and_its_neighbours_kept():
         results = pipeline.run([chunk], on_skip=lambda c, reason, index: skips_seen.append((reason, index)))
     assert [r.title for r in results] == ["Kept"]
     assert skips_seen == [("ingredient lines did not match the source: Carbonara", 0)]
+
+
+def test_a_rewritten_title_is_reported_even_when_a_later_stage_fails_the_chunk():
+    """D2: a REFINE failure on the kept recipe must not swallow EXTRACT's named drop."""
+    chunk = Chunk(text="book page", input_type=InputType.EPUB)
+    skips_seen: List[tuple] = []
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction(
+            [RecipeExtraction(name="Kept", ingredients=["x"], directions=["y"])], ["Carbonara"])), \
+         patch(_PATCH_REFINE, side_effect=RuntimeError("refine boom")):
+        results = pipeline.run([chunk], on_skip=lambda c, reason, index: skips_seen.append((reason, index)))
+    assert results == []
+    assert ("ingredient lines did not match the source: Carbonara", 0) in skips_seen
+    assert ("RuntimeError: refine boom", 0) in skips_seen

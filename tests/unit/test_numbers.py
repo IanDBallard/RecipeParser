@@ -111,3 +111,27 @@ def test_a_number_word_inside_another_word_does_not_count(source, line):
 
 def test_written_values_reads_numerals_only():
     assert written_values("half a cup and 2 eggs") == [2.0]
+
+
+@pytest.mark.parametrize(
+    "source, line",
+    [
+        ("half a dozen eggs", "6 eggs"),
+        ("a half dozen eggs", "6 eggs"),
+        ("twenty-five almonds", "25 almonds"),
+        ("twenty five almonds", "25 almonds"),
+        ("two hundred grams", "200g"),
+    ],
+)
+def test_compound_number_words_count_by_value(source, line):
+    assert unmatched_numbers(source, [line]) == []
+
+
+def test_a_or_an_alone_is_not_one():
+    assert unmatched_numbers("a pinch of salt", ["1 pinch of salt"]) == ["1"]
+
+
+def test_an_accented_word_stays_whole():
+    # "tenía" split at the "í" would yield "ten"; "crème fraîche" writes no number.
+    assert unmatched_numbers("la receta tenía", ["10 x"]) == ["10"]
+    assert unmatched_numbers("crème fraîche", ["1 tub crème fraîche"]) == ["1"]
