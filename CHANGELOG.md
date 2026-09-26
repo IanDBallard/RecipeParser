@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### ⚠️ Requires — apply the Cayenne migration `20260925180000_verbatim_ingestion.sql` **before** deploying the verbatim ingestion
+`SupabaseWriter` now puts `source_uom_system_detected` and `source_uom_system_evidence` into every recipe INSERT, and the regen worker reads `source_url` from the `claim_stale_recipes` RPC. Against a schema without the migration every ingest fails with `PGRST204`, and with `REGEN_WORKER_ENABLED=1` every regen fails too. Apply the migration first, then deploy.
+
+### ✨ Changed — ingestion copies what the writer wrote (verbatim ingestion)
+- **EXTRACT copies every ingredient line verbatim** — one rule for every input, no conversion and no reader's preference. A number guard (`core/numbers.py`) checks that every number an ingredient line writes is one the source writes, by value. When a recipe fails it, the chunk is extracted once more and only a clean recipe of a failed one's name is taken from the retry; the first attempt's clean recipes are always kept, a retry that raises recovers nothing rather than losing them, and every failed recipe not recovered is dropped **by name**, never silently.
+- The guard reads the source generously: number words count by value ("HALF AN OUNCE" is 0.5, "half a dozen" 6, "twenty-five" 25), a decimal comma is a decimal point, superscript and subscript digits are digits, and an EPUB's typeset fraction (`1<sup>1</sup>&frasl;<sub>2</sub>`, which the reader's text turns into "1 1 / 2") or a PDF's run-together "11⁄2" also reads as 1 1/2 — each as a union with the plain reading, so "Serves 4 / 6" still states 4 and 6.
+- **REFINE keeps the writer's two measures.** A line that states a second measure fills it from the line, marked as the writer's; a second measure the line never writes is re-marked as the AI's. An AI conversion is admitted only into grams or millilitres — a cup or spoon the source system would resize is dropped.
+- **REFINE detects the source's measuring system** (`US`, `UK`, `EU`, `AU`, `Imperial`, in any case, written canonically) with a quoted piece of evidence it verifies: a quote from the recipe text, or the source host it was given (the host, or a dot-boundary suffix of it such as `com.au`). Unverified, both are written null. The pair is stored on the recipe row.
+- **The regen worker passes the host of the recipe's `source_url` to REFINE**, instead of reading the owner's profile preferences.
+
+### 🗑️ Removed — reader preferences at ingest
+- The API no longer reads `profiles` for a unit preference. `uom_system` and `measure_preference` in a `/jobs` body are **ignored, not refused**, so an older client keeps working; the file job no longer takes them as query parameters.
+- The CLI's `--units` flag and the GUI's Units row are gone; `RecipePipeline` and `run_cli_pipeline` take no unit-preference arguments.
+
 ### 🐛 Fixed — a book's photos reach its recipes again (#53)
 - EPUB and PDF recipes never got their photo. The readers extracted images to a temporary directory deleted before `read()` returned, and the pipeline never read the `photo_filename` the extract reply names — the legacy monolith did both; `PIPELINE_REFACTOR.md` marked the hero-image logic MOVE and `90a4a54` deleted it instead. Each book `Chunk` now carries the bytes of the photos its text marks (`Chunk.images`), and each recipe takes the one the model named: stored through the `ImageStore` when there is one (the API), kept on the result either way.
 - A photo-only page or chapter hands its photo to the recipe after it as `[HERO IMAGE: …]` again (`HERO_INJECT_MAX_STUB_CHARS`, which had outlived its only reader).
