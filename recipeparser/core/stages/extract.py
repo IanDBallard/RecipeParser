@@ -60,9 +60,10 @@ def extract(
 
     Raises:
         ValueError: If ``chunk_text`` is empty or whitespace-only.
-        ExtractionParseError: If Gemini's reply could not be parsed on any
-            attempt.  Distinct from an empty chunk: the recipes existed and
-            were lost, so the caller must count this rather than ignore it.
+        ExtractionParseError: If Gemini's first reply could not be parsed on
+            any attempt.  Distinct from an empty chunk: the recipes existed and
+            were lost, so the caller must count this rather than ignore it.  A
+            failing number-guard retry never raises; it recovers nothing.
     """
     if not chunk_text or not chunk_text.strip():
         raise ValueError("extract(): chunk_text must be non-empty.")
@@ -86,7 +87,15 @@ def extract(
 
     log.warning("extract(): ingredient lines did not match the source — extracting once more.")
     # Only a clean retry recipe of a failed recipe's exact name replaces it; each is used once.
-    recovered = [r for r in _run(chunk_text, client, plain_text_mode) if clean(r)]
+    # A retry that fails outright recovers nothing: the first attempt's clean recipes are kept and
+    # its failed ones named, never lost to the retry's error (final review I2).
+    try:
+        retry = _run(chunk_text, client, plain_text_mode)
+    except Exception as exc:  # noqa: BLE001 — any retry failure degrades to "recovered nothing"
+        log.warning("extract(): the retry failed (%s: %s) — keeping the first attempt's clean recipes.",
+                    type(exc).__name__, exc)
+        retry = []
+    recovered = [r for r in retry if clean(r)]
 
     kept: List[RecipeExtraction] = []
     rewritten: List[str] = []

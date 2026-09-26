@@ -135,3 +135,38 @@ def test_an_accented_word_stays_whole():
     # "tenía" split at the "í" would yield "ten"; "crème fraîche" writes no number.
     assert unmatched_numbers("la receta tenía", ["10 x"]) == ["10"]
     assert unmatched_numbers("crème fraîche", ["1 tub crème fraîche"]) == ["1"]
+
+
+# EPUB typesetting (final review I1): the reader's get_text(separator="\n") splits a typeset
+# fraction across lines, and a faithful line must still pass.
+def _epub_text(html: str) -> str:
+    from bs4 import BeautifulSoup
+
+    return BeautifulSoup(html, "html.parser").get_text(separator="\n")
+
+
+def test_a_sup_sub_typeset_mixed_fraction_in_an_epub_is_the_writers():
+    source = _epub_text("<p>1<sup>1</sup>&frasl;<sub>2</sub> cups flour</p>")
+    assert unmatched_numbers(source, ["1 1/2 cups flour"]) == []
+
+
+def test_a_span_typeset_fraction_in_an_epub_is_the_writers():
+    source = _epub_text("<p><span>1</span>/<span>2</span> cup milk</p>")
+    assert unmatched_numbers(source, ["1/2 cup milk"]) == []
+
+
+def test_superscript_and_subscript_digits_read_as_digits():
+    assert unmatched_numbers("¹⁄₂ cup", ["1/2 cup"]) == []
+
+
+def test_a_pdf_run_together_mixed_fraction_is_the_writers():
+    # PDF text loses the superscript: "1¹⁄₂" arrives as "11⁄2".
+    assert unmatched_numbers("11⁄2 cups", ["1 1/2 cups"]) == []
+
+
+def test_a_spaced_slash_still_keeps_both_numbers():
+    assert unmatched_numbers("Serves 4 / 6", ["4 people", "6 people"]) == []
+
+
+def test_a_conversion_is_still_caught_beside_a_fraction():
+    assert unmatched_numbers("1 1/2 cups flour", ["180g flour"]) == ["180"]

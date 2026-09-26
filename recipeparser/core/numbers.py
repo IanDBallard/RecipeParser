@@ -18,6 +18,8 @@ _FRACTIONS = {
     "⅕": " 1/5", "⅖": " 2/5", "⅗": " 3/5", "⅘": " 4/5", "⅙": " 1/6", "⅚": " 5/6",
     "⅐": " 1/7", "⅛": " 1/8", "⅜": " 3/8", "⅝": " 5/8", "⅞": " 7/8", "⅑": " 1/9", "⅒": " 1/10",
 }
+# Superscript and subscript digits ("¹⁄₂", an EPUB's or a font's typeset fraction) are digits.
+_SCRIPT_DIGITS = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉", "0123456789" * 2)
 _NUMBER = re.compile(r"\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?")
 # "1,5 dl" is how a Swedish writer puts 1.5 (cookbook locales D6).
 _DECIMAL_COMMA = re.compile(r"(?<=\d),(?=\d)")
@@ -43,6 +45,7 @@ _WORD = re.compile(r"[^\W\d_]+")
 
 
 def _normalise(text: str) -> str:
+    text = text.translate(_SCRIPT_DIGITS)
     for glyph, ascii_ in _FRACTIONS.items():
         text = text.replace(glyph, ascii_)
     text = _DECIMAL_COMMA.sub(".", text.replace("⁄", "/"))
@@ -75,6 +78,33 @@ def written_values(text: str) -> List[float]:
         parts = token.split()
         if len(parts) == 2:
             values.extend(_value(p) for p in parts)
+    return values
+
+
+# Source side only (final review I1). An EPUB reader's get_text(separator="\n") splits a typeset
+# fraction ("1<sup>1</sup>&frasl;<sub>2</sub>", "<span>1</span>/<span>2</span>") into "1 1 / 2";
+# the source is also read with a spaced slash between digits closed up.
+_SPACED_SLASH = re.compile(r"(\d)\s*/\s*(\d)")
+# PDF text drops the superscript of "1¹⁄₂", leaving "11/2": a numerator of two or more digits whose
+# last digit over the denominator is a proper fraction is also read as whole + fraction.
+_RUN_TOGETHER = re.compile(r"^(\d+)(\d)/(\d+)$")
+
+
+def _source_values(text: str) -> List[float]:
+    """
+    Every number the source writes, by value: the plain reading of written_values, unioned with a
+    reading whose spaced slashes are closed up, and each run-together "AB/C" also as A + B/C. A
+    union, so "Serves 4 / 6" still states 4 and 6.
+    """
+    normalised = _normalise(text)
+    collapsed = _SPACED_SLASH.sub(r"\1/\2", normalised)
+    values = written_values(normalised)
+    if collapsed != normalised:
+        values += written_values(collapsed)
+    for token in _tokens(normalised) + _tokens(collapsed):
+        run = _RUN_TOGETHER.match(token)
+        if run and 0 < int(run.group(2)) < int(run.group(3)):
+            values.append(float(run.group(1)) + int(run.group(2)) / int(run.group(3)))
     return values
 
 
@@ -112,9 +142,10 @@ def unmatched_numbers(source_text: str, lines: Iterable[str]) -> List[str]:
     A presence check by value, not an alignment: a number the source writes anywhere passes, so a
     converted number that happens to occur elsewhere is missed. It catches rewriting in general;
     the extract prompt's verbatim rule stays the first defence. The source's number words count by
-    value ("HALF AN OUNCE" states 0.5); a line's words are not checked.
+    value ("HALF AN OUNCE" states 0.5); a line's words are not checked. A fraction the source
+    typesets ("1 1 / 2" from an EPUB, "11/2" from a PDF) is also read as the writer meant it.
     """
-    source_values = written_values(source_text) + _word_values(source_text)
+    source_values = _source_values(source_text) + _word_values(source_text)
     source: Set[float] = {round(v, 4) for v in source_values if not math.isnan(v)}
     missing: List[str] = []
     for line in lines:

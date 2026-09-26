@@ -111,3 +111,21 @@ class TestTheDetectedSystem:
     def test_the_host_reaches_the_model_call(self):
         _, fn = _refine(_refinement(_oil()), source_host="cooking.nytimes.com")
         assert fn.call_args.kwargs["source_host"] == "cooking.nytimes.com"
+
+    def test_a_lower_case_system_is_written_canonically(self):
+        # Final review M2.
+        result, _ = _refine(_refinement(_oil(), detected=" imperial ", evidence="1 ounce"))
+        assert result.source_uom_system_detected == "Imperial"
+        result, _ = _refine(_refinement(_oil(), detected="au", evidence="taste.com.au"), source_host="taste.com.au")
+        assert result.source_uom_system_detected == "AU"
+
+    def test_a_dot_boundary_suffix_of_the_host_is_evidence(self):
+        # Final review M3.
+        for quote in (".com.au", "com.au", "taste.com.au", "www.taste.com.au", "TASTE.com.au"):
+            result, _ = _refine(_refinement(_oil(), detected="AU", evidence=quote), source_host="www.taste.com.au")
+            assert result.source_uom_system_detected == "AU", quote
+
+    def test_a_host_substring_off_a_dot_boundary_is_not_evidence(self):
+        for quote in ("aste.com", "aste.com.au", "om.au", "taste", "au."):
+            result, _ = _refine(_refinement(_oil(), detected="AU", evidence=quote), source_host="taste.com.au")
+            assert result.source_uom_system_detected is None, quote

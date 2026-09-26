@@ -105,3 +105,15 @@ def test_a_recipe_only_the_retry_found_is_ignored():
     stray = RecipeExtraction(name="C", ingredients=["2 eggs"], directions=["Mix."])
     result = _run_ab([_A_OK, _B_BAD], [_B_OK, stray])
     assert [r.name for r in result.recipes] == ["A", "B"]
+
+
+def test_a_retry_that_raises_keeps_the_clean_recipes_and_names_the_failed_ones():
+    # A retry that fails outright (an unparseable reply, a rate limit past the call's own retries)
+    # must not cost the first attempt's clean recipes.
+    from recipeparser.exceptions import ExtractionParseError
+
+    with patch(_EXTRACT, side_effect=[RecipeList(recipes=[_A_OK, _B_BAD]), ExtractionParseError("truncated")]) as fn:
+        result = extract(_AB_PAGE, client=MagicMock())
+    assert fn.call_count == 2
+    assert result.recipes == [_A_OK]
+    assert result.rewritten == ["B"]

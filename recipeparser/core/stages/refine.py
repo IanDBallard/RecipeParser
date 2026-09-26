@@ -123,22 +123,43 @@ def _recipe_text(raw: RecipeExtraction) -> str:
     return "\n".join([*parts, *raw.ingredients, *raw.directions])
 
 
+_CANONICAL_SYSTEMS = {s.lower(): s for s in SOURCE_SYSTEMS}
+
+
+def _host_names(quote: str, source_host: str) -> bool:
+    """
+    True when ``quote`` names the given host: the host itself, or a non-empty suffix of it that starts
+    at a dot boundary (".com.au", "com.au"). A leading "www." is ignored on both. Never an arbitrary
+    substring: "aste.com" does not name "taste.com.au".
+    """
+    host = _plain(source_host).removeprefix("www.")
+    quote = quote.removeprefix("www.")
+    bare = quote.lstrip(".")
+    if not bare:
+        return False
+    return host == bare or host.endswith("." + bare)
+
+
 def _check_detection(refinement: CayenneRefinement, raw: RecipeExtraction, source_host: Optional[str]) -> None:
     """
-    D5, in place. The detected system must be one of the five and its evidence must be a quote from
-    the recipe text or the source host as given; otherwise both are written null.
+    D5, in place. The detected system must be one of the five (in any case; written canonically)
+    and its evidence must be a quote from the recipe text or name the source host as given (the host
+    or a dot-boundary suffix of it); otherwise both are written null.
     """
-    system = refinement.source_uom_system_detected
+    detected = refinement.source_uom_system_detected
+    system = _CANONICAL_SYSTEMS.get((detected or "").strip().lower())
     quote = _plain(refinement.source_uom_system_evidence or "")
     supported = (
-        system in SOURCE_SYSTEMS
+        system is not None
         and quote != ""
-        and ((source_host is not None and quote == _plain(source_host)) or quote in _plain(_recipe_text(raw)))
+        and ((source_host is not None and _host_names(quote, source_host)) or quote in _plain(_recipe_text(raw)))
     )
-    if not supported:
-        if system is not None:
+    if supported:
+        refinement.source_uom_system_detected = system
+    else:
+        if detected is not None:
             log.warning("refine(): dropped detected system %r — its evidence %r is not in the recipe or its host.",
-                        system, refinement.source_uom_system_evidence)
+                        detected, refinement.source_uom_system_evidence)
         refinement.source_uom_system_detected = None
         refinement.source_uom_system_evidence = None
 
