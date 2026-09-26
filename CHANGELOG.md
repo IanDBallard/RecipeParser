@@ -5,18 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [9.1.0] — 2026-09-26
 
-### ✨ Changed — a Paprika library of any size imports
+A Paprika library of any size imports, and every picture the ingestor stores is scaled to Cayenne's size (#61). No migration; one new dependency.
+
+### ✨ Changed — a Paprika library of any size imports (#61)
 - `POST /jobs/file` no longer refuses a `.paprikarecipes` export over 50 MB. The ceiling (`config.MAX_UPLOAD_BYTES`) was sized for one item — a photo, a book, a scan — and a whole Paprika library with its photos runs to hundreds of megabytes. PDFs, EPUBs, photos and recipe pictures keep it. Cayenne's intake drops its matching pre-upload refusal for Paprika in the same change.
 - The upload is streamed to its temporary file in 1 MB pieces rather than read into memory, so the job no longer holds the whole body for its lifetime.
 - `PaprikaReader.read()` walks the archive one entry at a time (`iter_entries`); each entry's JSON and base64 photo are released once its chunk is built. `read_entries()` keeps its list form for the scripts.
 - Each entry is bounded instead of the archive: one that decompresses past 50 MB (`_MAX_ENTRY_BYTES`, photo included) is skipped with a warning, and neither its zip nor its gzip layer is ever inflated past that, so a malformed archive cannot expand without bound.
 
-### ✨ Changed — every stored picture at Cayenne's size
+### ✨ Changed — every stored picture at Cayenne's size (#61)
 - `SupabaseImageStore.put()` scales a picture before storing it, to Cayenne's own rule (`io/writers/picture_scale.py`): at most 1600 px on its long edge, upright by its EXIF orientation, flattened onto white and re-encoded as a JPEG at quality 85. A picture already under 1 MB and inside the edge, an animated GIF, and anything Pillow cannot decode are stored as they came. It covers every picture the ingestor keeps: a Paprika library's embedded photos, a photo imported as a recipe, a page's hero image, and a cook's own picture (which Cayenne's editor has already scaled, so it passes through unchanged).
 - `POST /recipes/{id}/image` keeps the object `put()` actually wrote when it removes the recipe's older pictures, read from the URL: a large PNG is now stored as a .jpg, and keeping the .png the upload named would have deleted it.
 - **New dependency:** `Pillow>=11.0`.
+
+### 🧪 Testing
+- 1272 passed at this version (1259 at 9.0.0).
 
 ---
 
