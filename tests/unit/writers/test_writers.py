@@ -432,6 +432,27 @@ def test_image_store_maps_a_non_jpeg_content_type_to_its_extension():
     assert result == "https://fake.supabase.co/storage/v1/object/public/recipe-images/some-id.png"
 
 
+def test_image_store_stores_a_large_picture_scaled_as_a_jpeg():
+    """Every picture goes through put(), so it is where a Paprika photo, an imported photo and a
+    page's hero image are all brought to Cayenne's 1600 px edge; a re-encoded PNG is a .jpg."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (4032, 3024), (1, 2, 3)).save(buf, "PNG")
+    mock_client = MagicMock()
+    mock_client.storage.from_.return_value.get_public_url.return_value = "https://x/some-id.jpg"
+
+    with patch("supabase.create_client", return_value=mock_client):
+        SupabaseImageStore(url="https://fake.supabase.co", service_key="k").put(buf.getvalue(), "some-id", "image/png")
+
+    upload_call = mock_client.storage.from_.return_value.upload.call_args
+    assert upload_call.args[0] == "some-id.jpg"
+    assert upload_call.args[2] == {"content-type": "image/jpeg", "upsert": "true"}
+    assert Image.open(io.BytesIO(upload_call.args[1])).size == (1600, 1200)
+
+
 # ---------------------------------------------------------------------------
 # Test 7 — Unquantified ingredient (Task 9)
 # ---------------------------------------------------------------------------

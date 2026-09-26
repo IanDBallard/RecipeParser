@@ -124,7 +124,9 @@ PDF_OCR_MAX_PAGES: int = 40
 # sits in Cayenne's domain/ingestion.ts (MAX_UPLOAD_BYTES), where the intake refuses a file before
 # the upload with the same sentence; change one, change both. Fifty megabytes is a phone photo
 # (3–8), a cookbook EPUB with images (2–20) or a multi-page scan (10–20) with room, and the OCR
-# cap above already bounds what a scan can cost.
+# cap above already bounds what a scan can cost. A .paprikarecipes export is exempt: it is a
+# whole library with its photos (a 250 MB one is real), and its reader bounds each entry instead
+# (io/readers/paprika.py, _MAX_ENTRY_BYTES).
 MAX_UPLOAD_BYTES: int = 50_000_000
 
 # ---------------------------------------------------------------------------

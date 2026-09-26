@@ -30,8 +30,9 @@ import gzip
 import json
 import logging
 import zipfile
+import zlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 from recipeparser.core.citation import classify_source, web_citation
 from recipeparser.core.models import Chunk, InputType, SourceMeta
@@ -39,6 +40,33 @@ from recipeparser.exceptions import PaprikaExtractionError
 from recipeparser.io.readers import RecipeReader
 
 log = logging.getLogger(__name__)
+
+# The most one entry may decompress to: its recipe JSON, embedded photo (base64) included. A
+# library export has no size ceiling (it is a whole collection, not one item), so each entry is
+# bounded instead; a 12-megapixel photo is about 7 MB of base64. An entry over it is skipped.
+_MAX_ENTRY_BYTES = 50_000_000
+
+_GZIP_MAGIC = bytes((0x1F, 0x8B))
+
+
+def _read_capped(zf: zipfile.ZipFile, name: str) -> Optional[bytes]:
+    """One entry's bytes, gunzipped when gzip, or None when it exceeds _MAX_ENTRY_BYTES.
+
+    Neither the zip member nor its gzip layer is ever inflated past the cap, so a malformed or
+    hostile archive cannot expand without bound.
+    """
+    with zf.open(name) as member:
+        stored = member.read(_MAX_ENTRY_BYTES + 1)
+    if len(stored) > _MAX_ENTRY_BYTES:
+        return None
+    if not stored.startswith(_GZIP_MAGIC):
+        return stored  # some exporters write the JSON uncompressed
+    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    raw = inflater.decompress(stored, _MAX_ENTRY_BYTES + 1)
+    if len(raw) > _MAX_ENTRY_BYTES or inflater.unconsumed_tail:
+        return None
+    return raw
+
 
 _PHOTO_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 
@@ -99,12 +127,11 @@ class PaprikaReader(RecipeReader):
         Returns:
             A list of Chunk objects, one per recipe entry.
         """
-        entries = self.read_entries(source)
-        if not entries:
-            raise PaprikaExtractionError("contains no recipes.")
         chunks: List[Chunk] = []
 
-        for entry in entries:
+        # One entry at a time: each entry's JSON (and its base64 photo) is released once its
+        # chunk is built, so a library of any size is never decoded all at once.
+        for entry in self.iter_entries(source):
             meta = entry.get("_cayenne_meta")
             pre_parsed = None
             embedding: Optional[List[float]] = None
@@ -205,6 +232,8 @@ class PaprikaReader(RecipeReader):
                     )
                 )
 
+        if not chunks:
+            raise PaprikaExtractionError("contains no recipes.")
         log.info(
             "PaprikaReader.read: produced %d chunks from %s", len(chunks), source
         )
@@ -212,8 +241,14 @@ class PaprikaReader(RecipeReader):
 
 
     def read_entries(self, path: Union[str, Path]) -> List[Dict[str, Any]]:
+        """Every recipe entry of a .paprikarecipes archive, as a list (see ``iter_entries``)."""
+        entries = list(self.iter_entries(path))
+        log.info("PaprikaReader: parsed %d entries from %s", len(entries), Path(path).name)
+        return entries
+
+    def iter_entries(self, path: Union[str, Path]) -> Iterator[Dict[str, Any]]:
         """
-        Parse a .paprikarecipes archive and return all recipe entries.
+        Parse a .paprikarecipes archive and yield its recipe entries one at a time.
 
         Args:
             path: File-system path to the .paprikarecipes ZIP archive.
@@ -232,8 +267,6 @@ class PaprikaReader(RecipeReader):
         if not zipfile.is_zipfile(path):
             raise PaprikaExtractionError("is not a Paprika export: not a ZIP archive.")
 
-        entries: List[Dict[str, Any]] = []
-
         with zipfile.ZipFile(path, "r") as zf:
             for name in zf.namelist():
                 if not name.lower().endswith(".paprikarecipe"):
@@ -241,19 +274,15 @@ class PaprikaReader(RecipeReader):
                     continue
 
                 try:
-                    compressed = zf.read(name)
-                    raw_json = gzip.decompress(compressed)
-                    entry: Dict[str, Any] = json.loads(raw_json)
-                except gzip.BadGzipFile:
-                    # Some exporters write uncompressed JSON directly
-                    try:
-                        entry = json.loads(compressed)
-                    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    raw_json = _read_capped(zf, name)
+                    if raw_json is None:
                         log.warning(
-                            "Skipping entry %r — not valid gzip or JSON: %s", name, exc
+                            "Skipping entry %r — larger than %d MB decompressed.",
+                            name, _MAX_ENTRY_BYTES // 1_000_000,
                         )
                         continue
-                except json.JSONDecodeError as exc:
+                    entry: Dict[str, Any] = json.loads(raw_json)
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                     log.warning("Skipping entry %r — JSON decode error: %s", name, exc)
                     continue
                 except Exception as exc:
@@ -276,18 +305,13 @@ class PaprikaReader(RecipeReader):
                         # to Flow A (full pipeline) rather than failing silently.
                         del entry["_cayenne_meta"]
 
-                entries.append(entry)
                 log.debug(
                     "Parsed entry %r: name=%r cayenne=%s",
                     name,
                     entry.get("name"),
                     "_cayenne_meta" in entry,
                 )
-
-        log.info(
-            "PaprikaReader: parsed %d entries from %s", len(entries), path.name
-        )
-        return entries
+                yield entry
 
     def read_entries_with_images(self, path: Union[str, Path]) -> List[Dict[str, Any]]:
         """

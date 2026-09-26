@@ -594,6 +594,42 @@ def test_paprika_reader_refuses_an_archive_with_no_recipes(tmp_path: Path) -> No
     assert str(excinfo.value) == "contains no recipes."
 
 
+# A Paprika library has no size ceiling, so each entry is bounded instead: an entry that
+# decompresses past the cap is skipped and its neighbours are kept.
+def test_an_entry_over_the_cap_is_skipped_and_its_neighbours_kept() -> None:
+    small = {"name": "Toast", "ingredients": "bread", "directions": "toast it"}
+    huge = {"name": "Huge", "ingredients": "x", "directions": "y", "notes": "z" * 5000}
+    path = _make_paprikarecipes([small, huge, dict(small, name="Jam")])
+    try:
+        with patch("recipeparser.io.readers.paprika._MAX_ENTRY_BYTES", 1000):
+            chunks = PaprikaReader().read(path)
+    finally:
+        os.unlink(path)
+    assert [c.label for c in chunks] == ["Toast", "Jam"]
+
+
+def test_an_uncompressed_entry_over_the_cap_is_skipped(tmp_path: Path) -> None:
+    path = tmp_path / "recipes.paprikarecipes"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("big.paprikarecipe", json.dumps({"name": "Big", "notes": "z" * 5000}))
+        zf.writestr("ok.paprikarecipe", json.dumps({"name": "Ok", "ingredients": "a", "directions": "b"}))
+    with patch("recipeparser.io.readers.paprika._MAX_ENTRY_BYTES", 1000):
+        chunks = PaprikaReader().read(str(path))
+    assert [c.label for c in chunks] == ["Ok"]
+
+
+def test_read_takes_one_entry_at_a_time_rather_than_listing_them_all() -> None:
+    """read() walks the archive entry by entry, so a library's decoded JSON is never all in
+    memory at once; read_entries() (the scripts' list form) is not on its path."""
+    path = _make_paprikarecipes([{"name": "Toast", "ingredients": "bread", "directions": "toast it"}])
+    try:
+        with patch.object(PaprikaReader, "read_entries", side_effect=AssertionError("read() listed every entry")):
+            chunks = PaprikaReader().read(path)
+    finally:
+        os.unlink(path)
+    assert [c.label for c in chunks] == ["Toast"]
+
+
 def test_url_reader_turns_an_http_error_into_one_sentence() -> None:
     import requests
 

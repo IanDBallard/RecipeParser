@@ -506,6 +506,41 @@ class TestPostJobsFile:
             resp = self._upload(client, "recipe.pdf", b"%PDF-1.4" + b"\x00" * 8, "application/pdf")
         assert resp.status_code == 202
 
+    def test_a_paprika_export_over_the_ceiling_is_accepted(self, client: TestClient) -> None:
+        """A whole Paprika library with its photos runs to hundreds of megabytes; the ceiling
+        is for single items (a photo, a book, a scan) and does not apply to it."""
+        with _patch_pipeline_and_writer()[0], \
+             patch("recipeparser.adapters.api._PaprikaReader") as mock_reader_cls, \
+             patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            mock_reader_cls.return_value.read.return_value = [MagicMock(text="Pasta")]
+            resp = self._upload(client, "library.paprikarecipes", b"PK\x03\x04" + b"\x00" * 40, "application/octet-stream")
+        assert resp.status_code == 202
+
+    def test_the_reader_is_handed_the_upload_byte_for_byte(self) -> None:
+        """The upload is streamed to the temporary file the reader opens, not held in memory."""
+        body = b"PK\x03\x04" + bytes(range(256)) * 64
+        seen: list = []
+
+        def _read(path: str):
+            with open(path, "rb") as fh:
+                seen.append(fh.read())
+            return [MagicMock(text="Pasta")]
+
+        stack, _mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
+        with stack, patch("recipeparser.adapters.api._PaprikaReader") as mock_reader_cls, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            mock_reader_cls.return_value.read.side_effect = _read
+            resp = tc.post(
+                "/jobs/file",
+                files={"file": ("library.paprikarecipes", io.BytesIO(body), "application/octet-stream")},
+            )
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+        assert seen == [body]
+
     def test_paprikarecipes_flow_b_writes_pre_parsed_directly(self) -> None:
         """PAPRIKA_CAYENNE chunks (text="" + pre_parsed_embedding) must be routed
         through RecipePipeline which handles them via the cheap ASSEMBLE-only path
@@ -1130,10 +1165,18 @@ class TestRecipeImage:
     def test_the_old_picture_under_another_extension_is_removed(self, client: TestClient) -> None:
         sb = _service_client()
         with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
-            store_cls.return_value.put.return_value = "https://x/r.png"
-            store_cls.path_for.return_value = f"{_RECIPE_ID}.png"
+            store_cls.return_value.put.return_value = f"https://x/recipe-images/{_RECIPE_ID}.png"
             self._post(client, "dinner.png", b"\x89PNG", "image/png")
         store_cls.return_value.remove.assert_called_once_with(_RECIPE_ID, f"{_RECIPE_ID}.png")
+
+    def test_the_picture_kept_is_the_one_put_wrote_even_when_it_was_re_encoded(self, client: TestClient) -> None:
+        # put() scales a large PNG to a JPEG, so the object it wrote is .jpg; keeping the .png the
+        # upload named would delete the picture that was just stored.
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = f"https://x/recipe-images/{_RECIPE_ID}.jpg"
+            self._post(client, "dinner.png", b"\x89PNG", "image/png")
+        store_cls.return_value.remove.assert_called_once_with(_RECIPE_ID, f"{_RECIPE_ID}.jpg")
 
     def test_webp_and_gif_are_pictures_even_though_the_reader_refuses_them(self, client: TestClient) -> None:
         for filename, content_type in (("dinner.webp", "image/webp"), ("dinner.gif", "image/gif")):

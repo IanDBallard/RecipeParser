@@ -10,6 +10,7 @@ import os
 from typing import Optional
 
 from recipeparser.core.ports import ImageStore
+from recipeparser.io.writers.picture_scale import scale_picture
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ class SupabaseImageStore(ImageStore):
         if not self._url or not self._key:
             log.warning("SupabaseImageStore: credentials not set — cannot store the image for %s.", recipe_id)
             return None
+        # Every stored picture passes here, so here is where it is brought to Cayenne's size. A
+        # re-encoded picture is a JPEG, so its key is .jpg whatever the caller sent.
+        image_bytes, content_type = scale_picture(image_bytes, content_type)
         ext = _EXTENSIONS.get(content_type.lower(), "jpg")
         # from_(BUCKET) already scopes the upload to the bucket, so the key must
         # not repeat it -- doing so is what stored one object under the literal

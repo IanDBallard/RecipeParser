@@ -30,6 +30,7 @@ import asyncio
 import ipaddress
 import os
 import re
+import shutil
 import tempfile
 import time
 import datetime
@@ -830,6 +831,9 @@ _WEBP_EXTENSIONS = (".webp",)
 _WEBP_CONTENT_TYPES = ("image/webp",)
 # When a photo arrives with no extension, the temp file the reader opens needs
 # one PyMuPDF recognises; the content type is the only clue left.
+# An upload is copied to its temporary file this many bytes at a time.
+_COPY_CHUNK_BYTES = 1024 * 1024
+
 _IMAGE_SUFFIX_BY_TYPE = {
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
@@ -1085,20 +1089,23 @@ async def submit_file_job(
             detail=str(exc),
         ) from exc
 
+    # The upload goes to a temporary file in 1 MB pieces (readers take a path), so a large
+    # Paprika library is never held in memory. Starlette has already spooled the body to disk.
+    suffix = Path(filename).suffix or _IMAGE_SUFFIX_BY_TYPE.get(content_type, ".bin")
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        await asyncio.to_thread(shutil.copyfileobj, file.file, tmp, _COPY_CHUNK_BYTES)
+        tmp_path = tmp.name
+        size = tmp.tell()
+
     # The ceiling (config.MAX_UPLOAD_BYTES), after the type check so a small .docx is still a 422.
-    # Starlette's multipart parser sets `size`; when it did not, the body's length is the size.
-    size = file.size
-    file_bytes: Optional[bytes] = None
-    if size is None:
-        file_bytes = await file.read()
-        size = len(file_bytes)
-    if size > MAX_UPLOAD_BYTES:
+    # A Paprika export is exempt: it is a whole library with its photos, not a single item, and
+    # its reader takes one entry at a time.
+    if reader_tag != "paprika" and size > MAX_UPLOAD_BYTES:
+        os.unlink(tmp_path)
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=_too_large_sentence(size),
         )
-    if file_bytes is None:
-        file_bytes = await file.read()
     user_id: str = user.get("sub", "")
     job_id = str(uuid.uuid4())
     controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
@@ -1110,15 +1117,8 @@ async def submit_file_job(
         # Calling it here first would cause an invalid double-transition.
         sink = None
         try:
-            client = _get_client()
-
-            # Write bytes to a temp file (readers expect a filesystem path)
-            suffix = Path(filename).suffix or _IMAGE_SUFFIX_BY_TYPE.get(content_type, ".bin")
-            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                tmp.write(file_bytes)
-                tmp_path = tmp.name
-
             try:
+                client = _get_client()
                 # Use the appropriate reader to produce List[Chunk].
                 # The pipeline's stage router (_get_stages) inspects each
                 # chunk's input_type and routes accordingly:
@@ -1599,8 +1599,11 @@ async def set_recipe_image(
             detail="Could not store the picture.",
         )
     # A JPEG replaced by a PNG is a second object under a second key; the old one
-    # is now unreachable and would be paid for for ever.
-    await asyncio.to_thread(store.remove, recipe_id, SupabaseImageStore.path_for(recipe_id, content_type))
+    # is now unreachable and would be paid for for ever. The key kept is the one put()
+    # wrote, read from its URL: put() scales a large picture to a JPEG, so the type the
+    # upload named is not always the object's.
+    written = public_url.split("?", 1)[0].rsplit("/", 1)[-1]
+    await asyncio.to_thread(store.remove, recipe_id, written)
 
     image_url = _versioned(public_url, int(time.time()))
     await _write_image_url(sb, recipe_id, user_id, image_url)
