@@ -124,3 +124,14 @@ def test_structured_ingredient_carries_an_optional_state():
     assert StructuredIngredient(id="ing_02", name="flour", fallback_string="2 cups flour").state is None
     with pytest.raises(ValueError):
         StructuredIngredient(id="ing_03", name="x", fallback_string="x", state="wet")
+
+
+def test_refine_prompt_sizes_the_imperial_measures_and_names_their_evidence():
+    """Imperial measures D5: REFINE's conversions use Cayenne's sizes, and the pre-metric British
+    measures are evidence of Imperial, the dessertspoon excepted."""
+    raw = RecipeExtraction(name="Syllabub", ingredients=["1 gill cream"], directions=["Whip."])
+    prompt = build_refine_prompt(raw, None)
+    assert "gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight)" in prompt
+    assert '"breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial' in prompt
+    assert '"dessertspoon" alone is not evidence' in prompt
+    assert prompt.index("SOURCE SYSTEM:") < prompt.index("RAW RECIPE:")

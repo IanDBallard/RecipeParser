@@ -130,6 +130,7 @@
        "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
        states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
        "a pinch").
+       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
      - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
      - amount: the numeric quantity. Use null - never 0 - when the source states no
        amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
@@ -156,6 +157,7 @@
          * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
            is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
            pint is Imperial;
+         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
          * a statement about the measures ("Australian standard measures", "US cup measures");
          * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
            Metric's);
@@ -209,6 +211,7 @@
        "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
        states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
        "a pinch").
+       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
      - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
      - amount: the numeric quantity. Use null - never 0 - when the source states no
        amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
@@ -235,6 +238,7 @@
          * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
            is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
            pint is Imperial;
+         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
          * a statement about the measures ("Australian standard measures", "US cup measures");
          * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
            Metric's);
@@ -288,6 +292,7 @@
        "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
        states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
        "a pinch").
+       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
      - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
      - amount: the numeric quantity. Use null - never 0 - when the source states no
        amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
@@ -314,6 +319,7 @@
          * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
            is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
            pint is Imperial;
+         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
          * a statement about the measures ("Australian standard measures", "US cup measures");
          * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
            Metric's);
