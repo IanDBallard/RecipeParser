@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### ✨ Changed — a Paprika library of any size imports
+- `POST /jobs/file` no longer refuses a `.paprikarecipes` export over 50 MB. The ceiling (`config.MAX_UPLOAD_BYTES`) was sized for one item — a photo, a book, a scan — and a whole Paprika library with its photos runs to hundreds of megabytes. PDFs, EPUBs, photos and recipe pictures keep it. Cayenne's intake drops its matching pre-upload refusal for Paprika in the same change.
+- The upload is streamed to its temporary file in 1 MB pieces rather than read into memory, so the job no longer holds the whole body for its lifetime.
+- `PaprikaReader.read()` walks the archive one entry at a time (`iter_entries`); each entry's JSON and base64 photo are released once its chunk is built. `read_entries()` keeps its list form for the scripts.
+- Each entry is bounded instead of the archive: one that decompresses past 50 MB (`_MAX_ENTRY_BYTES`, photo included) is skipped with a warning, and neither its zip nor its gzip layer is ever inflated past that, so a malformed archive cannot expand without bound.
+
+---
+
 ## [9.0.0] — 2026-09-26
 
 Verbatim ingestion, the Add Recipe intake and its bulk fix, the recategorise endpoint, a cook's own picture, and readers that refuse what they cannot read by name: 45 commits over pull requests #41–#59 since v8.0.0.
