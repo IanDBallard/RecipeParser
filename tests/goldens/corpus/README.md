@@ -17,6 +17,7 @@ so a reviewer can see how each was made.
 | `saved-page.html` | Hand-rebuilt recipe page. No real site, no attribution. | Written from scratch: nav, article, ingredients, directions, footer; an `og:image` hero in the head and a site logo in the footer. | `UrlReader` with `requests.get` patched; `utils.html_to_text`; hero-image choice over a logo |
 | `legacy-photo.paprikarecipes` | Hand-authored recipe text plus a 1x1 JPEG. No author, no book name, no borrowed licence — not derived from the Gutenberg book above. | One entry, no `_cayenne_meta`. | Paprika legacy reader with `photo_data`, which PR #13 touches |
 | `au-measures.paprikarecipes` | Hand-authored recipe text ("Lamington Slice"). No author, no book name, no borrowed licence. | One legacy entry, no `_cayenne_meta`, no photo, no source URL. | Refine detecting `AU` from the recipe's own evidence: "1 tbsp (20 ml)" is the Australian tablespoon, and every volume line carries a second (ml) measure |
+| `imperial-measures.paprikarecipes` | Hand-authored recipe text ("Imperial Measures"). No author, no book name, no borrowed licence. | One legacy entry, no `_cayenne_meta`, no photo, no source URL; the note "(1 pint = 20 fl oz)". | Verbatim storage of the older British measures (gill, dessertspoon, teacup, breakfast cup, stone, dram) and refine detecting `Imperial` from the recipe's own evidence |
 
 ## Regenerating expected output
 

@@ -20,6 +20,7 @@ CORPUS_FIXTURES: tuple[str, ...] = (
     "saved-page.html",
     "legacy-photo.paprikarecipes",
     "au-measures.paprikarecipes",
+    "imperial-measures.paprikarecipes",
 )
 
 

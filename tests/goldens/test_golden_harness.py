@@ -26,9 +26,9 @@ def test_corpus_path_joins_onto_the_corpus_dir():
     assert paths.corpus_path("dual-units.epub") == paths.CORPUS_DIR / "dual-units.epub"
 
 
-def test_eight_fixtures_are_declared():
-    assert len(paths.CORPUS_FIXTURES) == 8
-    assert len(set(paths.CORPUS_FIXTURES)) == 8
+def test_nine_fixtures_are_declared():
+    assert len(paths.CORPUS_FIXTURES) == 9
+    assert len(set(paths.CORPUS_FIXTURES)) == 9
 
 
 def test_fixed_axes_are_the_two_axes_the_spec_names():
@@ -94,6 +94,30 @@ def test_every_fixture_that_calls_gemini_has_recordings():
         "gutenberg-multi.epub", "dual-units.epub", "phases-bakers.epub",
         "text-pages.pdf", "scanned.pdf", "legacy-photo.paprikarecipes",
         "au-measures.paprikarecipes",
+        "imperial-measures.paprikarecipes",
     }
     present = {d.name for d in paths.GEMINI_DIR.iterdir() if d.is_dir()}
     assert expected <= present, f"no recordings for {sorted(expected - present)}"
+
+
+def test_the_cayenne_unit_reader_parses_a_registry_excerpt(tmp_path):
+    from tests.goldens.cayenne_units import known_unit_words, normalise
+    ts = tmp_path / "units.ts"
+    ts.write_text(
+        "const UNITS = [\n\t{ id: 'gill', dimension: 'volume' },\n\t{ id: 'fl oz', dimension: 'volume' }\n];\n"
+        "const ALIASES: Record<string, string> = {\n\tgills: 'gill', 'fluid ounce': 'fl oz', st: 'stone'\n};\n",
+        encoding="utf-8",
+    )
+    assert known_unit_words(ts) == {"gill", "fl oz", "gills", "fluid ounce", "st"}
+    assert normalise("  Fl.  Dr. ") == "fl. dr"
+
+
+def test_the_cayenne_unit_reader_knows_the_imperial_measures_in_the_real_registry():
+    """Against Cayenne's units.ts itself, when a checkout is reachable."""
+    import pytest
+    from tests.goldens.cayenne_units import known_unit_words, units_ts
+    path = units_ts()
+    if path is None:
+        pytest.skip("no Cayenne units.ts (set CAYENNE_UNITS_TS)")
+    known = known_unit_words(path)
+    assert {"gill", "teacupful", "dsp", "breakfast cup", "stone", "drams", "fluid dram", "cups", "lbs"} <= known

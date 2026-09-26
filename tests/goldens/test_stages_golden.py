@@ -30,6 +30,7 @@ STAGE_FIXTURES = (
     "text-pages.pdf",
     "legacy-photo.paprikarecipes",
     "au-measures.paprikarecipes",
+    "imperial-measures.paprikarecipes",
 )
 
 
@@ -267,3 +268,41 @@ def test_an_australian_recipe_is_detected_as_au_on_its_own_evidence(golden_clien
     assert refined.source_uom_system_detected == "AU"
     assert refined.source_uom_system_evidence
     assert refined.source_uom_system_evidence in chunks[0].text
+
+
+def test_an_imperial_recipe_is_stored_as_written_and_detected_as_imperial(golden_client, monkeypatch):
+    """imperial-measures (imperial measures spec, Testing): every line verbatim, Imperial detected
+    from the recipe's own words, conversions in g or ml, and every unit word one Cayenne parses."""
+    from tests.goldens.cayenne_units import known_unit_words, normalise, units_ts
+
+    fixture = "imperial-measures.paprikarecipes"
+    client = golden_client(fixture)
+    chunks = _chunks_for(fixture, monkeypatch)
+    assert len(chunks) == 1
+
+    raws = extract(
+        chunk_text=chunks[0].text,
+        client=client,
+        plain_text_mode=chunks[0].input_type == InputType.PAPRIKA_LEGACY,
+    ).recipes
+    assert [raw.name for raw in raws] == ["Imperial Measures"]
+    assert raws[0].ingredients == [
+        "1/2 pint milk", "1 lb plain flour", "2 oz butter", "1 fl oz brandy", "1 gill cream",
+        "1 dessertspoon caster sugar", "1 teacup stock", "1 breakfast cup breadcrumbs",
+        "1 stone potatoes", "2 drams saffron",
+    ]
+
+    refined = refine(raw=raws[0], client=client, user_axes=FIXED_AXES)
+
+    assert refined.source_uom_system_detected == "Imperial"
+    assert refined.source_uom_system_evidence
+    assert refined.source_uom_system_evidence in chunks[0].text
+    for ing in refined.structured_ingredients:
+        if ing.is_ai_converted:
+            assert ing.converted_unit in ("g", "ml"), ing
+    # Review Focus 5: an unknown unit word would be shown verbatim in Cayenne and never converted.
+    path = units_ts()
+    if path is not None:
+        known = known_unit_words(path)
+        unknown = [ing.unit for ing in refined.structured_ingredients if ing.unit and normalise(ing.unit) not in known]
+        assert unknown == [], f"REFINE wrote unit words Cayenne does not parse: {unknown}"

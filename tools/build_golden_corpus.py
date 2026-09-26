@@ -5,6 +5,8 @@ how each fixture was made and rebuild it if a dependency changes.
 
 Usage:
     python tools/build_golden_corpus.py --all          # needs network once, for Gutenberg
+    python -c "import sys; sys.path.insert(0, '.'); from tools.build_golden_corpus import build_imperial_measures; build_imperial_measures()"
+                                                       # one fixture, no network (any build_* works this way)
 """
 from __future__ import annotations
 
@@ -326,6 +328,42 @@ def build_au_measures() -> None:
             gzip.compress(json.dumps(AU_MEASURES_ENTRY, ensure_ascii=False).encode("utf-8")),
         )
 
+#: A pre-metric British recipe (imperial measures spec, 2026-09-26): the common imperial measures
+#: beside the older ones Cayenne reads but never writes, and a note that names the imperial pint.
+IMPERIAL_MEASURES_ENTRY = {
+    "name": "Imperial Measures",
+    "ingredients": "\n".join([
+        "1/2 pint milk",
+        "1 lb plain flour",
+        "2 oz butter",
+        "1 fl oz brandy",
+        "1 gill cream",
+        "1 dessertspoon caster sugar",
+        "1 teacup stock",
+        "1 breakfast cup breadcrumbs",
+        "1 stone potatoes",
+        "2 drams saffron",
+    ]),
+    "directions": "Mix well and bake in a moderate oven for an hour.",
+    "servings": "",
+    "prep_time": "",
+    "cook_time": "",
+    "notes": "(1 pint = 20 fl oz)",
+    "categories": [],
+    "source": "",
+    "source_url": "",
+}
+
+
+def build_imperial_measures() -> None:
+    """One legacy Paprika entry (no _cayenne_meta, no photo): a pre-metric British recipe."""
+    out = CORPUS / "imperial-measures.paprikarecipes"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "Imperial Measures.paprikarecipe",
+            gzip.compress(json.dumps(IMPERIAL_MEASURES_ENTRY, ensure_ascii=False).encode("utf-8")),
+        )
+
 
 def build_text_pages(pages: list[str]) -> None:
     """A four-page PDF with a real text layer and one embedded image."""
@@ -519,6 +557,7 @@ def main() -> int:
         "Cool, then stir in the vanilla."
     )
     build_au_measures()
+    build_imperial_measures()
     pages_file.unlink()
 
     total = sum(p.stat().st_size for p in CORPUS.iterdir())
