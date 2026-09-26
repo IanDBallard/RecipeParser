@@ -28,7 +28,7 @@ class RecipeExtraction(BaseModel):
         default=None, description="Cook time (e.g., '30 mins')."
     )
     ingredients: List[str] = Field(
-        description="List of ingredients. Convert unicode fractions to text fractions (e.g. ½ -> 1/2)."
+        description="List of ingredients, each copied exactly as the source writes it. Convert unicode fractions to text fractions (e.g. ½ -> 1/2)."
     )
     directions: List[str] = Field(
         description="List of step-by-step cooking instructions."

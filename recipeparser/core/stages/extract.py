@@ -1,15 +1,17 @@
 """
 recipeparser/core/stages/extract.py — EXTRACT stage.
 
-Wraps gemini.extract_recipes() / gemini.extract_recipe_from_text() into a
-single clean interface.  Returns a list of RecipeExtraction objects; returns
-[] for chunks that contain no recipes (not an error).
+Wraps gemini.extract_recipes() / gemini.extract_recipe_from_text() and holds the model to the
+verbatim rule (verbatim-ingestion D1, D2): every number an ingredient line writes must be one the
+source writes. A chunk whose extraction breaks that is extracted once more; a recipe that breaks it
+again is dropped and named, and the rest of the chunk is kept.
 
 No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 import logging
-from typing import Any, List
+from typing import Any, List, NamedTuple
 
+from recipeparser.core.numbers import unmatched_numbers
 from recipeparser.gemini import (
     extract_recipe_from_text,
     extract_recipes,
@@ -21,29 +23,38 @@ from recipeparser.models import RecipeExtraction
 log = logging.getLogger(__name__)
 
 
+class Extraction(NamedTuple):
+    """The recipes EXTRACT kept, and the titles of those it dropped as rewritten (D2)."""
+
+    recipes: List[RecipeExtraction]
+    rewritten: List[str]
+
+
+def _run(chunk_text: str, client: Any, plain_text_mode: bool) -> List[RecipeExtraction]:
+    result = extract_recipe_from_text(chunk_text, client) if plain_text_mode else extract_recipes(chunk_text, client)
+    return result.recipes if result.recipes else []
+
+
 def extract(
     chunk_text: str,
     client: Any,
     *,
-    units: str = "book",
     plain_text_mode: bool = False,
-) -> List[RecipeExtraction]:
+) -> Extraction:
     """
-    Extract all recipes from a single text chunk.
+    Extract all recipes from a single text chunk, verbatim.
 
     Args:
         chunk_text:      The raw text to process.  Must be non-empty.
         client:          An initialised ``google.genai.Client`` instance.
-        units:           UOM preference passed to ``extract_recipes``.
-                         One of "book" | "metric" | "us" | "imperial".
-                         Ignored when ``plain_text_mode`` is True.
         plain_text_mode: When True, uses the simpler ``extract_recipe_from_text``
                          prompt (suited for pasted/Paprika text rather than
                          EPUB/PDF book chunks).
 
     Returns:
-        A list of ``RecipeExtraction`` objects.  Returns ``[]`` when the chunk
-        contains no recognisable recipes — this is NOT an error condition.
+        An ``Extraction``.  ``recipes`` is empty when the chunk contains no
+        recognisable recipe — NOT an error.  ``rewritten`` names each recipe
+        dropped because its ingredient lines write a number the source never does.
 
     Raises:
         ValueError: If ``chunk_text`` is empty or whitespace-only.
@@ -54,16 +65,31 @@ def extract(
     if not chunk_text or not chunk_text.strip():
         raise ValueError("extract(): chunk_text must be non-empty.")
 
+    source_text = chunk_text
     # Baker's-percentage table pre-processing (book chunks only)
     if not plain_text_mode and needs_table_normalisation(chunk_text):
         log.info("extract(): baker's-percentage table detected — normalising.")
         chunk_text = normalise_baker_table(chunk_text, client)
+        # The table prompt re-lays a table out and is told to add no value, so a number it wrote
+        # counts as the writer's: the source is both texts.
+        source_text = f"{source_text}\n{chunk_text}"
 
-    if plain_text_mode:
-        result = extract_recipe_from_text(chunk_text, client)
-    else:
-        result = extract_recipes(chunk_text, client, units=units)
+    recipes = _run(chunk_text, client, plain_text_mode)
+    if any(unmatched_numbers(source_text, r.ingredients) for r in recipes):
+        log.warning("extract(): ingredient lines did not match the source — extracting once more.")
+        recipes = _run(chunk_text, client, plain_text_mode)
 
-    recipes: List[RecipeExtraction] = result.recipes if result.recipes else []
-    log.info("extract(): found %d recipe(s) in chunk.", len(recipes))
-    return recipes
+    kept: List[RecipeExtraction] = []
+    rewritten: List[str] = []
+    for recipe in recipes:
+        missing = unmatched_numbers(source_text, recipe.ingredients)
+        if missing:
+            log.warning(
+                "extract(): dropped %r — its ingredient lines write %s, which the source never does.",
+                recipe.name, ", ".join(missing),
+            )
+            rewritten.append(recipe.name)
+        else:
+            kept.append(recipe)
+    log.info("extract(): kept %d recipe(s), dropped %d as rewritten.", len(kept), len(rewritten))
+    return Extraction(kept, rewritten)

@@ -20,7 +20,7 @@
   
   '''
 # ---
-# name: TestPromptSnapshots.test_extract_prompt[book][extract-book]
+# name: TestPromptSnapshots.test_extract_prompt[extract]
   '''
   
   You are a culinary data extractor. Review the following text from an EPUB recipe book.
@@ -40,7 +40,9 @@
     If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
     mid-method (e.g. appears after "Step 2" or "Step 3" text).
     If no hero image is identifiable, leave photo_filename null.
-  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+  - Copy every ingredient line exactly as the text writes it: the same numbers, the same units,
+    every measure the line gives, in the same order. Never convert, round, drop or add a measure.
+    The one change allowed: write unicode fractions (½, ¼, ¾, etc.) as plain text (1/2, 1/4, 3/4, etc.).
   - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
     "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
     Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
@@ -61,150 +63,6 @@
   - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
     text carries none.
   - Do not invent or infer values that are not present in the text.
-  
-  Text chunk:
-  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_extract_prompt[imperial][extract-imperial]
-  '''
-  
-  You are a culinary data extractor. Review the following text from an EPUB recipe book.
-  Extract ALL distinct recipes found in the text.
-  
-  Rules:
-  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
-    photo_filename — it is the confirmed finished-dish photo for this recipe.
-  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
-    to photo_filename: the image most likely to be the hero/finished-dish photo.
-    The hero image can appear in any of these positions:
-      a) immediately BEFORE the recipe title or ingredient list, OR
-      b) immediately AFTER the last ingredient and BEFORE the first method step.
-    Both positions are common depending on the book's layout.
-    IGNORE images that appear embedded WITHIN the numbered method steps — those are
-    instructional process shots, not the finished dish.
-    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
-    mid-method (e.g. appears after "Step 2" or "Step 3" text).
-    If no hero image is identifiable, leave photo_filename null.
-  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
-  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
-    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
-    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
-      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
-                    "**Phase 2**", "56g whole wheat flour", "56g water"]
-      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
-    The bold label must be its own separate list item, followed by that phase's
-    ingredients or steps as normal list items.
-    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
-  - If a field is entirely absent from the text, leave it null.
-  - stated_source is the publication or book as the text names itself; byline is the author's
-    name if one is printed. Never the name of a model or a tool. Leave both null if the text
-    does not say.
-  - total_time: the recipe's stated total or overall time, only when the text states one.
-    Never add prep and cook together.
-  - description: the headnote or introduction printed with the recipe, in its own words, at
-    most one paragraph. null when there is none.
-  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
-    text carries none.
-  - Do not invent or infer values that are not present in the text.
-  - Where ingredients are given with dual measurements (e.g. "2 cups/250g flour"), keep the metric (gram/ml) part. Where ounces or pounds appear, keep those as-is.
-  
-  Text chunk:
-  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_extract_prompt[metric][extract-metric]
-  '''
-  
-  You are a culinary data extractor. Review the following text from an EPUB recipe book.
-  Extract ALL distinct recipes found in the text.
-  
-  Rules:
-  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
-    photo_filename — it is the confirmed finished-dish photo for this recipe.
-  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
-    to photo_filename: the image most likely to be the hero/finished-dish photo.
-    The hero image can appear in any of these positions:
-      a) immediately BEFORE the recipe title or ingredient list, OR
-      b) immediately AFTER the last ingredient and BEFORE the first method step.
-    Both positions are common depending on the book's layout.
-    IGNORE images that appear embedded WITHIN the numbered method steps — those are
-    instructional process shots, not the finished dish.
-    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
-    mid-method (e.g. appears after "Step 2" or "Step 3" text).
-    If no hero image is identifiable, leave photo_filename null.
-  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
-  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
-    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
-    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
-      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
-                    "**Phase 2**", "56g whole wheat flour", "56g water"]
-      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
-    The bold label must be its own separate list item, followed by that phase's
-    ingredients or steps as normal list items.
-    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
-  - If a field is entirely absent from the text, leave it null.
-  - stated_source is the publication or book as the text names itself; byline is the author's
-    name if one is printed. Never the name of a model or a tool. Leave both null if the text
-    does not say.
-  - total_time: the recipe's stated total or overall time, only when the text states one.
-    Never add prep and cook together.
-  - description: the headnote or introduction printed with the recipe, in its own words, at
-    most one paragraph. null when there is none.
-  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
-    text carries none.
-  - Do not invent or infer values that are not present in the text.
-  - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the metric (gram or ml) part and discard the US volume part. Output just "250g flour", "200g butter", etc.
-  
-  Text chunk:
-  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_extract_prompt[us][extract-us]
-  '''
-  
-  You are a culinary data extractor. Review the following text from an EPUB recipe book.
-  Extract ALL distinct recipes found in the text.
-  
-  Rules:
-  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
-    photo_filename — it is the confirmed finished-dish photo for this recipe.
-  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
-    to photo_filename: the image most likely to be the hero/finished-dish photo.
-    The hero image can appear in any of these positions:
-      a) immediately BEFORE the recipe title or ingredient list, OR
-      b) immediately AFTER the last ingredient and BEFORE the first method step.
-    Both positions are common depending on the book's layout.
-    IGNORE images that appear embedded WITHIN the numbered method steps — those are
-    instructional process shots, not the finished dish.
-    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
-    mid-method (e.g. appears after "Step 2" or "Step 3" text).
-    If no hero image is identifiable, leave photo_filename null.
-  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
-  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
-    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
-    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
-      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
-                    "**Phase 2**", "56g whole wheat flour", "56g water"]
-      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
-    The bold label must be its own separate list item, followed by that phase's
-    ingredients or steps as normal list items.
-    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
-  - If a field is entirely absent from the text, leave it null.
-  - stated_source is the publication or book as the text names itself; byline is the author's
-    name if one is printed. Never the name of a model or a tool. Leave both null if the text
-    does not say.
-  - total_time: the recipe's stated total or overall time, only when the text states one.
-    Never add prep and cook together.
-  - description: the headnote or introduction printed with the recipe, in its own words, at
-    most one paragraph. null when there is none.
-  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
-    text carries none.
-  - Do not invent or infer values that are not present in the text.
-  - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the US measure part and discard the metric part. Output just "2 cups flour", "14 tablespoons butter", etc.
   
   Text chunk:
   PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
@@ -218,7 +76,9 @@
   
   Rules:
   - Extract the recipe title, servings, prep time, cook time, ingredients, and directions.
-  - Ingredients: one item per list entry. Convert unicode fractions (½, ¼, ¾) to plain text (1/2, 1/4, 3/4).
+  - Ingredients: one item per list entry, copied exactly as the text writes it: the same numbers,
+    the same units, every measure the line gives, in the same order. Never convert, round, drop or
+    add a measure. The one change allowed: write unicode fractions (½, ¼, ¾) as plain text (1/2, 1/4, 3/4).
   - Directions: one step per list entry.
   - If a field is absent from the text, leave it null.
   - stated_source is the publication or book as the text names itself; byline is the author's
@@ -904,7 +764,7 @@
             'type': 'array',
           }),
           'ingredients': dict({
-            'description': 'List of ingredients. Convert unicode fractions to text fractions (e.g. ½ -> 1/2).',
+            'description': 'List of ingredients, each copied exactly as the source writes it. Convert unicode fractions to text fractions (e.g. ½ -> 1/2).',
             'items': dict({
               'type': 'string',
             }),

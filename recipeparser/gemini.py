@@ -359,35 +359,6 @@ def normalise_baker_table(text_chunk: str, client) -> str:
         return text_chunk
 
 
-_UNITS_RULES = {
-    # Keep only the metric (gram/ml) measurement from dual-unit lines like
-    # "2 cups/250g flour" → "250g flour"
-    "metric": (
-        "- Many ingredient lines contain dual measurements in the format "
-        "\"US-measure/metric-weight ingredient\" (e.g. \"2 cups/250g flour\", "
-        "\"14 tablespoons/200g butter\"). "
-        "Keep ONLY the metric (gram or ml) part and discard the US volume part. "
-        "Output just \"250g flour\", \"200g butter\", etc."
-    ),
-    # Keep only the US volume/weight measurement
-    "us": (
-        "- Many ingredient lines contain dual measurements in the format "
-        "\"US-measure/metric-weight ingredient\" (e.g. \"2 cups/250g flour\", "
-        "\"14 tablespoons/200g butter\"). "
-        "Keep ONLY the US measure part and discard the metric part. "
-        "Output just \"2 cups flour\", \"14 tablespoons butter\", etc."
-    ),
-    # Keep imperial (oz/lb) where present; for dual-unit lines prefer metric
-    "imperial": (
-        "- Where ingredients are given with dual measurements "
-        "(e.g. \"2 cups/250g flour\"), keep the metric (gram/ml) part. "
-        "Where ounces or pounds appear, keep those as-is."
-    ),
-    # Default: preserve whatever the book uses, no stripping
-    "book": "",
-}
-
-
 def build_plain_text_prompt(text: str) -> str:
     """The prompt for a single recipe in plain text (Paprika import, pasted recipe)."""
     return f"""
@@ -395,7 +366,9 @@ You are a culinary data extractor. The following text is a recipe. Extract it.
 
 Rules:
 - Extract the recipe title, servings, prep time, cook time, ingredients, and directions.
-- Ingredients: one item per list entry. Convert unicode fractions (½, ¼, ¾) to plain text (1/2, 1/4, 3/4).
+- Ingredients: one item per list entry, copied exactly as the text writes it: the same numbers,
+  the same units, every measure the line gives, in the same order. Never convert, round, drop or
+  add a measure. The one change allowed: write unicode fractions (½, ¼, ¾) as plain text (1/2, 1/4, 3/4).
 - Directions: one step per list entry.
 - If a field is absent from the text, leave it null.
 - stated_source is the publication or book as the text names itself; byline is the author's
@@ -441,10 +414,8 @@ def extract_recipe_from_text(
     )
 
 
-def build_extract_prompt(text_chunk: str, units: str = "book") -> str:
+def build_extract_prompt(text_chunk: str) -> str:
     """The prompt for a book chunk that may hold several recipes."""
-    units_rule = _UNITS_RULES.get(units.lower(), "")
-    units_section = f"\n{units_rule}" if units_rule else ""
     return f"""
 You are a culinary data extractor. Review the following text from an EPUB recipe book.
 Extract ALL distinct recipes found in the text.
@@ -463,7 +434,9 @@ Rules:
   If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
   mid-method (e.g. appears after "Step 2" or "Step 3" text).
   If no hero image is identifiable, leave photo_filename null.
-- Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+- Copy every ingredient line exactly as the text writes it: the same numbers, the same units,
+  every measure the line gives, in the same order. Never convert, round, drop or add a measure.
+  The one change allowed: write unicode fractions (½, ¼, ¾, etc.) as plain text (1/2, 1/4, 3/4, etc.).
 - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
   "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
   Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
@@ -483,7 +456,7 @@ Rules:
   most one paragraph. null when there is none.
 - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
   text carries none.
-- Do not invent or infer values that are not present in the text.{units_section}
+- Do not invent or infer values that are not present in the text.
 
 Text chunk:
 {text_chunk}
@@ -493,23 +466,18 @@ Text chunk:
 def extract_recipes(
     text_chunk: str,
     client,
-    units: str = "book",
 ) -> RecipeList:
     """
     Call Gemini with the extraction prompt and return a parsed RecipeList.
     Applies retry/back-off for rate-limit errors and for a reply that will
     not parse.
 
-    ``units`` controls how dual-measurement ingredient lines are handled:
-      "metric"   — keep only gram/ml values  (e.g. "250g flour")
-      "us"       — keep only US cup/tbsp values
-      "imperial" — keep only oz/lb values (falls back to metric for dual lines)
-      "book"     — preserve whatever the book uses (default)
+    Every ingredient line is copied verbatim (verbatim-ingestion D1); the stage holds the model to it.
 
     Raises:
         ExtractionParseError: every attempt's reply could not be parsed.
     """
-    prompt = build_extract_prompt(text_chunk, units)
+    prompt = build_extract_prompt(text_chunk)
 
     return _generate_and_parse(
         client,

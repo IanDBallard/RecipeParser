@@ -102,10 +102,10 @@ class TestExtract:
         raw = _make_raw_recipe()
         mock_result = RecipeList(recipes=[raw])
         with patch("recipeparser.core.stages.extract.extract_recipes", return_value=mock_result):
-            result = extract("Some text about cooking.", client=MagicMock())
-        assert len(result) == 1
-        assert isinstance(result[0], RecipeExtraction)
-        assert result[0].name == "Test Cake"
+            result = extract("Some text about cooking: 1.5 cups flour.", client=MagicMock())
+        assert len(result.recipes) == 1
+        assert isinstance(result.recipes[0], RecipeExtraction)
+        assert result.recipes[0].name == "Test Cake"
 
     def test_plain_text_mode_calls_extract_recipe_from_text(self) -> None:
         from recipeparser.core.stages.extract import extract
@@ -115,9 +115,9 @@ class TestExtract:
             "recipeparser.core.stages.extract.extract_recipe_from_text",
             return_value=mock_result,
         ) as mock_fn:
-            result = extract("Some text.", client=MagicMock(), plain_text_mode=True)
+            result = extract("Some text: 1.5 cups flour.", client=MagicMock(), plain_text_mode=True)
         mock_fn.assert_called_once()
-        assert len(result) == 1
+        assert len(result.recipes) == 1
 
 
 # ---------------------------------------------------------------------------

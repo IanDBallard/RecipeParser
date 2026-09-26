@@ -90,9 +90,8 @@ def test_stage_golden(fixture, golden_client, snapshot: SnapshotAssertion, monke
         extractions = extract(
             chunk_text=text,
             client=client,
-            units="book",
             plain_text_mode=chunk.input_type == InputType.PAPRIKA_LEGACY,
-        )
+        ).recipes
         for raw in extractions:
             refined = refine(
                 raw=raw,
@@ -190,7 +189,7 @@ def test_every_refined_recipe_keeps_its_grid_inside_the_axes(golden_client, monk
     valid = {axis: set(tags) for axis, tags in FIXED_AXES.items()}
     client = golden_client("dual-units.epub")
     for chunk in EpubReader().read(str(corpus_path("dual-units.epub"))):
-        for raw in extract(chunk_text=chunk.text, client=client, units="book"):
+        for raw in extract(chunk_text=chunk.text, client=client).recipes:
             refined = refine(
                 raw=raw, client=client, uom_system="US",
                 measure_preference="Volume", user_axes=FIXED_AXES,
@@ -227,7 +226,7 @@ def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
         text = chunk.text
         if gemini.needs_table_normalisation(text):
             text = gemini.normalise_baker_table(text, client)
-        for raw in extract(chunk_text=text, client=client, units="book", plain_text_mode=False):
+        for raw in extract(chunk_text=text, client=client, plain_text_mode=False).recipes:
             if not any("phase" in item.lower() for item in raw.ingredients + raw.directions):
                 continue  # not the multi-phase recipe
             refined = refine(

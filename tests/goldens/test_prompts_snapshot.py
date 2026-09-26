@@ -55,12 +55,11 @@ def _sent_contents(monkeypatch, call) -> str:
 
 
 class TestBuildersMatchTheCallSites:
-    @pytest.mark.parametrize("units", ["book", "metric", "us", "imperial"])
-    def test_extract(self, monkeypatch, units):
+    def test_extract(self, monkeypatch):
         sent = _sent_contents(
-            monkeypatch, lambda c: gemini.extract_recipes(PLACEHOLDER_BODY, c, units=units)
+            monkeypatch, lambda c: gemini.extract_recipes(PLACEHOLDER_BODY, c)
         )
-        assert sent == gemini.build_extract_prompt(PLACEHOLDER_BODY, units)
+        assert sent == gemini.build_extract_prompt(PLACEHOLDER_BODY)
 
     def test_plain_text(self, monkeypatch):
         sent = _sent_contents(
@@ -109,9 +108,8 @@ class TestBuildersMatchTheCallSites:
 
 
 class TestPromptSnapshots:
-    @pytest.mark.parametrize("units", ["book", "metric", "us", "imperial"])
-    def test_extract_prompt(self, snapshot: SnapshotAssertion, units):
-        assert gemini.build_extract_prompt(PLACEHOLDER_BODY, units) == snapshot(name=f"extract-{units}")
+    def test_extract_prompt(self, snapshot: SnapshotAssertion):
+        assert gemini.build_extract_prompt(PLACEHOLDER_BODY) == snapshot(name="extract")
 
     def test_plain_text_prompt(self, snapshot: SnapshotAssertion):
         assert gemini.build_plain_text_prompt(PLACEHOLDER_BODY) == snapshot
