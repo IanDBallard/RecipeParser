@@ -59,16 +59,37 @@ class TestTheWritersSecondMeasure:
         ing = result.structured_ingredients[0]
         assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (None, None, False)
 
-    def test_a_re_marked_measure_in_grams_survives_as_the_ais(self):
-        result, _ = _refine(_refinement(_pecorino(converted_amount=28.0, converted_unit="g")))
+    def test_a_re_marked_measure_of_the_other_kind_survives_as_the_ais(self):
+        result, _ = _refine(_refinement(_pecorino(converted_amount=80.0, converted_unit="ml")))
         ing = result.structured_ingredients[0]
-        assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (28.0, "g", True)
+        assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (80.0, "ml", True)
 
 
 class TestAiConversions:
     def test_an_ai_conversion_in_grams_or_millilitres_is_kept(self):
-        result, _ = _refine(_refinement(_oil(), _oil(id="ing_03", converted_amount=15.0, converted_unit="ml")))
+        honey = _oil(id="ing_03", amount=20.0, unit="g", name="honey", converted_amount=15.0, converted_unit="ml")
+        result, _ = _refine(_refinement(_oil(), honey))
         assert [i.converted_unit for i in result.structured_ingredients] == ["g", "ml"]
+
+    # Final review of imperial measures: converted_* is the OTHER measure (verbatim ingestion D3). The
+    # recorded Imperial reply gave "1 lb flour" 454 g and "1/2 pint milk" 284 ml; such a pair adds
+    # nothing and leaves the Weight and Volume pills idle, so it is dropped.
+    def test_an_ai_conversion_of_the_same_kind_is_dropped(self):
+        flour = _oil(amount=1.0, unit="lb", name="plain flour", converted_amount=454.0, converted_unit="g")
+        milk = _oil(id="ing_03", amount=0.5, unit="pint", name="milk", converted_amount=284.0, converted_unit="ml")
+        result, _ = _refine(_refinement(flour, milk))
+        assert [(i.converted_amount, i.converted_unit, i.is_ai_converted) for i in result.structured_ingredients] == [(None, None, False)] * 2
+
+    def test_an_ai_conversion_of_an_imperial_measure_into_the_other_kind_is_kept(self):
+        cream = _oil(amount=1.0, unit="gill", name="cream", converted_amount=145.0, converted_unit="g")
+        stone = _oil(id="ing_03", amount=1.0, unit="stone", name="potatoes", converted_amount=9000.0, converted_unit="ml")
+        result, _ = _refine(_refinement(cream, stone))
+        assert [i.converted_unit for i in result.structured_ingredients] == ["g", "ml"]
+
+    def test_an_ai_conversion_is_kept_when_the_line_unit_is_not_a_known_measure(self):
+        eggs = _oil(amount=3.0, unit="st", name="ägg", converted_amount=150.0, converted_unit="g")
+        result, _ = _refine(_refinement(eggs))
+        assert result.structured_ingredients[0].converted_unit == "g"
 
     def test_an_ai_conversion_in_cups_is_dropped(self):
         result, _ = _refine(_refinement(_oil(converted_amount=0.06, converted_unit="cups")))

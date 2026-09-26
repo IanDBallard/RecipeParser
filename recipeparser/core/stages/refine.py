@@ -82,6 +82,32 @@ _METRIC_UNITS = {"g", "gram", "grams", "ml", "millilitre", "millilitres", "milli
 _QUOTES = "\"'“”‘’"
 
 
+# Which kind each unit word measures, so an AI conversion into the SAME kind can be refused (D3:
+# converted_* is the OTHER measure). The words are Cayenne's registry spellings; a unit not listed
+# ("pinch", "st") has no kind and its conversion is left alone.
+_VOLUME_WORDS = {
+    "tsp", "teaspoon", "teaspoons", "tbsp", "tablespoon", "tablespoons", "tbs", "cup", "cups",
+    "fl oz", "fluid ounce", "fluid ounces", "pint", "pints", "pt", "quart", "quarts", "qt",
+    "gallon", "gallons", "gal", "ml", "millilitre", "millilitres", "milliliter", "milliliters",
+    "cl", "dl", "l", "litre", "litres", "liter", "liters", "gill", "gills", "teacup", "teacups",
+    "teacupful", "breakfast cup", "breakfast cups", "dessertspoon", "dessertspoons", "dsp",
+    "fl dram", "fluid dram", "fluid drams",
+}
+_WEIGHT_WORDS = {
+    "g", "gram", "grams", "kg", "kilogram", "kilograms", "oz", "ounce", "ounces", "lb", "lbs",
+    "pound", "pounds", "stone", "stones", "dram", "drams", "drachm", "drachms",
+}
+
+
+def _kind(unit: Optional[str]) -> Optional[str]:
+    word = re.sub(r"\.$", "", re.sub(r"\s+", " ", (unit or "").strip().lower()))
+    if word in _VOLUME_WORDS:
+        return "volume"
+    if word in _WEIGHT_WORDS:
+        return "weight"
+    return None
+
+
 def _tolerance(value: float) -> float:
     """Half the last decimal place ``value`` states: 0.333 matches 1/3, 0.3 matches 0.33."""
     text = repr(float(value))
@@ -95,6 +121,8 @@ def _check_conversions(refinement: CayenneRefinement) -> None:
     when none does it is re-marked as the AI's. Then an AI conversion in anything but grams or
     millilitres is dropped, re-marked ones included: a model error costs a missing "≈", never a
     false claim that the writer gave a figure, and never an AI cup the source system would resize.
+    An AI conversion into the same kind as the line's own unit ("1 lb" -> 454 g) is dropped too: it
+    is not the other measure, and it would leave the Weight and Volume pills with nothing to show.
     """
     for ing in refinement.structured_ingredients:
         if ing.converted_amount is None:
@@ -108,6 +136,12 @@ def _check_conversions(refinement: CayenneRefinement) -> None:
         if ing.is_ai_converted and (ing.converted_unit or "").strip().lower() not in _METRIC_UNITS:
             log.warning("refine(): dropped %s's AI conversion in %r — only g or ml is admissible.",
                         ing.id, ing.converted_unit)
+            ing.converted_amount = None
+            ing.converted_unit = None
+            ing.is_ai_converted = False
+        elif ing.is_ai_converted and _kind(ing.unit) is not None and _kind(ing.unit) == _kind(ing.converted_unit):
+            log.warning("refine(): dropped %s's AI conversion %s %s — the same kind as %r, not the other measure.",
+                        ing.id, ing.converted_amount, ing.converted_unit, ing.unit)
             ing.converted_amount = None
             ing.converted_unit = None
             ing.is_ai_converted = False

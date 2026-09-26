@@ -297,9 +297,12 @@ def test_an_imperial_recipe_is_stored_as_written_and_detected_as_imperial(golden
     assert refined.source_uom_system_detected == "Imperial"
     assert refined.source_uom_system_evidence
     assert refined.source_uom_system_evidence in chunks[0].text
+    from recipeparser.core.stages.refine import _kind
     for ing in refined.structured_ingredients:
         if ing.is_ai_converted:
             assert ing.converted_unit in ("g", "ml"), ing
+            # D3: the OTHER measure. The recorded reply's same-kind pairs (1 lb -> 454 g) are dropped by refine().
+            assert _kind(ing.unit) != _kind(ing.converted_unit), ing
     # Review Focus 5: an unknown unit word would be shown verbatim in Cayenne and never converted.
     path = units_ts()
     if path is not None:
