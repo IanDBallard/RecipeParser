@@ -1599,8 +1599,11 @@ async def set_recipe_image(
             detail="Could not store the picture.",
         )
     # A JPEG replaced by a PNG is a second object under a second key; the old one
-    # is now unreachable and would be paid for for ever.
-    await asyncio.to_thread(store.remove, recipe_id, SupabaseImageStore.path_for(recipe_id, content_type))
+    # is now unreachable and would be paid for for ever. The key kept is the one put()
+    # wrote, read from its URL: put() scales a large picture to a JPEG, so the type the
+    # upload named is not always the object's.
+    written = public_url.split("?", 1)[0].rsplit("/", 1)[-1]
+    await asyncio.to_thread(store.remove, recipe_id, written)
 
     image_url = _versioned(public_url, int(time.time()))
     await _write_image_url(sb, recipe_id, user_id, image_url)

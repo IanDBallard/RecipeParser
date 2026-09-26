@@ -1165,10 +1165,18 @@ class TestRecipeImage:
     def test_the_old_picture_under_another_extension_is_removed(self, client: TestClient) -> None:
         sb = _service_client()
         with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
-            store_cls.return_value.put.return_value = "https://x/r.png"
-            store_cls.path_for.return_value = f"{_RECIPE_ID}.png"
+            store_cls.return_value.put.return_value = f"https://x/recipe-images/{_RECIPE_ID}.png"
             self._post(client, "dinner.png", b"\x89PNG", "image/png")
         store_cls.return_value.remove.assert_called_once_with(_RECIPE_ID, f"{_RECIPE_ID}.png")
+
+    def test_the_picture_kept_is_the_one_put_wrote_even_when_it_was_re_encoded(self, client: TestClient) -> None:
+        # put() scales a large PNG to a JPEG, so the object it wrote is .jpg; keeping the .png the
+        # upload named would delete the picture that was just stored.
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = f"https://x/recipe-images/{_RECIPE_ID}.jpg"
+            self._post(client, "dinner.png", b"\x89PNG", "image/png")
+        store_cls.return_value.remove.assert_called_once_with(_RECIPE_ID, f"{_RECIPE_ID}.jpg")
 
     def test_webp_and_gif_are_pictures_even_though_the_reader_refuses_them(self, client: TestClient) -> None:
         for filename, content_type in (("dinner.webp", "image/webp"), ("dinner.gif", "image/gif")):
