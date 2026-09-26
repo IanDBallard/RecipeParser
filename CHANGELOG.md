@@ -5,19 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [9.0.0] — 2026-09-26
 
-### ⚠️ Requires — apply the Cayenne migration `20260925180000_verbatim_ingestion.sql` **before** deploying the verbatim ingestion
-`SupabaseWriter` now puts `source_uom_system_detected` and `source_uom_system_evidence` into every recipe INSERT, and the regen worker reads `source_url` from the `claim_stale_recipes` RPC. Against a schema without the migration every ingest fails with `PGRST204`, and with `REGEN_WORKER_ENABLED=1` every regen fails too. Apply the migration first, then deploy.
+Verbatim ingestion, the Add Recipe intake and its bulk fix, the recategorise endpoint, a cook's own picture, and readers that refuse what they cannot read by name: 45 commits over pull requests #41–#59 since v8.0.0.
 
-### ✨ Changed — ingestion copies what the writer wrote (verbatim ingestion)
+**Breaking:** the CLI's `--units` flag, the GUI's Units row, and the unit-preference arguments of `RecipePipeline` and `run_cli_pipeline` are removed (see *Removed*). Two Cayenne migrations are required (see *Requires*).
+
+### ⚠️ Requires — apply the Cayenne migrations **before** deploying this version
+- **`20260925180000_verbatim_ingestion.sql`** — `SupabaseWriter` now puts `source_uom_system_detected` and `source_uom_system_evidence` into every recipe INSERT, and the regen worker reads `source_url` from the `claim_stale_recipes` RPC. Against a schema without the migration every ingest fails with `PGRST204`, and with `REGEN_WORKER_ENABLED=1` every regen fails too.
+- **`20260913125453_ingestion_jobs_cancelled_status.sql`** — `POST /jobs/{id}/cancel` on a recategorise job writes `status = 'cancelled'`, which the check written in 008 refuses. Without the migration a recategorise job cannot be stopped.
+
+Both are applied to the live project (checked 2026-09-26). The warnings stand for every other environment.
+
+### ✨ Changed — ingestion copies what the writer wrote (verbatim ingestion, #58, #59)
 - **EXTRACT copies every ingredient line verbatim** — one rule for every input, no conversion and no reader's preference. A number guard (`core/numbers.py`) checks that every number an ingredient line writes is one the source writes, by value. When a recipe fails it, the chunk is extracted once more and only a clean recipe of a failed one's name is taken from the retry; the first attempt's clean recipes are always kept, a retry that raises recovers nothing rather than losing them, and every failed recipe not recovered is dropped **by name**, never silently.
 - The guard reads the source generously: number words count by value ("HALF AN OUNCE" is 0.5, "half a dozen" 6, "twenty-five" 25), a decimal comma is a decimal point, superscript and subscript digits are digits, and an EPUB's typeset fraction (`1<sup>1</sup>&frasl;<sub>2</sub>`, which the reader's text turns into "1 1 / 2") or a PDF's run-together "11⁄2" also reads as 1 1/2 — each as a union with the plain reading, so "Serves 4 / 6" still states 4 and 6.
 - **REFINE keeps the writer's two measures.** A line that states a second measure fills it from the line, marked as the writer's; a second measure the line never writes is re-marked as the AI's. An AI conversion is admitted only into grams or millilitres — a cup or spoon the source system would resize is dropped.
 - **REFINE detects the source's measuring system** (`US`, `UK`, `EU`, `AU`, `Imperial`, in any case, written canonically) with a quoted piece of evidence it verifies: a quote from the recipe text, or the source host it was given (the host, or a dot-boundary suffix of it such as `com.au`). Unverified, both are written null. The pair is stored on the recipe row.
 - **The regen worker passes the host of the recipe's `source_url` to REFINE**, instead of reading the owner's profile preferences.
+- **REFINE states whether each ingredient is `liquid` or `solid`** (`StructuredIngredient.state`) before it computes the conversion, because the conversion depends on it; null when the line has no amount or no volume or weight unit (#58). The mapping from the profile's cookbook locale to an extract mode that #58 also added was removed by #59, with the rest of the reader preferences, before this release.
 
-### 🗑️ Removed — reader preferences at ingest
+### 🗑️ Removed — reader preferences at ingest (#59)
 - The API no longer reads `profiles` for a unit preference. `uom_system` and `measure_preference` in a `/jobs` body are **ignored, not refused**, so an older client keeps working; the file job no longer takes them as query parameters.
 - The CLI's `--units` flag and the GUI's Units row are gone; `RecipePipeline` and `run_cli_pipeline` take no unit-preference arguments.
 
@@ -28,15 +36,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - A photo of a recipe page (`ImageReader`) still does not become the recipe's picture, by decision.
 - New `tests/goldens/test_image_recovery_golden.py`: per corpus fixture, which source image each recipe ends up with, through a store and through the Paprika export. The e2e goldens had pinned `image_url: null`, so the loss passed CI. `dual-units.epub`'s two photos now differ byte for byte, and `saved-page.html` carries an `og:image` hero and a decoy logo.
 
-### ✨ Added — a cook can change a recipe's picture
+### ✨ Added — a cook can change a recipe's picture (#48, #49)
 - `POST /recipes/{recipe_id}/image` (multipart `file`) stores a picture chosen in Cayenne's recipe editor and answers `200 { image_url }`; `DELETE /recipes/{recipe_id}/image` removes it and answers `{ image_url: null }`. Both verify the caller owns the recipe and answer **404, never 403**, when they do not — `_owned_controller`'s rule, so the table cannot be enumerated by id. The service keeps its place as the bucket's only writer: no storage policy is widened for the browser, and the device never writes `image_url` itself — PowerSync delivers the row this endpoint updates.
 - Accepts JPEG, PNG, WebP and GIF. Wider than `/jobs/file` on purpose: that list is what PyMuPDF can open for OCR, and nothing OCRs a picture the cook chose — the browser renders it. HEIC is refused with the reader's own sentence, since no browser decodes it either. The ceiling and its 413 sentence are `/jobs/file`'s (`config.MAX_UPLOAD_BYTES`), checked after the type so a small file of the wrong kind is still a 422.
 - The stored URL carries a `v=<epoch>` stamp. The object key is the recipe id, so a replacement lands on the address the old picture had, and without the stamp the browser, the service worker and Supabase's CDN would all go on showing the picture that was just replaced. `SupabaseImageStore` gains `remove()`, which drops the recipe's objects under the other extensions — a JPEG replaced by a PNG left the first one in the bucket for ever.
+- CORS allows `DELETE` (#49). The middleware's `allow_methods` still read `GET`, `POST`, `OPTIONS`, so the browser's preflight refused the only verb that clears a picture while every server-side test passed. A new `TestCors` asks the app for a preflight on each verb the client uses, and asserts an unlisted verb is still refused.
 
+### ✨ Added — the bulk recategorise can be queued and stopped (Stage 7C, #46)
+- `POST /jobs/recategorize` holds the service role and does the two things a device must not be trusted with: it checks the caller owns every category id, and it expands each to its subtree. A 422 names how many ids were unknown, never which.
+- `POST /jobs/{id}/cancel` branches on the job's kind: a row update for a recategorise job, the in-memory controller for an ingest job. It answers 409 for a finished job, and 404 rather than 403 for someone else's.
 
-Stage D of the Add Recipe workstream (Cayenne `docs/superpowers/plans/2026-09-11-add-recipe-workstream.md`; roadmap Stage 6 row D). No migration: every column written here already exists.
+### 🐛 Fixed — the recategorise worker, before its first real run (#46)
+- A job a restart left running is reclaimed after a ten-minute lease and resumes from `params.cursor`.
+- A batch that fails twice has its recipe ids written to `skipped` with the reason **before** the cursor moves past them. Until now only a counter survived, so the client could show "nothing skipped" while recipes were never examined.
+- A cancelled job finishes with stage `DONE` and its counts intact, instead of stopping at `CATEGORIZING` and looking like a worker that died. A job whose categories have all gone finishes `error`, not `done`.
+- A tag's axis is found by walking to the root in one place, `core/taxonomy.py`. Ingest and recategorise disagreed on three-level trees (Cuisine > Asian > Thai put Thai under Cuisine for one and under Asian for the other).
+- `build_categorize_batch_prompt` reads body columns through `raw_body_column`, so a double-encoded jsonb column raises instead of putting one "ingredient" per character in the prompt. Duplicate category names raise in `load_category_ids` and `resolve_new_axes` instead of the last one winning.
 
-### ✨ Added — the intake reads photos and scans
+### ✨ Changed — readers refuse unreadable input by name (#50, #52)
+- A reader refuses what it cannot turn into text, before any model call, with an `UnreadableInputError` whose message is a sentence about the input: "is DRM-protected: its chapters are encrypted and cannot be read.", "is password-protected.", "contains no readable text.", "is not a Paprika export: not a ZIP archive.", "could not be fetched (HTTP 404).". The API writes the job's `error_message` as "<the user's filename or URL> <sentence>". It never names the server's temp path, and the "could not be opened as a PDF / an EPUB / an image." sentences no longer pass the library's own text through.
+- New refusals: an EPUB whose encryption manifest declares more than font obfuscation (DRM); a book whose chapters decode mostly to replacement and control characters (the threshold is 5%) or hold no text; a Paprika archive with no recipe entries; a page that cannot be fetched, times out, or comes back empty. A reader no longer finishes a job with nothing in it.
+- `configure_logging()` installs a console handler at `LOG_LEVEL` (default INFO) on the bare root logger uvicorn leaves behind, so the container log shows what every job did, not only its warnings and errors. On 2026-09-18 a DRM-protected EPUB ran to "done" with 17 chunks and 0 recipes, and the log showed nothing after the upload.
+
+### 🐛 Fixed — readers
+- An EPUB whose NCX is not XML still yields its chapters; only its table of contents is lost, with a warning (#50). One package-level `read_epub` routes every EPUB through the tolerant reader.
+- A bot-protection page ("Just a moment…" plus a Ray ID, served with HTTP 200) is refused as a fetch failure instead of being read as a page with zero recipes: in `UrlReader` (#54) and in the `/jobs` endpoint's own fetch (#55), which shares `looks_like_bot_challenge`.
+
+### ✨ Added — the intake reads photos and scans (Stage D, #41)
+Stage D of the Add Recipe workstream (Cayenne `docs/superpowers/plans/2026-09-11-add-recipe-workstream.md`; roadmap Stage 6 row D).
 - `POST /jobs/file` accepts `image/jpeg` and `image/png`. A new `ImageReader` opens the photo with PyMuPDF and transcribes it through the vision OCR the command-line PDF path already owned; one chunk, routed like a book chunk, no citation of its own (the transcript's stated source is used).
 - `load_pdf` gains the same fallback behind a `client` parameter, so a scanned PDF is transcribed on the job path instead of refused by the pre-flight. Without a client the refusal stands. A scan is transcribed one vision call per page, so `PDF_OCR_MAX_PAGES` (40) caps it; a longer scan is refused before any model call.
 - The 422 for a file the API cannot read is a sentence the client shows verbatim: `Cayenne can't read .docx files yet.`; HEIC is refused plainly: `Cayenne can't read HEIC photos yet. Share it as a JPEG instead.`; WebP the same way: `Cayenne can't read WebP photos yet. Share it as a JPEG instead.` — no decoder for either is in the stack.
@@ -57,6 +84,16 @@ Stage D of the Add Recipe workstream (Cayenne `docs/superpowers/plans/2026-09-11
 ### 🐛 Fixed — the bulk fix after Stage E (2026-09-13)
 - A malformed page address (`http://[::1`) no longer fails a URL job: the private-host check runs inside `_fetch_page_meta`'s `try`, so it degrades to no meta as the docstring promises.
 - The author's notes the extractor reads reach the row: `assemble()` takes `notes` with the rule `description` has — a Paprika entry's own notes win, else the extracted ones, else null. Since 2026-09-07 they were extracted and dropped on every path but Paprika.
+
+### 🚀 Deployment (#43)
+- `.github/workflows/deploy.yml`: a merge to `master` builds the ingestion image, pushes it to `ghcr.io/<owner>/ingestion-api` (tagged with the commit and `latest`) and deploys it to the Cayenne VM. A pull request only builds it. Until `CAYENNE_VM_HOST` is set, the image is pushed and the deploy is skipped with a message saying so.
+
+### 🧪 Testing
+- 1259 passed at this version (970 at 8.0.0).
+
+### 📝 Documentation
+- The philosophy spec's 6.1 and 6.3 describe a recategorise that can work (Stage 7B, the twin of Cayenne's, #45).
+- The intake (#42), 7C (#47), book photos (#56) and intake bulk-fix plans carry their `**Merged:**` headers and the rulings made during execution.
 
 ## [8.0.0] — 2026-09-12
 
