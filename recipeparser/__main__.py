@@ -1,4 +1,4 @@
-"""CLI entry point — python -m recipeparser <epub> [--output DIR] [--units ...]
+"""CLI entry point — python -m recipeparser <epub> [--output DIR]
 
 Special flags (no epub required):
   --sync-categories   Pull the live category taxonomy from the local Paprika
@@ -66,23 +66,6 @@ def _resolve_book(raw: str) -> str:
 
 # Backward compatibility for callers (e.g. tests) that use the old name
 _resolve_epub = _resolve_book
-
-
-def _units_to_uom(units: str) -> str:
-    """Map the CLI --units flag value to the uom_system string expected by RecipePipeline.
-
-    CLI flag values: "metric" | "us" | "imperial" | "book"
-    Pipeline values: "Metric" | "US" | "Imperial"
-
-    "book" means "preserve whatever the book uses" — we pass "US" as the
-    default and let the pipeline's extraction prompt handle it naturally.
-    """
-    return {
-        "metric": "Metric",
-        "us": "US",
-        "imperial": "Imperial",
-        "book": "US",  # pipeline default; extraction prompt preserves book units
-    }.get(units.lower(), "US")
 
 
 def _cmd_sync_categories() -> None:
@@ -188,7 +171,7 @@ def main():
         epilog=(
             "examples:\n"
             "  recipeparser cookbook.epub\n"
-            "  recipeparser cookbook.epub --output ~/exports --units metric\n"
+            "  recipeparser cookbook.epub --output ~/exports\n"
             "  recipeparser --folder /path/to/cookbooks --output ~/exports\n"
             "  recipeparser --merge a.paprikarecipes b.paprikarecipes --output ~/exports\n"
             "  recipeparser --recategorize cookbook.paprikarecipes\n"
@@ -209,18 +192,6 @@ def main():
         "--output",
         default=str(get_default_output_dir()),
         help="Directory to write the .paprikarecipes file.",
-    )
-    parser.add_argument(
-        "--units",
-        choices=["metric", "us", "imperial", "book"],
-        default="book",
-        help=(
-            "Unit-of-measure preference for dual-measurement books "
-            "(e.g. '2 cups/250g flour'). "
-            "'metric' keeps gram/ml values; 'us' keeps cup/tbsp values; "
-            "'imperial' keeps oz/lb values; 'book' preserves whatever the book uses. "
-            "Default: book."
-        ),
     )
     parser.add_argument(
         "--sync-categories",
@@ -339,7 +310,6 @@ def main():
                     str(book),
                     args.output,
                     client,
-                    uom_system=_units_to_uom(args.units),
                     concurrency=args.concurrency,
                     rpm=args.rpm,
                 )
@@ -398,7 +368,6 @@ def main():
             book_path,
             args.output,
             client,
-            uom_system=_units_to_uom(args.units),
             concurrency=args.concurrency,
             rpm=args.rpm,
         )

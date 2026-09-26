@@ -39,7 +39,7 @@ from recipeparser.core.taxonomy import descendants_of
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -576,33 +576,6 @@ def _get_supabase_service_client() -> Any:
     return create_client(supabase_url, supabase_key)
 
 
-def _resolve_prefs(user_id: str, body_uom: str, body_measure: str) -> Tuple[str, str]:
-    """Unit preferences for a job: the profiles row wins, the request body is the fallback.
-
-    Same query as regen_worker.load_profile_prefs, but the fallback differs: the
-    worker has no request body, so it defaults to US / Volume; ingestion has one.
-    """
-    supabase = _get_supabase_service_client()
-    if supabase is None:
-        return body_uom, body_measure
-    try:
-        res = (
-            supabase.table("profiles")
-            .select("uom_system,measure_preference")
-            .eq("id", user_id)
-            .limit(1)
-            .execute()
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("profiles lookup failed for %s (%s) — using request values.", user_id, exc)
-        return body_uom, body_measure
-    rows = res.data or []
-    if not rows:
-        return body_uom, body_measure
-    row = rows[0]
-    return (row.get("uom_system") or body_uom, row.get("measure_preference") or body_measure)
-
-
 def _create_ingestion_job(
     job_id: str,
     user_id: str,
@@ -935,8 +908,6 @@ class JobsRequest(BaseModel):
     """Request body for POST /jobs."""
     url: Optional[str] = None
     text: Optional[str] = None
-    uom_system: str = "US"
-    measure_preference: str = "Volume"
 
 
 @app.post("/jobs", response_model=AsyncJobResponse, status_code=202)
@@ -1043,15 +1014,10 @@ async def submit_job(
                 if len(sink.progress_updates) > before:
                     write_progress(sink.progress_updates[-1])
 
-            uom_system, measure_preference = await asyncio.to_thread(
-                _resolve_prefs, user_id, body.uom_system, body.measure_preference
-            )
             pipeline = RecipePipeline(
                 client=client,
                 controller=controller,
                 category_source=category_source,
-                uom_system=uom_system,
-                measure_preference=measure_preference,
                 image_store=SupabaseImageStore(),
             )
             await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
@@ -1100,8 +1066,6 @@ async def submit_job(
 @app.post("/jobs/file", response_model=AsyncJobResponse, status_code=202)
 async def submit_file_job(
     file: UploadFile = File(...),
-    uom_system: str = "US",
-    measure_preference: str = "Volume",
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
 ) -> AsyncJobResponse:
     """Fire-and-forget file upload ingestion job.
@@ -1195,15 +1159,10 @@ async def submit_file_job(
             # RecipePipeline.run() transitions IDLE→RUNNING internally,
             # processes all chunks (with per-chunk error isolation), then
             # transitions RUNNING→IDLE on success.
-            uom_system_resolved, measure_preference_resolved = await asyncio.to_thread(
-                _resolve_prefs, user_id, uom_system, measure_preference
-            )
             pipeline = RecipePipeline(
                 client=client,
                 controller=controller,
                 category_source=category_source,
-                uom_system=uom_system_resolved,
-                measure_preference=measure_preference_resolved,
                 image_store=SupabaseImageStore(),
             )
             await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))

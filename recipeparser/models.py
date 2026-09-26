@@ -3,6 +3,8 @@ from typing import Dict, List, Literal, NamedTuple, Optional
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
+SOURCE_SYSTEMS = ("US", "UK", "EU", "AU", "Imperial")  # verbatim-ingestion D4
+
 
 class RecipeExtraction(BaseModel):
     name: str = Field(description="The name or title of the recipe.")
@@ -28,7 +30,7 @@ class RecipeExtraction(BaseModel):
         default=None, description="Cook time (e.g., '30 mins')."
     )
     ingredients: List[str] = Field(
-        description="List of ingredients. Convert unicode fractions to text fractions (e.g. ½ -> 1/2)."
+        description="List of ingredients, each copied exactly as the source writes it. Convert unicode fractions to text fractions (e.g. ½ -> 1/2)."
     )
     directions: List[str] = Field(
         description="List of step-by-step cooking instructions."
@@ -146,9 +148,16 @@ class StructuredIngredient(BaseModel):
     unit: Optional[str] = Field(default=None, description="Unit of measure, e.g., \"cups\".")
     name: str = Field(description="Core name, e.g., \"flour\".")
     fallback_string: str = Field(description="Full original string, e.g., \"1 1/2 cups flour\".")
-    converted_amount: Optional[float] = Field(default=None, description="Converted amount (e.g. Volume -> Weight)")
-    converted_unit: Optional[str] = Field(default=None, description="Converted unit, e.g., \"g\"")
-    is_ai_converted: bool = Field(default=False, description="True if AI calculated the conversion.")
+    converted_amount: Optional[float] = Field(
+        default=None,
+        description="The OTHER measure's amount: the writer's own second measure, or the AI's in grams or millilitres.",
+    )
+    converted_unit: Optional[str] = Field(
+        default=None, description="The OTHER measure's unit: the writer's own, else \"g\" or \"ml\"."
+    )
+    is_ai_converted: bool = Field(
+        default=False, description="True if the AI calculated the conversion; false for the writer's own second measure."
+    )
     state: Optional[Literal["liquid", "solid"]] = Field(
         default=None,
         description=(
@@ -186,6 +195,19 @@ class CayenneRefinement(BaseModel):
             "Return [] for any axis that does not apply — never hallucinate tags."
         ),
     )
+    # A plain string, not a Literal: a word outside the five must not fail validation and cost the
+    # recipe. refine() keeps only the five (verbatim-ingestion D5).
+    source_uom_system_detected: Optional[str] = Field(
+        default=None,
+        description=(
+            'The measuring system the writer used: one of "US", "UK", "EU", "AU", "Imperial", judged '
+            "only from evidence in the recipe or its source host. null when there is no evidence."
+        ),
+    )
+    source_uom_system_evidence: Optional[str] = Field(
+        default=None,
+        description="The words that judgement rests on, quoted exactly from the recipe, or the source host exactly as given.",
+    )
 
 
 class CayenneRecipe(BaseModel):
@@ -221,6 +243,9 @@ class CayenneRecipe(BaseModel):
     )
     source_title: Optional[str] = Field(default=None, description="What the Source pill and the kitchen line show.")
     source_author: Optional[str] = Field(default=None, description="The book's author or a byline.")
+    # What REFINE detected (verbatim-ingestion D5), written at insert and by the regen worker.
+    source_uom_system_detected: Optional[str] = None
+    source_uom_system_evidence: Optional[str] = None
     # Raw, user-owned body (spec 3.2). Empty lists on legacy objects; the writer
     # and regen worker derive them from the structured data when empty.
     ingredient_lines: List[str] = Field(default_factory=list)

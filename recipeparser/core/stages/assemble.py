@@ -133,6 +133,8 @@ def assemble(
         source_key=citation.key if citation else None,
         source_title=citation.title if citation else None,
         source_author=citation.author if citation else None,
+        source_uom_system_detected=recipe.source_uom_system_detected,
+        source_uom_system_evidence=recipe.source_uom_system_evidence,
         notes=notes,
         rating=meta.rating if meta else None,
         nutritional_info=nutritional_info,

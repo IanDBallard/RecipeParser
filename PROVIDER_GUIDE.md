@@ -39,8 +39,6 @@ class OpenAIProvider(LLMProvider):
     def refine_recipe(
         self,
         raw: RecipeExtraction,
-        uom_system: str,
-        measure_preference: str,
     ) -> Optional[CayenneRefinement]:
         # Call self._client.chat.completions.create(...)
         # Parse response into CayenneRefinement
@@ -202,8 +200,6 @@ class MockProvider(LLMProvider):
     def refine_recipe(
         self,
         raw: RecipeExtraction,
-        uom_system: str,
-        measure_preference: str,
     ) -> Optional[CayenneRefinement]:
         # Returns a hardcoded CayenneRefinement with Fat Tokens
         from recipeparser.models import StructuredIngredient, TokenizedDirection, CayenneRefinement

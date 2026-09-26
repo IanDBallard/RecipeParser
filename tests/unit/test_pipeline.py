@@ -16,9 +16,10 @@ import pytest
 from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
-from recipeparser.core.pipeline import RecipePipeline
+from recipeparser.core.pipeline import ChunkResult, RecipePipeline
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.ports import CategorySource, ImageStore
+from recipeparser.core.stages.extract import Extraction
 from recipeparser.models import (
     CayenneRecipe,
     CayenneRefinement,
@@ -394,7 +395,7 @@ def test_on_result_fires_per_recipe_and_on_skip_names_the_failed_chunk():
         RecipePipeline,
         "_process_chunk",
         side_effect=lambda chunk, stages, axes: (
-            [_make_ingest_response("Good One")] if chunk.text == "good" else _raise(RuntimeError("boom"))
+            ChunkResult([_make_ingest_response("Good One")], []) if chunk.text == "good" else _raise(RuntimeError("boom"))
         ),
     ):
         returned = pipeline.run(
@@ -420,7 +421,7 @@ def test_a_raising_on_result_does_not_abort_the_run():
     with patch.object(
         RecipePipeline,
         "_process_chunk",
-        side_effect=lambda chunk, stages, axes: [_make_ingest_response(chunk.text)],
+        side_effect=lambda chunk, stages, axes: ChunkResult([_make_ingest_response(chunk.text)], []),
     ):
         returned = pipeline.run(chunks, on_result=lambda _r: (_ for _ in ()).throw(RuntimeError("write failed")))
 
@@ -450,7 +451,7 @@ def test_on_skip_reports_submission_position_not_completion_order():
         # is [bad-1, slow-good-0, slow-good-2] while submission order is
         # [slow-good-0, bad-1, slow-good-2].
         time.sleep(0.2)
-        return [_make_ingest_response(chunk.text)]
+        return ChunkResult([_make_ingest_response(chunk.text)], [])
 
     pipeline = _make_pipeline()
     with patch.object(RecipePipeline, "_process_chunk", side_effect=_side_effect):
@@ -570,9 +571,9 @@ def test_a_legacy_paprika_chunks_meta_reaches_assemble():
 
     pipeline = _make_pipeline()
     # extract() only has to return one non-empty item: refine is patched over it.
-    with patch(_PATCH_EXTRACT, return_value=[
+    with patch(_PATCH_EXTRACT, return_value=Extraction([
         RecipeExtraction(name="Pie", ingredients=["x"], directions=["y"])
-    ]), \
+    ], [])), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Pie")), \
          patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING), \
@@ -687,12 +688,12 @@ def test_pipeline_resolves_the_chunk_citation_with_the_models_stated_source():
     )
 
     pipeline = _make_pipeline()
-    with patch(_PATCH_EXTRACT, return_value=[
+    with patch(_PATCH_EXTRACT, return_value=Extraction([
         RecipeExtraction(
             name="Tomato Soup", ingredients=["x"], directions=["y"],
             stated_source="NYT Cooking", byline="Melissa Clark",
         )
-    ]), \
+    ], [])), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Tomato Soup")), \
          patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
@@ -700,6 +701,42 @@ def test_pipeline_resolves_the_chunk_citation_with_the_models_stated_source():
 
     assert (result.source_kind, result.source_key, result.source_title, result.source_author) == (
         "web", "cooking.nytimes.com", "NYT Cooking", "Melissa Clark")
+
+
+def test_refine_is_called_with_the_chunks_source_host():
+    """D7 follow-up: refine() must receive the chunk's own host, not a reader
+    preference — no uom_system/measure_preference is passed anywhere now."""
+    chunk = Chunk(
+        text="Scones ...",
+        input_type=InputType.URL,
+        source_url="https://www.taste.com.au/recipes/scones",
+    )
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction([
+        RecipeExtraction(name="Scones", ingredients=["x"], directions=["y"]),
+    ], [])), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Scones")) as mock_refine, \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        pipeline.run([chunk])
+
+    assert mock_refine.call_args.kwargs["source_host"] == "taste.com.au"
+
+
+def test_refine_is_called_with_no_host_when_the_chunk_has_no_source_url():
+    chunk = Chunk(text="Scones ...", input_type=InputType.URL)
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction([
+        RecipeExtraction(name="Scones", ingredients=["x"], directions=["y"]),
+    ], [])), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Scones")) as mock_refine, \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        pipeline.run([chunk])
+
+    assert mock_refine.call_args.kwargs["source_host"] is None
 
 
 def test_a_worker_timeouterror_is_reported_accurately_not_as_a_segment_timeout():
@@ -736,7 +773,7 @@ def test_a_worker_timeouterror_is_reported_accurately_not_as_a_segment_timeout()
 
 def _run_book_chunk(chunk: Chunk, extractions, store: Optional[ImageStore] = None):
     pipeline = _make_pipeline(image_store=store)
-    with patch(_PATCH_EXTRACT, return_value=extractions), \
+    with patch(_PATCH_EXTRACT, return_value=Extraction(extractions, [])), \
          patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)), \
          patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
@@ -799,13 +836,30 @@ def test_a_legacy_paprika_photo_rides_the_result_as_well_as_its_url():
     assert pie.photo == (b"P", "image/png", None)
 
 
-from recipeparser.core.pipeline import _uom_to_units_key
+def test_a_rewritten_recipe_is_reported_by_name_and_its_neighbours_kept():
+    """D2: EXTRACT's dropped titles reach on_skip; the chunk's other recipes are written."""
+    chunk = Chunk(text="book page", input_type=InputType.EPUB)
+    skips_seen: List[tuple] = []
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction(
+            [RecipeExtraction(name="Kept", ingredients=["x"], directions=["y"])], ["Carbonara"])), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Kept")), \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        results = pipeline.run([chunk], on_skip=lambda c, reason, index: skips_seen.append((reason, index)))
+    assert [r.title for r in results] == ["Kept"]
+    assert skips_seen == [("ingredient lines did not match the source: Carbonara", 0)]
 
 
-@pytest.mark.parametrize(
-    "uom, units",
-    [("US", "us"), ("UK", "metric"), ("EU", "metric"), ("AU", "metric"), ("Metric", "book"), ("Imperial", "book"), ("", "book")],
-)
-def test_uom_to_units_key_maps_the_four_locales_and_falls_to_book(uom, units):
-    # Cookbook locales D9: the client stores US/UK/EU/AU; an unknown word preserves the book's units.
-    assert _uom_to_units_key(uom) == units
+def test_a_rewritten_title_is_reported_even_when_a_later_stage_fails_the_chunk():
+    """D2: a REFINE failure on the kept recipe must not swallow EXTRACT's named drop."""
+    chunk = Chunk(text="book page", input_type=InputType.EPUB)
+    skips_seen: List[tuple] = []
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction(
+            [RecipeExtraction(name="Kept", ingredients=["x"], directions=["y"])], ["Carbonara"])), \
+         patch(_PATCH_REFINE, side_effect=RuntimeError("refine boom")):
+        results = pipeline.run([chunk], on_skip=lambda c, reason, index: skips_seen.append((reason, index)))
+    assert results == []
+    assert ("ingredient lines did not match the source: Carbonara", 0) in skips_seen
+    assert ("RuntimeError: refine boom", 0) in skips_seen

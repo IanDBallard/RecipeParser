@@ -70,9 +70,6 @@ The `RecipeEngine` is the heart of the system. It is a pure Python class with no
 
 @dataclass
 class EngineConfig:
-    units: str = "book"                  # "metric" | "us" | "imperial" | "book"
-    uom_system: str = "US"               # "US" | "Metric" | "Imperial"
-    measure_preference: str = "Volume"   # "Volume" | "Weight"
     concurrency: int = 1                 # max parallel Gemini calls
     rpm: Optional[int] = None            # requests-per-minute cap (None = unlimited)
 
@@ -255,8 +252,6 @@ class LLMProvider(ABC):
     def refine_recipe(
         self,
         raw: RecipeExtraction,
-        uom_system: str,
-        measure_preference: str,
     ) -> Optional[CayenneRefinement]:
         """Convert a raw RecipeExtraction into Cayenne Fat Token format."""
         ...

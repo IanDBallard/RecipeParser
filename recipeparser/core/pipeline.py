@@ -21,9 +21,9 @@ import mimetypes
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
-from recipeparser.core.citation import Citation, resolve_citation
+from recipeparser.core.citation import Citation, host_of, resolve_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.rate_limiter import GlobalRateLimiter
@@ -39,6 +39,22 @@ log = logging.getLogger(__name__)
 
 # Maximum number of concurrent Gemini API calls.
 MAX_CONCURRENT_API_CALLS: int = 4
+
+
+class ChunkResult(NamedTuple):
+    """What one chunk produced, and the skip reason of each recipe EXTRACT dropped (D2)."""
+
+    results: List[IngestResponse]
+    skipped: List[str]
+
+
+class _ChunkFailed(Exception):
+    """A chunk that failed after EXTRACT named its drops, carrying them so they are still reported (D2)."""
+
+    def __init__(self, cause: Exception, skipped: List[str]) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.skipped = skipped
 
 
 
@@ -68,8 +84,6 @@ class RecipePipeline:
         client: Any,
         controller: PipelineController,
         category_source: CategorySource,
-        uom_system: str = "US",
-        measure_preference: str = "Volume",
         concurrency: int = MAX_CONCURRENT_API_CALLS,
         rpm: Optional[int] = None,
         image_store: Optional[ImageStore] = None,
@@ -79,8 +93,6 @@ class RecipePipeline:
             client:             An initialised ``google.genai.Client`` instance.
             controller:         A ``PipelineController`` FSM for pause/cancel/checkpoint.
             category_source:    A ``CategorySource`` implementation for taxonomy loading.
-            uom_system:         User's preferred unit system ("US" | "Metric" | "Imperial").
-            measure_preference: User's preferred measure type ("Volume" | "Weight").
             concurrency:        Maximum number of parallel chunk workers.
             rpm:                Optional RPM override for the GlobalRateLimiter.
                                 Only honoured on the first instantiation of the singleton.
@@ -91,8 +103,6 @@ class RecipePipeline:
         self._client = client
         self._controller = controller
         self._category_source = category_source
-        self._uom_system = uom_system
-        self._measure_preference = measure_preference
         self._cap = max(1, concurrency)
         self._image_store = image_store
         # Initialise (or retrieve) the process-level rate limiter.
@@ -136,7 +146,8 @@ class RecipePipeline:
                          and PDF chunks are always ``label=None``, so the
                          index is the only identification a lost book chunk
                          has.  A chunk that simply contained no recipe is not
-                         a skip.
+                         a skip.  A recipe EXTRACT dropped as rewritten is
+                         reported the same way, with the reason naming it.
 
         Returns:
             All successfully processed IngestResponse objects.  Chunks that
@@ -160,7 +171,7 @@ class RecipePipeline:
         # Transition FSM to RUNNING.
         self._controller.transition("start")
 
-        def _worker(chunk: Chunk) -> List[IngestResponse]:
+        def _worker(chunk: Chunk) -> ChunkResult:
             """Process a single chunk inside a thread-pool worker."""
             # A reader may have pulled a photograph out of the archive; store it
             # before ASSEMBLE so the assembled recipe carries a URL rather than
@@ -210,10 +221,10 @@ class RecipePipeline:
                     # cannot be cancelled anyway: the executor's __exit__ waits
                     # on shutdown regardless. The real bound is per call, in
                     # gemini._call_with_retry's HTTP timeout.
-                    results = future.result()
-                    all_results.extend(results)
+                    outcome = future.result()
+                    all_results.extend(outcome.results)
                     if on_result is not None:
-                        for result in results:
+                        for result in outcome.results:
                             try:
                                 on_result(result)
                             except Exception:
@@ -224,7 +235,13 @@ class RecipePipeline:
                                 # than losing that row and saying so — which _report_skip does.
                                 log.exception("RecipePipeline: on_result callback failed for one recipe.")
                                 _report_skip(chunk, "result callback failed", index)
+                    for reason in outcome.skipped:
+                        _report_skip(chunk, reason, index)
                 except Exception as exc:
+                    if isinstance(exc, _ChunkFailed):
+                        for reason in exc.skipped:
+                            _report_skip(chunk, reason, index)
+                        exc = exc.cause
                     log.error("RecipePipeline: chunk worker raised unexpectedly — skipping. Error: %s", exc)
                     _report_skip(chunk, f"{type(exc).__name__}: {exc}", index)
                 finally:
@@ -274,12 +291,13 @@ class RecipePipeline:
         chunk: Chunk,
         stages: List[str],
         user_axes: Dict[str, List[str]],
-    ) -> List[IngestResponse]:
+    ) -> ChunkResult:
         """
         Execute the stage sequence for a single chunk.
 
-        Returns a list of IngestResponse objects (one per recipe found in the
-        chunk).  Returns [] if the chunk yields no recipes (not an error).
+        Returns a ChunkResult: one IngestResponse per recipe kept from the
+        chunk, and a skip reason per recipe EXTRACT dropped as rewritten.
+        Both are empty if the chunk yields no recipes (not an error).
 
         This method is called from a ThreadPoolExecutor worker thread.
         Exceptions propagate to the caller (run()) which handles them in the
@@ -291,7 +309,7 @@ class RecipePipeline:
         if stages == ["ASSEMBLE"]:
             if chunk.pre_parsed is None:
                 log.warning("_process_chunk: ASSEMBLE-only stage but pre_parsed is None — skipping chunk.")
-                return []
+                return ChunkResult([], [])
             # Use the pre-parsed data directly; re-assemble to get a clean IngestResponse.
             pr = chunk.pre_parsed
             # Use explicit None check — an empty list is a valid (if degenerate) embedding
@@ -313,13 +331,13 @@ class RecipePipeline:
                 citation=chunk.citation or _citation_from(pr),
             )
             result.attach_photo(_chunk_photo(chunk))
-            return [result]
+            return ChunkResult([result], [])
 
         # ── Fast-path: PAPRIKA_CAYENNE without embedding ──────────────────────
         if stages == ["EMBED", "ASSEMBLE"]:
             if chunk.pre_parsed is None:
                 log.warning("_process_chunk: EMBED+ASSEMBLE stage but pre_parsed is None — skipping chunk.")
-                return []
+                return ChunkResult([], [])
             pr = chunk.pre_parsed
             self._controller.notify_stage_change("EMBEDDING")
             self._limiter.wait_then_record_start()
@@ -342,7 +360,7 @@ class RecipePipeline:
                 citation=chunk.citation or _citation_from(pr),
             )
             result.attach_photo(_chunk_photo(chunk))
-            return [result]
+            return ChunkResult([result], [])
 
         # ── Full pipeline: EXTRACT → REFINE → CATEGORIZE → EMBED → ASSEMBLE ──
         plain_text = chunk.input_type == InputType.PAPRIKA_LEGACY
@@ -350,78 +368,83 @@ class RecipePipeline:
         # EXTRACT
         self._controller.notify_stage_change("EXTRACTING")
         self._limiter.wait_then_record_start()
-        extractions = extract(
+        extraction = extract(
             chunk_text=chunk.text,
             client=self._client,
-            units=_uom_to_units_key(self._uom_system),
             plain_text_mode=plain_text,
         )
-        if not extractions:
-            log.info("_process_chunk: no recipes found in chunk — skipping.")
-            return []
+        skipped = [f"ingredient lines did not match the source: {title}" for title in extraction.rewritten]
+        if not extraction.recipes:
+            log.info("_process_chunk: no recipes kept from chunk — skipping.")
+            return ChunkResult([], skipped)
 
-        for raw in extractions:
-            # REFINE
-            self._controller.notify_stage_change("REFINING")
-            self._limiter.wait_then_record_start()
-            refined = refine(
-                raw=raw,
-                client=self._client,
-                uom_system=self._uom_system,
-                measure_preference=self._measure_preference,
-                user_axes=user_axes,
-            )
-
-            # CATEGORIZE (result is already embedded in refined via refine())
-            self._controller.notify_stage_change("CATEGORIZING")
-            grid_cats = categorize(
-                recipe=refined,
-                user_axes=user_axes,
-            )
-
-            # EMBED
-            self._controller.notify_stage_change("EMBEDDING")
-            self._limiter.wait_then_record_start()
-            embedding = embed(recipe=refined, client=self._client)
-
-            # The photo the model picked from the book's markers, stored per
-            # recipe (one chunk can hold several); else the chunk's own.
-            photo = _book_photo(chunk, getattr(raw, "photo_filename", None))
-            image_url = chunk.image_url
-            if photo is not None and self._image_store is not None:
-                image_url = (
-                    self._image_store.put(photo.data, str(uuid.uuid4()), photo.content_type) or chunk.image_url
+        # A later stage failing the chunk must not swallow the drops EXTRACT named (D2).
+        try:
+            for raw in extraction.recipes:
+                # REFINE
+                self._controller.notify_stage_change("REFINING")
+                self._limiter.wait_then_record_start()
+                refined = refine(
+                    raw=raw,
+                    client=self._client,
+                    source_host=host_of(chunk.source_url) if chunk.source_url else None,
+                    user_axes=user_axes,
                 )
-            elif photo is None:
-                photo = _chunk_photo(chunk)
 
-            # ASSEMBLE (no separate DB stage — stays at EMBEDDING per §7.2)
-            result = assemble(
-                recipe=refined,
-                embedding=embedding,
-                source_url=chunk.source_url,
-                image_url=image_url,
-                grid_categories=grid_cats,
-                prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
-                cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
-                meta=chunk.meta,
-                ingredient_lines=list(raw.ingredients),
-                direction_steps=list(raw.directions),
-                servings_text=getattr(raw, "servings", None),
-                citation=resolve_citation(
-                    chunk.citation,
-                    getattr(raw, "stated_source", None),
-                    getattr(raw, "byline", None),
-                ),
-                total_time=getattr(raw, "total_time", None),
-                description=getattr(raw, "description", None),
-                nutritional_info=getattr(raw, "nutritional_info", None),
-                notes=getattr(raw, "notes", None),
-            )
-            result.attach_photo(photo)
-            results.append(result)
+                # CATEGORIZE (result is already embedded in refined via refine())
+                self._controller.notify_stage_change("CATEGORIZING")
+                grid_cats = categorize(
+                    recipe=refined,
+                    user_axes=user_axes,
+                )
 
-        return results
+                # EMBED
+                self._controller.notify_stage_change("EMBEDDING")
+                self._limiter.wait_then_record_start()
+                embedding = embed(recipe=refined, client=self._client)
+
+                # The photo the model picked from the book's markers, stored per
+                # recipe (one chunk can hold several); else the chunk's own.
+                photo = _book_photo(chunk, getattr(raw, "photo_filename", None))
+                image_url = chunk.image_url
+                if photo is not None and self._image_store is not None:
+                    image_url = (
+                        self._image_store.put(photo.data, str(uuid.uuid4()), photo.content_type) or chunk.image_url
+                    )
+                elif photo is None:
+                    photo = _chunk_photo(chunk)
+
+                # ASSEMBLE (no separate DB stage — stays at EMBEDDING per §7.2)
+                result = assemble(
+                    recipe=refined,
+                    embedding=embedding,
+                    source_url=chunk.source_url,
+                    image_url=image_url,
+                    grid_categories=grid_cats,
+                    prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
+                    cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
+                    meta=chunk.meta,
+                    ingredient_lines=list(raw.ingredients),
+                    direction_steps=list(raw.directions),
+                    servings_text=getattr(raw, "servings", None),
+                    citation=resolve_citation(
+                        chunk.citation,
+                        getattr(raw, "stated_source", None),
+                        getattr(raw, "byline", None),
+                    ),
+                    total_time=getattr(raw, "total_time", None),
+                    description=getattr(raw, "description", None),
+                    nutritional_info=getattr(raw, "nutritional_info", None),
+                    notes=getattr(raw, "notes", None),
+                )
+                result.attach_photo(photo)
+                results.append(result)
+        except Exception as exc:
+            if not skipped:
+                raise
+            raise _ChunkFailed(exc, skipped) from exc
+
+        return ChunkResult(results, skipped)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -450,17 +473,6 @@ def _chunk_photo(chunk: Chunk) -> Optional[Photo]:
     if not chunk.image_bytes:
         return None
     return Photo(data=chunk.image_bytes, content_type=chunk.image_content_type)
-
-
-def _uom_to_units_key(uom_system: str) -> str:
-    """Map the profile's cookbook locale to the extract() ``units`` key (cookbook locales D9).
-
-    The three metric locales all keep the metric part of a dual-measure line; the ``imperial``
-    key stays reachable from the CLI and GUI only. An unknown word preserves the book's own
-    units, which is why either deploy order is safe.
-    """
-    mapping = {"US": "us", "UK": "metric", "EU": "metric", "AU": "metric"}
-    return mapping.get(uom_system, "book")
 
 
 def _source_meta_from(pr: "CayenneRecipe | IngestResponse") -> SourceMeta:

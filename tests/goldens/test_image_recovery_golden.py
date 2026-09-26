@@ -62,6 +62,8 @@ HERO_IMAGES: Dict[str, Dict[str, Optional[str]]] = {
     "phases-bakers.epub": {"Overnight Country Loaf": None, "Sandwich Loaf": None},
     "text-pages.pdf": {EVERY_RECIPE: None},
     "legacy-photo.paprikarecipes": {"Boiled Custard": PAPRIKA_PHOTO},
+    "au-measures.paprikarecipes": {"Lamington Slice": None},
+    "imperial-measures.paprikarecipes": {"Imperial Measures": None},
 }
 
 #: fixture -> why its expectation is not met yet. Empty: every expectation holds.
@@ -158,8 +160,6 @@ def _run(fixture: str, golden_client, store: Optional[ImageStore]):
         client=golden_client(fixture),
         controller=PipelineController(),
         category_source=_FixedAxesSource(),
-        uom_system="US",
-        measure_preference="Volume",
         concurrency=MAX_CONCURRENT_API_CALLS,
         rpm=9999,
         image_store=store,

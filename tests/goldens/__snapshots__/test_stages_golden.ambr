@@ -1,4 +1,116 @@
 # serializer version: 1
+# name: test_stage_golden[au-measures.paprikarecipes]
+  dict({
+    'detail': list([
+      dict({
+        'categories': dict({
+          'Cuisine': list([
+            'British',
+          ]),
+          'Meal Type': list([
+            'Dessert',
+          ]),
+        }),
+        'raw': dict({
+          'byline': None,
+          'cook_time': None,
+          'description': None,
+          'directions': list([
+            'Mix and bake at 180°C for 25 minutes.',
+          ]),
+          'ingredients': list([
+            '2 cups (250 ml) self-raising flour',
+            '1 tbsp (20 ml) caster sugar',
+            '1/2 cup (125 ml) milk',
+            '60 g butter, melted',
+          ]),
+          'name': 'Lamington Slice',
+          'notes': None,
+          'nutritional_info': None,
+          'photo_filename': None,
+          'prep_time': None,
+          'servings': None,
+          'stated_source': None,
+          'total_time': None,
+        }),
+        'refined': dict({
+          'base_servings': None,
+          'grid_categories': dict({
+            'Cuisine': list([
+              'British',
+            ]),
+            'Meal Type': list([
+              'Dessert',
+            ]),
+          }),
+          'source_uom_system_detected': 'AU',
+          'source_uom_system_evidence': '1 tbsp (20 ml)',
+          'structured_ingredients': list([
+            dict({
+              'amount': 2.0,
+              'converted_amount': 250.0,
+              'converted_unit': 'ml',
+              'fallback_string': '2 cups (250 ml) self-raising flour',
+              'id': 'ing_01',
+              'is_ai_converted': False,
+              'line_index': 0,
+              'name': 'self-raising flour',
+              'state': 'solid',
+              'unit': 'cups',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': 20.0,
+              'converted_unit': 'ml',
+              'fallback_string': '1 tbsp (20 ml) caster sugar',
+              'id': 'ing_02',
+              'is_ai_converted': False,
+              'line_index': 1,
+              'name': 'caster sugar',
+              'state': 'solid',
+              'unit': 'tbsp',
+            }),
+            dict({
+              'amount': 0.5,
+              'converted_amount': 125.0,
+              'converted_unit': 'ml',
+              'fallback_string': '1/2 cup (125 ml) milk',
+              'id': 'ing_03',
+              'is_ai_converted': False,
+              'line_index': 2,
+              'name': 'milk',
+              'state': 'liquid',
+              'unit': 'cup',
+            }),
+            dict({
+              'amount': 60.0,
+              'converted_amount': 60.0,
+              'converted_unit': 'ml',
+              'fallback_string': '60 g butter, melted',
+              'id': 'ing_04',
+              'is_ai_converted': True,
+              'line_index': 3,
+              'name': 'butter, melted',
+              'state': 'liquid',
+              'unit': 'g',
+            }),
+          ]),
+          'title': 'Lamington Slice',
+          'tokenized_directions': list([
+            dict({
+              'step': 1,
+              'text': 'Mix and bake at 180°C for 25 minutes.',
+            }),
+          ]),
+        }),
+      }),
+    ]),
+    'names': list([
+      'Lamington Slice',
+    ]),
+    'recipe_count': 1,
+  })
+# ---
 # name: test_stage_golden[dual-units.epub]
   dict({
     'detail': list([
@@ -47,6 +159,8 @@
               'Bread',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 2.0,
@@ -174,6 +288,8 @@
               'Dessert',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 14.0,
@@ -303,6 +419,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -587,6 +705,8 @@
               'Dessert',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -930,6 +1050,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 6.0,
@@ -1114,6 +1236,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -1208,6 +1332,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 1.0,
@@ -1331,6 +1457,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -1903,6 +2031,192 @@
     'recipe_count': 503,
   })
 # ---
+# name: test_stage_golden[imperial-measures.paprikarecipes]
+  dict({
+    'detail': list([
+      dict({
+        'categories': dict({
+          'Cuisine': list([
+            'British',
+          ]),
+        }),
+        'raw': dict({
+          'byline': None,
+          'cook_time': None,
+          'description': None,
+          'directions': list([
+            'Mix well and bake in a moderate oven for an hour.',
+          ]),
+          'ingredients': list([
+            '1/2 pint milk',
+            '1 lb plain flour',
+            '2 oz butter',
+            '1 fl oz brandy',
+            '1 gill cream',
+            '1 dessertspoon caster sugar',
+            '1 teacup stock',
+            '1 breakfast cup breadcrumbs',
+            '1 stone potatoes',
+            '2 drams saffron',
+          ]),
+          'name': 'Imperial Measures',
+          'notes': None,
+          'nutritional_info': None,
+          'photo_filename': None,
+          'prep_time': None,
+          'servings': None,
+          'stated_source': None,
+          'total_time': None,
+        }),
+        'refined': dict({
+          'base_servings': None,
+          'grid_categories': dict({
+            'Cuisine': list([
+              'British',
+            ]),
+            'Meal Type': list([
+            ]),
+          }),
+          'source_uom_system_detected': 'Imperial',
+          'source_uom_system_evidence': '1 stone potatoes',
+          'structured_ingredients': list([
+            dict({
+              'amount': 0.5,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '1/2 pint milk',
+              'id': 'ing_01',
+              'is_ai_converted': False,
+              'line_index': 0,
+              'name': 'milk',
+              'state': 'liquid',
+              'unit': 'pint',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '1 lb plain flour',
+              'id': 'ing_02',
+              'is_ai_converted': False,
+              'line_index': 1,
+              'name': 'plain flour',
+              'state': 'solid',
+              'unit': 'lb',
+            }),
+            dict({
+              'amount': 2.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '2 oz butter',
+              'id': 'ing_03',
+              'is_ai_converted': False,
+              'line_index': 2,
+              'name': 'butter',
+              'state': 'solid',
+              'unit': 'oz',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '1 fl oz brandy',
+              'id': 'ing_04',
+              'is_ai_converted': False,
+              'line_index': 3,
+              'name': 'brandy',
+              'state': 'liquid',
+              'unit': 'fl oz',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '1 gill cream',
+              'id': 'ing_05',
+              'is_ai_converted': False,
+              'line_index': 4,
+              'name': 'cream',
+              'state': 'liquid',
+              'unit': 'gill',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '1 dessertspoon caster sugar',
+              'id': 'ing_06',
+              'is_ai_converted': False,
+              'line_index': 5,
+              'name': 'caster sugar',
+              'state': 'solid',
+              'unit': 'dessertspoon',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '1 teacup stock',
+              'id': 'ing_07',
+              'is_ai_converted': False,
+              'line_index': 6,
+              'name': 'stock',
+              'state': 'liquid',
+              'unit': 'teacup',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '1 breakfast cup breadcrumbs',
+              'id': 'ing_08',
+              'is_ai_converted': False,
+              'line_index': 7,
+              'name': 'breadcrumbs',
+              'state': 'solid',
+              'unit': 'breakfast cup',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '1 stone potatoes',
+              'id': 'ing_09',
+              'is_ai_converted': False,
+              'line_index': 8,
+              'name': 'potatoes',
+              'state': 'solid',
+              'unit': 'stone',
+            }),
+            dict({
+              'amount': 2.0,
+              'converted_amount': None,
+              'converted_unit': None,
+              'fallback_string': '2 drams saffron',
+              'id': 'ing_10',
+              'is_ai_converted': False,
+              'line_index': 9,
+              'name': 'saffron',
+              'state': 'solid',
+              'unit': 'drams',
+            }),
+          ]),
+          'title': 'Imperial Measures',
+          'tokenized_directions': list([
+            dict({
+              'step': 1,
+              'text': 'Mix well and bake in a moderate oven for an hour.',
+            }),
+          ]),
+        }),
+      }),
+    ]),
+    'names': list([
+      'Imperial Measures',
+    ]),
+    'recipe_count': 1,
+  })
+# ---
 # name: test_stage_golden[legacy-photo.paprikarecipes]
   dict({
     'detail': list([
@@ -1947,6 +2261,8 @@
               'Dessert',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 1.0,
@@ -2079,6 +2395,8 @@
               'Bread',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -2258,6 +2576,8 @@
               'Bread',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 4.0,
@@ -2399,6 +2719,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -2683,6 +3005,8 @@
               'Dinner',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -2978,6 +3302,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -3093,6 +3419,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -3167,6 +3495,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -3269,6 +3599,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,

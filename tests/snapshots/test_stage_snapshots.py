@@ -81,10 +81,10 @@ def test_extract_output_shape(snapshot: SnapshotAssertion) -> None:
     raw = _make_raw_recipe()
     mock_result = RecipeList(recipes=[raw])
     with patch("recipeparser.core.stages.extract.extract_recipes", return_value=mock_result):
-        result = extract("Some text about cooking.", client=MagicMock())
+        result = extract("Some text about cooking: 1.5 cups flour.", client=MagicMock())
 
     # Serialize to dict for stable snapshot comparison
-    serialized = [r.model_dump() for r in result]
+    serialized = [r.model_dump() for r in result.recipes]
     assert serialized == snapshot
 
 

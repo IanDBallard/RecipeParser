@@ -86,12 +86,36 @@ def test_refine_prompt_states_liquid_or_solid_before_it_converts():
         name="Cake", photo_filename="cake.jpg", servings="4", prep_time="5 mins", cook_time="30 mins",
         ingredients=["1 cup milk", "2 cups flour"], directions=["Mix."],
     )
-    prompt = build_refine_prompt(raw, "UK", "Natural")
+    prompt = build_refine_prompt(raw, None)
     state_at = prompt.index("STATE:")
     conversion_at = prompt.index("CONVERSION:")
     assert 0 < state_at < conversion_at
     assert '"liquid"' in prompt and '"solid"' in prompt
     assert "Use the state when you compute the conversion" in prompt
+
+
+def test_refine_prompt_carries_the_host_and_no_reader_context():
+    raw = RecipeExtraction(name="Cake", ingredients=["1 cup milk"], directions=["Mix."])
+    prompt = build_refine_prompt(raw, "taste.com.au")
+    assert "SOURCE HOST: taste.com.au" in prompt
+    assert prompt.index("SOURCE HOST:") < prompt.index("RAW RECIPE:")
+    assert "UOM System" not in prompt and "Measure Preference" not in prompt
+    assert "DUAL MEASURES:" in prompt and "SOURCE SYSTEM:" in prompt
+    assert "SOURCE HOST: none" in build_refine_prompt(raw, None)
+
+
+def test_the_rebuilt_refinement_keeps_the_detection(monkeypatch):
+    # gemini.py rebuilds the refinement when axes are present; the detection must survive it.
+    expected = CayenneRefinement(
+        title="Cake", base_servings=4,
+        structured_ingredients=[StructuredIngredient(id="ing_01", amount=1.0, unit="cup", name="milk", fallback_string="1 cup (250 ml) milk")],
+        tokenized_directions=[TokenizedDirection(step=1, text="Use {{ing_01|milk}}.")],
+        source_uom_system_detected="AU", source_uom_system_evidence="1 cup (250 ml)",
+    )
+    client = MagicMock()
+    client.models.generate_content.return_value = MagicMock(text=expected.model_dump_json())
+    result = refine_recipe_for_cayenne("raw", client, user_axes={"Cuisine": ["Italian"]})
+    assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("AU", "1 cup (250 ml)")
 
 
 def test_structured_ingredient_carries_an_optional_state():
@@ -100,3 +124,14 @@ def test_structured_ingredient_carries_an_optional_state():
     assert StructuredIngredient(id="ing_02", name="flour", fallback_string="2 cups flour").state is None
     with pytest.raises(ValueError):
         StructuredIngredient(id="ing_03", name="x", fallback_string="x", state="wet")
+
+
+def test_refine_prompt_sizes_the_imperial_measures_and_names_their_evidence():
+    """Imperial measures D5: REFINE's conversions use Cayenne's sizes, and the pre-metric British
+    measures are evidence of Imperial, the dessertspoon excepted."""
+    raw = RecipeExtraction(name="Syllabub", ingredients=["1 gill cream"], directions=["Whip."])
+    prompt = build_refine_prompt(raw, None)
+    assert "gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight)" in prompt
+    assert '"breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial' in prompt
+    assert '"dessertspoon" alone is not evidence' in prompt
+    assert prompt.index("SOURCE SYSTEM:") < prompt.index("RAW RECIPE:")

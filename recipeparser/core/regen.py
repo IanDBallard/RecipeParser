@@ -81,7 +81,7 @@ def build_update(
     The conditional write-back payload (spec 5.5).  Title, base_servings and
     grid_categories are deliberately absent: they are user-owned after ingest.
     amount_overrides is emptied because the new structured entries already
-    reflect the rewritten lines.
+    reflect the rewritten lines. The detected system is derived data, so an edit refreshes it (D5).
     """
     return {
         "structured_ingredients": [i.model_dump() for i in refinement.structured_ingredients],
@@ -92,4 +92,6 @@ def build_update(
         "derived_error": None,
         "derived_attempts": 0,
         "claimed_at": None,
+        "source_uom_system_detected": refinement.source_uom_system_detected,
+        "source_uom_system_evidence": refinement.source_uom_system_evidence,
     }

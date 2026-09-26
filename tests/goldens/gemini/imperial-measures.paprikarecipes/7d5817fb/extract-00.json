@@ -1,0 +1,17 @@
+{
+  "stage": "extract",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "9296661fb45daa999e8f5e0c94ba3f75f3abfd56c82911fae9ea7f072be9763a",
+  "response_text": "{\n  \"recipes\": [\n    {\n      \"name\": \"Imperial Measures\",\n      \"photo_filename\": null,\n      \"servings\": null,\n      \"prep_time\": null,\n      \"cook_time\": null,\n      \"ingredients\": [\n        \"1/2 pint milk\",\n        \"1 lb plain flour\",\n        \"2 oz butter\",\n        \"1 fl oz brandy\",\n        \"1 gill cream\",\n        \"1 dessertspoon caster sugar\",\n        \"1 teacup stock\",\n        \"1 breakfast cup breadcrumbs\",\n        \"1 stone potatoes\",\n        \"2 drams saffron\"\n      ],\n      \"directions\": [\n        \"Mix well and bake in a moderate oven for an hour.\"\n      ],\n      \"notes\": null,\n      \"stated_source\": null,\n      \"byline\": null,\n      \"total_time\": null,\n      \"description\": null,\n      \"nutritional_info\": null,\n      \"categories\": []\n    }\n  ]\n}"
+}

@@ -29,6 +29,8 @@ STAGE_FIXTURES = (
     "phases-bakers.epub",
     "text-pages.pdf",
     "legacy-photo.paprikarecipes",
+    "au-measures.paprikarecipes",
+    "imperial-measures.paprikarecipes",
 )
 
 
@@ -90,15 +92,12 @@ def test_stage_golden(fixture, golden_client, snapshot: SnapshotAssertion, monke
         extractions = extract(
             chunk_text=text,
             client=client,
-            units="book",
             plain_text_mode=chunk.input_type == InputType.PAPRIKA_LEGACY,
-        )
+        ).recipes
         for raw in extractions:
             refined = refine(
                 raw=raw,
                 client=client,
-                uom_system="US",
-                measure_preference="Volume",
                 user_axes=FIXED_AXES,
             )
             rendered.append(
@@ -190,10 +189,9 @@ def test_every_refined_recipe_keeps_its_grid_inside_the_axes(golden_client, monk
     valid = {axis: set(tags) for axis, tags in FIXED_AXES.items()}
     client = golden_client("dual-units.epub")
     for chunk in EpubReader().read(str(corpus_path("dual-units.epub"))):
-        for raw in extract(chunk_text=chunk.text, client=client, units="book"):
+        for raw in extract(chunk_text=chunk.text, client=client).recipes:
             refined = refine(
-                raw=raw, client=client, uom_system="US",
-                measure_preference="Volume", user_axes=FIXED_AXES,
+                raw=raw, client=client, user_axes=FIXED_AXES,
             )
             for axis, tags in refined.grid_categories.items():
                 assert axis in valid
@@ -227,14 +225,12 @@ def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
         text = chunk.text
         if gemini.needs_table_normalisation(text):
             text = gemini.normalise_baker_table(text, client)
-        for raw in extract(chunk_text=text, client=client, units="book", plain_text_mode=False):
+        for raw in extract(chunk_text=text, client=client, plain_text_mode=False).recipes:
             if not any("phase" in item.lower() for item in raw.ingredients + raw.directions):
                 continue  # not the multi-phase recipe
             refined = refine(
                 raw=raw,
                 client=client,
-                uom_system="US",
-                measure_preference="Volume",
                 user_axes=FIXED_AXES,
             )
             lines = [i.fallback_string for i in refined.structured_ingredients]
@@ -245,3 +241,71 @@ def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
         "the refined recipe kept no phase heading at all — extraction produced "
         "them and refinement dropped them"
     )
+
+
+def test_an_australian_recipe_is_detected_as_au_on_its_own_evidence(golden_client, monkeypatch):
+    """au-measures carries no host and no notes: only its lines can name the system.
+
+    "1 tbsp (20 ml)" is the Australian tablespoon, which the refine prompt names
+    as AU evidence; refine's own check drops any detection whose evidence is not
+    a quote from the recipe, so the assertion on the text here is the same rule
+    seen from the outside.
+    """
+    fixture = "au-measures.paprikarecipes"
+    client = golden_client(fixture)
+    chunks = _chunks_for(fixture, monkeypatch)
+    assert len(chunks) == 1
+
+    raws = extract(
+        chunk_text=chunks[0].text,
+        client=client,
+        plain_text_mode=chunks[0].input_type == InputType.PAPRIKA_LEGACY,
+    ).recipes
+    assert [raw.name for raw in raws] == ["Lamington Slice"]
+
+    refined = refine(raw=raws[0], client=client, user_axes=FIXED_AXES)
+
+    assert refined.source_uom_system_detected == "AU"
+    assert refined.source_uom_system_evidence
+    assert refined.source_uom_system_evidence in chunks[0].text
+
+
+def test_an_imperial_recipe_is_stored_as_written_and_detected_as_imperial(golden_client, monkeypatch):
+    """imperial-measures (imperial measures spec, Testing): every line verbatim, Imperial detected
+    from the recipe's own words, conversions in g or ml, and every unit word one Cayenne parses."""
+    from tests.goldens.cayenne_units import known_unit_words, normalise, units_ts
+
+    fixture = "imperial-measures.paprikarecipes"
+    client = golden_client(fixture)
+    chunks = _chunks_for(fixture, monkeypatch)
+    assert len(chunks) == 1
+
+    raws = extract(
+        chunk_text=chunks[0].text,
+        client=client,
+        plain_text_mode=chunks[0].input_type == InputType.PAPRIKA_LEGACY,
+    ).recipes
+    assert [raw.name for raw in raws] == ["Imperial Measures"]
+    assert raws[0].ingredients == [
+        "1/2 pint milk", "1 lb plain flour", "2 oz butter", "1 fl oz brandy", "1 gill cream",
+        "1 dessertspoon caster sugar", "1 teacup stock", "1 breakfast cup breadcrumbs",
+        "1 stone potatoes", "2 drams saffron",
+    ]
+
+    refined = refine(raw=raws[0], client=client, user_axes=FIXED_AXES)
+
+    assert refined.source_uom_system_detected == "Imperial"
+    assert refined.source_uom_system_evidence
+    assert refined.source_uom_system_evidence in chunks[0].text
+    from recipeparser.core.stages.refine import _kind
+    for ing in refined.structured_ingredients:
+        if ing.is_ai_converted:
+            assert ing.converted_unit in ("g", "ml"), ing
+            # D3: the OTHER measure. The recorded reply's same-kind pairs (1 lb -> 454 g) are dropped by refine().
+            assert _kind(ing.unit) != _kind(ing.converted_unit), ing
+    # Review Focus 5: an unknown unit word would be shown verbatim in Cayenne and never converted.
+    path = units_ts()
+    if path is not None:
+        known = known_unit_words(path)
+        unknown = [ing.unit for ing in refined.structured_ingredients if ing.unit and normalise(ing.unit) not in known]
+        assert unknown == [], f"REFINE wrote unit words Cayenne does not parse: {unknown}"

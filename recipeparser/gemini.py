@@ -359,35 +359,6 @@ def normalise_baker_table(text_chunk: str, client) -> str:
         return text_chunk
 
 
-_UNITS_RULES = {
-    # Keep only the metric (gram/ml) measurement from dual-unit lines like
-    # "2 cups/250g flour" → "250g flour"
-    "metric": (
-        "- Many ingredient lines contain dual measurements in the format "
-        "\"US-measure/metric-weight ingredient\" (e.g. \"2 cups/250g flour\", "
-        "\"14 tablespoons/200g butter\"). "
-        "Keep ONLY the metric (gram or ml) part and discard the US volume part. "
-        "Output just \"250g flour\", \"200g butter\", etc."
-    ),
-    # Keep only the US volume/weight measurement
-    "us": (
-        "- Many ingredient lines contain dual measurements in the format "
-        "\"US-measure/metric-weight ingredient\" (e.g. \"2 cups/250g flour\", "
-        "\"14 tablespoons/200g butter\"). "
-        "Keep ONLY the US measure part and discard the metric part. "
-        "Output just \"2 cups flour\", \"14 tablespoons butter\", etc."
-    ),
-    # Keep imperial (oz/lb) where present; for dual-unit lines prefer metric
-    "imperial": (
-        "- Where ingredients are given with dual measurements "
-        "(e.g. \"2 cups/250g flour\"), keep the metric (gram/ml) part. "
-        "Where ounces or pounds appear, keep those as-is."
-    ),
-    # Default: preserve whatever the book uses, no stripping
-    "book": "",
-}
-
-
 def build_plain_text_prompt(text: str) -> str:
     """The prompt for a single recipe in plain text (Paprika import, pasted recipe)."""
     return f"""
@@ -395,7 +366,9 @@ You are a culinary data extractor. The following text is a recipe. Extract it.
 
 Rules:
 - Extract the recipe title, servings, prep time, cook time, ingredients, and directions.
-- Ingredients: one item per list entry. Convert unicode fractions (½, ¼, ¾) to plain text (1/2, 1/4, 3/4).
+- Ingredients: one item per list entry, copied exactly as the text writes it: the same numbers,
+  the same units, every measure the line gives, in the same order. Never convert, round, drop or
+  add a measure. The one change allowed: write unicode fractions (½, ¼, ¾) as plain text (1/2, 1/4, 3/4).
 - Directions: one step per list entry.
 - If a field is absent from the text, leave it null.
 - stated_source is the publication or book as the text names itself; byline is the author's
@@ -441,10 +414,8 @@ def extract_recipe_from_text(
     )
 
 
-def build_extract_prompt(text_chunk: str, units: str = "book") -> str:
+def build_extract_prompt(text_chunk: str) -> str:
     """The prompt for a book chunk that may hold several recipes."""
-    units_rule = _UNITS_RULES.get(units.lower(), "")
-    units_section = f"\n{units_rule}" if units_rule else ""
     return f"""
 You are a culinary data extractor. Review the following text from an EPUB recipe book.
 Extract ALL distinct recipes found in the text.
@@ -463,7 +434,9 @@ Rules:
   If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
   mid-method (e.g. appears after "Step 2" or "Step 3" text).
   If no hero image is identifiable, leave photo_filename null.
-- Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+- Copy every ingredient line exactly as the text writes it: the same numbers, the same units,
+  every measure the line gives, in the same order. Never convert, round, drop or add a measure.
+  The one change allowed: write unicode fractions (½, ¼, ¾, etc.) as plain text (1/2, 1/4, 3/4, etc.).
 - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
   "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
   Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
@@ -483,7 +456,7 @@ Rules:
   most one paragraph. null when there is none.
 - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
   text carries none.
-- Do not invent or infer values that are not present in the text.{units_section}
+- Do not invent or infer values that are not present in the text.
 
 Text chunk:
 {text_chunk}
@@ -493,23 +466,18 @@ Text chunk:
 def extract_recipes(
     text_chunk: str,
     client,
-    units: str = "book",
 ) -> RecipeList:
     """
     Call Gemini with the extraction prompt and return a parsed RecipeList.
     Applies retry/back-off for rate-limit errors and for a reply that will
     not parse.
 
-    ``units`` controls how dual-measurement ingredient lines are handled:
-      "metric"   — keep only gram/ml values  (e.g. "250g flour")
-      "us"       — keep only US cup/tbsp values
-      "imperial" — keep only oz/lb values (falls back to metric for dual lines)
-      "book"     — preserve whatever the book uses (default)
+    Every ingredient line is copied verbatim (verbatim-ingestion D1); the stage holds the model to it.
 
     Raises:
         ExtractionParseError: every attempt's reply could not be parsed.
     """
-    prompt = build_extract_prompt(text_chunk, units)
+    prompt = build_extract_prompt(text_chunk)
 
     return _generate_and_parse(
         client,
@@ -672,11 +640,14 @@ def _format_axes_for_prompt(user_axes: Dict[str, List[str]]) -> str:
 
 def build_refine_prompt(
     raw_recipe: object,
-    uom_system: str,
-    measure_preference: str,
+    source_host: Optional[str],
     user_axes: Optional[Dict[str, List[str]]] = None,
 ) -> str:
-    """The Pass-2 prompt: structured ingredients, fat tokens, and categorisation."""
+    """The Pass-2 prompt: structured ingredients, fat tokens, the source system and categorisation.
+
+    ``SOURCE HOST`` sits before ``RAW RECIPE:`` because the golden replay keys a refine call by the
+    text after that marker (tests/goldens/golden_client.py).
+    """
     categorization_section = _format_axes_for_prompt(user_axes or {})
     return f"""
 You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
@@ -685,7 +656,7 @@ RULES:
 1. STRUCTURED INGREDIENTS:
    - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
    - Extract numeric "amount", "unit" (null if unitless), and "name".
-   - "fallback_string" is the original full line.
+   - "fallback_string" is the original full line, unchanged.
    - "line_index" is the 0-based position of the source line in the RAW RECIPE
      ingredients list. Every ingredient line gets exactly one entry with its
      index. A section header line (e.g. "For the sauce:") gets no entry.
@@ -695,12 +666,21 @@ RULES:
      sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
      null when the line has no amount or its unit is neither a volume nor a weight.
      Use the state when you compute the conversion below.
-   - CONVERSION: Always give the equivalent in the OTHER measure, regardless of the Measure
-     Preference below: a weight for a volume ("1 cup" -> 120, "g"), a volume for a weight
-     ("150 g" -> 1.25, "cups"). Put it in "converted_amount" and "converted_unit" and set
-     "is_ai_converted" to true. Leave "converted_amount" and "converted_unit" null and
-     "is_ai_converted" false when the line states no amount ("salt to taste") or its
-     unit is neither a volume nor a weight ("3 eggs", "a pinch").
+   - DUAL MEASURES: when a line states two measures ("1 cup (240 g) flour", "250g/2 cups flour",
+     "1 ounce (about 1/3 packed cup) grated pecorino"), the FIRST measure the writer gives is
+     "amount" and "unit". When the second is the other kind (a weight beside a volume, or a volume
+     beside a weight), put it in "converted_amount" and "converted_unit" exactly as the line writes
+     it and set "is_ai_converted" to false. When both are the same kind ("1 pound (450g)"), the
+     second is not structured: apply the CONVERSION rule below.
+   - CONVERSION: for a line with one measure, give the equivalent in the OTHER measure, in grams or
+     millilitres only: a weight for a volume ("1 cup" flour -> 120, "g"), a volume for a weight
+     ("150 g" flour -> 300, "ml"). Never answer in cups, spoons, ounces or pints. Put it in
+     "converted_amount" and "converted_unit" and set "is_ai_converted" to true. Leave
+     "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
+     states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
+     "a pinch").
+     Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
+   - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
    - amount: the numeric quantity. Use null - never 0 - when the source states no
      amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
      measurement of nothing.
@@ -719,10 +699,25 @@ RULES:
      (ingredients) or text (directions).
    - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
      be able to tell where one session ends and the next begins.
+
+4. SOURCE SYSTEM:
+   - "source_uom_system_detected": the measuring system the writer used, exactly one of "US",
+     "UK", "EU", "AU", "Imperial", judged only from evidence in the RAW RECIPE or the SOURCE HOST:
+       * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
+         is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
+         pint is Imperial;
+       * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
+       * a statement about the measures ("Australian standard measures", "US cup measures");
+       * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
+         Metric's);
+       * spelling and ingredient names only one country uses ("caster sugar", "plain flour" and
+         "double cream" are UK; "all-purpose flour" and "heavy cream" are US).
+     Grams printed beside cups are not evidence: American writers print them too.
+   - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
+     the SOURCE HOST exactly as given. One short quote.
+   - Leave both null when nothing above applies.
 {categorization_section}
-CONTEXT:
-UOM System: {uom_system}
-Measure Preference: {measure_preference}
+SOURCE HOST: {source_host or "none"}
 
 RAW RECIPE:
 {raw_recipe}
@@ -732,8 +727,7 @@ RAW RECIPE:
 def refine_recipe_for_cayenne(
     raw_recipe: object,
     client,
-    uom_system: str = "US",
-    measure_preference: str = "Volume",
+    source_host: Optional[str] = None,
     user_axes: Optional[Dict[str, List[str]]] = None,
 ) -> Optional[CayenneRefinement]:
     """
@@ -745,15 +739,15 @@ def refine_recipe_for_cayenne(
     Args:
         raw_recipe:        The raw RecipeExtraction object from Pass 1.
         client:            Initialised Gemini client.
-        uom_system:        "US", "UK", "EU" or "AU".
-        measure_preference: "Natural", "Weight" or "Volume".
+        source_host:       The recipe's source host (core.citation.host_of), or None — the prompt's
+                           only evidence outside the recipe text.
         user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
                            When None or empty, grid_categories will be {} in the result.
     """
     axes = user_axes or {}
     schema = _build_dynamic_grid_schema(axes)
 
-    prompt = build_refine_prompt(raw_recipe, uom_system, measure_preference, axes)
+    prompt = build_refine_prompt(raw_recipe, source_host, axes)
     try:
         # Use response_json_schema with additionalProperties stripped — Gemini API
         # rejects response_schema when Pydantic emits additionalProperties (Dict types).
@@ -804,6 +798,8 @@ def refine_recipe_for_cayenne(
                 structured_ingredients=result.structured_ingredients,
                 tokenized_directions=result.tokenized_directions,
                 grid_categories=clean_grid,
+                source_uom_system_detected=result.source_uom_system_detected,
+                source_uom_system_evidence=result.source_uom_system_evidence,
             )
 
         return result

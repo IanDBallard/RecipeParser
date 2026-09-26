@@ -20,7 +20,7 @@
   
   '''
 # ---
-# name: TestPromptSnapshots.test_extract_prompt[book][extract-book]
+# name: TestPromptSnapshots.test_extract_prompt[extract]
   '''
   
   You are a culinary data extractor. Review the following text from an EPUB recipe book.
@@ -40,7 +40,9 @@
     If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
     mid-method (e.g. appears after "Step 2" or "Step 3" text).
     If no hero image is identifiable, leave photo_filename null.
-  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
+  - Copy every ingredient line exactly as the text writes it: the same numbers, the same units,
+    every measure the line gives, in the same order. Never convert, round, drop or add a measure.
+    The one change allowed: write unicode fractions (½, ¼, ¾, etc.) as plain text (1/2, 1/4, 3/4, etc.).
   - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
     "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
     Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
@@ -61,150 +63,6 @@
   - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
     text carries none.
   - Do not invent or infer values that are not present in the text.
-  
-  Text chunk:
-  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_extract_prompt[imperial][extract-imperial]
-  '''
-  
-  You are a culinary data extractor. Review the following text from an EPUB recipe book.
-  Extract ALL distinct recipes found in the text.
-  
-  Rules:
-  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
-    photo_filename — it is the confirmed finished-dish photo for this recipe.
-  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
-    to photo_filename: the image most likely to be the hero/finished-dish photo.
-    The hero image can appear in any of these positions:
-      a) immediately BEFORE the recipe title or ingredient list, OR
-      b) immediately AFTER the last ingredient and BEFORE the first method step.
-    Both positions are common depending on the book's layout.
-    IGNORE images that appear embedded WITHIN the numbered method steps — those are
-    instructional process shots, not the finished dish.
-    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
-    mid-method (e.g. appears after "Step 2" or "Step 3" text).
-    If no hero image is identifiable, leave photo_filename null.
-  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
-  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
-    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
-    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
-      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
-                    "**Phase 2**", "56g whole wheat flour", "56g water"]
-      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
-    The bold label must be its own separate list item, followed by that phase's
-    ingredients or steps as normal list items.
-    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
-  - If a field is entirely absent from the text, leave it null.
-  - stated_source is the publication or book as the text names itself; byline is the author's
-    name if one is printed. Never the name of a model or a tool. Leave both null if the text
-    does not say.
-  - total_time: the recipe's stated total or overall time, only when the text states one.
-    Never add prep and cook together.
-  - description: the headnote or introduction printed with the recipe, in its own words, at
-    most one paragraph. null when there is none.
-  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
-    text carries none.
-  - Do not invent or infer values that are not present in the text.
-  - Where ingredients are given with dual measurements (e.g. "2 cups/250g flour"), keep the metric (gram/ml) part. Where ounces or pounds appear, keep those as-is.
-  
-  Text chunk:
-  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_extract_prompt[metric][extract-metric]
-  '''
-  
-  You are a culinary data extractor. Review the following text from an EPUB recipe book.
-  Extract ALL distinct recipes found in the text.
-  
-  Rules:
-  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
-    photo_filename — it is the confirmed finished-dish photo for this recipe.
-  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
-    to photo_filename: the image most likely to be the hero/finished-dish photo.
-    The hero image can appear in any of these positions:
-      a) immediately BEFORE the recipe title or ingredient list, OR
-      b) immediately AFTER the last ingredient and BEFORE the first method step.
-    Both positions are common depending on the book's layout.
-    IGNORE images that appear embedded WITHIN the numbered method steps — those are
-    instructional process shots, not the finished dish.
-    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
-    mid-method (e.g. appears after "Step 2" or "Step 3" text).
-    If no hero image is identifiable, leave photo_filename null.
-  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
-  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
-    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
-    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
-      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
-                    "**Phase 2**", "56g whole wheat flour", "56g water"]
-      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
-    The bold label must be its own separate list item, followed by that phase's
-    ingredients or steps as normal list items.
-    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
-  - If a field is entirely absent from the text, leave it null.
-  - stated_source is the publication or book as the text names itself; byline is the author's
-    name if one is printed. Never the name of a model or a tool. Leave both null if the text
-    does not say.
-  - total_time: the recipe's stated total or overall time, only when the text states one.
-    Never add prep and cook together.
-  - description: the headnote or introduction printed with the recipe, in its own words, at
-    most one paragraph. null when there is none.
-  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
-    text carries none.
-  - Do not invent or infer values that are not present in the text.
-  - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the metric (gram or ml) part and discard the US volume part. Output just "250g flour", "200g butter", etc.
-  
-  Text chunk:
-  PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_extract_prompt[us][extract-us]
-  '''
-  
-  You are a culinary data extractor. Review the following text from an EPUB recipe book.
-  Extract ALL distinct recipes found in the text.
-  
-  Rules:
-  - If you see a [HERO IMAGE: filename.jpg] marker, ALWAYS use that filename as
-    photo_filename — it is the confirmed finished-dish photo for this recipe.
-  - Otherwise, if you see [IMAGE: filename.jpg] markers, assign exactly ONE filename
-    to photo_filename: the image most likely to be the hero/finished-dish photo.
-    The hero image can appear in any of these positions:
-      a) immediately BEFORE the recipe title or ingredient list, OR
-      b) immediately AFTER the last ingredient and BEFORE the first method step.
-    Both positions are common depending on the book's layout.
-    IGNORE images that appear embedded WITHIN the numbered method steps — those are
-    instructional process shots, not the finished dish.
-    If there is only one [IMAGE:] marker in the recipe, use it unless it is clearly
-    mid-method (e.g. appears after "Step 2" or "Step 3" text).
-    If no hero image is identifiable, leave photo_filename null.
-  - Convert all unicode fractions (½, ¼, ¾, etc.) to plain text (1/2, 1/4, 3/4, etc.).
-  - If a recipe uses multiple phases, stages, or days (e.g. "PHASE 1 / PHASE 2",
-    "Day 1 / Day 2", "Soaker / Final Dough"), preserve ALL phases in full.
-    Insert the phase label as a bold heading entry using Markdown bold syntax, e.g.:
-      ingredients: ["**Phase 1**", "28g whole wheat flour", "28g pineapple juice",
-                    "**Phase 2**", "56g whole wheat flour", "56g water"]
-      directions:  ["**Phase 1**", "Mix flour and juice.", "**Phase 2**", "Add remaining flour."]
-    The bold label must be its own separate list item, followed by that phase's
-    ingredients or steps as normal list items.
-    Do NOT flatten, merge, or skip any phase — the reader must follow them in order.
-  - If a field is entirely absent from the text, leave it null.
-  - stated_source is the publication or book as the text names itself; byline is the author's
-    name if one is printed. Never the name of a model or a tool. Leave both null if the text
-    does not say.
-  - total_time: the recipe's stated total or overall time, only when the text states one.
-    Never add prep and cook together.
-  - description: the headnote or introduction printed with the recipe, in its own words, at
-    most one paragraph. null when there is none.
-  - nutritional_info: the recipe's nutrition statement, verbatim, as one line. null when the
-    text carries none.
-  - Do not invent or infer values that are not present in the text.
-  - Many ingredient lines contain dual measurements in the format "US-measure/metric-weight ingredient" (e.g. "2 cups/250g flour", "14 tablespoons/200g butter"). Keep ONLY the US measure part and discard the metric part. Output just "2 cups flour", "14 tablespoons butter", etc.
   
   Text chunk:
   PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
@@ -218,7 +76,9 @@
   
   Rules:
   - Extract the recipe title, servings, prep time, cook time, ingredients, and directions.
-  - Ingredients: one item per list entry. Convert unicode fractions (½, ¼, ¾) to plain text (1/2, 1/4, 3/4).
+  - Ingredients: one item per list entry, copied exactly as the text writes it: the same numbers,
+    the same units, every measure the line gives, in the same order. Never convert, round, drop or
+    add a measure. The one change allowed: write unicode fractions (½, ¼, ¾) as plain text (1/2, 1/4, 3/4).
   - Directions: one step per list entry.
   - If a field is absent from the text, leave it null.
   - stated_source is the publication or book as the text names itself; byline is the author's
@@ -238,7 +98,7 @@
   
   '''
 # ---
-# name: TestPromptSnapshots.test_refine_prompt_weight_preference
+# name: TestPromptSnapshots.test_refine_prompt_with_a_host
   '''
   
   You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
@@ -247,7 +107,7 @@
   1. STRUCTURED INGREDIENTS:
      - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
      - Extract numeric "amount", "unit" (null if unitless), and "name".
-     - "fallback_string" is the original full line.
+     - "fallback_string" is the original full line, unchanged.
      - "line_index" is the 0-based position of the source line in the RAW RECIPE
        ingredients list. Every ingredient line gets exactly one entry with its
        index. A section header line (e.g. "For the sauce:") gets no entry.
@@ -257,12 +117,21 @@
        sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
        null when the line has no amount or its unit is neither a volume nor a weight.
        Use the state when you compute the conversion below.
-     - CONVERSION: Always give the equivalent in the OTHER measure, regardless of the Measure
-       Preference below: a weight for a volume ("1 cup" -> 120, "g"), a volume for a weight
-       ("150 g" -> 1.25, "cups"). Put it in "converted_amount" and "converted_unit" and set
-       "is_ai_converted" to true. Leave "converted_amount" and "converted_unit" null and
-       "is_ai_converted" false when the line states no amount ("salt to taste") or its
-       unit is neither a volume nor a weight ("3 eggs", "a pinch").
+     - DUAL MEASURES: when a line states two measures ("1 cup (240 g) flour", "250g/2 cups flour",
+       "1 ounce (about 1/3 packed cup) grated pecorino"), the FIRST measure the writer gives is
+       "amount" and "unit". When the second is the other kind (a weight beside a volume, or a volume
+       beside a weight), put it in "converted_amount" and "converted_unit" exactly as the line writes
+       it and set "is_ai_converted" to false. When both are the same kind ("1 pound (450g)"), the
+       second is not structured: apply the CONVERSION rule below.
+     - CONVERSION: for a line with one measure, give the equivalent in the OTHER measure, in grams or
+       millilitres only: a weight for a volume ("1 cup" flour -> 120, "g"), a volume for a weight
+       ("150 g" flour -> 300, "ml"). Never answer in cups, spoons, ounces or pints. Put it in
+       "converted_amount" and "converted_unit" and set "is_ai_converted" to true. Leave
+       "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
+       states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
+       "a pinch").
+       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
+     - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
      - amount: the numeric quantity. Use null - never 0 - when the source states no
        amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
        measurement of nothing.
@@ -282,13 +151,28 @@
      - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
        be able to tell where one session ends and the next begins.
   
+  4. SOURCE SYSTEM:
+     - "source_uom_system_detected": the measuring system the writer used, exactly one of "US",
+       "UK", "EU", "AU", "Imperial", judged only from evidence in the RAW RECIPE or the SOURCE HOST:
+         * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
+           is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
+           pint is Imperial;
+         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
+         * a statement about the measures ("Australian standard measures", "US cup measures");
+         * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
+           Metric's);
+         * spelling and ingredient names only one country uses ("caster sugar", "plain flour" and
+           "double cream" are UK; "all-purpose flour" and "heavy cream" are US).
+       Grams printed beside cups are not evidence: American writers print them too.
+     - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
+       the SOURCE HOST exactly as given. One short quote.
+     - Leave both null when nothing above applies.
+  
   3. CATEGORIZATION (grid_categories):
      Classify this recipe using the user's taxonomy axes below. For each axis, select 0-2 tags that best describe the recipe. Return [] for any axis that does not apply. NEVER invent tags outside the provided lists.
      - Cuisine: ["American", "British", "French", "Italian"]
      - Meal Type: ["Breakfast", "Dessert", "Dinner", "Bread"]
-  CONTEXT:
-  UOM System: Metric
-  Measure Preference: Weight
+  SOURCE HOST: taste.com.au
   
   RAW RECIPE:
   name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
@@ -304,7 +188,7 @@
   1. STRUCTURED INGREDIENTS:
      - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
      - Extract numeric "amount", "unit" (null if unitless), and "name".
-     - "fallback_string" is the original full line.
+     - "fallback_string" is the original full line, unchanged.
      - "line_index" is the 0-based position of the source line in the RAW RECIPE
        ingredients list. Every ingredient line gets exactly one entry with its
        index. A section header line (e.g. "For the sauce:") gets no entry.
@@ -314,12 +198,21 @@
        sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
        null when the line has no amount or its unit is neither a volume nor a weight.
        Use the state when you compute the conversion below.
-     - CONVERSION: Always give the equivalent in the OTHER measure, regardless of the Measure
-       Preference below: a weight for a volume ("1 cup" -> 120, "g"), a volume for a weight
-       ("150 g" -> 1.25, "cups"). Put it in "converted_amount" and "converted_unit" and set
-       "is_ai_converted" to true. Leave "converted_amount" and "converted_unit" null and
-       "is_ai_converted" false when the line states no amount ("salt to taste") or its
-       unit is neither a volume nor a weight ("3 eggs", "a pinch").
+     - DUAL MEASURES: when a line states two measures ("1 cup (240 g) flour", "250g/2 cups flour",
+       "1 ounce (about 1/3 packed cup) grated pecorino"), the FIRST measure the writer gives is
+       "amount" and "unit". When the second is the other kind (a weight beside a volume, or a volume
+       beside a weight), put it in "converted_amount" and "converted_unit" exactly as the line writes
+       it and set "is_ai_converted" to false. When both are the same kind ("1 pound (450g)"), the
+       second is not structured: apply the CONVERSION rule below.
+     - CONVERSION: for a line with one measure, give the equivalent in the OTHER measure, in grams or
+       millilitres only: a weight for a volume ("1 cup" flour -> 120, "g"), a volume for a weight
+       ("150 g" flour -> 300, "ml"). Never answer in cups, spoons, ounces or pints. Put it in
+       "converted_amount" and "converted_unit" and set "is_ai_converted" to true. Leave
+       "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
+       states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
+       "a pinch").
+       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
+     - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
      - amount: the numeric quantity. Use null - never 0 - when the source states no
        amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
        measurement of nothing.
@@ -339,13 +232,28 @@
      - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
        be able to tell where one session ends and the next begins.
   
+  4. SOURCE SYSTEM:
+     - "source_uom_system_detected": the measuring system the writer used, exactly one of "US",
+       "UK", "EU", "AU", "Imperial", judged only from evidence in the RAW RECIPE or the SOURCE HOST:
+         * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
+           is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
+           pint is Imperial;
+         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
+         * a statement about the measures ("Australian standard measures", "US cup measures");
+         * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
+           Metric's);
+         * spelling and ingredient names only one country uses ("caster sugar", "plain flour" and
+           "double cream" are UK; "all-purpose flour" and "heavy cream" are US).
+       Grams printed beside cups are not evidence: American writers print them too.
+     - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
+       the SOURCE HOST exactly as given. One short quote.
+     - Leave both null when nothing above applies.
+  
   3. CATEGORIZATION (grid_categories):
      Classify this recipe using the user's taxonomy axes below. For each axis, select 0-2 tags that best describe the recipe. Return [] for any axis that does not apply. NEVER invent tags outside the provided lists.
      - Cuisine: ["American", "British", "French", "Italian"]
      - Meal Type: ["Breakfast", "Dessert", "Dinner", "Bread"]
-  CONTEXT:
-  UOM System: US
-  Measure Preference: Volume
+  SOURCE HOST: none
   
   RAW RECIPE:
   name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
@@ -361,7 +269,7 @@
   1. STRUCTURED INGREDIENTS:
      - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
      - Extract numeric "amount", "unit" (null if unitless), and "name".
-     - "fallback_string" is the original full line.
+     - "fallback_string" is the original full line, unchanged.
      - "line_index" is the 0-based position of the source line in the RAW RECIPE
        ingredients list. Every ingredient line gets exactly one entry with its
        index. A section header line (e.g. "For the sauce:") gets no entry.
@@ -371,12 +279,21 @@
        sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
        null when the line has no amount or its unit is neither a volume nor a weight.
        Use the state when you compute the conversion below.
-     - CONVERSION: Always give the equivalent in the OTHER measure, regardless of the Measure
-       Preference below: a weight for a volume ("1 cup" -> 120, "g"), a volume for a weight
-       ("150 g" -> 1.25, "cups"). Put it in "converted_amount" and "converted_unit" and set
-       "is_ai_converted" to true. Leave "converted_amount" and "converted_unit" null and
-       "is_ai_converted" false when the line states no amount ("salt to taste") or its
-       unit is neither a volume nor a weight ("3 eggs", "a pinch").
+     - DUAL MEASURES: when a line states two measures ("1 cup (240 g) flour", "250g/2 cups flour",
+       "1 ounce (about 1/3 packed cup) grated pecorino"), the FIRST measure the writer gives is
+       "amount" and "unit". When the second is the other kind (a weight beside a volume, or a volume
+       beside a weight), put it in "converted_amount" and "converted_unit" exactly as the line writes
+       it and set "is_ai_converted" to false. When both are the same kind ("1 pound (450g)"), the
+       second is not structured: apply the CONVERSION rule below.
+     - CONVERSION: for a line with one measure, give the equivalent in the OTHER measure, in grams or
+       millilitres only: a weight for a volume ("1 cup" flour -> 120, "g"), a volume for a weight
+       ("150 g" flour -> 300, "ml"). Never answer in cups, spoons, ounces or pints. Put it in
+       "converted_amount" and "converted_unit" and set "is_ai_converted" to true. Leave
+       "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
+       states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
+       "a pinch").
+       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
+     - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
      - amount: the numeric quantity. Use null - never 0 - when the source states no
        amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
        measurement of nothing.
@@ -396,9 +313,24 @@
      - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
        be able to tell where one session ends and the next begins.
   
-  CONTEXT:
-  UOM System: US
-  Measure Preference: Volume
+  4. SOURCE SYSTEM:
+     - "source_uom_system_detected": the measuring system the writer used, exactly one of "US",
+       "UK", "EU", "AU", "Imperial", judged only from evidence in the RAW RECIPE or the SOURCE HOST:
+         * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
+           is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
+           pint is Imperial;
+         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
+         * a statement about the measures ("Australian standard measures", "US cup measures");
+         * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
+           Metric's);
+         * spelling and ingredient names only one country uses ("caster sugar", "plain flour" and
+           "double cream" are UK; "all-purpose flour" and "heavy cream" are US).
+       Grams printed beside cups are not evidence: American writers print them too.
+     - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
+       the SOURCE HOST exactly as given. One short quote.
+     - Leave both null when nothing above applies.
+  
+  SOURCE HOST: none
   
   RAW RECIPE:
   name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
@@ -481,7 +413,7 @@
               }),
             ]),
             'default': None,
-            'description': 'Converted amount (e.g. Volume -> Weight)',
+            'description': "The OTHER measure's amount: the writer's own second measure, or the AI's in grams or millilitres.",
             'title': 'Converted Amount',
           }),
           'converted_unit': dict({
@@ -494,7 +426,7 @@
               }),
             ]),
             'default': None,
-            'description': 'Converted unit, e.g., "g"',
+            'description': 'The OTHER measure\'s unit: the writer\'s own, else "g" or "ml".',
             'title': 'Converted Unit',
           }),
           'fallback_string': dict({
@@ -509,7 +441,7 @@
           }),
           'is_ai_converted': dict({
             'default': False,
-            'description': 'True if AI calculated the conversion.',
+            'description': "True if the AI calculated the conversion; false for the writer's own second measure.",
             'title': 'Is Ai Converted',
             'type': 'boolean',
           }),
@@ -609,6 +541,32 @@
         'title': 'Grid Categories',
         'type': 'object',
       }),
+      'source_uom_system_detected': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': 'The measuring system the writer used: one of "US", "UK", "EU", "AU", "Imperial", judged only from evidence in the recipe or its source host. null when there is no evidence.',
+        'title': 'Source Uom System Detected',
+      }),
+      'source_uom_system_evidence': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': 'The words that judgement rests on, quoted exactly from the recipe, or the source host exactly as given.',
+        'title': 'Source Uom System Evidence',
+      }),
       'structured_ingredients': dict({
         'items': dict({
           '$ref': '#/$defs/StructuredIngredient',
@@ -688,7 +646,7 @@
               }),
             ]),
             'default': None,
-            'description': 'Converted amount (e.g. Volume -> Weight)',
+            'description': "The OTHER measure's amount: the writer's own second measure, or the AI's in grams or millilitres.",
             'title': 'Converted Amount',
           }),
           'converted_unit': dict({
@@ -701,7 +659,7 @@
               }),
             ]),
             'default': None,
-            'description': 'Converted unit, e.g., "g"',
+            'description': 'The OTHER measure\'s unit: the writer\'s own, else "g" or "ml".',
             'title': 'Converted Unit',
           }),
           'fallback_string': dict({
@@ -716,7 +674,7 @@
           }),
           'is_ai_converted': dict({
             'default': False,
-            'description': 'True if AI calculated the conversion.',
+            'description': "True if the AI calculated the conversion; false for the writer's own second measure.",
             'title': 'Is Ai Converted',
             'type': 'boolean',
           }),
@@ -814,6 +772,32 @@
         '$ref': '#/$defs/GridCategories',
         'description': "Multipolar categorization. For each axis, pick 0-2 matching tags from the provided list. Return [] for axes that don't apply.",
       }),
+      'source_uom_system_detected': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': 'The measuring system the writer used: one of "US", "UK", "EU", "AU", "Imperial", judged only from evidence in the recipe or its source host. null when there is no evidence.',
+        'title': 'Source Uom System Detected',
+      }),
+      'source_uom_system_evidence': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': 'The words that judgement rests on, quoted exactly from the recipe, or the source host exactly as given.',
+        'title': 'Source Uom System Evidence',
+      }),
       'structured_ingredients': dict({
         'items': dict({
           '$ref': '#/$defs/StructuredIngredient',
@@ -904,7 +888,7 @@
             'type': 'array',
           }),
           'ingredients': dict({
-            'description': 'List of ingredients. Convert unicode fractions to text fractions (e.g. ½ -> 1/2).',
+            'description': 'List of ingredients, each copied exactly as the source writes it. Convert unicode fractions to text fractions (e.g. ½ -> 1/2).',
             'items': dict({
               'type': 'string',
             }),

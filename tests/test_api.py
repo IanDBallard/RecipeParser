@@ -215,6 +215,20 @@ class TestPostJobs:
         mock_pipeline_cls.assert_called_once()
         _assert_pipeline_run_wired_to_a_live_sink(mock_pipeline_cls)
 
+    def test_a_body_that_still_carries_preferences_is_accepted_and_ignored(self) -> None:
+        """D7: the parser reads no reader preference. An older client's fields are ignored, not
+        refused, so the two repositories deploy in either order on this point."""
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
+        with stack, TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"text": "1 cup flour", "uom_system": "UK", "measure_preference": "Weight"})
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+        kwargs = mock_pipeline_cls.call_args.kwargs
+        assert "uom_system" not in kwargs and "measure_preference" not in kwargs
+
     def test_the_patched_write_receives_the_recipe_end_to_end(self) -> None:
         """Persistence, proven end-to-end rather than by wiring inspection.
 

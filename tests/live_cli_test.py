@@ -182,28 +182,6 @@ def test_pdf_ingest(r: TestResult) -> None:
         os.unlink(pdf_path)
 
 
-def test_epub_metric(r: TestResult) -> None:
-    """EPUB ingest with --units metric → exit 0, archive created."""
-    _, epub_path = make_epub("Test Metric Pancakes")
-    try:
-        with tempfile.TemporaryDirectory() as out_dir:
-            proc = _run_cli(epub_path, "--output", out_dir, "--units", "metric")
-            if proc.returncode != 0:
-                r.fail(f"exit {proc.returncode}; stderr={proc.stderr.strip()[:200]}")
-                return
-            archives = list(Path(out_dir).glob("*.paprikarecipes"))
-            if not archives:
-                r.fail("no .paprikarecipes file produced with --units metric")
-                return
-            recipes = read_paprikarecipes(str(archives[0]))
-            if not recipes:
-                r.fail("archive is empty (0 recipes)")
-                return
-            r.ok(f"{len(recipes)} recipe(s) with --units metric")
-    finally:
-        os.unlink(epub_path)
-
-
 def test_merge(r: TestResult) -> None:
     """--merge of two archives → single merged archive containing recipes from both."""
     _, epub_path1 = make_epub("Merge Pancakes")
@@ -281,7 +259,6 @@ def run_suite() -> list:
         test_error_nonexistent_file,
         test_epub_ingest,
         test_pdf_ingest,
-        test_epub_metric,
         test_merge,
     ]
     return [_run(fn) for fn in suite]

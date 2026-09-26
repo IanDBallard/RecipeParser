@@ -82,6 +82,8 @@ def test_build_update_payload():
         "derived_error": None,
         "derived_attempts": 0,
         "claimed_at": None,
+        "source_uom_system_detected": None,
+        "source_uom_system_evidence": None,
     }
     # base_servings, grid_categories and title are user-owned after ingest (D3, 3.6)
     assert "base_servings" not in payload and "title" not in payload

@@ -95,11 +95,6 @@ class TestPromptBody:
         contents = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c))
         assert gc.prompt_body(contents, "extract").strip() == "MY CHUNK"
 
-    def test_the_units_mode_does_not_change_the_body(self, monkeypatch):
-        book = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c, units="book"))
-        metric = _sent_prompt(monkeypatch, lambda c: gemini.extract_recipes("MY CHUNK", c, units="metric"))
-        assert gc.prompt_body(book, "extract") == gc.prompt_body(metric, "extract")
-
     def test_table_body_is_the_chunk_text_only(self, monkeypatch):
         contents = _sent_prompt(monkeypatch, lambda c: gemini.normalise_baker_table("MY TABLE", c))
         assert gc.prompt_body(contents, "table").strip() == "MY TABLE"

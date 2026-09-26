@@ -87,19 +87,18 @@ def test_claims_with_batch_size():
 
 
 def test_success_writes_back_with_guard():
-    fake = FakeSupabase(
-        rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
-        responses={"profiles": [{"uom_system": "Metric", "measure_preference": "Weight"}],
-                   "recipes": [{"id": "r1"}]},
-    )
+    row = {**_row(rev=3), "source_url": "https://www.taste.com.au/recipes/scones"}
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [row]}, responses={"recipes": [{"id": "r1"}]})
     refine_fn = MagicMock(return_value=_refinement())
     w = _worker(fake, refine_fn=refine_fn)
     assert w.run_once() == 1
-    # REFINE got the row's text and the profile prefs
+    # REFINE got the row's text and its host, and no reader preference (D7)
     kwargs = refine_fn.call_args.kwargs
-    assert kwargs["uom_system"] == "Metric" and kwargs["measure_preference"] == "Weight"
+    assert kwargs["source_host"] == "taste.com.au"
+    assert "uom_system" not in kwargs and "measure_preference" not in kwargs
     assert kwargs["user_axes"] == {"Cuisine": ["Italian"]}
     assert refine_fn.call_args.args[0].ingredients == ["1 cup flour"]
+    assert not any(q.table == "profiles" for q in fake.queries)
     # write-back guarded by id AND body_rev
     ops = _ops(fake, "recipes")[0]
     names = [o[0] for o in ops]
@@ -110,13 +109,22 @@ def test_success_writes_back_with_guard():
     assert not any(n == "regen_failed" for n, _ in fake.rpcs)
 
 
-def test_profile_defaults_when_missing():
-    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row()]},
-                        responses={"recipes": [{"id": "r1"}]})
+def test_a_row_without_a_source_url_refines_with_no_host():
+    # Review Focus 5: pasted text and books have no host; host-only evidence is then dropped by refine().
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row()]}, responses={"recipes": [{"id": "r1"}]})
     refine_fn = MagicMock(return_value=_refinement())
     _worker(fake, refine_fn=refine_fn).run_once()
-    assert refine_fn.call_args.kwargs["uom_system"] == "US"
-    assert refine_fn.call_args.kwargs["measure_preference"] == "Volume"
+    assert refine_fn.call_args.kwargs["source_host"] is None
+
+
+def test_the_detected_system_is_written_back():
+    refinement = _refinement()
+    refinement.source_uom_system_detected = "AU"
+    refinement.source_uom_system_evidence = "1 cup (250 ml)"
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row()]}, responses={"recipes": [{"id": "r1"}]})
+    _worker(fake, refine_fn=MagicMock(return_value=refinement)).run_once()
+    payload = _ops(fake, "recipes")[0][0][1][0]
+    assert (payload["source_uom_system_detected"], payload["source_uom_system_evidence"]) == ("AU", "1 cup (250 ml)")
 
 
 def test_zero_rows_updated_is_not_a_failure(caplog):

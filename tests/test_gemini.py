@@ -12,7 +12,6 @@ from recipeparser.gemini import (
     extract_recipes,
     needs_table_normalisation,
     normalise_baker_table,
-    _UNITS_RULES,
 )
 
 
@@ -334,7 +333,7 @@ class TestExtractRecipes:
 
 
 # ---------------------------------------------------------------------------
-# units preference — prompt rule injection
+# the verbatim rule — one extract rule for every input (D1)
 # ---------------------------------------------------------------------------
 
 DUAL_UOM_CHUNK = (
@@ -349,49 +348,32 @@ DUAL_UOM_CHUNK = (
 )
 
 
-class TestUnitsPreference:
-    """Verify that the units preference is wired into the extraction prompt."""
+class TestVerbatimRule:
+    """D1: one extract rule for every input — copy each ingredient line exactly."""
 
-    def _run_extract(self, units: str) -> str:
-        """Return the prompt string sent to the API for a given units value."""
+    def _prompt(self, fn) -> str:
         client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
-        extract_recipes(DUAL_UOM_CHUNK, client, units=units)
+        fn(DUAL_UOM_CHUNK, client)
         return client.models.generate_content.call_args.kwargs["contents"]
 
-    def test_book_default_has_no_units_rule(self):
-        prompt = self._run_extract("book")
-        assert "dual" not in prompt.lower()
-        assert "metric" not in prompt.lower()
-        assert "cup/tbsp" not in prompt.lower()
+    def test_the_book_prompt_asks_for_every_line_verbatim(self):
+        prompt = self._prompt(extract_recipes)
+        assert "Copy every ingredient line exactly as the text writes it" in prompt
+        assert "Keep ONLY" not in prompt
 
-    def test_metric_rule_in_prompt(self):
-        prompt = self._run_extract("metric")
-        assert "metric" in prompt.lower()
-        assert "gram" in prompt.lower() or "ml" in prompt.lower()
+    def test_the_plain_text_prompt_asks_for_every_line_verbatim(self):
+        prompt = self._prompt(extract_recipe_from_text)
+        assert "copied exactly as the text writes it" in prompt
 
-    def test_us_rule_in_prompt(self):
-        prompt = self._run_extract("us")
-        assert "us" in prompt.lower() or "cup" in prompt.lower()
-
-    def test_imperial_rule_in_prompt(self):
-        prompt = self._run_extract("imperial")
-        assert "imperial" in prompt.lower() or "oz" in prompt.lower() or "ounce" in prompt.lower()
-
-    def test_all_units_choices_defined(self):
-        for choice in ("metric", "us", "imperial", "book"):
-            assert choice in _UNITS_RULES, f"'{choice}' missing from _UNITS_RULES"
-
-    def test_unknown_units_falls_back_to_book(self):
-        prompt_book = self._run_extract("book")
-        prompt_unknown = self._run_extract("xyzzy")
-        assert prompt_book == prompt_unknown
+    def test_extract_takes_no_units(self):
+        import inspect
+        assert "units" not in inspect.signature(extract_recipes).parameters
 
     def test_chunk_always_in_prompt(self):
         sentinel = "UNIQUE_CHUNK_SENTINEL_ABC"
         client = make_mock_client(return_value=_make_text_response(RecipeList(recipes=[])))
-        extract_recipes(sentinel, client, units="metric")
-        prompt = client.models.generate_content.call_args.kwargs["contents"]
-        assert sentinel in prompt
+        extract_recipes(sentinel, client)
+        assert sentinel in client.models.generate_content.call_args.kwargs["contents"]
 
 
 class TestPhaseInstructions:

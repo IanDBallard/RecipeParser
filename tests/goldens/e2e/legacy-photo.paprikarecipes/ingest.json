@@ -49,6 +49,8 @@
       "source_key": null,
       "source_kind": "unknown",
       "source_title": null,
+      "source_uom_system_detected": null,
+      "source_uom_system_evidence": null,
       "source_url": null,
       "structured_ingredients": [
         {

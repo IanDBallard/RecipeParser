@@ -5,41 +5,23 @@ Stale rows (derived_rev < body_rev) are the queue.  Each poll claims up to
 ``batch`` rows via the claim_stale_recipes RPC, runs REFINE then EMBED, and
 writes the derived columns back guarded by body_rev.  A run that raises is
 recorded through the regen_failed RPC.  This is the only module that knows
-the table and RPC names.
+the table and RPC names.  The claim RPC returns source_url (Cayenne migration
+verbatim_ingestion) so REFINE sees the host.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
+from recipeparser.core.citation import host_of
 from recipeparser.core.regen import build_extraction, build_update
 from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.refine import refine
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 
 log = logging.getLogger(__name__)
-
-_DEFAULT_PREFS: Tuple[str, str] = ("US", "Volume")
-
-
-def load_profile_prefs(supabase: Any, user_id: str) -> Tuple[str, str]:
-    """(uom_system, measure_preference) from profiles, defaulting to US / Volume."""
-    res = (
-        supabase.table("profiles")
-        .select("uom_system,measure_preference")
-        .eq("id", user_id)
-        .limit(1)
-        .execute()
-    )
-    rows = res.data or []
-    if not rows:
-        return _DEFAULT_PREFS
-    row = rows[0]
-    return (row.get("uom_system") or _DEFAULT_PREFS[0],
-            row.get("measure_preference") or _DEFAULT_PREFS[1])
-
 
 class RegenWorker:
     def __init__(
@@ -82,12 +64,10 @@ class RegenWorker:
         rid, read_rev = row.get("id", "?"), -1
         try:
             rid, read_rev = row["id"], int(row["body_rev"])
-            uom, measure = load_profile_prefs(self._sb, row["user_id"])
             refinement = self._refine(
                 build_extraction(row),
                 self._client,
-                uom_system=uom,
-                measure_preference=measure,
+                source_host=host_of(row["source_url"]) if row.get("source_url") else None,
                 user_axes=self._axes(row["user_id"]),
             )
             vector = self._embed(recipe=refinement, client=self._client)
