@@ -117,16 +117,9 @@ def _assert_golden(fixture: str, name: str, actual: dict, update: bool) -> None:
     "ignore:This search incorrectly ignores the root element, "
     "and will be fixed in a future version.:FutureWarning"
 )
-# The pipeline maps uom_system="US" to units="us" (recipeparser.core.pipeline.
-# _uom_to_units_key), while Task 8 recorded extract-stage replies under
-# units="book" (tests/goldens/test_stages_golden.py).  That text lives before
-# the body marker in build_extract_prompt, so the body key -- and therefore
-# replay -- is unaffected, but the *full* prompt hash golden_client.py checks
-# differs by design.  This ignore is scoped to extract-stage mismatches only:
-# refine calls here use uom_system="US" too (matching what was recorded), and
-# extract-stage drift for any *other* reason is still caught by
-# test_stages_golden.py, which exercises the same recordings under the
-# matching units="book".
+# Recordings were made under the old `us`/`book` extract rules, which live before
+# `Text chunk:` and so do not change the replay key; the prompt is now verbatim for
+# every input (D1).
 @pytest.mark.filterwarnings(
     r"ignore:prompt_sha256 mismatch for .*extract-\d+\.json:UserWarning"
 )
@@ -148,8 +141,6 @@ def test_e2e_golden(fixture, golden_client, tmp_path, update_goldens):
         client=golden_client(fixture),
         controller=PipelineController(),
         category_source=_FixedAxesSource(),
-        uom_system="US",
-        measure_preference="Volume",
         concurrency=MAX_CONCURRENT_API_CALLS,
         rpm=9999,
     )
@@ -186,8 +177,9 @@ def test_e2e_golden(fixture, golden_client, tmp_path, update_goldens):
     "ignore:This search incorrectly ignores the root element, "
     "and will be fixed in a future version.:FutureWarning"
 )
-# See test_e2e_golden's comment: default uom_system="US" -> units="us" here
-# too, so the same known, body-key-safe extract-stage mismatch applies.
+# Recordings were made under the old `us`/`book` extract rules, which live before
+# `Text chunk:` and so do not change the replay key; the prompt is now verbatim for
+# every input (D1).
 @pytest.mark.filterwarnings(
     r"ignore:prompt_sha256 mismatch for .*extract-\d+\.json:UserWarning"
 )
@@ -229,8 +221,9 @@ def test_the_result_is_the_same_at_pool_size_one(fixture, golden_client, update_
     "ignore:This search incorrectly ignores the root element, "
     "and will be fixed in a future version.:FutureWarning"
 )
-# See test_e2e_golden's comment: default uom_system="US" -> units="us" here
-# too, so the same known, body-key-safe extract-stage mismatch applies.
+# Recordings were made under the old `us`/`book` extract rules, which live before
+# `Text chunk:` and so do not change the replay key; the prompt is now verbatim for
+# every input (D1).
 @pytest.mark.filterwarnings(
     r"ignore:prompt_sha256 mismatch for .*extract-\d+\.json:UserWarning"
 )

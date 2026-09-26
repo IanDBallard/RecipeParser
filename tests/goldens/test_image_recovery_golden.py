@@ -158,8 +158,6 @@ def _run(fixture: str, golden_client, store: Optional[ImageStore]):
         client=golden_client(fixture),
         controller=PipelineController(),
         category_source=_FixedAxesSource(),
-        uom_system="US",
-        measure_preference="Volume",
         concurrency=MAX_CONCURRENT_API_CALLS,
         rpm=9999,
         image_store=store,

@@ -17,7 +17,6 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 - **Embeds hero photographs** — matches cover photos to recipes using image breadcrumbs injected into the text, with a look-ahead injection mechanism for books that place photos on standalone pages before the recipe
 - **Automatic categorisation** — assigns 1–3 Paprika taxonomy categories per recipe using the LLM, drawn from a user-configurable `categories.yaml` file
 - **Built-in category editor** — a two-panel GUI editor lets you add, rename, reorder, and delete categories without touching YAML by hand
-- **Unit-of-measure preference** — for dual-measurement books (e.g. `2 cups / 250g flour`), instructs the AI to keep only your preferred system (metric, US, or imperial)
 - **Parallel processing** — extraction and categorisation both run concurrently with a configurable concurrency cap, with automatic exponential back-off on rate limits
 - **Handles diverse EPUB and PDF structures** — prose recipes, ingredient lists, baker's percentage tables, multi-recipe chapters, and text-only historic cookbooks all work; PDFs are supported with pre-flight checks and page-based extraction
 - **TOC-based reconciliation** — extracts table of contents (EPUB nav/NCX or PDF outline) when present, compares it to extracted recipes, and logs any missed or extra recipes; extraction always uses page/document chunking for best results
@@ -118,7 +117,7 @@ The `.paprikarecipes` file is written to `Documents\RecipeParser` by default (or
 **Options:**
 
 ```
-usage: recipeparser [-h] [--output DIR] [--units {metric,us,imperial,book}]
+usage: recipeparser [-h] [--output DIR]
                     [--sync-categories] [--concurrency N] [--rpm N] [epub]
 
 positional arguments:
@@ -126,11 +125,6 @@ positional arguments:
 
 options:
   --output DIR          Directory to write the .paprikarecipes file
-  --units               Unit-of-measure preference for dual-measurement books.
-                        metric   — keep gram/ml values only
-                        us       — keep cup/tbsp/oz values only
-                        imperial — keep oz/lb values only
-                        book     — preserve whatever the book uses (default)
   --sync-categories     Pull the live category hierarchy from your local Paprika database
                         and save to the user categories file. No EPUB required.
   --concurrency N       Max in-flight API calls (1–10, default 1). When --rpm is set,
@@ -144,9 +138,6 @@ options:
 ```bash
 # Standard extraction
 recipeparser "The Woks of Life.epub"
-
-# Metric units for a dual-measurement baking book
-recipeparser "Classic German Baking.epub" --units metric
 
 # Pass a Calibre folder directly
 recipeparser "C:\Calibre Library\Ken Forkish\The Elements of Pizza (621)"
@@ -257,9 +248,7 @@ Accepts raw recipe text and returns a refined `CayenneRecipe` object with a vect
 **Request Body:**
 ```json
 {
-  "text": "1 cup flour, 2 eggs. Mix and bake at 350F for 20 mins.",
-  "uom_system": "US",
-  "measure_preference": "Volume"
+  "text": "1 cup flour, 2 eggs. Mix and bake at 350F for 20 mins."
 }
 ```
 
@@ -267,8 +256,6 @@ Accepts raw recipe text and returns a refined `CayenneRecipe` object with a vect
 |---|---|---|---|
 | `text` | string | required | Raw recipe text to ingest |
 | `url` | string | null | URL to scrape (not yet implemented) |
-| `uom_system` | string | `"US"` | `"US"`, `"Metric"`, or `"Imperial"` |
-| `measure_preference` | string | `"Volume"` | `"Volume"` or `"Weight"` |
 
 **Response** (`IngestResponse`):
 - `structured_ingredients`: List of objects with `id`, `amount`, `unit`, `name`, `fallback_string`, `converted_amount`, `converted_unit`, `is_ai_converted`.

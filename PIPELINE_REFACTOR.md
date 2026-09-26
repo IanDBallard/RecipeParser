@@ -177,8 +177,6 @@ def extract(chunk_text: str, client) -> List[RecipeExtraction]:
 def refine(
     raw: RecipeExtraction,
     client,
-    uom_system: str = 'US',
-    measure_preference: str = 'Volume',
 ) -> RefinedRecipe:
     """
     Convert a raw RecipeExtraction into a Cayenne RefinedRecipe.
@@ -266,8 +264,6 @@ class RecipePipeline:
         client,
         controller: PipelineController,
         category_source: CategorySource,
-        uom_system: str = 'US',
-        measure_preference: str = 'Volume',
         concurrency: int = MAX_CONCURRENT_API_CALLS,
         rpm: Optional[int] = None,
     ) -> None: ...
@@ -354,7 +350,7 @@ self.controller.save_checkpoint(
 On `run()` start, the controller loads any existing checkpoint and skips already-completed chunks.
 
 ### Design Checkpoints — §4
-- [x] `RecipePipeline.__init__` accepts `controller`, `category_source`, `uom_system`, `measure_preference`, `concurrency`, `rpm`
+- [x] `RecipePipeline.__init__` accepts `controller`, `category_source`, `concurrency`, `rpm`
 - [x] `run()` returns `List[IngestResponse]` (all successful results, not just first)
 - [x] `_get_stages()` correctly routes `PAPRIKA_CAYENNE` to `['ASSEMBLE']` or `['EMBED', 'ASSEMBLE']`
 - [x] Per-chunk try/except never re-raises — failed chunks are logged and skipped

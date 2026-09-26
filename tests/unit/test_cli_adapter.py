@@ -107,16 +107,6 @@ class TestRunCliPipelineHappyPath:
         written_recipes = MockWriter.return_value.write.call_args[0][0]
         assert len(written_recipes) == 1
 
-    def test_uom_system_forwarded_to_pipeline(self, tmp_path):
-        _, MockPipeline, _, _ = self._run(tmp_path, uom_system="Metric")
-        init_kwargs = MockPipeline.call_args.kwargs
-        assert init_kwargs["uom_system"] == "Metric"
-
-    def test_measure_preference_forwarded_to_pipeline(self, tmp_path):
-        _, MockPipeline, _, _ = self._run(tmp_path, measure_preference="Weight")
-        init_kwargs = MockPipeline.call_args.kwargs
-        assert init_kwargs["measure_preference"] == "Weight"
-
     def test_concurrency_forwarded_to_pipeline(self, tmp_path):
         _, MockPipeline, _, _ = self._run(tmp_path, concurrency=3)
         init_kwargs = MockPipeline.call_args.kwargs
@@ -160,35 +150,3 @@ class TestRunCliPipelineHappyPath:
             run_call_kwargs = MockPipeline.return_value.run.call_args.kwargs
             assert "on_progress" in run_call_kwargs
             assert callable(run_call_kwargs["on_progress"])
-
-
-# ---------------------------------------------------------------------------
-# _units_to_uom helper (tested via __main__ import)
-# ---------------------------------------------------------------------------
-
-class TestUnitsToUom:
-
-    def test_metric_maps_to_Metric(self):
-        from recipeparser.__main__ import _units_to_uom
-        assert _units_to_uom("metric") == "Metric"
-
-    def test_us_maps_to_US(self):
-        from recipeparser.__main__ import _units_to_uom
-        assert _units_to_uom("us") == "US"
-
-    def test_imperial_maps_to_Imperial(self):
-        from recipeparser.__main__ import _units_to_uom
-        assert _units_to_uom("imperial") == "Imperial"
-
-    def test_book_maps_to_US(self):
-        from recipeparser.__main__ import _units_to_uom
-        assert _units_to_uom("book") == "US"
-
-    def test_unknown_defaults_to_US(self):
-        from recipeparser.__main__ import _units_to_uom
-        assert _units_to_uom("nonsense") == "US"
-
-    def test_case_insensitive(self):
-        from recipeparser.__main__ import _units_to_uom
-        assert _units_to_uom("METRIC") == "Metric"
-        assert _units_to_uom("US") == "US"

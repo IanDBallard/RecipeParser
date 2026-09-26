@@ -37,8 +37,6 @@ def run_cli_pipeline(
     output_dir: Optional[str] = None,
     client: Any = None,
     *,
-    uom_system: str = "US",
-    measure_preference: str = "Volume",
     concurrency: Optional[int] = None,
     rpm: Optional[int] = None,
     verbose: bool = True,
@@ -56,8 +54,6 @@ def run_cli_pipeline(
                             Defaults to ``get_default_output_dir()``.
         client:             An initialised ``google.genai.Client`` instance.
                             Required — raises ``ValueError`` if None.
-        uom_system:         "US" | "UK" | "EU" | "AU" (default "US").
-        measure_preference: "Natural" | "Weight" | "Volume" (default "Volume").
         concurrency:        Max parallel Gemini API calls (default: pipeline default).
         rpm:                Optional RPM cap for the GlobalRateLimiter.
         verbose:            If True, print per-chunk progress to stdout.
@@ -116,8 +112,6 @@ def run_cli_pipeline(
         client=client,
         controller=controller,
         category_source=category_source,
-        uom_system=uom_system,
-        measure_preference=measure_preference,
     )
     if concurrency is not None:
         pipeline_kwargs["concurrency"] = concurrency

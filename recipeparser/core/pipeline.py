@@ -84,8 +84,6 @@ class RecipePipeline:
         client: Any,
         controller: PipelineController,
         category_source: CategorySource,
-        uom_system: str = "US",
-        measure_preference: str = "Volume",
         concurrency: int = MAX_CONCURRENT_API_CALLS,
         rpm: Optional[int] = None,
         image_store: Optional[ImageStore] = None,
@@ -95,8 +93,6 @@ class RecipePipeline:
             client:             An initialised ``google.genai.Client`` instance.
             controller:         A ``PipelineController`` FSM for pause/cancel/checkpoint.
             category_source:    A ``CategorySource`` implementation for taxonomy loading.
-            uom_system:         User's preferred unit system ("US" | "Metric" | "Imperial").
-            measure_preference: User's preferred measure type ("Volume" | "Weight").
             concurrency:        Maximum number of parallel chunk workers.
             rpm:                Optional RPM override for the GlobalRateLimiter.
                                 Only honoured on the first instantiation of the singleton.
@@ -107,8 +103,6 @@ class RecipePipeline:
         self._client = client
         self._controller = controller
         self._category_source = category_source
-        self._uom_system = uom_system
-        self._measure_preference = measure_preference
         self._cap = max(1, concurrency)
         self._image_store = image_store
         # Initialise (or retrieve) the process-level rate limiter.

@@ -703,6 +703,42 @@ def test_pipeline_resolves_the_chunk_citation_with_the_models_stated_source():
         "web", "cooking.nytimes.com", "NYT Cooking", "Melissa Clark")
 
 
+def test_refine_is_called_with_the_chunks_source_host():
+    """D7 follow-up: refine() must receive the chunk's own host, not a reader
+    preference — no uom_system/measure_preference is passed anywhere now."""
+    chunk = Chunk(
+        text="Scones ...",
+        input_type=InputType.URL,
+        source_url="https://www.taste.com.au/recipes/scones",
+    )
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction([
+        RecipeExtraction(name="Scones", ingredients=["x"], directions=["y"]),
+    ], [])), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Scones")) as mock_refine, \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        pipeline.run([chunk])
+
+    assert mock_refine.call_args.kwargs["source_host"] == "taste.com.au"
+
+
+def test_refine_is_called_with_no_host_when_the_chunk_has_no_source_url():
+    chunk = Chunk(text="Scones ...", input_type=InputType.URL)
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction([
+        RecipeExtraction(name="Scones", ingredients=["x"], directions=["y"]),
+    ], [])), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Scones")) as mock_refine, \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        pipeline.run([chunk])
+
+    assert mock_refine.call_args.kwargs["source_host"] is None
+
+
 def test_a_worker_timeouterror_is_reported_accurately_not_as_a_segment_timeout():
     """A worker that raises TimeoutError must be reported for what it is.
 

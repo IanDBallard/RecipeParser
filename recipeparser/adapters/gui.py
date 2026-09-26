@@ -34,14 +34,6 @@ try:
 except PackageNotFoundError:
     APP_VERSION = "dev"
 
-UNITS_OPTIONS = ["book", "metric", "us", "imperial"]
-UNITS_LABELS = {
-    "book": "Book default",
-    "metric": "Metric (g / ml)",
-    "us": "US (cups / tbsp)",
-    "imperial": "Imperial (oz / lb)",
-}
-
 
 def _parse_run_config(free_tier: bool, concurrency_str: str) -> tuple[Optional[int], int]:
     """
@@ -548,38 +540,25 @@ class ParseFrame(ctk.CTkFrame):
         ctk.CTkEntry(inputs, textvariable=self._output_var).grid(row=1, column=1, sticky="ew", padx=(0, 8))
         ctk.CTkButton(inputs, text="Browse…", width=90, command=self._browse_output).grid(row=1, column=2)
 
-        ctk.CTkLabel(inputs, text="Units", width=90, anchor="w").grid(row=2, column=0, sticky="w", pady=4)
-        self._units_var = ctk.StringVar(value="book")
-        units_menu = ctk.CTkOptionMenu(
-            inputs,
-            variable=self._units_var,
-            values=list(UNITS_LABELS.values()),
-            command=self._on_units_change,
-        )
-        units_menu.grid(row=2, column=1, sticky="w")
-        # keep display labels but store canonical values
-        self._label_to_unit = {v: k for k, v in UNITS_LABELS.items()}
-        units_menu.set(UNITS_LABELS["book"])
-
-        ctk.CTkLabel(inputs, text="API rate limit", width=90, anchor="w").grid(row=3, column=0, sticky="w", pady=4)
+        ctk.CTkLabel(inputs, text="API rate limit", width=90, anchor="w").grid(row=2, column=0, sticky="w", pady=4)
         self._free_tier_var = ctk.BooleanVar(value=True)
         free_tier_cb = ctk.CTkCheckBox(
             inputs, text="Free tier (5 req/min)", variable=self._free_tier_var,
             command=self._on_free_tier_change,
         )
-        free_tier_cb.grid(row=3, column=1, sticky="w")
+        free_tier_cb.grid(row=2, column=1, sticky="w")
 
-        ctk.CTkLabel(inputs, text="Concurrency", width=90, anchor="w").grid(row=4, column=0, sticky="w", pady=4)
+        ctk.CTkLabel(inputs, text="Concurrency", width=90, anchor="w").grid(row=3, column=0, sticky="w", pady=4)
         self._concurrency_var = ctk.StringVar(value="1")
         self._concurrency_spin = ctk.CTkOptionMenu(
             inputs, variable=self._concurrency_var,
             values=[str(i) for i in range(1, 11)],
             width=80,
         )
-        self._concurrency_spin.grid(row=4, column=1, sticky="w")
+        self._concurrency_spin.grid(row=3, column=1, sticky="w")
         self._concurrency_spin.configure(state="disabled")
         ctk.CTkLabel(inputs, text="(max in-flight)", font=ctk.CTkFont(size=11), text_color=("gray50", "gray50")).grid(
-            row=4, column=2, sticky="w", padx=(4, 0)
+            row=3, column=2, sticky="w", padx=(4, 0)
         )
 
         # ── Log panel ──────────────────────────────────────────────────────────
@@ -630,9 +609,6 @@ class ParseFrame(ctk.CTkFrame):
         self._open_btn.grid(row=0, column=4)
 
     # ── Event handlers ─────────────────────────────────────────────────────────
-
-    def _on_units_change(self, label: str):
-        self._units_var.set(self._label_to_unit[label])
 
     def _on_free_tier_change(self):
         if self._free_tier_var.get():
@@ -720,7 +696,6 @@ class ParseFrame(ctk.CTkFrame):
         root_log.addHandler(handler)
         root_log.setLevel(logging.INFO)
 
-        units = self._label_to_unit.get(self._units_var.get(), self._units_var.get())
         rpm_val, concurrency_val = _parse_run_config(
             self._free_tier_var.get(), self._concurrency_var.get()
         )
@@ -731,11 +706,9 @@ class ParseFrame(ctk.CTkFrame):
                 os.environ["GOOGLE_API_KEY"] = api_key
                 from google import genai
                 from recipeparser.adapters.cli import run_cli_pipeline
-                from recipeparser.__main__ import _units_to_uom
                 client = genai.Client(api_key=api_key)
                 result_path = run_cli_pipeline(
                     book_path, output, client,
-                    uom_system=_units_to_uom(units),
                     concurrency=concurrency_val,
                     rpm=rpm_val,
                     controller=self._controller,

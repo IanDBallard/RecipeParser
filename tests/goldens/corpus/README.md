@@ -38,7 +38,7 @@ fixtures.
 | File | What it locks |
 |---|---|
 | test_readers_golden.py | Every reader's chunks and qualifying images against a real file; the scanned PDF's preflight refusal; `utils.html_to_text`. No Gemini. |
-| test_prompts_snapshot.py | The six prompt builders across the units, axes and measure-preference matrix, and `_schema_for_gemini` for every response model. This is the only guard that `additionalProperties` cannot creep back. |
+| test_prompts_snapshot.py | The prompt builders across the axes and source-host matrix, and `_schema_for_gemini` for every response model. This is the only guard that `additionalProperties` cannot creep back. |
 | test_stages_golden.py | Real recorded replies through `json.loads`, `model_validate`, the dynamic grid round-trip, clean-grid tag stripping and fat-token validation; the baker's-table branch; the vision OCR fallback. |
 | test_e2e_golden.py | `RecipePipeline` at pool size 4 through both zip writers, compared as an order-independent multiset; the Cayenne archive's round trip back through `PaprikaReader`. |
 | test_image_recovery_golden.py | Which source image each recipe ends up with, per corpus fixture: as `image_url` through an in-memory ImageStore, and as `photo_data` in a Paprika export with no store (the CLI's path); the Cayenne round trip of `image_url`; the URL path's hero choice. Known losses are strict xfails. |
@@ -53,9 +53,4 @@ migrating the older mock-based reader and TOC tests onto this corpus, and a
 Supabase writer cassette. TOC calls are recorded by stage but not replayed:
 `toc.py` reads `response.parsed`, which `GoldenResponse` leaves as None.
 
-The e2e goldens are also slightly counterfactual on units: the pipeline maps
-`uom_system="US"` to `units="us"` (`recipeparser/core/pipeline.py`,
-`_uom_to_units_key`), but the extract replies they replay were recorded under
-`units="book"`. Replay is still correct — recordings key off the prompt body,
-which is identical either way — but the reply text is what the model said for
-book units, not what it would say for US units.
+Since verbatim ingestion (2026-09-25) the extract prompt has one rule for every input, so no fixture is recorded under a units mode.
