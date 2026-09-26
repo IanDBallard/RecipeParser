@@ -86,12 +86,36 @@ def test_refine_prompt_states_liquid_or_solid_before_it_converts():
         name="Cake", photo_filename="cake.jpg", servings="4", prep_time="5 mins", cook_time="30 mins",
         ingredients=["1 cup milk", "2 cups flour"], directions=["Mix."],
     )
-    prompt = build_refine_prompt(raw, "UK", "Natural")
+    prompt = build_refine_prompt(raw, None)
     state_at = prompt.index("STATE:")
     conversion_at = prompt.index("CONVERSION:")
     assert 0 < state_at < conversion_at
     assert '"liquid"' in prompt and '"solid"' in prompt
     assert "Use the state when you compute the conversion" in prompt
+
+
+def test_refine_prompt_carries_the_host_and_no_reader_context():
+    raw = RecipeExtraction(name="Cake", ingredients=["1 cup milk"], directions=["Mix."])
+    prompt = build_refine_prompt(raw, "taste.com.au")
+    assert "SOURCE HOST: taste.com.au" in prompt
+    assert prompt.index("SOURCE HOST:") < prompt.index("RAW RECIPE:")
+    assert "UOM System" not in prompt and "Measure Preference" not in prompt
+    assert "DUAL MEASURES:" in prompt and "SOURCE SYSTEM:" in prompt
+    assert "SOURCE HOST: none" in build_refine_prompt(raw, None)
+
+
+def test_the_rebuilt_refinement_keeps_the_detection(monkeypatch):
+    # gemini.py rebuilds the refinement when axes are present; the detection must survive it.
+    expected = CayenneRefinement(
+        title="Cake", base_servings=4,
+        structured_ingredients=[StructuredIngredient(id="ing_01", amount=1.0, unit="cup", name="milk", fallback_string="1 cup (250 ml) milk")],
+        tokenized_directions=[TokenizedDirection(step=1, text="Use {{ing_01|milk}}.")],
+        source_uom_system_detected="AU", source_uom_system_evidence="1 cup (250 ml)",
+    )
+    client = MagicMock()
+    client.models.generate_content.return_value = MagicMock(text=expected.model_dump_json())
+    result = refine_recipe_for_cayenne("raw", client, user_axes={"Cuisine": ["Italian"]})
+    assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("AU", "1 cup (250 ml)")
 
 
 def test_structured_ingredient_carries_an_optional_state():

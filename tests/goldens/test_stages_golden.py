@@ -96,8 +96,6 @@ def test_stage_golden(fixture, golden_client, snapshot: SnapshotAssertion, monke
             refined = refine(
                 raw=raw,
                 client=client,
-                uom_system="US",
-                measure_preference="Volume",
                 user_axes=FIXED_AXES,
             )
             rendered.append(
@@ -191,8 +189,7 @@ def test_every_refined_recipe_keeps_its_grid_inside_the_axes(golden_client, monk
     for chunk in EpubReader().read(str(corpus_path("dual-units.epub"))):
         for raw in extract(chunk_text=chunk.text, client=client).recipes:
             refined = refine(
-                raw=raw, client=client, uom_system="US",
-                measure_preference="Volume", user_axes=FIXED_AXES,
+                raw=raw, client=client, user_axes=FIXED_AXES,
             )
             for axis, tags in refined.grid_categories.items():
                 assert axis in valid
@@ -232,8 +229,6 @@ def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
             refined = refine(
                 raw=raw,
                 client=client,
-                uom_system="US",
-                measure_preference="Volume",
                 user_axes=FIXED_AXES,
             )
             lines = [i.fallback_string for i in refined.structured_ingredients]

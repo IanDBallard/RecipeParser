@@ -640,11 +640,14 @@ def _format_axes_for_prompt(user_axes: Dict[str, List[str]]) -> str:
 
 def build_refine_prompt(
     raw_recipe: object,
-    uom_system: str,
-    measure_preference: str,
+    source_host: Optional[str],
     user_axes: Optional[Dict[str, List[str]]] = None,
 ) -> str:
-    """The Pass-2 prompt: structured ingredients, fat tokens, and categorisation."""
+    """The Pass-2 prompt: structured ingredients, fat tokens, the source system and categorisation.
+
+    ``SOURCE HOST`` sits before ``RAW RECIPE:`` because the golden replay keys a refine call by the
+    text after that marker (tests/goldens/golden_client.py).
+    """
     categorization_section = _format_axes_for_prompt(user_axes or {})
     return f"""
 You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
@@ -653,7 +656,7 @@ RULES:
 1. STRUCTURED INGREDIENTS:
    - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
    - Extract numeric "amount", "unit" (null if unitless), and "name".
-   - "fallback_string" is the original full line.
+   - "fallback_string" is the original full line, unchanged.
    - "line_index" is the 0-based position of the source line in the RAW RECIPE
      ingredients list. Every ingredient line gets exactly one entry with its
      index. A section header line (e.g. "For the sauce:") gets no entry.
@@ -663,12 +666,20 @@ RULES:
      sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
      null when the line has no amount or its unit is neither a volume nor a weight.
      Use the state when you compute the conversion below.
-   - CONVERSION: Always give the equivalent in the OTHER measure, regardless of the Measure
-     Preference below: a weight for a volume ("1 cup" -> 120, "g"), a volume for a weight
-     ("150 g" -> 1.25, "cups"). Put it in "converted_amount" and "converted_unit" and set
-     "is_ai_converted" to true. Leave "converted_amount" and "converted_unit" null and
-     "is_ai_converted" false when the line states no amount ("salt to taste") or its
-     unit is neither a volume nor a weight ("3 eggs", "a pinch").
+   - DUAL MEASURES: when a line states two measures ("1 cup (240 g) flour", "250g/2 cups flour",
+     "1 ounce (about 1/3 packed cup) grated pecorino"), the FIRST measure the writer gives is
+     "amount" and "unit". When the second is the other kind (a weight beside a volume, or a volume
+     beside a weight), put it in "converted_amount" and "converted_unit" exactly as the line writes
+     it and set "is_ai_converted" to false. When both are the same kind ("1 pound (450g)"), the
+     second is not structured: apply the CONVERSION rule below.
+   - CONVERSION: for a line with one measure, give the equivalent in the OTHER measure, in grams or
+     millilitres only: a weight for a volume ("1 cup" flour -> 120, "g"), a volume for a weight
+     ("150 g" flour -> 300, "ml"). Never answer in cups, spoons, ounces or pints. Put it in
+     "converted_amount" and "converted_unit" and set "is_ai_converted" to true. Leave
+     "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
+     states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
+     "a pinch").
+   - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
    - amount: the numeric quantity. Use null - never 0 - when the source states no
      amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
      measurement of nothing.
@@ -687,10 +698,24 @@ RULES:
      (ingredients) or text (directions).
    - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
      be able to tell where one session ends and the next begins.
+
+4. SOURCE SYSTEM:
+   - "source_uom_system_detected": the measuring system the writer used, exactly one of "US",
+     "UK", "EU", "AU", "Imperial", judged only from evidence in the RAW RECIPE or the SOURCE HOST:
+       * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
+         is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
+         pint is Imperial;
+       * a statement about the measures ("Australian standard measures", "US cup measures");
+       * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
+         Metric's);
+       * spelling and ingredient names only one country uses ("caster sugar", "plain flour" and
+         "double cream" are UK; "all-purpose flour" and "heavy cream" are US).
+     Grams printed beside cups are not evidence: American writers print them too.
+   - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
+     the SOURCE HOST exactly as given. One short quote.
+   - Leave both null when nothing above applies.
 {categorization_section}
-CONTEXT:
-UOM System: {uom_system}
-Measure Preference: {measure_preference}
+SOURCE HOST: {source_host or "none"}
 
 RAW RECIPE:
 {raw_recipe}
@@ -700,8 +725,7 @@ RAW RECIPE:
 def refine_recipe_for_cayenne(
     raw_recipe: object,
     client,
-    uom_system: str = "US",
-    measure_preference: str = "Volume",
+    source_host: Optional[str] = None,
     user_axes: Optional[Dict[str, List[str]]] = None,
 ) -> Optional[CayenneRefinement]:
     """
@@ -713,15 +737,15 @@ def refine_recipe_for_cayenne(
     Args:
         raw_recipe:        The raw RecipeExtraction object from Pass 1.
         client:            Initialised Gemini client.
-        uom_system:        "US", "UK", "EU" or "AU".
-        measure_preference: "Natural", "Weight" or "Volume".
+        source_host:       The recipe's source host (core.citation.host_of), or None — the prompt's
+                           only evidence outside the recipe text.
         user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
                            When None or empty, grid_categories will be {} in the result.
     """
     axes = user_axes or {}
     schema = _build_dynamic_grid_schema(axes)
 
-    prompt = build_refine_prompt(raw_recipe, uom_system, measure_preference, axes)
+    prompt = build_refine_prompt(raw_recipe, source_host, axes)
     try:
         # Use response_json_schema with additionalProperties stripped — Gemini API
         # rejects response_schema when Pydantic emits additionalProperties (Dict types).
@@ -772,6 +796,8 @@ def refine_recipe_for_cayenne(
                 structured_ingredients=result.structured_ingredients,
                 tokenized_directions=result.tokenized_directions,
                 grid_categories=clean_grid,
+                source_uom_system_detected=result.source_uom_system_detected,
+                source_uom_system_evidence=result.source_uom_system_evidence,
             )
 
         return result

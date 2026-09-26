@@ -23,7 +23,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
-from recipeparser.core.citation import Citation, resolve_citation
+from recipeparser.core.citation import Citation, host_of, resolve_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.rate_limiter import GlobalRateLimiter
@@ -393,8 +393,7 @@ class RecipePipeline:
                 refined = refine(
                     raw=raw,
                     client=self._client,
-                    uom_system=self._uom_system,
-                    measure_preference=self._measure_preference,
+                    source_host=host_of(chunk.source_url) if chunk.source_url else None,
                     user_axes=user_axes,
                 )
 

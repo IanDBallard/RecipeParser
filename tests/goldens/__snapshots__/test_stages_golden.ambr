@@ -47,6 +47,8 @@
               'Bread',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 2.0,
@@ -174,6 +176,8 @@
               'Dessert',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 14.0,
@@ -303,6 +307,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -587,6 +593,8 @@
               'Dessert',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -930,6 +938,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 6.0,
@@ -1114,6 +1124,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -1208,6 +1220,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 1.0,
@@ -1331,6 +1345,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -1947,6 +1963,8 @@
               'Dessert',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 1.0,
@@ -2079,6 +2097,8 @@
               'Bread',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -2258,6 +2278,8 @@
               'Bread',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': 4.0,
@@ -2399,6 +2421,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -2683,6 +2707,8 @@
               'Dinner',
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -2978,6 +3004,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -3093,6 +3121,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -3167,6 +3197,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,
@@ -3269,6 +3301,8 @@
             'Meal Type': list([
             ]),
           }),
+          'source_uom_system_detected': None,
+          'source_uom_system_evidence': None,
           'structured_ingredients': list([
             dict({
               'amount': None,

@@ -55,6 +55,8 @@
       "source_key": "phases and percentages",
       "source_kind": "book",
       "source_title": "Phases And Percentages",
+      "source_uom_system_detected": null,
+      "source_uom_system_evidence": null,
       "source_url": null,
       "structured_ingredients": [
         {
@@ -242,6 +244,8 @@
       "source_key": "phases and percentages",
       "source_kind": "book",
       "source_title": "Phases And Percentages",
+      "source_uom_system_detected": null,
+      "source_uom_system_evidence": null,
       "source_url": null,
       "structured_ingredients": [
         {

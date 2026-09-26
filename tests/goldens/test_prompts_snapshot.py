@@ -73,20 +73,13 @@ class TestBuildersMatchTheCallSites:
         )
         assert sent == gemini.build_table_prompt(PLACEHOLDER_BODY)
 
-    @pytest.mark.parametrize(
-        "axes,measure",
-        [({}, "Volume"), (FIXED_AXES, "Volume"), (FIXED_AXES, "Weight")],
-    )
-    def test_refine(self, monkeypatch, axes, measure):
+    @pytest.mark.parametrize("axes", [{}, FIXED_AXES])
+    def test_refine(self, monkeypatch, axes):
         sent = _sent_contents(
             monkeypatch,
-            lambda c: gemini.refine_recipe_for_cayenne(
-                PLACEHOLDER_RECIPE, c, measure_preference=measure, user_axes=axes
-            ),
+            lambda c: gemini.refine_recipe_for_cayenne(PLACEHOLDER_RECIPE, c, user_axes=axes),
         )
-        assert sent == gemini.build_refine_prompt(
-            PLACEHOLDER_RECIPE, "US", measure, axes
-        )
+        assert sent == gemini.build_refine_prompt(PLACEHOLDER_RECIPE, None, axes)
 
     def test_toc_parse(self, monkeypatch):
         chunks = ["Contents", "Soups .... 3", "Puddings .... 41"]
@@ -118,13 +111,13 @@ class TestPromptSnapshots:
         assert gemini.build_table_prompt(PLACEHOLDER_BODY) == snapshot
 
     def test_refine_prompt_without_axes(self, snapshot: SnapshotAssertion):
-        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "US", "Volume", {}) == snapshot
+        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, None, {}) == snapshot
 
     def test_refine_prompt_with_axes(self, snapshot: SnapshotAssertion):
-        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "US", "Volume", FIXED_AXES) == snapshot
+        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, None, FIXED_AXES) == snapshot
 
-    def test_refine_prompt_weight_preference(self, snapshot: SnapshotAssertion):
-        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "Metric", "Weight", FIXED_AXES) == snapshot
+    def test_refine_prompt_with_a_host(self, snapshot: SnapshotAssertion):
+        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "taste.com.au", FIXED_AXES) == snapshot
 
     def test_toc_parse_prompt(self, snapshot: SnapshotAssertion):
         assert toc.build_toc_parse_prompt(["Contents", "Soups .... 3"]) == snapshot

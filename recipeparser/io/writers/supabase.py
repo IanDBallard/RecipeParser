@@ -207,6 +207,9 @@ def write_recipe_to_supabase(
         "source_key": recipe.source_key,
         "source_title": recipe.source_title,
         "source_author": recipe.source_author,
+        # What REFINE detected (verbatim ingestion D5, Cayenne migration verbatim_ingestion).
+        "source_uom_system_detected": recipe.source_uom_system_detected,
+        "source_uom_system_evidence": recipe.source_uom_system_evidence,
         # jsonb columns — send the list itself. json.dumps()ing it here handed
         # Postgres a JSON *string* containing an array, and that is what jsonb
         # stored: on 2026-09-06 jsonb_typeof reported 'string' for all 786 rows

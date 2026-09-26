@@ -43,6 +43,8 @@
     'source_key': None,
     'source_kind': None,
     'source_title': None,
+    'source_uom_system_detected': None,
+    'source_uom_system_evidence': None,
     'source_url': 'https://example.com/cake',
     'structured_ingredients': list([
       dict({
@@ -131,6 +133,8 @@
         'Dessert',
       ]),
     }),
+    'source_uom_system_detected': None,
+    'source_uom_system_evidence': None,
     'structured_ingredients': list([
       dict({
         'amount': 1.5,
