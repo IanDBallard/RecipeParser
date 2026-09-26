@@ -1,0 +1,17 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "364732244339c8bf01741e514296e78bf235ac46beb8ab05d755224b6ab940aa",
+  "response_text": "{\n  \"title\": \"Lamington Slice\",\n  \"base_servings\": null,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 2.0,\n      \"unit\": \"cups\",\n      \"name\": \"self-raising flour\",\n      \"fallback_string\": \"2 cups (250 ml) self-raising flour\",\n      \"converted_amount\": 250.0,\n      \"converted_unit\": \"ml\",\n      \"is_ai_converted\": false,\n      \"state\": \"solid\",\n      \"line_index\": 0\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 1.0,\n      \"unit\": \"tbsp\",\n      \"name\": \"caster sugar\",\n      \"fallback_string\": \"1 tbsp (20 ml) caster sugar\",\n      \"converted_amount\": 20.0,\n      \"converted_unit\": \"ml\",\n      \"is_ai_converted\": false,\n      \"state\": \"solid\",\n      \"line_index\": 1\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 0.5,\n      \"unit\": \"cup\",\n      \"name\": \"milk\",\n      \"fallback_string\": \"1/2 cup (125 ml) milk\",\n      \"converted_amount\": 125.0,\n      \"converted_unit\": \"ml\",\n      \"is_ai_converted\": false,\n      \"state\": \"liquid\",\n      \"line_index\": 2\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 60.0,\n      \"unit\": \"g\",\n      \"name\": \"butter, melted\",\n      \"fallback_string\": \"60 g butter, melted\",\n      \"converted_amount\": 60.0,\n      \"converted_unit\": \"ml\",\n      \"is_ai_converted\": true,\n      \"state\": \"liquid\",\n      \"line_index\": 3\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Mix and bake at 180°C for 25 minutes.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [\n      \"British\"\n    ],\n    \"Meal Type\": [\n      \"Dessert\"\n    ]\n  },\n  \"source_uom_system_detected\": \"AU\",\n  \"source_uom_system_evidence\": \"1 tbsp (20 ml)\"\n}"
+}

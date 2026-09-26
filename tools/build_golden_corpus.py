@@ -296,6 +296,37 @@ def build_legacy_photo(source_text: str) -> None:
         )
 
 
+#: An Australian recipe whose only measurement evidence is its own text: the
+#: Australian tablespoon is 20 ml, so "1 tbsp (20 ml)" names the system.
+AU_MEASURES_ENTRY = {
+    "name": "Lamington Slice",
+    "ingredients": "\n".join([
+        "2 cups (250 ml) self-raising flour",
+        "1 tbsp (20 ml) caster sugar",
+        "1/2 cup (125 ml) milk",
+        "60 g butter, melted",
+    ]),
+    "directions": "Mix and bake at 180°C for 25 minutes.",
+    "servings": "",
+    "prep_time": "",
+    "cook_time": "",
+    "notes": "",
+    "categories": [],
+    "source": "",
+    "source_url": "",
+}
+
+
+def build_au_measures() -> None:
+    """One legacy Paprika entry (no _cayenne_meta, no photo): an Australian recipe."""
+    out = CORPUS / "au-measures.paprikarecipes"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "Lamington Slice.paprikarecipe",
+            gzip.compress(json.dumps(AU_MEASURES_ENTRY, ensure_ascii=False).encode("utf-8")),
+        )
+
+
 def build_text_pages(pages: list[str]) -> None:
     """A four-page PDF with a real text layer and one embedded image."""
     import re
@@ -487,6 +518,7 @@ def main() -> int:
         "Pour the hot milk over the eggs, stirring.\nCook over water until it coats a spoon.\n"
         "Cool, then stir in the vanilla."
     )
+    build_au_measures()
     pages_file.unlink()
 
     total = sum(p.stat().st_size for p in CORPUS.iterdir())

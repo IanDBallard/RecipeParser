@@ -29,6 +29,7 @@ STAGE_FIXTURES = (
     "phases-bakers.epub",
     "text-pages.pdf",
     "legacy-photo.paprikarecipes",
+    "au-measures.paprikarecipes",
 )
 
 
@@ -239,3 +240,30 @@ def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
         "the refined recipe kept no phase heading at all — extraction produced "
         "them and refinement dropped them"
     )
+
+
+def test_an_australian_recipe_is_detected_as_au_on_its_own_evidence(golden_client, monkeypatch):
+    """au-measures carries no host and no notes: only its lines can name the system.
+
+    "1 tbsp (20 ml)" is the Australian tablespoon, which the refine prompt names
+    as AU evidence; refine's own check drops any detection whose evidence is not
+    a quote from the recipe, so the assertion on the text here is the same rule
+    seen from the outside.
+    """
+    fixture = "au-measures.paprikarecipes"
+    client = golden_client(fixture)
+    chunks = _chunks_for(fixture, monkeypatch)
+    assert len(chunks) == 1
+
+    raws = extract(
+        chunk_text=chunks[0].text,
+        client=client,
+        plain_text_mode=chunks[0].input_type == InputType.PAPRIKA_LEGACY,
+    ).recipes
+    assert [raw.name for raw in raws] == ["Lamington Slice"]
+
+    refined = refine(raw=raws[0], client=client, user_axes=FIXED_AXES)
+
+    assert refined.source_uom_system_detected == "AU"
+    assert refined.source_uom_system_evidence
+    assert refined.source_uom_system_evidence in chunks[0].text

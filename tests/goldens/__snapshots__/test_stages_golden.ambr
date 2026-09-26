@@ -1,4 +1,116 @@
 # serializer version: 1
+# name: test_stage_golden[au-measures.paprikarecipes]
+  dict({
+    'detail': list([
+      dict({
+        'categories': dict({
+          'Cuisine': list([
+            'British',
+          ]),
+          'Meal Type': list([
+            'Dessert',
+          ]),
+        }),
+        'raw': dict({
+          'byline': None,
+          'cook_time': None,
+          'description': None,
+          'directions': list([
+            'Mix and bake at 180°C for 25 minutes.',
+          ]),
+          'ingredients': list([
+            '2 cups (250 ml) self-raising flour',
+            '1 tbsp (20 ml) caster sugar',
+            '1/2 cup (125 ml) milk',
+            '60 g butter, melted',
+          ]),
+          'name': 'Lamington Slice',
+          'notes': None,
+          'nutritional_info': None,
+          'photo_filename': None,
+          'prep_time': None,
+          'servings': None,
+          'stated_source': None,
+          'total_time': None,
+        }),
+        'refined': dict({
+          'base_servings': None,
+          'grid_categories': dict({
+            'Cuisine': list([
+              'British',
+            ]),
+            'Meal Type': list([
+              'Dessert',
+            ]),
+          }),
+          'source_uom_system_detected': 'AU',
+          'source_uom_system_evidence': '1 tbsp (20 ml)',
+          'structured_ingredients': list([
+            dict({
+              'amount': 2.0,
+              'converted_amount': 250.0,
+              'converted_unit': 'ml',
+              'fallback_string': '2 cups (250 ml) self-raising flour',
+              'id': 'ing_01',
+              'is_ai_converted': False,
+              'line_index': 0,
+              'name': 'self-raising flour',
+              'state': 'solid',
+              'unit': 'cups',
+            }),
+            dict({
+              'amount': 1.0,
+              'converted_amount': 20.0,
+              'converted_unit': 'ml',
+              'fallback_string': '1 tbsp (20 ml) caster sugar',
+              'id': 'ing_02',
+              'is_ai_converted': False,
+              'line_index': 1,
+              'name': 'caster sugar',
+              'state': 'solid',
+              'unit': 'tbsp',
+            }),
+            dict({
+              'amount': 0.5,
+              'converted_amount': 125.0,
+              'converted_unit': 'ml',
+              'fallback_string': '1/2 cup (125 ml) milk',
+              'id': 'ing_03',
+              'is_ai_converted': False,
+              'line_index': 2,
+              'name': 'milk',
+              'state': 'liquid',
+              'unit': 'cup',
+            }),
+            dict({
+              'amount': 60.0,
+              'converted_amount': 60.0,
+              'converted_unit': 'ml',
+              'fallback_string': '60 g butter, melted',
+              'id': 'ing_04',
+              'is_ai_converted': True,
+              'line_index': 3,
+              'name': 'butter, melted',
+              'state': 'liquid',
+              'unit': 'g',
+            }),
+          ]),
+          'title': 'Lamington Slice',
+          'tokenized_directions': list([
+            dict({
+              'step': 1,
+              'text': 'Mix and bake at 180°C for 25 minutes.',
+            }),
+          ]),
+        }),
+      }),
+    ]),
+    'names': list([
+      'Lamington Slice',
+    ]),
+    'recipe_count': 1,
+  })
+# ---
 # name: test_stage_golden[dual-units.epub]
   dict({
     'detail': list([

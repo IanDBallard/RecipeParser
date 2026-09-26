@@ -26,9 +26,9 @@ def test_corpus_path_joins_onto_the_corpus_dir():
     assert paths.corpus_path("dual-units.epub") == paths.CORPUS_DIR / "dual-units.epub"
 
 
-def test_seven_fixtures_are_declared():
-    assert len(paths.CORPUS_FIXTURES) == 7
-    assert len(set(paths.CORPUS_FIXTURES)) == 7
+def test_eight_fixtures_are_declared():
+    assert len(paths.CORPUS_FIXTURES) == 8
+    assert len(set(paths.CORPUS_FIXTURES)) == 8
 
 
 def test_fixed_axes_are_the_two_axes_the_spec_names():
@@ -93,6 +93,7 @@ def test_every_fixture_that_calls_gemini_has_recordings():
     expected = {
         "gutenberg-multi.epub", "dual-units.epub", "phases-bakers.epub",
         "text-pages.pdf", "scanned.pdf", "legacy-photo.paprikarecipes",
+        "au-measures.paprikarecipes",
     }
     present = {d.name for d in paths.GEMINI_DIR.iterdir() if d.is_dir()}
     assert expected <= present, f"no recordings for {sorted(expected - present)}"

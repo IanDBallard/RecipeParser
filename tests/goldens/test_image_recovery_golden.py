@@ -62,6 +62,7 @@ HERO_IMAGES: Dict[str, Dict[str, Optional[str]]] = {
     "phases-bakers.epub": {"Overnight Country Loaf": None, "Sandwich Loaf": None},
     "text-pages.pdf": {EVERY_RECIPE: None},
     "legacy-photo.paprikarecipes": {"Boiled Custard": PAPRIKA_PHOTO},
+    "au-measures.paprikarecipes": {"Lamington Slice": None},
 }
 
 #: fixture -> why its expectation is not met yet. Empty: every expectation holds.

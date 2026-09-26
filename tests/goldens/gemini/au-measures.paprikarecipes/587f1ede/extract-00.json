@@ -1,0 +1,17 @@
+{
+  "stage": "extract",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "9f641742bcd5fb0535e3a5466045d5d058970e8ba65282e98c448b725f36ded7",
+  "response_text": "{\n  \"recipes\": [\n    {\n      \"name\": \"Lamington Slice\",\n      \"photo_filename\": null,\n      \"servings\": null,\n      \"prep_time\": null,\n      \"cook_time\": null,\n      \"ingredients\": [\n        \"2 cups (250 ml) self-raising flour\",\n        \"1 tbsp (20 ml) caster sugar\",\n        \"1/2 cup (125 ml) milk\",\n        \"60 g butter, melted\"\n      ],\n      \"directions\": [\n        \"Mix and bake at 180°C for 25 minutes.\"\n      ],\n      \"notes\": null,\n      \"stated_source\": null,\n      \"byline\": null,\n      \"total_time\": null,\n      \"description\": null,\n      \"nutritional_info\": null,\n      \"categories\": []\n    }\n  ]\n}"
+}
