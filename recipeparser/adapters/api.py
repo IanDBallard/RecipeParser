@@ -211,12 +211,28 @@ async def _lifespan(_app: FastAPI):
             "REGEN_WORKER_ENABLED is not set: no regeneration worker will run, and an edited "
             "recipe stays stale until one does."
         )
+    # Ingest liveness runs whatever the regen flag says: a dead import blocks every device and
+    # every api deploy either way (Cayenne F-001). It needs only the service client.
+    liveness: Optional[asyncio.Task] = None
+    liveness_sb = _get_supabase_service_client()
+    if liveness_sb is not None:
+        from recipeparser.adapters import ingest_liveness as _il  # noqa: PLC0415
+        liveness = asyncio.create_task(
+            _il.run_liveness(liveness_sb, lambda: list(_active_jobs), stop)
+        )
+    else:
+        logger.warning(
+            "No Supabase service client: ingest liveness is off, so an import whose process "
+            "dies stays 'running' until someone ends it by hand."
+        )
     try:
         yield
     finally:
         stop.set()
         if task is not None:
             await task
+        if liveness is not None:
+            await liveness
 
 
 app = FastAPI(title="Cayenne Ingestion API", version="1.0.0", lifespan=_lifespan)
