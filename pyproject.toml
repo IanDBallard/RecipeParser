@@ -50,6 +50,9 @@ dev = [
     "syrupy>=4.0",
     "ruff>=0.4",
     "mypy>=1.10",
+    # scripts/measure_similarity_tiers.py scores every pair of recipes (1.28M at 1,601);
+    # a script, not the service, so it is a dev dependency only.
+    "numpy>=2.0",
 ]
 
 [tool.setuptools.packages.find]
