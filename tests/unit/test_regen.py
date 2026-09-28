@@ -37,14 +37,30 @@ def test_build_extraction_from_row():
     assert ex.servings is None
 
 
-def test_build_extraction_tolerates_missing_lists():
-    ex = build_extraction({"title": "Cake"})
+def test_build_extraction_keeps_empty_lists():
+    # An empty list is a real body: the cook deleted every line. Regenerating it
+    # to empty derived data is correct, unlike a null (below).
+    ex = build_extraction({"title": "Cake", "ingredient_lines": [], "direction_steps": []})
     assert ex.ingredients == [] and ex.directions == []
 
 
-def test_build_extraction_tolerates_explicit_nulls():
-    ex = build_extraction({"title": "Cake", "ingredient_lines": None, "direction_steps": None})
-    assert ex.ingredients == [] and ex.directions == []
+@pytest.mark.parametrize("column", ["ingredient_lines", "direction_steps"])
+def test_build_extraction_rejects_a_null_body_column(column):
+    # Fix Roadmap F-005. Null used to read as [], so REFINE got nothing, succeeded,
+    # and the worker wrote empty derived data back as fresh: the recipe's
+    # ingredients (or method) silently vanished. The columns are NOT NULL
+    # default '[]' (Cayenne migration 013), so a null is a row this code does not
+    # understand; it must fail and be recorded, not regenerate to nothing.
+    row = {"title": "Cake", "ingredient_lines": ["1 cup flour"], "direction_steps": ["Mix."]}
+    row[column] = None
+    with pytest.raises(ValueError, match=f"{column} is null"):
+        build_extraction(row)
+
+
+def test_build_extraction_rejects_a_missing_body_column():
+    # A claim result without the column is the same hazard, for every row at once.
+    with pytest.raises(ValueError, match="ingredient_lines is null"):
+        build_extraction({"title": "Cake", "direction_steps": ["Mix."]})
 
 
 def test_build_extraction_rejects_a_double_encoded_ingredient_column():
