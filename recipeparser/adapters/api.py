@@ -55,13 +55,13 @@ from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.pipeline import RecipePipeline
-from recipeparser.exceptions import UnreadableInputError, UrlFetchError
+from recipeparser.exceptions import UnreadableInputError
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
-from recipeparser.io.readers.url import PageMeta, looks_like_bot_challenge, looks_like_badge, page_meta_from_html
+from recipeparser.io.readers.url import PageMeta, UrlReader, looks_like_badge, page_meta_from_html
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.supabase import write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
@@ -964,22 +964,14 @@ async def submit_job(
             page_meta = PageMeta(None, None)
             if body.url:
                 source_url = body.url
-                jina_url = f"https://r.jina.ai/{body.url}"
-                try:
-                    async with httpx.AsyncClient(timeout=30) as http:
-                        resp = await http.get(jina_url)
-                        resp.raise_for_status()
-                        markdown_text = resp.text
-                except httpx.HTTPStatusError as exc:
-                    raise UrlFetchError(f"could not be fetched (HTTP {exc.response.status_code}).") from exc
-                except httpx.TimeoutException as exc:
-                    raise UrlFetchError("did not respond in time.") from exc
-                except httpx.HTTPError as exc:
-                    raise UrlFetchError(f"could not be fetched: {exc}") from exc
-                if not markdown_text.strip():
-                    raise UrlFetchError("contains no readable text.")
-                if looks_like_bot_challenge(markdown_text):
-                    raise UrlFetchError("is blocked by the site's bot-protection challenge page.")
+                # UrlReader is the one place that decides what a fetched URL means: the Jina
+                # fetch, its timeout, and every refusal (an HTTP error, a timeout, a blank page,
+                # a bot-protection challenge) as a UrlFetchError. This endpoint kept its own copy
+                # until 2026-09-28, and #54's reader fix was dead code here until #55 copied it
+                # (RecipeParser#57, Fix Roadmap F-014). The reader is synchronous, so it runs in
+                # a thread.
+                [fetched] = await asyncio.to_thread(UrlReader().read, body.url)
+                markdown_text = fetched.text
                 # The page's own head first (og:image, the description), the
                 # scraper's markdown second: the markdown dropped both on the
                 # NYT page of 2026-09-12 and offered a logo instead.
