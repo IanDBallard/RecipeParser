@@ -117,3 +117,46 @@ def test_a_retry_that_raises_keeps_the_clean_recipes_and_names_the_failed_ones()
     assert fn.call_count == 2
     assert result.recipes == [_A_OK]
     assert result.rewritten == ["B"]
+
+
+# Fix Roadmap F-012 (RecipeParser#59's final review, ruling 7): the pipeline took one limiter slot before
+# extract(), and the number-guard retry and the baker's-table call made further Gemini calls on it.
+class _Calls:
+    """A limiter and the Gemini stand-ins writing to one log, so the order of slot and call shows."""
+
+    def __init__(self):
+        self.log = []
+        self.limiter = MagicMock()
+        self.limiter.wait_then_record_start.side_effect = lambda: self.log.append("slot")
+
+    def returning(self, name, *values):
+        replies = iter(values)
+
+        def call(*a, **kw):
+            self.log.append(name)
+            return next(replies)
+        return call
+
+
+def test_the_number_guard_retry_takes_its_own_limiter_slot():
+    calls = _Calls()
+    with patch(_EXTRACT, side_effect=calls.returning("extract", _carbonara(REWRITTEN), _carbonara(VERBATIM))):
+        extract(NYT_PAGE, client=MagicMock(), limiter=calls.limiter)
+    assert calls.log == ["slot", "extract", "slot", "extract"]
+
+
+def test_the_bakers_table_call_takes_its_own_limiter_slot():
+    calls = _Calls()
+    loaf = RecipeList(recipes=[RecipeExtraction(name="Loaf", ingredients=["500g flour"], directions=["Mix."])])
+    with patch("recipeparser.core.stages.extract.needs_table_normalisation", return_value=True), \
+         patch("recipeparser.core.stages.extract.normalise_baker_table",
+               side_effect=calls.returning("table", "500g flour")), \
+         patch(_EXTRACT, side_effect=calls.returning("extract", loaf)):
+        extract("Flour 100%", client=MagicMock(), limiter=calls.limiter)
+    assert calls.log == ["slot", "table", "slot", "extract"]
+
+
+def test_with_no_limiter_extract_still_runs():
+    # The goldens and the CLI's direct callers pass none.
+    with patch(_EXTRACT, return_value=_carbonara(VERBATIM)):
+        assert extract(NYT_PAGE, client=MagicMock()).recipes

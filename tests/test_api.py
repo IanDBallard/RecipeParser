@@ -56,6 +56,9 @@ _CLIENT   = "recipeparser.adapters.api._get_client"
 _EMBED    = "recipeparser.gemini.get_embeddings"
 # Also patch the category source so it doesn't hit Supabase in tests.
 _CAT_SRC  = "recipeparser.adapters.api.SupabaseCategorySource"
+# A URL job fetches the page through UrlReader (RecipeParser#57, Fix Roadmap F-014), so its Jina
+# fetch is stubbed here; an unstubbed URL job would reach r.jina.ai.
+_JINA_GET = "recipeparser.io.readers.url.requests.get"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -180,17 +183,26 @@ class TestPostJobs:
         # job_id should be a valid UUID string
         uuid.UUID(body["job_id"])  # raises ValueError if invalid
 
-    def test_url_returns_202(self, client: TestClient) -> None:
+    def test_url_returns_202(self) -> None:
+        from unittest.mock import AsyncMock
+
         mock_http_resp = MagicMock()
         mock_http_resp.text = "# Pasta\nog:image: https://example.com/img.jpg\nBoil water."
         mock_http_resp.raise_for_status = MagicMock()
 
+        # The job is drained inside the patches: the reader's GET runs in a worker thread, which a
+        # torn-down event loop cannot cancel, so a job left running could reach r.jina.ai (F-014).
         with _patch_pipeline_and_writer()[0], \
-             patch("httpx.AsyncClient") as mock_httpx:
-            mock_httpx.return_value.__aenter__.return_value.get = \
-                MagicMock(return_value=mock_http_resp)
-            resp = client.post("/jobs", json={"url": "https://example.com/recipe"})
-        assert resp.status_code == 202
+             patch(_JINA_GET, return_value=mock_http_resp), \
+             patch("recipeparser.adapters.api._fetch_page_meta", new=AsyncMock(return_value=PageMeta(None, None))), \
+             patch("recipeparser.adapters.api._upload_image_to_storage", new=AsyncMock(return_value=None)), \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://example.com/recipe"})
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
 
     def test_results_are_written_via_the_sink(self) -> None:
         """RecipePipeline.run() must be handed a live on_result callback — the
@@ -278,22 +290,9 @@ class TestPostJobs:
             def raise_for_status(self) -> None:
                 return None
 
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                pass
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> _Resp:
-                return _Resp()
-
         stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
         with stack, \
-             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             patch(_JINA_GET, return_value=_Resp()), \
              patch(
                  "recipeparser.adapters.api._fetch_page_meta",
                  new=AsyncMock(
@@ -337,23 +336,10 @@ class TestPostJobs:
             def raise_for_status(self) -> None:
                 return None
 
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                pass
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> _Resp:
-                return _Resp()
-
         badge_og_image = "https://cooking.nytimes.com/_next/image?url=%2Fassets%2Fedamam-logo.png"
         stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
         with stack, \
-             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             patch(_JINA_GET, return_value=_Resp()), \
              patch(
                  "recipeparser.adapters.api._fetch_page_meta",
                  new=AsyncMock(
@@ -372,6 +358,43 @@ class TestPostJobs:
 
         upload.assert_awaited_once()
         assert upload.await_args.args[0] == "https://cdn.site.test/uploads/dish.jpg"  # the photo, not the badge
+
+    def test_a_malformed_og_image_is_no_meta_image_not_a_failed_job(self) -> None:
+        """Fix Roadmap F-013: "http://[bad/…" passes page_meta_from_html's scheme check, and
+        looks_like_badge's urlparse raised ValueError on it outside every guard, failing the job.
+        It is no meta image: the markdown's photograph is the hero and the job runs."""
+        from unittest.mock import AsyncMock
+
+        from recipeparser.io.readers.url import PageMeta
+
+        markdown = "Title: Noodles\n\n![Dish](https://cdn.site.test/uploads/dish.jpg)\n\n1 cup noodles"
+
+        class _Resp:
+            text = markdown
+
+            def raise_for_status(self) -> None:
+                return None
+
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
+        with stack, \
+             patch(_JINA_GET, return_value=_Resp()), \
+             patch(
+                 "recipeparser.adapters.api._fetch_page_meta",
+                 new=AsyncMock(return_value=PageMeta("http://[bad/hero.jpg", "A weeknight noodle dish.")),
+             ), \
+             patch("recipeparser.adapters.api._upload_image_to_storage",
+                   new=AsyncMock(return_value="https://storage.test/dish.jpg")) as upload, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://cooking.nytimes.com/recipes/1020732-noodles"})
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+        upload.assert_awaited_once()
+        assert upload.await_args.args[0] == "https://cdn.site.test/uploads/dish.jpg"
+        mock_pipeline_cls.return_value.run.assert_called_once()
 
     def test_total_chunks_and_the_hint_land_before_the_pipeline_runs(self) -> None:
         order: list[str] = []
@@ -762,6 +785,11 @@ class TestExtractImageUrl:
     def test_no_image_returns_none(self) -> None:
         md = "# Recipe\nBoil water. Add pasta."
         assert _extract_image_url_from_markdown(md) is None
+
+    def test_a_markdown_image_that_does_not_parse_is_passed_over(self) -> None:
+        # Fix Roadmap F-013: looks_like_badge used to raise on it and fail the job.
+        md = "![Broken](http://[bad/dish.jpg)\n![Dish](https://example.com/dish.jpg)\nBoil water."
+        assert _extract_image_url_from_markdown(md) == "https://example.com/dish.jpg"
 
     def test_og_image_cleans_double_paren(self) -> None:
         # Some Jina responses wrap the URL in an extra closing paren
@@ -1337,8 +1365,47 @@ class TestUnreadableInputMessages:
 
         assert captured["error_message"] == "The Minimalist Cooks Dinner.epub: boom"
 
+    def test_a_url_job_fetches_through_url_reader(self, monkeypatch: Any) -> None:
+        """RecipeParser#57, Fix Roadmap F-014: POST /jobs kept its own copy of UrlReader's Jina fetch,
+        so #54's reader fix was dead code on the live path until #55 copied it. A refusal only the
+        reader knows must reach the job. The endpoint's old httpx fetch is stubbed with a good page,
+        so this test fails, not reaches the network, while that copy still exists."""
+        from unittest.mock import AsyncMock
+
+        from recipeparser.exceptions import UrlFetchError
+        from recipeparser.io.readers.url import PageMeta
+
+        captured = self._finalized(monkeypatch)
+        stack, _client, _pipeline = _patch_pipeline_and_writer()
+
+        class _Response:
+            status_code = 200
+            text = "Title: Noodles\n\n1 cup noodles"
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **k: Any) -> None: ...
+            async def __aenter__(self) -> "_Http": return self
+            async def __aexit__(self, *a: Any) -> None: ...
+            async def get(self, url: str, **k: Any) -> _Response: return _Response()
+
+        with stack, \
+             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             patch("recipeparser.adapters.api._fetch_page_meta", new=AsyncMock(return_value=PageMeta(None, None))), \
+             patch("recipeparser.io.readers.url.UrlReader.read",
+                   side_effect=UrlFetchError("is refused by a rule only the reader knows.")), \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://example.com/recipe"})
+            assert resp.status_code == 202
+            self._drain(resp.json()["job_id"])
+
+        assert captured["status"] == "error"
+        assert captured["error_message"] == "https://example.com/recipe is refused by a rule only the reader knows."
+
     def test_a_url_that_cannot_be_fetched_is_named_in_one_sentence(self, monkeypatch: Any) -> None:
-        import httpx
+        import requests
 
         captured = self._finalized(monkeypatch)
         stack, _client, _pipeline = _patch_pipeline_and_writer()
@@ -1348,16 +1415,10 @@ class TestUnreadableInputMessages:
             text = ""
 
             def raise_for_status(self) -> None:
-                raise httpx.HTTPStatusError("404", request=MagicMock(), response=MagicMock(status_code=404))
-
-        class _Http:
-            def __init__(self, *a: Any, **k: Any) -> None: ...
-            async def __aenter__(self) -> "_Http": return self
-            async def __aexit__(self, *a: Any) -> None: ...
-            async def get(self, url: str) -> _Response: return _Response()
+                raise requests.HTTPError("404", response=MagicMock(status_code=404))
 
         with stack, \
-             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             patch(_JINA_GET, return_value=_Response()), \
              TestClient(app, raise_server_exceptions=False) as tc:
             resp = tc.post("/jobs", json={"url": "https://example.com/gone"})
             assert resp.status_code == 202
@@ -1368,9 +1429,9 @@ class TestUnreadableInputMessages:
 
     def test_a_url_blocked_by_bot_protection_is_named_in_one_sentence(self, monkeypatch: Any) -> None:
         """
-        The real /jobs endpoint has its own inline Jina fetch (it does not go
-        through UrlReader), so the challenge-page check has to live here too.
-        Regression for thewoksoflife.com, 2026-09-24: Jina returned HTTP 200
+        Through UrlReader, since RecipeParser#57 (Fix Roadmap F-014): the
+        endpoint's own copy of the Jina fetch, which needed this check copied
+        into it by #55, is gone. Regression for thewoksoflife.com, 2026-09-24: Jina returned HTTP 200
         with a "Just a moment..." interstitial instead of raising, and the
         job silently finished as "0 recipes" instead of naming the block.
         """
@@ -1396,14 +1457,8 @@ class TestUnreadableInputMessages:
             def raise_for_status(self) -> None:
                 return None
 
-        class _Http:
-            def __init__(self, *a: Any, **k: Any) -> None: ...
-            async def __aenter__(self) -> "_Http": return self
-            async def __aexit__(self, *a: Any) -> None: ...
-            async def get(self, url: str) -> _Response: return _Response()
-
         with stack, \
-             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             patch(_JINA_GET, return_value=_Response()), \
              TestClient(app, raise_server_exceptions=False) as tc:
             resp = tc.post("/jobs", json={"url": "https://example.com/some-recipe"})
             assert resp.status_code == 202

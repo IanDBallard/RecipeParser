@@ -739,6 +739,20 @@ def test_refine_is_called_with_no_host_when_the_chunk_has_no_source_url():
     assert mock_refine.call_args.kwargs["source_host"] is None
 
 
+def test_extract_takes_its_limiter_slots_itself():
+    """Fix Roadmap F-012: extract() makes up to three Gemini calls (the baker's table, the extraction
+    and the number-guard retry), so it takes a slot before each; the pipeline hands it the limiter
+    and takes none on its behalf, or one call would be counted twice and the rest not at all."""
+    chunk = Chunk(text="Scones ...", input_type=InputType.URL)
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction([], [])) as mock_extract:
+        pipeline.run([chunk])
+
+    assert mock_extract.call_args.kwargs["limiter"] is pipeline._limiter
+    assert pipeline._limiter.current_window_count == 0
+
+
 def test_a_worker_timeouterror_is_reported_accurately_not_as_a_segment_timeout():
     """A worker that raises TimeoutError must be reported for what it is.
 

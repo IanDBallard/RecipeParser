@@ -43,9 +43,9 @@ def _refinement(*ingredients, detected=None, evidence=None) -> CayenneRefinement
     )
 
 
-def _refine(refinement, source_host=None):
+def _refine(refinement, source_host=None, raw=RAW):
     with patch(_PATCH, return_value=refinement) as fn:
-        return refine(RAW, client=MagicMock(), source_host=source_host), fn
+        return refine(raw, client=MagicMock(), source_host=source_host), fn
 
 
 class TestTheWritersSecondMeasure:
@@ -63,6 +63,35 @@ class TestTheWritersSecondMeasure:
         result, _ = _refine(_refinement(_pecorino(converted_amount=80.0, converted_unit="ml")))
         ing = result.structured_ingredients[0]
         assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (80.0, "ml", True)
+
+
+    # Fix Roadmap F-011 (RecipeParser#59's final review, ruling 7): the check matched the number only, so
+    # a number the line writes under another unit passed as the writer's own second measure.
+    def test_a_number_the_line_writes_under_another_unit_is_not_the_writers(self):
+        line = "1 lb (450 g) potatoes, cut into 2 cm cubes"
+        potatoes = _pecorino(unit="lb", fallback_string=line, converted_amount=2.0, converted_unit="cups")
+        result, _ = _refine(_refinement(potatoes))
+        ing = result.structured_ingredients[0]
+        assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (None, None, False)
+
+    def test_a_metric_measure_under_another_unit_is_re_marked_as_the_ais(self):
+        line = "1 cup flour, baked at 180 C"
+        flour = _pecorino(unit="cup", fallback_string=line, converted_amount=180.0, converted_unit="g")
+        result, _ = _refine(_refinement(flour))
+        ing = result.structured_ingredients[0]
+        assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (180.0, "g", True)
+
+    def test_the_writers_unit_may_differ_by_case_plural_or_full_stop(self):
+        for line, amount, unit in (
+            ("1 cup (240 mL) milk", 240.0, "ml"),
+            ("250g/2 cups flour", 2.0, "cup"),
+            ("4 oz. (1/2 cup) sugar", 0.5, "cups"),
+            ("1 cup (4.5 oz) flour", 4.5, "oz."),
+        ):
+            ing = _pecorino(fallback_string=line, converted_amount=amount, converted_unit=unit)
+            result, _ = _refine(_refinement(ing))
+            got = result.structured_ingredients[0]
+            assert (got.converted_amount, got.is_ai_converted) == (amount, False), line
 
 
 class TestAiConversions:
@@ -135,7 +164,7 @@ class TestTheDetectedSystem:
 
     def test_a_lower_case_system_is_written_canonically(self):
         # Final review M2.
-        result, _ = _refine(_refinement(_oil(), detected=" imperial ", evidence="1 ounce"))
+        result, _ = _refine(_refinement(_oil(), detected=" imperial ", evidence="1 ounce (about 1/3 packed cup)"))
         assert result.source_uom_system_detected == "Imperial"
         result, _ = _refine(_refinement(_oil(), detected="au", evidence="taste.com.au"), source_host="taste.com.au")
         assert result.source_uom_system_detected == "AU"
@@ -150,3 +179,46 @@ class TestTheDetectedSystem:
         for quote in ("aste.com", "aste.com.au", "om.au", "taste", "au."):
             result, _ = _refine(_refinement(_oil(), detected="AU", evidence=quote), source_host="taste.com.au")
             assert result.source_uom_system_detected is None, quote
+
+
+# Fix Roadmap F-010 (RecipeParser#59's final review, ruling 7): the evidence guard took any substring of
+# the recipe, so a quote of "cup" verified and a wrong system stuck, resizing every cup and spoon.
+_EVIDENCE_RAW = RecipeExtraction(
+    name="Pumpkin Scones",
+    notes="Uses Australian standard measures.",
+    ingredients=[
+        "1 cup (250 ml) milk",
+        "1 tbsp (20 ml) caster sugar",
+        "1 stone potatoes",
+        "2 teacups plain flour",
+        "½ cup (120 g) butter",
+        "1 cup(237ml) cream",
+    ],
+    directions=["Bake."],
+)
+
+
+class TestWhatCountsAsEvidence:
+    def test_a_measure_every_system_writes_is_not_evidence(self):
+        for quote in ("cup", "1 cup", "CUP", "1 tablespoon", "tablespoon", "1 ounce", "ounce"):
+            result, _ = _refine(_refinement(_oil(), detected="US", evidence=quote))
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (None, None), quote
+
+    def test_grams_beside_a_cup_are_not_evidence(self):
+        # The prompt's own rule: American writers print grams beside cups too.
+        result, _ = _refine(_refinement(_oil(), detected="UK", evidence="cup (120 g)"), raw=_EVIDENCE_RAW)
+        assert result.source_uom_system_detected is None
+
+    def test_a_piece_of_a_word_is_not_evidence(self):
+        for quote in ("ted pecorino", "live oil", "packed cu", "e oil"):
+            result, _ = _refine(_refinement(_oil(), detected="US", evidence=quote))
+            assert result.source_uom_system_detected is None, quote
+
+    def test_the_evidence_the_prompt_names_is_still_kept(self):
+        for detected, quote in (
+            ("AU", "1 cup (250 ml)"), ("AU", "(250 ml)"), ("AU", "1 tbsp (20 ml)"), ("US", "(237ml)"),
+            ("UK", "caster sugar"), ("UK", "plain flour"), ("AU", "Australian standard measures"),
+            ("Imperial", "1 stone potatoes"), ("Imperial", "1 stone"), ("Imperial", "teacups"),
+        ):
+            result, _ = _refine(_refinement(_oil(), detected=detected, evidence=quote), raw=_EVIDENCE_RAW)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (detected, quote), quote

@@ -114,8 +114,16 @@ def looks_like_badge(url: str, alt: str = "") -> bool:
     wrapper's ``url=`` value; unquoting the whole URL before parsing it (as
     opposed to just the path) would let an inner URL's own encoded
     ``?``/``&``/``=`` characters split into the wrong query parameters.
+
+    An address that does not parse ("http://[bad/…", which ``urlparse``
+    refuses with ValueError) is not a photograph either: True, never a raise.
+    Both callers in the URL ingest run outside any guard, so a malformed
+    og:image or markdown image failed the whole job (Fix Roadmap F-013).
     """
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return True
     inner = parse_qs(parsed.query).get("url", [""])[0].lower()
     path = unquote(parsed.path).lower()
     if path.endswith(".svg") or inner.endswith(".svg"):

@@ -11,9 +11,10 @@ silent (D2). A recipe only the retry found is ignored.
 No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 import logging
-from typing import Any, List, NamedTuple
+from typing import Any, List, NamedTuple, Optional
 
 from recipeparser.core.numbers import unmatched_numbers
+from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.gemini import (
     extract_recipe_from_text,
     extract_recipes,
@@ -32,7 +33,16 @@ class Extraction(NamedTuple):
     rewritten: List[str]
 
 
-def _run(chunk_text: str, client: Any, plain_text_mode: bool) -> List[RecipeExtraction]:
+def _slot(limiter: Optional[GlobalRateLimiter]) -> None:
+    """Take a rate-limiter slot for the Gemini call about to be made (Fix Roadmap F-012)."""
+    if limiter is not None:
+        limiter.wait_then_record_start()
+
+
+def _run(
+    chunk_text: str, client: Any, plain_text_mode: bool, limiter: Optional[GlobalRateLimiter]
+) -> List[RecipeExtraction]:
+    _slot(limiter)
     result = extract_recipe_from_text(chunk_text, client) if plain_text_mode else extract_recipes(chunk_text, client)
     return result.recipes if result.recipes else []
 
@@ -42,6 +52,7 @@ def extract(
     client: Any,
     *,
     plain_text_mode: bool = False,
+    limiter: Optional[GlobalRateLimiter] = None,
 ) -> Extraction:
     """
     Extract all recipes from a single text chunk, verbatim.
@@ -52,6 +63,11 @@ def extract(
         plain_text_mode: When True, uses the simpler ``extract_recipe_from_text``
                          prompt (suited for pasted/Paprika text rather than
                          EPUB/PDF book chunks).
+        limiter:         The rate limiter to take a slot from before each Gemini call this
+                         makes: the baker's-table call, the extraction and its retry, up to
+                         three (Fix Roadmap F-012). The caller takes none on its behalf. The
+                         limiter is a sliding window that holds no slot across a wait, so
+                         taking one per call cannot deadlock. None takes no slot.
 
     Returns:
         An ``Extraction``.  ``recipes`` is empty when the chunk contains no
@@ -72,6 +88,7 @@ def extract(
     # Baker's-percentage table pre-processing (book chunks only)
     if not plain_text_mode and needs_table_normalisation(chunk_text):
         log.info("extract(): baker's-percentage table detected — normalising.")
+        _slot(limiter)
         chunk_text = normalise_baker_table(chunk_text, client)
         # The table prompt re-lays a table out and is told to add no value, so a number it wrote
         # counts as the writer's: the source is both texts.
@@ -80,7 +97,7 @@ def extract(
     def clean(recipe: RecipeExtraction) -> bool:
         return not unmatched_numbers(source_text, recipe.ingredients)
 
-    first = _run(chunk_text, client, plain_text_mode)
+    first = _run(chunk_text, client, plain_text_mode, limiter)
     if all(clean(r) for r in first):
         log.info("extract(): kept %d recipe(s).", len(first))
         return Extraction(first, [])
@@ -90,7 +107,7 @@ def extract(
     # A retry that fails outright recovers nothing: the first attempt's clean recipes are kept and
     # its failed ones named, never lost to the retry's error (final review I2).
     try:
-        retry = _run(chunk_text, client, plain_text_mode)
+        retry = _run(chunk_text, client, plain_text_mode, limiter)
     except Exception as exc:  # noqa: BLE001 — any retry failure degrades to "recovered nothing"
         log.warning("extract(): the retry failed (%s: %s) — keeping the first attempt's clean recipes.",
                     type(exc).__name__, exc)
