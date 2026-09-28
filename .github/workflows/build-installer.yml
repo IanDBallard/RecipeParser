@@ -41,10 +41,10 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -88,7 +88,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
@@ -117,7 +117,7 @@ jobs:
           Write-Host "Version check passed: $pyVer"
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -202,14 +202,14 @@ jobs:
       # Upload both the bundle dir and the installer as artifacts so the
       # smoke-test job can access the .exe without re-running PyInstaller.
       - name: Upload PyInstaller bundle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: RecipeParser-bundle
           path: dist/RecipeParser/
           retention-days: 3
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.version.outputs.installer_name }}
           path: output/${{ steps.version.outputs.installer_name }}
@@ -226,12 +226,12 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -248,18 +248,18 @@ jobs:
 
     steps:
       - name: Checkout source (for smoke test script)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Download PyInstaller bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: RecipeParser-bundle
           path: dist/RecipeParser/
 
       - name: Set up Python (for smoke test runner only)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -305,13 +305,13 @@ jobs:
 
     steps:
       - name: Download installer artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build.outputs.installer_name }}
           path: dist/
 
       - name: Create / update GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name:                ${{ github.event.inputs.tag || github.ref_name }}
           name:                    v${{ needs.build.outputs.version }}
