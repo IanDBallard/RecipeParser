@@ -61,10 +61,33 @@ def build_extraction(row: Mapping[str, Any]) -> RecipeExtraction:
     """
     A REFINE input from a claimed recipes row (spec 5.4).
 
+    A null (or absent) body column is refused here rather than read as ``[]``
+    (Fix Roadmap F-005). Read as empty, REFINE got nothing, succeeded, and the
+    worker wrote empty derived ingredients back as fresh — the recipe lost its
+    ingredients with no error. An empty list is a real body (the cook deleted
+    every line); a null is not. Both columns are ``NOT NULL DEFAULT '[]'`` and
+    every pre-existing row was backfilled from its derived data when they were
+    added (Cayenne migration 013), so no row written through the schema can be
+    null — one that is came from somewhere this code does not understand.
+    Falling back to ``raw_lines_from_derived`` is not open to us either: the
+    claim RPC returns only the raw columns. So it fails, the worker records it
+    through ``regen_failed``, and the attempt cap stops it after three tries
+    with the reason in ``derived_error``.
+
+    ``raw_body_column`` keeps its null-as-empty reading because the recategorise
+    prompt shares it, and there an empty body only makes a weaker prompt.
+
     Raises:
+        ValueError: if ``ingredient_lines`` or ``direction_steps`` is null or absent.
         TypeError: if ``ingredient_lines`` or ``direction_steps`` is present but
             is not a list — see ``raw_body_column``.
     """
+    for column in ("ingredient_lines", "direction_steps"):
+        if row.get(column) is None:
+            raise ValueError(
+                "build_extraction(): {} is null — refusing to regenerate the recipe "
+                "from an empty body.".format(column)
+            )
     return RecipeExtraction(
         name=str(row.get("title") or ""),
         ingredients=raw_body_column(row, "ingredient_lines"),

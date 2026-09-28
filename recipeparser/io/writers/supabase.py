@@ -56,7 +56,9 @@ def _write_category_junctions(
     in ``grid_categories`` that has a matching UUID in ``category_ids``.
 
     This is a best-effort write — failures are logged but do NOT raise, so
-    the recipe row is never rolled back due to a junction table error.
+    the recipe row is never rolled back due to a junction table error. A
+    refused batch is retried row by row, so one bad category id costs only
+    its own link (Fix Roadmap F-004).
 
     Args:
         recipe_id:       UUID of the newly-inserted recipe row.
@@ -128,19 +130,53 @@ def _write_category_junctions(
         )
         return
 
-    if resp.status_code not in (200, 201):
-        log.warning(
-            "Junction write: Supabase INSERT failed [%s] for recipe %s: %s",
-            resp.status_code,
+    if resp.status_code in (200, 201):
+        log.info(
+            "Junction write: %d recipe_categories rows inserted for recipe %s.",
+            len(rows),
             recipe_id,
-            resp.text[:300],
         )
         return
 
-    log.info(
-        "Junction write: %d recipe_categories rows inserted for recipe %s.",
-        len(rows),
+    # One request is all-or-nothing, so a single bad row — a category the cook
+    # deleted while the import ran, which the foreign key then refuses — used to
+    # cost the recipe EVERY category link (Fix Roadmap F-004). Retry row by row
+    # so only the refused links are lost. Refusal is the rare path and a recipe
+    # carries a handful of tags, so the extra requests cost nothing in practice.
+    log.warning(
+        "Junction write: batch INSERT refused [%s] for recipe %s (%s) — retrying "
+        "each of %d row(s) on its own.",
+        resp.status_code,
         recipe_id,
+        resp.text[:300],
+        len(rows),
+    )
+    written = 0
+    for row in rows:
+        try:
+            one = httpx.post(
+                f"{supabase_url}/rest/v1/recipe_categories",
+                headers=headers,
+                json=[row],
+                timeout=15.0,
+            )
+        except httpx.RequestError as exc:
+            log.warning(
+                "Junction write: network error linking recipe %s to category %s: %s",
+                recipe_id, row["category_id"], exc,
+            )
+            continue
+        if one.status_code in (200, 201):
+            written += 1
+        else:
+            log.warning(
+                "Junction write: category %s refused for recipe %s [%s]: %s",
+                row["category_id"], recipe_id, one.status_code, one.text[:300],
+            )
+    log.info(
+        "Junction write: %d of %d recipe_categories rows inserted for recipe %s "
+        "after the batch was refused.",
+        written, len(rows), recipe_id,
     )
 
 
@@ -264,7 +300,8 @@ def write_recipe_to_supabase(
 
     log.info("Recipe written to Supabase: id=%s title=%r user=%s", rid, recipe.title, user_id)
 
-    # Write recipe_categories junction rows (best-effort — non-fatal)
+    # Write recipe_categories junction rows (best-effort — non-fatal; a refused
+    # row costs only its own link, see _write_category_junctions)
     grid = getattr(recipe, "grid_categories", None) or {}
     if grid and category_ids:
         _write_category_junctions(

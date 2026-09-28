@@ -65,14 +65,15 @@ def _refinement():
     )
 
 
-def _worker(fake, refine_fn=None, embed_fn=None):
+def _worker(fake, refine_fn=None, embed_fn=None, clock=None):
     from recipeparser.adapters.regen_worker import RegenWorker
+    extra = {"clock": clock} if clock else {}
     return RegenWorker(
         fake, gemini_client=MagicMock(),
         refine_fn=refine_fn or MagicMock(return_value=_refinement()),
         embed_fn=embed_fn or MagicMock(return_value=[0.5] * 3),
         axes_loader=lambda user_id: {"Cuisine": ["Italian"]},
-        batch=5, concurrency=1,
+        batch=5, concurrency=1, **extra,
     )
 
 
@@ -136,6 +137,55 @@ def test_zero_rows_updated_is_not_a_failure(caplog):
     assert "edited again" in caplog.text
 
 
+def test_edited_again_releases_the_claim():
+    # Fix Roadmap F-006. The result is dropped because the cook edited the recipe
+    # mid-run, but claimed_at was left set, so the NEW revision waited out the
+    # whole five-minute lease before it was regenerated. The claim is released as
+    # soon as the stale result is dropped.
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
+                        responses={"recipes": []})       # body_rev moved during the run
+    assert _worker(fake).run_once() == 1
+    ops = _ops(fake, "recipes")
+    assert len(ops) == 2, "the guarded write-back, then the release"
+    release = ops[1]
+    assert release[0] == ("update", ({"claimed_at": None},), {})
+    assert ("eq", ("id", "r1"), {}) in release
+    assert not any(n == "regen_failed" for n, _ in fake.rpcs)
+
+
+def test_edited_again_leaves_the_claim_alone_once_the_lease_may_have_passed():
+    # The release is unconditional on the row, so it is only safe while no one
+    # else can hold a claim on it -- inside our own lease. Past that, another
+    # worker may have claimed the new revision, and clearing its claim would let
+    # a third run start. The row is claimable again anyway, so nothing is lost.
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
+                        responses={"recipes": []})
+    ticks = iter([0.0, 290.0])                            # claimed at 0 s, dropped at 290 s
+    assert _worker(fake, clock=lambda: next(ticks)).run_once() == 1
+    assert len(_ops(fake, "recipes")) == 1                 # the write-back only
+
+
+def test_a_failed_release_is_logged_not_recorded_as_a_regen_failure(caplog):
+    # regen_failed counts an attempt against the row's CURRENT body_rev -- the new
+    # revision, which has not failed at all. A release that cannot be written just
+    # leaves the row to its lease.
+    class _ReleaseFails(FakeSupabase):
+        def table(self, name):
+            q = super().table(name)
+            real_execute = q.execute
+            def execute():
+                if q.ops and q.ops[0] == ("update", ({"claimed_at": None},), {}):
+                    raise RuntimeError("db unreachable")
+                return real_execute()
+            q.execute = execute
+            return q
+    fake = _ReleaseFails(rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
+                         responses={"recipes": []})
+    assert _worker(fake).run_once() == 1
+    assert not any(n == "regen_failed" for n, _ in fake.rpcs)
+    assert "could not release the claim on r1" in caplog.text
+
+
 def test_exception_records_failure():
     fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row()]})
     w = _worker(fake, refine_fn=MagicMock(side_effect=ValueError("bad tokens")))
@@ -160,6 +210,22 @@ def test_double_encoded_body_column_is_recorded_not_regenerated():
     failures = [p for n, p in fake.rpcs if n == "regen_failed"]
     assert len(failures) == 1
     assert failures[0]["p_id"] == "r1" and "must be a list" in failures[0]["p_msg"]
+
+
+def test_null_ingredient_lines_is_recorded_not_regenerated_to_nothing():
+    # Fix Roadmap F-005: a null body column used to regenerate to empty derived
+    # ingredients and write back as a success. It must go to derived_error via
+    # regen_failed (attempt-capped) with nothing written and no Gemini spend.
+    row = _row()
+    row["ingredient_lines"] = None
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [row]},
+                        responses={"recipes": [{"id": "r1"}]})
+    refine_fn = MagicMock(return_value=_refinement())
+    assert _worker(fake, refine_fn=refine_fn).run_once() == 1
+    refine_fn.assert_not_called()
+    assert _ops(fake, "recipes") == []
+    failures = [p for n, p in fake.rpcs if n == "regen_failed"]
+    assert len(failures) == 1 and "ingredient_lines is null" in failures[0]["p_msg"]
 
 
 def test_batch_mixed_outcomes_do_not_abandon_other_rows():
@@ -267,3 +333,87 @@ def test_run_workers_survives_exceptions(caplog):
     stop = asyncio.Event()
     asyncio.run(run_workers([W()], stop, poll_seconds=0.01))
     assert n["count"] == 2 and "supabase down" in caplog.text
+
+
+def test_run_workers_polls_again_at_once_while_a_recat_job_is_held():
+    # Fix Roadmap F-008 makes one recategorise poll one batch. Sleeping the full
+    # poll interval after every round would then add ten seconds per batch, so a
+    # worker that opts in (RecatWorker) keeps the loop busy while it has work.
+    from recipeparser.adapters.regen_worker import run_workers
+    rounds = []
+    class Busy:
+        keeps_loop_busy = True
+        def run_once(self):
+            rounds.append(1)
+            if len(rounds) == 3:
+                stop.set()
+            return 1
+    stop = asyncio.Event()
+    asyncio.run(asyncio.wait_for(run_workers([Busy()], stop, poll_seconds=60), timeout=5))
+    assert len(rounds) == 3
+
+
+def test_run_workers_interleaves_workers_between_polls():
+    # Both workers get a turn every round, so a long recategorise job no longer
+    # holds regeneration behind it.
+    from recipeparser.adapters.regen_worker import run_workers
+    order = []
+    class W:
+        def __init__(self, name, work):
+            self.name, self.work = name, work
+            self.keeps_loop_busy = name == "recat"
+        def run_once(self):
+            order.append(self.name)
+            if len(order) == 6:
+                stop.set()
+            return self.work
+    stop = asyncio.Event()
+    asyncio.run(asyncio.wait_for(
+        run_workers([W("regen", 0), W("recat", 1)], stop, poll_seconds=60), timeout=5))
+    assert order == ["regen", "recat"] * 3
+
+
+def test_run_workers_records_each_workers_last_good_poll():
+    # Fix Roadmap F-009: /health's regen_workers is set once at boot, so it cannot
+    # say whether either worker is still polling. run_workers stamps each worker's
+    # last poll that completed; one that keeps failing keeps its old stamp.
+    from recipeparser.adapters.regen_worker import run_workers
+    n = {"count": 0}
+    class RegenWorker:
+        def run_once(self):
+            n["count"] += 1
+            if n["count"] == 2:
+                stop.set()
+            return 0
+    class RecatWorker:
+        def run_once(self):
+            raise RuntimeError("supabase down")
+    polls = {}
+    stop = asyncio.Event()
+    asyncio.run(run_workers([RegenWorker(), RecatWorker()], stop, poll_seconds=0.01, polls=polls))
+    assert list(polls) == ["RegenWorker"]
+    assert polls["RegenWorker"].endswith("+00:00")          # an aware UTC timestamp
+
+
+def test_run_workers_still_sleeps_between_rounds_of_a_regen_backlog():
+    # RegenWorker.run_once returns the rows it claimed, so a backlog returns
+    # nonzero on every poll. Letting that keep the loop busy would drain a
+    # library-wide re-derive (~1,600 recipes) back to back, with Gemini's quota
+    # and cost resting only on _call_with_retry's backoff. It must keep its pause.
+    import time
+
+    from recipeparser.adapters.recat_worker import RecatWorker
+    from recipeparser.adapters.regen_worker import RegenWorker, run_workers
+    assert getattr(RegenWorker, "keeps_loop_busy", False) is False
+    assert RecatWorker.keeps_loop_busy is True
+    stamps = []
+    class RegenLike:
+        def run_once(self):
+            stamps.append(time.monotonic())
+            if len(stamps) == 3:
+                stop.set()
+            return 5                                        # a full claim every poll
+    stop = asyncio.Event()
+    asyncio.run(asyncio.wait_for(run_workers([RegenLike()], stop, poll_seconds=0.2), timeout=5))
+    gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+    assert len(gaps) == 2 and all(g >= 0.15 for g in gaps), gaps
