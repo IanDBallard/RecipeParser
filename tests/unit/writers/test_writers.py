@@ -194,6 +194,49 @@ class TestSupabaseWriterInsertsRecipeCategories:
         assert "recipe_id" in row
         assert "id" in row  # PowerSync requires a UUID primary key
 
+    def test_one_refused_category_does_not_lose_the_others(self, monkeypatch):
+        """
+        Fix Roadmap F-004. The junction rows go up in one request, so a category
+        deleted mid-import makes the foreign key refuse the whole batch — and the
+        recipe lost EVERY category link, not just the one that had gone. The
+        writer must retry row by row so the surviving links still land.
+        """
+        recipe = _make_recipe("Pad Thai")
+        recipe.grid_categories = {"Cuisine": ["Thai"], "Speed": ["Quick"]}
+        monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+        # httpx.post is mocked below; nothing leaves this process.
+        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+
+        def post(url, *, headers, json, timeout):
+            resp = MagicMock()
+            if url.endswith("/recipe_categories") and any(
+                r["category_id"] == "cat-gone" for r in json
+            ):
+                resp.status_code = 409     # 23503: the category was deleted
+                resp.text = 'insert or update on table "recipe_categories" violates foreign key'
+            else:
+                resp.status_code = 201
+            return resp
+
+        with patch("recipeparser.io.writers.supabase.httpx.post", side_effect=post) as mock_post:
+            SupabaseWriter(
+                user_id="user-uuid-1",
+                category_ids={"Thai": "cat-thai", "Quick": "cat-gone"},
+            ).write([recipe])
+
+        landed = [
+            r["category_id"]
+            for c in mock_post.call_args_list
+            if c.args[0].endswith("/recipe_categories")
+            and not any(r["category_id"] == "cat-gone" for r in c.kwargs["json"])
+            for r in c.kwargs["json"]
+        ]
+        assert landed == ["cat-thai"], (
+            "the link to the surviving category must still be written after the "
+            f"batch is refused; landed={landed}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Test 3 — PaprikaWriter produces a valid ZIP with Fat Tokens stripped
