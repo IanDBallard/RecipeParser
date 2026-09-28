@@ -367,11 +367,13 @@ class RecipePipeline:
 
         # EXTRACT
         self._controller.notify_stage_change("EXTRACTING")
-        self._limiter.wait_then_record_start()
+        # extract() takes its own slot before each Gemini call it makes (up to three: the baker's
+        # table, the extraction, the number-guard retry), so none is taken for it here (F-012).
         extraction = extract(
             chunk_text=chunk.text,
             client=self._client,
             plain_text_mode=plain_text,
+            limiter=self._limiter,
         )
         skipped = [f"ingredient lines did not match the source: {title}" for title in extraction.rewritten]
         if not extraction.recipes:
