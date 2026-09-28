@@ -369,3 +369,25 @@ def test_run_workers_interleaves_workers_between_polls():
     asyncio.run(asyncio.wait_for(
         run_workers([W("regen", 0), W("recat", 1)], stop, poll_seconds=60), timeout=5))
     assert order == ["regen", "recat"] * 3
+
+
+def test_run_workers_records_each_workers_last_good_poll():
+    # Fix Roadmap F-009: /health's regen_workers is set once at boot, so it cannot
+    # say whether either worker is still polling. run_workers stamps each worker's
+    # last poll that completed; one that keeps failing keeps its old stamp.
+    from recipeparser.adapters.regen_worker import run_workers
+    n = {"count": 0}
+    class RegenWorker:
+        def run_once(self):
+            n["count"] += 1
+            if n["count"] == 2:
+                stop.set()
+            return 0
+    class RecatWorker:
+        def run_once(self):
+            raise RuntimeError("supabase down")
+    polls = {}
+    stop = asyncio.Event()
+    asyncio.run(run_workers([RegenWorker(), RecatWorker()], stop, poll_seconds=0.01, polls=polls))
+    assert list(polls) == ["RegenWorker"]
+    assert polls["RegenWorker"].endswith("+00:00")          # an aware UTC timestamp

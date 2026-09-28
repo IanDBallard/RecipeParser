@@ -176,6 +176,11 @@ def _worker_enabled(env: Mapping[str, str]) -> bool:
 # a server at all — see the RuntimeError below.
 _regen_worker_state: str = "disabled"
 
+# Worker class name -> UTC time its last poll completed, filled in by run_workers and
+# published by /health (Fix Roadmap F-009). _regen_worker_state says only what boot did;
+# this says whether each worker is still getting through polls. Empty when disabled.
+_worker_polls: Dict[str, str] = {}
+
 # How long shutdown waits for the background tasks after setting `stop`. The
 # workers look at `stop` only between polls, and one poll can be a whole REFINE,
 # so the wait used to be as long as that poll — past Docker's default 10 s stop
@@ -216,6 +221,7 @@ async def _lifespan(_app: FastAPI):
     task: Optional[asyncio.Task] = None
     stop = asyncio.Event()
     _regen_worker_state = "disabled"
+    _worker_polls.clear()
     if _worker_enabled(os.environ):
         supabase = _get_supabase_service_client()
         if supabase is None:
@@ -233,7 +239,7 @@ async def _lifespan(_app: FastAPI):
             _rw.RegenWorker(supabase, _get_client()),
             RecatWorker(supabase, _get_client()),
         ]
-        task = asyncio.create_task(_rw.run_workers(workers, stop))
+        task = asyncio.create_task(_rw.run_workers(workers, stop, polls=_worker_polls))
         _regen_worker_state = "started"
         logger.info("Background workers started: %s", [type(w).__name__ for w in workers])
     else:
@@ -305,7 +311,7 @@ logger.info("CORS enabled for: %s", ", ".join(_cors_origins))
 
 
 @app.get("/health", status_code=200)
-def health() -> dict[str, str]:
+def health() -> Dict[str, Any]:
     """Liveness probe reporting the auth mode and worker state the app booted with.
 
     A bypassed server is indistinguishable from a verifying one until it
@@ -316,11 +322,19 @@ def health() -> dict[str, str]:
     ``"disabled"`` (REGEN_WORKER_ENABLED unset) or ``"started"`` (set, workers
     running) — a flag set without a Supabase service client refuses to boot
     rather than reporting a third state here.
+
+    ``regen_workers`` is a boot-time fact and stays one: Cayenne's deploy
+    (deploy/lib/health.sh) requires ``"auth_mode":"verifying"`` and
+    ``"regen_workers":"started"``, so neither key changes. Liveness is the
+    separate ``worker_polls``: each worker's class name mapped to the UTC time its
+    last poll completed (Fix Roadmap F-009). A stamp that stops advancing is a
+    worker stuck in a poll or failing every one.
     """
     return {
         "status": "ok",
         "auth_mode": "bypassed" if _DISABLE_AUTH else "verifying",
         "regen_workers": _regen_worker_state,
+        "worker_polls": dict(_worker_polls),
     }
 
 

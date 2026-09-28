@@ -52,7 +52,7 @@ def test_lifespan_shutdown_is_bounded_when_a_worker_ignores_stop(monkeypatch):
 
     state = {"cancelled": False, "finished": False}
 
-    async def busy_poll(workers, stop):
+    async def busy_poll(workers, stop, **_):
         # Stands in for a poll in flight: it does not look at `stop`.
         try:
             await asyncio.sleep(3)
@@ -118,6 +118,31 @@ def test_health_reports_workers_started(monkeypatch):
          patch.object(api, "_get_client", return_value=MagicMock()):
         with TestClient(api.app) as client:
             assert client.get("/health").json()["regen_workers"] == "started"
+
+
+def test_health_reports_each_workers_last_poll(monkeypatch):
+    """Fix Roadmap F-009: a per-worker liveness signal, under a NEW key. Cayenne's deploy
+    (deploy/lib/health.sh) matches "auth_mode":"verifying" and "regen_workers":"started", so
+    both keep their meaning."""
+    async def one_round(workers, stop, *, polls):
+        polls["RegenWorker"] = "2026-09-28T10:00:00+00:00"
+        await stop.wait()
+
+    monkeypatch.setenv("REGEN_WORKER_ENABLED", "1")
+    with patch("recipeparser.adapters.regen_worker.run_workers", new=one_round), \
+         patch.object(api, "_get_supabase_service_client", return_value=MagicMock()), \
+         patch.object(api, "_get_client", return_value=MagicMock()):
+        with TestClient(api.app) as client:
+            body = client.get("/health").json()
+    assert body["worker_polls"] == {"RegenWorker": "2026-09-28T10:00:00+00:00"}
+    assert body["regen_workers"] == "started" and body["auth_mode"] == "bypassed"
+
+
+def test_health_reports_no_polls_when_workers_are_disabled(monkeypatch):
+    monkeypatch.delenv("REGEN_WORKER_ENABLED", raising=False)
+    with patch("recipeparser.adapters.regen_worker.run_workers", new=AsyncMock()):
+        with TestClient(api.app) as client:
+            assert client.get("/health").json()["worker_polls"] == {}
 
 
 # ---------------------------------------------------------------------------

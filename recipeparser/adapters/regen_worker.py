@@ -11,6 +11,7 @@ verbatim_ingestion) so REFINE sees the host.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -165,6 +166,8 @@ async def run_workers(
     workers: Sequence[Any],
     stop: asyncio.Event,
     poll_seconds: float = 10.0,
+    *,
+    polls: Optional[Dict[str, str]] = None,
 ) -> None:
     """
     Call every worker's run_once() in a thread, repeat until stop is set.
@@ -174,12 +177,19 @@ async def run_workers(
     round would add a full poll interval to every batch of a job; polling again
     at once keeps a job moving while each round still gives every worker a turn.
     A poll that raised counts as idle, so a failing worker cannot spin the loop.
+
+    ``polls``, when given, maps each worker's class name to the UTC time its last
+    poll COMPLETED; /health publishes it (Fix Roadmap F-009). A worker that is
+    stuck in a poll, or whose every poll raises, keeps an old stamp, which is what
+    makes it a liveness signal rather than a boot-time flag.
     """
     while not stop.is_set():
         busy = False
         for w in workers:
             try:
                 busy = bool(await asyncio.to_thread(w.run_once)) or busy
+                if polls is not None:
+                    polls[type(w).__name__] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             except Exception as exc:  # noqa: BLE001
                 log.error("worker %s poll failed: %s", type(w).__name__, exc, exc_info=True)
             if stop.is_set():
