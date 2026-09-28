@@ -176,6 +176,38 @@ def _worker_enabled(env: Mapping[str, str]) -> bool:
 # a server at all — see the RuntimeError below.
 _regen_worker_state: str = "disabled"
 
+# How long shutdown waits for the background tasks after setting `stop`. The
+# workers look at `stop` only between polls, and one poll can be a whole REFINE,
+# so the wait used to be as long as that poll — past Docker's default 10 s stop
+# grace, where the container is killed instead of stopped (Fix Roadmap F-007).
+# Five seconds leaves the other half of the grace for uvicorn's own shutdown.
+BACKGROUND_STOP_SECONDS = 5.0
+
+
+async def _stop_background(tasks: list) -> None:
+    """Wait up to BACKGROUND_STOP_SECONDS for ``tasks``, then cancel the rest.
+
+    Cancelling ends the asyncio task but cannot interrupt a thread already inside a
+    run_once() — Python has no way to. That is safe to abandon: a regen claim lapses
+    with its five-minute lease, and a recategorise job resumes from the cursor its
+    last finished batch wrote.
+    """
+    if not tasks:
+        return
+    done, pending = await asyncio.wait(tasks, timeout=BACKGROUND_STOP_SECONDS)
+    for t in pending:
+        logger.warning(
+            "Background task %s did not stop within %.0f s of shutdown — cancelled.",
+            t.get_coro().__qualname__, BACKGROUND_STOP_SECONDS,
+        )
+        t.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+    for t in done:
+        if not t.cancelled() and t.exception() is not None:
+            logger.error("Background task %s ended with an error.", t.get_coro().__qualname__,
+                         exc_info=t.exception())
+
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -229,10 +261,7 @@ async def _lifespan(_app: FastAPI):
         yield
     finally:
         stop.set()
-        if task is not None:
-            await task
-        if liveness is not None:
-            await liveness
+        await _stop_background([t for t in (task, liveness) if t is not None])
 
 
 app = FastAPI(title="Cayenne Ingestion API", version="1.0.0", lifespan=_lifespan)

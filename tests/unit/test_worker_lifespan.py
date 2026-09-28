@@ -42,6 +42,37 @@ def test_lifespan_starts_and_stops_workers(monkeypatch):
     assert stop.is_set()
 
 
+def test_lifespan_shutdown_is_bounded_when_a_worker_ignores_stop(monkeypatch):
+    """Fix Roadmap F-007. run_workers checks ``stop`` only between polls, and one poll can be
+    a whole REFINE. The shutdown awaited the task bare, so a container stop waited it out -- past
+    Docker's 10 s grace, where it is killed rather than stopped. The wait is now bounded, and a
+    task still running at the bound is cancelled."""
+    import asyncio
+    import time
+
+    state = {"cancelled": False, "finished": False}
+
+    async def busy_poll(workers, stop):
+        # Stands in for a poll in flight: it does not look at `stop`.
+        try:
+            await asyncio.sleep(3)
+            state["finished"] = True
+        except asyncio.CancelledError:
+            state["cancelled"] = True
+            raise
+
+    monkeypatch.setenv("REGEN_WORKER_ENABLED", "1")
+    monkeypatch.setattr(api, "BACKGROUND_STOP_SECONDS", 0.2)
+    with patch("recipeparser.adapters.regen_worker.run_workers", new=busy_poll), \
+         patch.object(api, "_get_supabase_service_client", return_value=MagicMock()), \
+         patch.object(api, "_get_client", return_value=MagicMock()):
+        with TestClient(api.app):
+            started = time.monotonic()
+        elapsed = time.monotonic() - started
+    assert state["cancelled"] and not state["finished"]
+    assert elapsed < 2, f"shutdown took {elapsed:.1f} s"
+
+
 def test_lifespan_refuses_to_start_when_flag_set_without_supabase(monkeypatch):
     """The flag on with no service-role client is the silent failure the roadmap names: a server
     that answers every request correctly and drains nothing. It must not start."""
