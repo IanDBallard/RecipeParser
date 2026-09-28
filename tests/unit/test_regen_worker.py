@@ -335,13 +335,14 @@ def test_run_workers_survives_exceptions(caplog):
     assert n["count"] == 2 and "supabase down" in caplog.text
 
 
-def test_run_workers_polls_again_at_once_while_there_is_work():
+def test_run_workers_polls_again_at_once_while_a_recat_job_is_held():
     # Fix Roadmap F-008 makes one recategorise poll one batch. Sleeping the full
-    # poll interval after every round would then add ten seconds per batch; the
-    # loop sleeps only when a whole round found nothing to do.
+    # poll interval after every round would then add ten seconds per batch, so a
+    # worker that opts in (RecatWorker) keeps the loop busy while it has work.
     from recipeparser.adapters.regen_worker import run_workers
     rounds = []
     class Busy:
+        keeps_loop_busy = True
         def run_once(self):
             rounds.append(1)
             if len(rounds) == 3:
@@ -360,6 +361,7 @@ def test_run_workers_interleaves_workers_between_polls():
     class W:
         def __init__(self, name, work):
             self.name, self.work = name, work
+            self.keeps_loop_busy = name == "recat"
         def run_once(self):
             order.append(self.name)
             if len(order) == 6:
@@ -391,3 +393,27 @@ def test_run_workers_records_each_workers_last_good_poll():
     asyncio.run(run_workers([RegenWorker(), RecatWorker()], stop, poll_seconds=0.01, polls=polls))
     assert list(polls) == ["RegenWorker"]
     assert polls["RegenWorker"].endswith("+00:00")          # an aware UTC timestamp
+
+
+def test_run_workers_still_sleeps_between_rounds_of_a_regen_backlog():
+    # RegenWorker.run_once returns the rows it claimed, so a backlog returns
+    # nonzero on every poll. Letting that keep the loop busy would drain a
+    # library-wide re-derive (~1,600 recipes) back to back, with Gemini's quota
+    # and cost resting only on _call_with_retry's backoff. It must keep its pause.
+    import time
+
+    from recipeparser.adapters.recat_worker import RecatWorker
+    from recipeparser.adapters.regen_worker import RegenWorker, run_workers
+    assert getattr(RegenWorker, "keeps_loop_busy", False) is False
+    assert RecatWorker.keeps_loop_busy is True
+    stamps = []
+    class RegenLike:
+        def run_once(self):
+            stamps.append(time.monotonic())
+            if len(stamps) == 3:
+                stop.set()
+            return 5                                        # a full claim every poll
+    stop = asyncio.Event()
+    asyncio.run(asyncio.wait_for(run_workers([RegenLike()], stop, poll_seconds=0.2), timeout=5))
+    gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+    assert len(gaps) == 2 and all(g >= 0.15 for g in gaps), gaps

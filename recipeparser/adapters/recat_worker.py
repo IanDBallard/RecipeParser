@@ -119,6 +119,11 @@ class _HeldJob:
 
 
 class RecatWorker:
+    # run_workers polls again at once, without its sleep, after a round in which
+    # this worker did work: one poll is one batch (F-008), and a held job should
+    # move batch to batch rather than one batch per poll interval.
+    keeps_loop_busy = True
+
     def __init__(
         self,
         supabase: Any,

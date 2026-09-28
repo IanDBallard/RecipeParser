@@ -172,11 +172,16 @@ async def run_workers(
     """
     Call every worker's run_once() in a thread, repeat until stop is set.
 
-    The loop sleeps only after a round in which no worker did anything. A
-    recategorise poll is one batch (Fix Roadmap F-008), so sleeping after every
-    round would add a full poll interval to every batch of a job; polling again
-    at once keeps a job moving while each round still gives every worker a turn.
-    A poll that raised counts as idle, so a failing worker cannot spin the loop.
+    The loop skips its sleep only after a round in which a worker that opts in
+    (keeps_loop_busy = True) did work. A recategorise poll is one batch (Fix
+    Roadmap F-008), so sleeping after every round would add a full poll interval
+    to every batch of a job; polling again at once keeps a held job moving while
+    each round still gives every worker a turn, regen interleaving at recat's
+    pace. RegenWorker does NOT opt in: its run_once returns the rows it claimed,
+    so a backlog (a library-wide re-derive is ~1,600 recipes) would otherwise
+    drain back to back, with Gemini's per-minute quota and the cost resting only
+    on _call_with_retry's backoff. It keeps its pause of poll_seconds. A poll
+    that raised counts as idle, so a failing worker cannot spin the loop.
 
     ``polls``, when given, maps each worker's class name to the UTC time its last
     poll COMPLETED; /health publishes it (Fix Roadmap F-009). A worker that is
@@ -187,7 +192,8 @@ async def run_workers(
         busy = False
         for w in workers:
             try:
-                busy = bool(await asyncio.to_thread(w.run_once)) or busy
+                did_work = bool(await asyncio.to_thread(w.run_once))
+                busy = busy or (did_work and getattr(w, "keeps_loop_busy", False))
                 if polls is not None:
                     polls[type(w).__name__] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             except Exception as exc:  # noqa: BLE001
