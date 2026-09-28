@@ -136,6 +136,61 @@ def test_zero_rows_updated_is_not_a_failure(caplog):
     assert "edited again" in caplog.text
 
 
+def test_edited_again_releases_the_claim():
+    # Fix Roadmap F-006. The result is dropped because the cook edited the recipe
+    # mid-run, but claimed_at was left set, so the NEW revision waited out the
+    # whole five-minute lease before it was regenerated. The claim is released as
+    # soon as the stale result is dropped.
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
+                        responses={"recipes": []})       # body_rev moved during the run
+    assert _worker(fake).run_once() == 1
+    ops = _ops(fake, "recipes")
+    assert len(ops) == 2, "the guarded write-back, then the release"
+    release = ops[1]
+    assert release[0] == ("update", ({"claimed_at": None},), {})
+    assert ("eq", ("id", "r1"), {}) in release
+    assert not any(n == "regen_failed" for n, _ in fake.rpcs)
+
+
+def test_edited_again_leaves_the_claim_alone_once_the_lease_may_have_passed():
+    # The release is unconditional on the row, so it is only safe while no one
+    # else can hold a claim on it -- inside our own lease. Past that, another
+    # worker may have claimed the new revision, and clearing its claim would let
+    # a third run start. The row is claimable again anyway, so nothing is lost.
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
+                        responses={"recipes": []})
+    ticks = iter([0.0, 290.0])                            # claimed at 0 s, dropped at 290 s
+    from recipeparser.adapters.regen_worker import RegenWorker
+    w = RegenWorker(fake, gemini_client=MagicMock(),
+                    refine_fn=MagicMock(return_value=_refinement()),
+                    embed_fn=MagicMock(return_value=[0.5] * 3),
+                    axes_loader=lambda user_id: {}, batch=5, concurrency=1,
+                    clock=lambda: next(ticks))
+    assert w.run_once() == 1
+    assert len(_ops(fake, "recipes")) == 1                 # the write-back only
+
+
+def test_a_failed_release_is_logged_not_recorded_as_a_regen_failure(caplog):
+    # regen_failed counts an attempt against the row's CURRENT body_rev -- the new
+    # revision, which has not failed at all. A release that cannot be written just
+    # leaves the row to its lease.
+    class _ReleaseFails(FakeSupabase):
+        def table(self, name):
+            q = super().table(name)
+            real_execute = q.execute
+            def execute():
+                if q.ops and q.ops[0] == ("update", ({"claimed_at": None},), {}):
+                    raise RuntimeError("db unreachable")
+                return real_execute()
+            q.execute = execute
+            return q
+    fake = _ReleaseFails(rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
+                         responses={"recipes": []})
+    assert _worker(fake).run_once() == 1
+    assert not any(n == "regen_failed" for n, _ in fake.rpcs)
+    assert "could not release the claim on r1" in caplog.text
+
+
 def test_exception_records_failure():
     fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row()]})
     w = _worker(fake, refine_fn=MagicMock(side_effect=ValueError("bad tokens")))

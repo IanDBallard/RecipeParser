@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -22,6 +23,15 @@ from recipeparser.core.stages.refine import refine
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 
 log = logging.getLogger(__name__)
+
+# claim_stale_recipes treats a claim older than five minutes as abandoned and
+# hands the row to the next poll (Cayenne migration 014). The two must agree.
+CLAIM_LEASE_SECONDS = 300.0
+# How long before the lease runs out this worker stops treating a claim as its
+# own. It covers the release request's own round trip, so the release reaches
+# the database while the lease still holds.
+CLAIM_RELEASE_MARGIN_SECONDS = 60.0
+
 
 class RegenWorker:
     def __init__(
@@ -34,6 +44,7 @@ class RegenWorker:
         axes_loader: Optional[Callable[[str], Dict[str, List[str]]]] = None,
         batch: int = 5,
         concurrency: int = 2,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._sb = supabase
         self._client = gemini_client
@@ -42,21 +53,25 @@ class RegenWorker:
         self._axes = axes_loader or (lambda uid: SupabaseCategorySource().load_axes(uid))
         self._batch = max(1, batch)
         self._concurrency = max(1, concurrency)
+        self._clock = clock
 
     # ── one poll ─────────────────────────────────────────────────────────
 
     def run_once(self) -> int:
+        # Read before the claim is asked for, so the elapsed time measured from it
+        # is never shorter than the age of the claim (see _release_claim).
+        claimed_at = self._clock()
         rows = self._sb.rpc("claim_stale_recipes", {"p_limit": self._batch}).execute().data or []
         if not rows:
             return 0
         log.info("regen: claimed %d stale recipe(s).", len(rows))
         with ThreadPoolExecutor(max_workers=self._concurrency) as pool:
-            list(pool.map(self._process, rows))
+            list(pool.map(lambda row: self._process(row, claimed_at), rows))
         return len(rows)
 
     # ── one recipe ───────────────────────────────────────────────────────
 
-    def _process(self, row: Dict[str, Any]) -> None:
+    def _process(self, row: Dict[str, Any], claimed_at: float) -> None:
         # The unpack lives inside the try: a claimed row missing id or body_rev
         # would otherwise raise straight out of pool.map(), out of run_once(),
         # and abandon every other row in the batch. rid/read_rev are seeded for
@@ -82,11 +97,46 @@ class RegenWorker:
             if not res.data:
                 log.info("regen: %s was edited again during the run (rev %d) — result dropped.",
                          rid, read_rev)
+                self._release_claim(rid, claimed_at)
             else:
                 log.info("regen: %s regenerated at rev %d.", rid, read_rev)
         except Exception as exc:  # noqa: BLE001 — every failure is recorded, never fatal
             log.warning("regen: %s failed at rev %d: %s", rid, read_rev, exc, exc_info=True)
             self._record_failure(rid, exc)
+
+    def _release_claim(self, rid: str, claimed_at: float) -> None:
+        """
+        Clear claimed_at on a row whose result was dropped, never raising.
+
+        The cook edited the recipe mid-run, so its new revision is already stale
+        and waiting — but it also still carried this run's claim, and so sat out
+        the whole five-minute lease before anyone regenerated it (Fix Roadmap
+        F-006). Only a successful write-back or regen_failed cleared the claim.
+
+        The release is safe only while the claim is certainly still ours. Nobody
+        else can claim the row until the lease runs out, so inside the lease the
+        claimed_at on the row is this run's and clearing it clobbers nothing.
+        Past that point another worker may have claimed the new revision, and
+        clearing ITS claim would let a third run start alongside it. Elapsed time
+        is measured on this process's monotonic clock from before the claim RPC
+        was sent — longer than the claim's true age — so database clock skew
+        cannot make a late release look early. Once the lease may have gone, the
+        row is claimable again anyway, so leaving it costs nothing.
+
+        A release that fails is logged, not sent to regen_failed: that RPC counts
+        an attempt against the row's current body_rev, the new revision, which
+        has not failed.
+        """
+        elapsed = self._clock() - claimed_at
+        if elapsed >= CLAIM_LEASE_SECONDS - CLAIM_RELEASE_MARGIN_SECONDS:
+            log.info("regen: %s's claim is %.0f s old — left to its lease rather than released.",
+                     rid, elapsed)
+            return
+        try:
+            self._sb.table("recipes").update({"claimed_at": None}).eq("id", rid).execute()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("regen: could not release the claim on %s (%s) — it waits out its lease.",
+                        rid, exc, exc_info=True)
 
     def _record_failure(self, rid: str, exc: BaseException) -> None:
         """
