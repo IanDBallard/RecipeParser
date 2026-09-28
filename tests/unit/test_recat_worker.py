@@ -123,6 +123,30 @@ def _worker(fake, categorize_fn):
     return RecatWorker(fake, gemini_client=MagicMock(), categorize_fn=categorize_fn, batch_size=10)
 
 
+_TERMINAL = {"done", "error", "cancelled"}
+
+
+def _finished(fake):
+    """True once the job row has been given a terminal status."""
+    return any(
+        ops[0][0] == "update" and ops[0][1][0].get("status") in _TERMINAL
+        for ops in _ops(fake, "ingestion_jobs")
+    )
+
+
+def _run_to_end(worker, fake, limit=50):
+    """
+    Poll until the job is finished; return how many polls it took. One poll is one
+    batch (Fix Roadmap F-008), so a job spans several. Bounded, because the fake
+    offers the same pending job for ever and a regression must fail, not hang.
+    """
+    for n in range(1, limit + 1):
+        assert worker.run_once() == 1
+        if _finished(fake):
+            return n
+    raise AssertionError(f"job not finished after {limit} polls")
+
+
 def test_no_pending_job():
     fake = FakeSupabase()
     fake.responses["ingestion_jobs"] = []
@@ -132,7 +156,7 @@ def test_no_pending_job():
 def test_job_runs_in_batches_and_inserts_additively():
     fake = _fake_with_job(["running"] * 5, _recipes(25), count=25)
     cat = MagicMock(side_effect=lambda recipes, axes, client: {recipes[0]["id"]: ["Thai", "Nope"]})
-    assert _worker(fake, cat).run_once() == 1
+    assert _run_to_end(_worker(fake, cat), fake) == 4             # 3 batches, then the empty page
     assert cat.call_count == 3                                   # 10 + 10 + 5
     assert cat.call_args.args[1] == {"Cuisine": ["Thai"]}        # only the new tag offered
     inserts = _ops(fake, "recipe_categories")
@@ -152,7 +176,7 @@ def test_cancel_between_batches_finishes_the_job_as_cancelled():
     # a worker that died looks like. What matters is that it FINISHES.
     fake = _fake_with_job(["running", "cancelled"], _recipes(25), count=25)
     cat = MagicMock(return_value={})
-    _worker(fake, cat).run_once()
+    assert _run_to_end(_worker(fake, cat), fake) == 2
     assert cat.call_count == 2
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "cancelled"
@@ -167,7 +191,7 @@ def test_cancel_between_batches_finishes_the_job_as_cancelled():
 def test_too_many_failed_batches_errors_the_job():
     fake = _fake_with_job(["running"] * 5, _recipes(30), count=30)
     cat = MagicMock(side_effect=RuntimeError("gemini down"))
-    _worker(fake, cat).run_once()
+    _run_to_end(_worker(fake, cat), fake)
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "error" and "3 of 3 batches failed" in final["error_message"]
 
@@ -180,7 +204,7 @@ def test_infrastructure_failure_on_upsert_is_caught_and_recorded():
     fake = _fake_with_job(["running"], _recipes(5), count=5)
     fake.raises["recipe_categories"] = RuntimeError("db unreachable")
     cat = MagicMock(return_value={_rid(0): ["Thai"]})
-    assert _worker(fake, cat).run_once() == 1
+    _run_to_end(_worker(fake, cat), fake)
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "error" and "1 of 1 batches failed" in final["error_message"]
     assert final["recipe_count"] == 0
@@ -193,7 +217,7 @@ def test_recipe_count_is_distinct_recipes_not_tag_rows_single_axis():
     # so this already reproduces the overcount without needing multiple axes.
     fake = _fake_with_job(["running"], _recipes(1), count=1, category_ids=["t1", "t2"])
     cat = MagicMock(return_value={_rid(0): ["Italian", "Thai"]})
-    assert _worker(fake, cat).run_once() == 1
+    _run_to_end(_worker(fake, cat), fake)
     rows = _ops(fake, "recipe_categories")[0][0][1][0]
     assert len(rows) == 2                                          # both tags inserted
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
@@ -206,7 +230,7 @@ def test_recipe_count_is_distinct_recipes_not_tag_rows_multi_axis():
     # review named explicitly, on top of the simpler single-axis case above.
     fake = _fake_with_job(["running"], _recipes(1), count=1, category_ids=["t2", "ax2"])
     cat = MagicMock(return_value={_rid(0): ["Thai", "Quick"]})
-    assert _worker(fake, cat).run_once() == 1
+    _run_to_end(_worker(fake, cat), fake)
     rows = _ops(fake, "recipe_categories")[0][0][1][0]
     assert len(rows) == 2
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
@@ -227,7 +251,7 @@ def test_fresh_job_pages_from_the_nil_uuid():
     from recipeparser.adapters.recat_worker import NIL_UUID
     fake = _fake_with_job(["running"] * 3, _recipes(15), count=15)
     cat = MagicMock(return_value={})
-    assert _worker(fake, cat).run_once() == 1
+    _run_to_end(_worker(fake, cat), fake)
     cursors = [o[1][1] for ops in _ops(fake, "recipes") for o in ops if o[0] == "gt"]
     assert cursors[0] == NIL_UUID
     assert cursors[1] == _rid(9)                       # then the last id of page 1
@@ -248,7 +272,7 @@ def test_real_categorize_batch_failure_errors_the_job():
     fake = _fake_with_job(["running"] * 5, _recipes(30), count=30)
     worker = RecatWorker(fake, gemini_client=MagicMock(), batch_size=10)
     with patch("recipeparser.gemini._call_with_retry", side_effect=RuntimeError("gemini down")):
-        assert worker.run_once() == 1
+        _run_to_end(worker, fake)
     assert _ops(fake, "recipe_categories") == []
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "error" and "3 of 3 batches failed" in final["error_message"]
@@ -265,7 +289,7 @@ def test_real_categorize_batch_success_finishes_the_job():
                                                    {"recipe_id": _rid(1), "tags": []}]}))
     worker = RecatWorker(fake, gemini_client=MagicMock(), batch_size=10)
     with patch("recipeparser.gemini._call_with_retry", return_value=reply):
-        assert worker.run_once() == 1
+        _run_to_end(worker, fake)
     rows = _ops(fake, "recipe_categories")[0][0][1][0]
     assert [r["recipe_id"] for r in rows] == [_rid(0)]
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
@@ -374,7 +398,7 @@ def test_a_fresh_running_job_is_not_reclaimed():
 def test_a_batch_that_fails_twice_is_recorded_in_skipped():
     fake = _fake_with_job(["running"], _recipes(5), count=5)
     cat = MagicMock(side_effect=RuntimeError("gemini down"))
-    _worker(fake, cat).run_once()
+    _run_to_end(_worker(fake, cat), fake)
     assert cat.call_count == 2, "the batch must be retried exactly once"
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["skipped_count"] == 5
@@ -385,7 +409,7 @@ def test_a_batch_that_fails_twice_is_recorded_in_skipped():
 def test_a_batch_that_fails_once_then_succeeds_is_not_recorded():
     fake = _fake_with_job(["running"], _recipes(5), count=5)
     cat = MagicMock(side_effect=[RuntimeError("blip"), {_rid(0): ["Thai"]}])
-    _worker(fake, cat).run_once()
+    _run_to_end(_worker(fake, cat), fake)
     assert cat.call_count == 2
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "done"
@@ -397,7 +421,7 @@ def test_a_job_whose_categories_have_all_gone_errors():
     # Finishing `done` here reads as "checked everything, nothing matched".
     # Nothing was checked at all.
     fake = _fake_with_job(["running"], _recipes(5), count=5, category_ids=("ghost",))
-    _worker(fake, MagicMock()).run_once()
+    assert _run_to_end(_worker(fake, MagicMock()), fake) == 1
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "error"
     assert final["error_message"] == "The categories no longer exist"
@@ -406,7 +430,87 @@ def test_a_job_whose_categories_have_all_gone_errors():
 def test_a_job_with_some_missing_categories_proceeds_on_the_rest():
     fake = _fake_with_job(["running"] * 3, _recipes(5), count=5, category_ids=("t2", "ghost"))
     cat = MagicMock(return_value={})
-    assert _worker(fake, cat).run_once() == 1
+    _run_to_end(_worker(fake, cat), fake)
     assert cat.call_args.args[1] == {"Cuisine": ["Thai"]}     # the ghost is not offered
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "done"
+
+
+# ── Fix Roadmap F-008: one batch per poll ───────────────────────────────────
+#
+# run_once used to claim a job and run it to the end. run_workers awaits each
+# worker in turn, so a large recategorise held the loop for the whole job:
+# regeneration starved behind it and shutdown waited it out.
+
+
+def _pending_polls(fake):
+    return [q for q in fake.queries if q.table == "ingestion_jobs" and q.ops[0][0] == "select"
+            and ("eq", ("status", "pending"), {}) in q.ops]
+
+
+def test_one_poll_processes_one_batch():
+    fake = _fake_with_job(["running"] * 5, _recipes(25), count=25)
+    cat = MagicMock(return_value={_rid(0): ["Thai"]})
+    worker = _worker(fake, cat)
+    assert worker.run_once() == 1
+    assert cat.call_count == 1, "one poll must hand back after one batch"
+    assert not _finished(fake)
+    progress = [o[0][1][0] for o in _ops(fake, "ingestion_jobs")
+                if o[0][0] == "update" and "params" in o[0][1][0]]
+    assert len(progress) == 1
+    assert progress[0]["params"]["cursor"] == _rid(9)          # resumable from here
+    assert progress[0]["progress_pct"] == 33 and progress[0]["recipe_count"] == 1
+
+
+def test_the_next_poll_continues_the_held_job_from_its_cursor():
+    from recipeparser.adapters.recat_worker import NIL_UUID
+    fake = _fake_with_job(["running"] * 5, _recipes(25), count=25)
+    cat = MagicMock(return_value={})
+    worker = _worker(fake, cat)
+    worker.run_once()
+    claims = len(_pending_polls(fake))
+    worker.run_once()
+    assert len(_pending_polls(fake)) == claims, "a held job is continued, not claimed again"
+    cursors = [o[1][1] for ops in _ops(fake, "recipes") for o in ops if o[0] == "gt"]
+    assert cursors == [NIL_UUID, _rid(9)]
+    assert cat.call_count == 2
+
+
+def test_counts_carry_across_polls():
+    # matched, skipped and the failed-batch tally live across polls, so the final
+    # done/error verdict is the one the job would have reached in a single call.
+    fake = _fake_with_job(["running"] * 5, _recipes(25), count=25)
+    outcomes = [{_rid(0): ["Thai"]}, RuntimeError("down"), RuntimeError("down"), {_rid(20): ["Thai"]}]
+    cat = MagicMock(side_effect=outcomes)
+    _run_to_end(_worker(fake, cat), fake)
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    # 1 failed batch of 3 is more than a tenth: error, with both matches and the
+    # ten skipped ids of the middle batch kept.
+    assert final["status"] == "error" and "1 of 3 batches failed" in final["error_message"]
+    assert final["recipe_count"] == 2
+    assert final["skipped_count"] == 10
+    assert [e["recipe_id"] for e in final["skipped"]] == [_rid(i) for i in range(10, 20)]
+
+
+def test_a_crash_mid_job_errors_it_and_frees_the_worker():
+    # The progress write itself failing is an infrastructure fault, as before: the
+    # job ends `error`, and the worker lets go of it instead of continuing it.
+    fake = _fake_with_job(["running"] * 5, _recipes(25), count=25)
+    base = fake.handlers["ingestion_jobs"]
+    calls = {"n": 0}
+
+    def jobs(q):
+        if q.ops[0][0] == "update" and "params" in q.ops[0][1][0]:
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("db unreachable")
+        return base(q)
+    fake.handlers["ingestion_jobs"] = jobs
+    worker = _worker(fake, MagicMock(return_value={}))
+    worker.run_once()
+    worker.run_once()
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "error" and "db unreachable" in final["error_message"]
+    polls = len(_pending_polls(fake))
+    worker.run_once()
+    assert len(_pending_polls(fake)) == polls + 1, "the next poll looks for new work"

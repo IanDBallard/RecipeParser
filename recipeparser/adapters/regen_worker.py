@@ -166,15 +166,26 @@ async def run_workers(
     stop: asyncio.Event,
     poll_seconds: float = 10.0,
 ) -> None:
-    """Call every worker's run_once() in a thread, sleep, repeat until stop is set."""
+    """
+    Call every worker's run_once() in a thread, repeat until stop is set.
+
+    The loop sleeps only after a round in which no worker did anything. A
+    recategorise poll is one batch (Fix Roadmap F-008), so sleeping after every
+    round would add a full poll interval to every batch of a job; polling again
+    at once keeps a job moving while each round still gives every worker a turn.
+    A poll that raised counts as idle, so a failing worker cannot spin the loop.
+    """
     while not stop.is_set():
+        busy = False
         for w in workers:
             try:
-                await asyncio.to_thread(w.run_once)
+                busy = bool(await asyncio.to_thread(w.run_once)) or busy
             except Exception as exc:  # noqa: BLE001
                 log.error("worker %s poll failed: %s", type(w).__name__, exc, exc_info=True)
             if stop.is_set():
                 return
+        if busy:
+            continue
         try:
             await asyncio.wait_for(stop.wait(), timeout=poll_seconds)
         except asyncio.TimeoutError:

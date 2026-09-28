@@ -65,14 +65,15 @@ def _refinement():
     )
 
 
-def _worker(fake, refine_fn=None, embed_fn=None):
+def _worker(fake, refine_fn=None, embed_fn=None, clock=None):
     from recipeparser.adapters.regen_worker import RegenWorker
+    extra = {"clock": clock} if clock else {}
     return RegenWorker(
         fake, gemini_client=MagicMock(),
         refine_fn=refine_fn or MagicMock(return_value=_refinement()),
         embed_fn=embed_fn or MagicMock(return_value=[0.5] * 3),
         axes_loader=lambda user_id: {"Cuisine": ["Italian"]},
-        batch=5, concurrency=1,
+        batch=5, concurrency=1, **extra,
     )
 
 
@@ -160,13 +161,7 @@ def test_edited_again_leaves_the_claim_alone_once_the_lease_may_have_passed():
     fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row(rev=3)]},
                         responses={"recipes": []})
     ticks = iter([0.0, 290.0])                            # claimed at 0 s, dropped at 290 s
-    from recipeparser.adapters.regen_worker import RegenWorker
-    w = RegenWorker(fake, gemini_client=MagicMock(),
-                    refine_fn=MagicMock(return_value=_refinement()),
-                    embed_fn=MagicMock(return_value=[0.5] * 3),
-                    axes_loader=lambda user_id: {}, batch=5, concurrency=1,
-                    clock=lambda: next(ticks))
-    assert w.run_once() == 1
+    assert _worker(fake, clock=lambda: next(ticks)).run_once() == 1
     assert len(_ops(fake, "recipes")) == 1                 # the write-back only
 
 
@@ -338,3 +333,39 @@ def test_run_workers_survives_exceptions(caplog):
     stop = asyncio.Event()
     asyncio.run(run_workers([W()], stop, poll_seconds=0.01))
     assert n["count"] == 2 and "supabase down" in caplog.text
+
+
+def test_run_workers_polls_again_at_once_while_there_is_work():
+    # Fix Roadmap F-008 makes one recategorise poll one batch. Sleeping the full
+    # poll interval after every round would then add ten seconds per batch; the
+    # loop sleeps only when a whole round found nothing to do.
+    from recipeparser.adapters.regen_worker import run_workers
+    rounds = []
+    class Busy:
+        def run_once(self):
+            rounds.append(1)
+            if len(rounds) == 3:
+                stop.set()
+            return 1
+    stop = asyncio.Event()
+    asyncio.run(asyncio.wait_for(run_workers([Busy()], stop, poll_seconds=60), timeout=5))
+    assert len(rounds) == 3
+
+
+def test_run_workers_interleaves_workers_between_polls():
+    # Both workers get a turn every round, so a long recategorise job no longer
+    # holds regeneration behind it.
+    from recipeparser.adapters.regen_worker import run_workers
+    order = []
+    class W:
+        def __init__(self, name, work):
+            self.name, self.work = name, work
+        def run_once(self):
+            order.append(self.name)
+            if len(order) == 6:
+                stop.set()
+            return self.work
+    stop = asyncio.Event()
+    asyncio.run(asyncio.wait_for(
+        run_workers([W("regen", 0), W("recat", 1)], stop, poll_seconds=60), timeout=5))
+    assert order == ["regen", "recat"] * 3

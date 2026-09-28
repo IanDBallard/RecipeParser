@@ -6,16 +6,21 @@ params.category_ids = [...] asks for every recipe of that user to be checked
 against ONLY those newly added tags.  Inserts are additive (on conflict do
 nothing); nothing is ever removed.  Progress, cursor and cancellation all
 live on the job row so PowerSync shows them and the client can stop it.
+
+One ``run_once`` is one batch (Fix Roadmap F-008). ``run_workers`` awaits each
+worker in turn, so a poll that ran a whole job held regeneration and shutdown
+behind it for as long as the job took.
 """
 from __future__ import annotations
 
 import logging
 import math
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from recipeparser.core.stages.categorize import chunked, filter_batch_result
+from recipeparser.core.stages.categorize import filter_batch_result
 from recipeparser.core.taxonomy import root_of
 from recipeparser.gemini import categorize_batch
 
@@ -30,7 +35,10 @@ NIL_UUID = "00000000-0000-0000-0000-000000000000"
 # abandoned and is reclaimed. The worker writes `updated_at` after every batch,
 # so the age of the row is a real measure of liveness rather than of job length;
 # and `params.cursor` is written in the same statement, so a reclaimed job
-# resumes from the last batch it finished instead of starting over.
+# resumes from the last batch it finished instead of starting over. Since
+# F-008 the gap between two writes is one batch plus the regen poll that runs
+# between them, which must stay well inside this lease or a live job could be
+# reclaimed by a second worker.
 STALE_LEASE_MINUTES = 10
 
 
@@ -87,6 +95,29 @@ def resolve_new_axes(
     return axes, ids
 
 
+@dataclass
+class _HeldJob:
+    """
+    A claimed job between polls. ``params`` carries the cursor, and it is written
+    to the row after every batch, so a job whose worker dies is reclaimed (see
+    STALE_LEASE_MINUTES) and resumes from its last finished batch. The rest is
+    what the whole-job loop kept in its locals before F-008, carried between
+    polls so the final done/error verdict is unchanged.
+    """
+    job_id: str
+    user_id: str
+    params: Dict[str, Any]
+    new_axes: Dict[str, List[str]]
+    tag_ids: Dict[str, str]
+    total_batches: int
+    skipped: List[Dict[str, Any]]
+    skipped_count: int
+    done_batches: int = 0
+    failed: int = 0
+    matched: int = 0
+    offered: Set[str] = field(default_factory=set)
+
+
 class RecatWorker:
     def __init__(
         self,
@@ -100,10 +131,46 @@ class RecatWorker:
         self._client = gemini_client
         self._categorize = categorize_fn
         self._batch_size = max(1, batch_size)
+        self._held: Optional[_HeldJob] = None
 
-    # ── one poll: at most one job ───────────────────────────────────────
+    # ── one poll: at most one batch ─────────────────────────────────────
 
     def run_once(self) -> int:
+        """
+        Claim a job if none is held, then run ONE batch of it (or finish it).
+        Returns 1 when it did anything, 0 when there was no job to work on.
+
+        The job stays held in memory between polls; its row stays `running` with
+        `updated_at` refreshed by every batch, so neither this worker's pending
+        poll nor another worker's stale-lease reclaim will touch it meanwhile.
+        """
+        if self._held is None:
+            job = self._claim()
+            if job is None:
+                return 0
+            try:
+                self._held = self._start(job)
+            except Exception as exc:  # noqa: BLE001
+                log.error("recat job %s crashed: %s", job["id"], exc, exc_info=True)
+                self._finish(job["id"], "error", error=str(exc)[:2000])
+                return 1
+            if self._held is None:
+                return 1                          # finished at the start, nothing to run
+        held = self._held
+        try:
+            finished = self._step(held)
+        except Exception as exc:  # noqa: BLE001
+            # Let go first: if the terminal write fails too, the next poll must not
+            # keep feeding batches to a job it has already given up on.
+            self._held = None
+            log.error("recat job %s crashed: %s", held.job_id, exc, exc_info=True)
+            self._finish(held.job_id, "error", error=str(exc)[:2000])
+            return 1
+        if finished:
+            self._held = None
+        return 1
+
+    def _claim(self) -> Optional[Dict[str, Any]]:
         jobs = (
             self._sb.table("ingestion_jobs").select("*")
             .eq("kind", "recategorize").eq("status", "pending")
@@ -117,7 +184,7 @@ class RecatWorker:
             jobs = self._stale_running_jobs()
             prior_status = "running"
         if not jobs:
-            return 0
+            return None
         job = jobs[0]
         # Compare-and-swap on the status we read, so two workers racing for the same
         # row cannot both win it: the second update matches nothing.
@@ -126,31 +193,24 @@ class RecatWorker:
             .update({"status": "running", "stage": "CATEGORIZING", "updated_at": _now()})
             .eq("id", job["id"]).eq("status", prior_status).execute().data
         )
-        if not claimed:
-            return 0
-        try:
-            self._run_job(job)
-        except Exception as exc:  # noqa: BLE001
-            log.error("recat job %s crashed: %s", job["id"], exc, exc_info=True)
-            self._finish(job["id"], "error", error=str(exc)[:2000])
-        return 1
+        return job if claimed else None
 
     # ── the job ──────────────────────────────────────────────────────────
 
-    def _run_job(self, job: Dict[str, Any]) -> None:
+    def _start(self, job: Dict[str, Any]) -> Optional[_HeldJob]:
+        """Resolve the job's categories and size once, at claim. None if it finished here."""
         user_id = job["user_id"]
         params = dict(job.get("params") or {})
         cat_rows = self._sb.table("categories").select("id,name,parent_id").eq("user_id", user_id).execute().data or []
         requested = list(params.get("category_ids") or [])
         new_axes, tag_ids = resolve_new_axes(cat_rows, requested)
-        offered = set(tag_ids)
-        if not offered:
+        if not tag_ids:
             # Every requested category has gone since the job was queued. Finishing
             # `done` here -- which is what this did until 2026-09-13 -- reads as
             # "checked your whole library, nothing matched", which is the opposite
             # of what happened: nothing was checked at all.
             self._finish(job["id"], "error", error="The categories no longer exist")
-            return
+            return None
         missing = len(requested) - len(tag_ids)
         if missing:
             # Some resolved: proceed on those. The job is still worth running, and
@@ -161,88 +221,96 @@ class RecatWorker:
             )
 
         total = self._sb.table("recipes").select("id", count="exact").eq("user_id", user_id).execute().count or 0
-        total_batches = max(1, math.ceil(total / self._batch_size))
-        cursor = str(params.get("cursor") or NIL_UUID)
-        done_batches = failed = matched = 0
-        skipped: List[Dict[str, Any]] = list(job.get("skipped") or [])
-        skipped_count = int(job.get("skipped_count") or 0)
+        params["cursor"] = str(params.get("cursor") or NIL_UUID)
+        return _HeldJob(
+            job_id=job["id"],
+            user_id=user_id,
+            params=params,
+            new_axes=new_axes,
+            tag_ids=tag_ids,
+            offered=set(tag_ids),
+            total_batches=max(1, math.ceil(total / self._batch_size)),
+            skipped=list(job.get("skipped") or []),
+            skipped_count=int(job.get("skipped_count") or 0),
+        )
 
-        while True:
-            page = (
-                self._sb.table("recipes").select("id,title,ingredient_lines,direction_steps")
-                .eq("user_id", user_id).gt("id", cursor).order("id").limit(self._batch_size)
-                .execute().data or []
-            )
-            if not page:
+    def _step(self, held: _HeldJob) -> bool:
+        """Run the batch after ``params.cursor``, or finish the job. True when finished."""
+        batch = (
+            self._sb.table("recipes").select("id,title,ingredient_lines,direction_steps")
+            .eq("user_id", held.user_id).gt("id", held.params["cursor"]).order("id")
+            .limit(self._batch_size).execute().data or []
+        )
+        if not batch:
+            if held.failed and held.failed > held.done_batches / 10:
+                self._finish(held.job_id, "error", count=held.matched,
+                             skipped=held.skipped, skipped_count=held.skipped_count,
+                             error=f"{held.failed} of {held.done_batches} batches failed")
+            else:
+                self._finish(held.job_id, "done", progress=100, count=held.matched,
+                             skipped=held.skipped, skipped_count=held.skipped_count)
+            return True
+
+        # Retried once, then recorded, then passed. A transient model or network
+        # failure costs one retry; a batch that fails twice has its recipe ids
+        # written to `skipped` with the reason BEFORE the cursor moves past them,
+        # so "nothing was skipped" on the client means it. Until 2026-09-13 the
+        # ids were dropped and only a counter survived.
+        last_exc: Optional[Exception] = None
+        for attempt in (1, 2):
+            try:
+                raw = self._categorize(batch, held.new_axes, self._client)
+                hits = filter_batch_result(raw, held.offered)
+                rows = [
+                    {"id": str(uuid.uuid4()), "recipe_id": rid, "category_id": held.tag_ids[tag],
+                     "user_id": held.user_id}
+                    for rid, tags in hits.items() for tag in tags
+                ]
+                if rows:
+                    self._sb.table("recipe_categories").upsert(
+                        rows, on_conflict="recipe_id,category_id", ignore_duplicates=True
+                    ).execute()
+                held.matched += len(hits)  # distinct recipes matched, not junction rows inserted
+                last_exc = None
                 break
-            for batch in chunked(page, self._batch_size):
-                # Retried once, then recorded, then passed. A transient model or
-                # network failure costs one retry; a batch that fails twice has its
-                # recipe ids written to `skipped` with the reason BEFORE the cursor
-                # moves past them, so "nothing was skipped" on the client means it.
-                # Until 2026-09-13 the ids were dropped and only a counter survived.
-                last_exc: Optional[Exception] = None
-                for attempt in (1, 2):
-                    try:
-                        raw = self._categorize(batch, new_axes, self._client)
-                        hits = filter_batch_result(raw, offered)
-                        rows = [
-                            {"id": str(uuid.uuid4()), "recipe_id": rid, "category_id": tag_ids[tag], "user_id": user_id}
-                            for rid, tags in hits.items() for tag in tags
-                        ]
-                        if rows:
-                            self._sb.table("recipe_categories").upsert(
-                                rows, on_conflict="recipe_id,category_id", ignore_duplicates=True
-                            ).execute()
-                        matched += len(hits)  # distinct recipes matched, not junction rows inserted
-                        last_exc = None
-                        break
-                    except Exception as exc:  # noqa: BLE001
-                        last_exc = exc
-                        if attempt == 1:
-                            log.info("recat job %s: batch failed (%s) — retrying once.", job["id"], exc)
-                if last_exc is not None:
-                    failed += 1
-                    reason = str(last_exc)[:500]
-                    skipped.extend({"recipe_id": r["id"], "reason": reason} for r in batch)
-                    skipped_count += len(batch)
-                    log.warning(
-                        "recat job %s: batch failed twice (%s) — %d recipe(s) recorded as skipped.",
-                        job["id"], reason, len(batch),
-                    )
-                done_batches += 1
-                cursor = batch[-1]["id"]
-                params["cursor"] = cursor
-                self._sb.table("ingestion_jobs").update({
-                    "params": params,
-                    "progress_pct": min(99, int(100 * done_batches / total_batches)),
-                    "recipe_count": matched,
-                    "skipped": skipped,
-                    "skipped_count": skipped_count,
-                    "updated_at": _now(),
-                }).eq("id", job["id"]).execute()
-                status = (self._sb.table("ingestion_jobs").select("status").eq("id", job["id"])
-                          .limit(1).execute().data or [{}])[0].get("status")
-                if status == "cancelled":
-                    # Finish it properly rather than returning. A bare return left the
-                    # row at stage CATEGORIZING with mid-flight progress, which is
-                    # indistinguishable from a worker that died; the screen has to be
-                    # able to say "Stopped. N recipes tagged so far".
-                    log.info("recat job %s cancelled after %d batch(es).", job["id"], done_batches)
-                    self._finish(
-                        job["id"], "cancelled",
-                        progress=min(99, int(100 * done_batches / total_batches)),
-                        count=matched, skipped=skipped, skipped_count=skipped_count,
-                    )
-                    return
-
-        if failed and failed > done_batches / 10:
-            self._finish(job["id"], "error", count=matched,
-                         skipped=skipped, skipped_count=skipped_count,
-                         error=f"{failed} of {done_batches} batches failed")
-        else:
-            self._finish(job["id"], "done", progress=100, count=matched,
-                         skipped=skipped, skipped_count=skipped_count)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt == 1:
+                    log.info("recat job %s: batch failed (%s) — retrying once.", held.job_id, exc)
+        if last_exc is not None:
+            held.failed += 1
+            reason = str(last_exc)[:500]
+            held.skipped.extend({"recipe_id": r["id"], "reason": reason} for r in batch)
+            held.skipped_count += len(batch)
+            log.warning(
+                "recat job %s: batch failed twice (%s) — %d recipe(s) recorded as skipped.",
+                held.job_id, reason, len(batch),
+            )
+        held.done_batches += 1
+        held.params["cursor"] = batch[-1]["id"]
+        progress = min(99, int(100 * held.done_batches / held.total_batches))
+        self._sb.table("ingestion_jobs").update({
+            "params": held.params,
+            "progress_pct": progress,
+            "recipe_count": held.matched,
+            "skipped": held.skipped,
+            "skipped_count": held.skipped_count,
+            "updated_at": _now(),
+        }).eq("id", held.job_id).execute()
+        status = (self._sb.table("ingestion_jobs").select("status").eq("id", held.job_id)
+                  .limit(1).execute().data or [{}])[0].get("status")
+        if status == "cancelled":
+            # Finish it properly rather than returning. A bare return left the
+            # row at stage CATEGORIZING with mid-flight progress, which is
+            # indistinguishable from a worker that died; the screen has to be
+            # able to say "Stopped. N recipes tagged so far".
+            log.info("recat job %s cancelled after %d batch(es).", held.job_id, held.done_batches)
+            self._finish(
+                held.job_id, "cancelled", progress=progress, count=held.matched,
+                skipped=held.skipped, skipped_count=held.skipped_count,
+            )
+            return True
+        return False
 
     def _stale_running_jobs(self) -> List[Dict[str, Any]]:
         """A recategorise job left `running` past the lease, oldest first."""
