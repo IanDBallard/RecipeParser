@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Iterable, List, Set
+from typing import Iterable, List, Set, Tuple
 
 # Every vulgar-fraction glyph, with a leading space so "1½" reads "1 1/2" — the one rewrite the
 # extract prompt permits (D1). The fraction slash (U+2044) becomes a plain "/".
@@ -79,6 +79,26 @@ def written_values(text: str) -> List[float]:
         if len(parts) == 2:
             values.extend(_value(p) for p in parts)
     return values
+
+
+def written_measures(text: str) -> List[Tuple[float, str]]:
+    """
+    Every number ``text`` writes, by value, with the text that follows it up to the next number: where
+    the writer put its unit. "1 ounce (about 1/3 packed cup)" gives (1.0, " ounce (about ") and
+    (0.333..., " packed cup)"). A mixed number's parts share its text, as in written_values. REFINE
+    reads it to hold the writer's second measure to its unit as well as its number (Fix Roadmap F-011).
+    """
+    normalised = _normalise(text)
+    found = list(_NUMBER.finditer(normalised))
+    measures: List[Tuple[float, str]] = []
+    for i, match in enumerate(found):
+        after = normalised[match.end():found[i + 1].start() if i + 1 < len(found) else len(normalised)]
+        token = match.group(0)
+        measures.append((_value(token), after))
+        parts = token.split()
+        if len(parts) == 2:
+            measures.extend((_value(p), after) for p in parts)
+    return measures
 
 
 # Source side only (final review I1). An EPUB reader's get_text(separator="\n") splits a typeset

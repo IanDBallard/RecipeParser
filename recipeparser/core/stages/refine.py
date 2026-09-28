@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from recipeparser.core.numbers import written_values
+from recipeparser.core.numbers import written_measures
 from recipeparser.gemini import refine_recipe_for_cayenne
 from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction
 
@@ -115,23 +115,41 @@ def _tolerance(value: float) -> float:
     return 0.5 * 10 ** -decimals
 
 
+def _writes_unit(text: str, unit: Optional[str]) -> bool:
+    """
+    True when ``text`` names ``unit`` as a word: in any case, singular or plural, a full stop after
+    each word or none ("oz." is "oz", "cup" is "cups", "fl oz" is "fl. oz."). Letters may not adjoin
+    it, digits may: "250g" writes "g", "grated" does not.
+    """
+    word = re.sub(r"\.$", "", re.sub(r"\s+", " ", (unit or "").strip().lower()))
+    if not word:
+        return False
+    if len(word) > 2 and word.endswith("s"):
+        word = word[:-1]
+    body = r"\.?\s*".join(re.escape(w) for w in word.split(" "))
+    return re.search(r"(?<![^\W\d_])" + body + r"s?(?![^\W\d_])", text.lower()) is not None
+
+
 def _check_conversions(refinement: CayenneRefinement) -> None:
     """
-    D3, in place. A second measure marked as the writer's must equal a number its own line writes;
-    when none does it is re-marked as the AI's. Then an AI conversion in anything but grams or
-    millilitres is dropped, re-marked ones included: a model error costs a missing "≈", never a
-    false claim that the writer gave a figure, and never an AI cup the source system would resize.
-    An AI conversion into the same kind as the line's own unit ("1 lb" -> 454 g) is dropped too: it
-    is not the other measure, and it would leave the Weight and Volume pills with nothing to show.
+    D3, in place. A second measure marked as the writer's must be a number its own line writes, in
+    the unit the model gave for it (Fix Roadmap F-011: a number the line writes under another unit,
+    "cut into 2 cm cubes", is not the writer's 2 cups); when none is it is re-marked as the AI's.
+    Then an AI conversion in anything but grams or millilitres is dropped, re-marked ones included:
+    a model error costs a missing "≈", never a false claim that the writer gave a figure, and never
+    an AI cup the source system would resize. An AI conversion into the same kind as the line's own
+    unit ("1 lb" -> 454 g) is dropped too: it is not the other measure, and it would leave the Weight
+    and Volume pills with nothing to show.
     """
     for ing in refinement.structured_ingredients:
         if ing.converted_amount is None:
             continue
         if not ing.is_ai_converted:
             tol = _tolerance(ing.converted_amount)
-            if not any(abs(v - ing.converted_amount) <= tol for v in written_values(ing.fallback_string)):
-                log.warning("refine(): %s's second measure %s is not in its line — treating it as the AI's.",
-                            ing.id, ing.converted_amount)
+            if not any(abs(v - ing.converted_amount) <= tol and _writes_unit(after, ing.converted_unit)
+                       for v, after in written_measures(ing.fallback_string)):
+                log.warning("refine(): %s's second measure %s %s is not in its line — treating it as the AI's.",
+                            ing.id, ing.converted_amount, ing.converted_unit)
                 ing.is_ai_converted = True
         if ing.is_ai_converted and (ing.converted_unit or "").strip().lower() not in _METRIC_UNITS:
             log.warning("refine(): dropped %s's AI conversion in %r — only g or ml is admissible.",

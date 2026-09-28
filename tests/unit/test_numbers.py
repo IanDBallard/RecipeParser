@@ -1,7 +1,7 @@
 """The numbers a text writes, by value (verbatim-ingestion design D2, D3)."""
 import pytest
 
-from recipeparser.core.numbers import unmatched_numbers, written_values
+from recipeparser.core.numbers import unmatched_numbers, written_measures, written_values
 
 # The NYT Cooking page as r.jina.ai rendered it on 2026-09-25 (spec, Why).
 NYT_PAGE = (
@@ -170,3 +170,11 @@ def test_a_spaced_slash_still_keeps_both_numbers():
 
 def test_a_conversion_is_still_caught_beside_a_fraction():
     assert unmatched_numbers("1 1/2 cups flour", ["180g flour"]) == ["180"]
+
+
+def test_written_measures_gives_each_number_the_text_up_to_the_next():
+    # Fix Roadmap F-011: REFINE reads the unit a number was written in from the text that follows it.
+    assert written_measures("250g/2 cups flour") == [(250.0, "g/"), (2.0, " cups flour")]
+    assert written_measures("1½ cups (355 ml) milk") == [
+        (1.5, " cups ("), (1.0, " cups ("), (0.5, " cups ("), (355.0, " ml) milk"),
+    ]

@@ -65,6 +65,35 @@ class TestTheWritersSecondMeasure:
         assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (80.0, "ml", True)
 
 
+    # Fix Roadmap F-011 (RecipeParser#59's final review, ruling 7): the check matched the number only, so
+    # a number the line writes under another unit passed as the writer's own second measure.
+    def test_a_number_the_line_writes_under_another_unit_is_not_the_writers(self):
+        line = "1 lb (450 g) potatoes, cut into 2 cm cubes"
+        potatoes = _pecorino(unit="lb", fallback_string=line, converted_amount=2.0, converted_unit="cups")
+        result, _ = _refine(_refinement(potatoes))
+        ing = result.structured_ingredients[0]
+        assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (None, None, False)
+
+    def test_a_metric_measure_under_another_unit_is_re_marked_as_the_ais(self):
+        line = "1 cup flour, baked at 180 C"
+        flour = _pecorino(unit="cup", fallback_string=line, converted_amount=180.0, converted_unit="g")
+        result, _ = _refine(_refinement(flour))
+        ing = result.structured_ingredients[0]
+        assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (180.0, "g", True)
+
+    def test_the_writers_unit_may_differ_by_case_plural_or_full_stop(self):
+        for line, amount, unit in (
+            ("1 cup (240 mL) milk", 240.0, "ml"),
+            ("250g/2 cups flour", 2.0, "cup"),
+            ("4 oz. (1/2 cup) sugar", 0.5, "cups"),
+            ("1 cup (4.5 oz) flour", 4.5, "oz."),
+        ):
+            ing = _pecorino(fallback_string=line, converted_amount=amount, converted_unit=unit)
+            result, _ = _refine(_refinement(ing))
+            got = result.structured_ingredients[0]
+            assert (got.converted_amount, got.is_ai_converted) == (amount, False), line
+
+
 class TestAiConversions:
     def test_an_ai_conversion_in_grams_or_millilitres_is_kept(self):
         honey = _oil(id="ing_03", amount=20.0, unit="g", name="honey", converted_amount=15.0, converted_unit="ml")
