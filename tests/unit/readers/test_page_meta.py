@@ -82,3 +82,10 @@ class TestLooksLikeBadge:
         assert not looks_like_badge(
             "https://x.test/_next/image?url=%2Fuploads%2Fdish.jpg%3Fa%3D1%26b%3D2&w=640"
         )
+
+    def test_an_address_that_does_not_parse_is_not_a_photograph(self):
+        # Fix Roadmap F-013: urlparse raises ValueError on "http://[bad/…", and this was called outside
+        # every guard, so a malformed og:image (it passes page_meta_from_html's scheme check) failed the
+        # whole URL ingest instead of being no image.
+        assert looks_like_badge("http://[bad/hero.jpg")
+        assert looks_like_badge("https://[::1/hero.jpg", "Hero")

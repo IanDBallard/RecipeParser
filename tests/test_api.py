@@ -373,6 +373,56 @@ class TestPostJobs:
         upload.assert_awaited_once()
         assert upload.await_args.args[0] == "https://cdn.site.test/uploads/dish.jpg"  # the photo, not the badge
 
+    def test_a_malformed_og_image_is_no_meta_image_not_a_failed_job(self) -> None:
+        """Fix Roadmap F-013: "http://[bad/…" passes page_meta_from_html's scheme check, and
+        looks_like_badge's urlparse raised ValueError on it outside every guard, failing the job.
+        It is no meta image: the markdown's photograph is the hero and the job runs."""
+        from unittest.mock import AsyncMock
+
+        from recipeparser.io.readers.url import PageMeta
+
+        markdown = "Title: Noodles\n\n![Dish](https://cdn.site.test/uploads/dish.jpg)\n\n1 cup noodles"
+
+        class _Resp:
+            text = markdown
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                pass
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> _Resp:
+                return _Resp()
+
+        stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
+        with stack, \
+             patch("recipeparser.adapters.api.httpx.AsyncClient", _Http), \
+             patch(
+                 "recipeparser.adapters.api._fetch_page_meta",
+                 new=AsyncMock(return_value=PageMeta("http://[bad/hero.jpg", "A weeknight noodle dish.")),
+             ), \
+             patch("recipeparser.adapters.api._upload_image_to_storage",
+                   new=AsyncMock(return_value="https://storage.test/dish.jpg")) as upload, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://cooking.nytimes.com/recipes/1020732-noodles"})
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+        upload.assert_awaited_once()
+        assert upload.await_args.args[0] == "https://cdn.site.test/uploads/dish.jpg"
+        mock_pipeline_cls.return_value.run.assert_called_once()
+
     def test_total_chunks_and_the_hint_land_before_the_pipeline_runs(self) -> None:
         order: list[str] = []
         stack, _mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()
@@ -762,6 +812,11 @@ class TestExtractImageUrl:
     def test_no_image_returns_none(self) -> None:
         md = "# Recipe\nBoil water. Add pasta."
         assert _extract_image_url_from_markdown(md) is None
+
+    def test_a_markdown_image_that_does_not_parse_is_passed_over(self) -> None:
+        # Fix Roadmap F-013: looks_like_badge used to raise on it and fail the job.
+        md = "![Broken](http://[bad/dish.jpg)\n![Dish](https://example.com/dish.jpg)\nBoil water."
+        assert _extract_image_url_from_markdown(md) == "https://example.com/dish.jpg"
 
     def test_og_image_cleans_double_paren(self) -> None:
         # Some Jina responses wrap the URL in an extra closing paren
