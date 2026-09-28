@@ -174,25 +174,58 @@ def _host_names(quote: str, source_host: str) -> bool:
     return host == bare or host.endswith("." + bare)
 
 
+# Fix Roadmap F-010: words that say nothing about the system on their own. Every system writes a cup,
+# a spoon, an ounce, a pint and a gram, so "cup" or "1 ounce" is not evidence; neither are grams beside
+# cups (the prompt's own rule). "stone", "gill", "teacup" and "breakfast" are absent: they are the
+# pre-metric British measures the prompt names as evidence. "dessertspoon" is present: the prompt says
+# it alone is not evidence.
+_BARE_WORDS = {
+    "t", "tsp", "teaspoon", "teaspoons", "tbsp", "tbs", "tbl", "tablespoon", "tablespoons",
+    "c", "cup", "cups", "dessertspoon", "dessertspoons", "dsp", "fl", "fluid", "oz", "ounce", "ounces",
+    "pint", "pints", "pt", "quart", "quarts", "qt", "gallon", "gallons", "gal",
+    "ml", "millilitre", "millilitres", "milliliter", "milliliters", "cl", "dl", "l", "litre", "litres",
+    "liter", "liters", "g", "gram", "grams", "kg", "kilogram", "kilograms", "lb", "lbs", "pound", "pounds",
+    "a", "an", "of", "the", "and", "or", "about", "x",
+}
+# A measure-only quote is evidence when it states a size in millilitres or fluid ounces: "1 cup (250 ml)",
+# "(237 ml)", "1 tbsp (20 ml)", "a 20 fl oz pint" (the prompt's first kind of evidence).
+_STATED_SIZE = re.compile(r"\d\s*(?:ml|millilit(?:re|er)s?|fl\.?\s*oz|fluid\s+ounces?)(?![^\W\d_])")
+
+
+def _quoted_from(quote: str, text: str) -> bool:
+    """
+    True when ``quote`` (already plain) is evidence the plain ``text`` writes: whole words of it, not a
+    piece of one ("ted pecorino" is not in "grated pecorino"), and with some substance: a word beyond
+    the measures every system writes, or a stated millilitre or fluid-ounce size.
+    """
+    words = re.findall(r"[^\W\d_]+", quote)
+    if not any(w not in _BARE_WORDS for w in words) and not _STATED_SIZE.search(quote):
+        return False
+    # A word boundary only where the quote's own edge is a word character: "(237ml)" still counts in
+    # "1 cup(237ml) cream".
+    head = r"(?<!\w)" if re.match(r"\w", quote) else ""
+    tail = r"(?!\w)" if re.search(r"\w$", quote) else ""
+    return re.search(head + re.escape(quote) + tail, text) is not None
+
+
 def _check_detection(refinement: CayenneRefinement, raw: RecipeExtraction, source_host: Optional[str]) -> None:
     """
     D5, in place. The detected system must be one of the five (in any case; written canonically)
-    and its evidence must be a quote from the recipe text or name the source host as given (the host
-    or a dot-boundary suffix of it); otherwise both are written null.
+    and its evidence must be a quote from the recipe text (whole words, with some substance:
+    ``_quoted_from``) or name the source host as given (the host or a dot-boundary suffix of it);
+    otherwise both are written null.
     """
     detected = refinement.source_uom_system_detected
     system = _CANONICAL_SYSTEMS.get((detected or "").strip().lower())
     quote = _plain(refinement.source_uom_system_evidence or "")
-    supported = (
-        system is not None
-        and quote != ""
-        and ((source_host is not None and _host_names(quote, source_host)) or quote in _plain(_recipe_text(raw)))
-    )
+    named_host = source_host is not None and _host_names(quote, source_host)
+    supported = system is not None and quote != "" and (named_host or _quoted_from(quote, _plain(_recipe_text(raw))))
     if supported:
         refinement.source_uom_system_detected = system
     else:
         if detected is not None:
-            log.warning("refine(): dropped detected system %r — its evidence %r is not in the recipe or its host.",
+            log.warning("refine(): dropped detected system %r — its evidence %r is not"
+                        " a quote of substance from the recipe, nor its host.",
                         detected, refinement.source_uom_system_evidence)
         refinement.source_uom_system_detected = None
         refinement.source_uom_system_evidence = None

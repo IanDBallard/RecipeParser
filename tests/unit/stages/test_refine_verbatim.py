@@ -43,9 +43,9 @@ def _refinement(*ingredients, detected=None, evidence=None) -> CayenneRefinement
     )
 
 
-def _refine(refinement, source_host=None):
+def _refine(refinement, source_host=None, raw=RAW):
     with patch(_PATCH, return_value=refinement) as fn:
-        return refine(RAW, client=MagicMock(), source_host=source_host), fn
+        return refine(raw, client=MagicMock(), source_host=source_host), fn
 
 
 class TestTheWritersSecondMeasure:
@@ -135,7 +135,7 @@ class TestTheDetectedSystem:
 
     def test_a_lower_case_system_is_written_canonically(self):
         # Final review M2.
-        result, _ = _refine(_refinement(_oil(), detected=" imperial ", evidence="1 ounce"))
+        result, _ = _refine(_refinement(_oil(), detected=" imperial ", evidence="1 ounce (about 1/3 packed cup)"))
         assert result.source_uom_system_detected == "Imperial"
         result, _ = _refine(_refinement(_oil(), detected="au", evidence="taste.com.au"), source_host="taste.com.au")
         assert result.source_uom_system_detected == "AU"
@@ -150,3 +150,46 @@ class TestTheDetectedSystem:
         for quote in ("aste.com", "aste.com.au", "om.au", "taste", "au."):
             result, _ = _refine(_refinement(_oil(), detected="AU", evidence=quote), source_host="taste.com.au")
             assert result.source_uom_system_detected is None, quote
+
+
+# Fix Roadmap F-010 (RecipeParser#59's final review, ruling 7): the evidence guard took any substring of
+# the recipe, so a quote of "cup" verified and a wrong system stuck, resizing every cup and spoon.
+_EVIDENCE_RAW = RecipeExtraction(
+    name="Pumpkin Scones",
+    notes="Uses Australian standard measures.",
+    ingredients=[
+        "1 cup (250 ml) milk",
+        "1 tbsp (20 ml) caster sugar",
+        "1 stone potatoes",
+        "2 teacups plain flour",
+        "½ cup (120 g) butter",
+        "1 cup(237ml) cream",
+    ],
+    directions=["Bake."],
+)
+
+
+class TestWhatCountsAsEvidence:
+    def test_a_measure_every_system_writes_is_not_evidence(self):
+        for quote in ("cup", "1 cup", "CUP", "1 tablespoon", "tablespoon", "1 ounce", "ounce"):
+            result, _ = _refine(_refinement(_oil(), detected="US", evidence=quote))
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (None, None), quote
+
+    def test_grams_beside_a_cup_are_not_evidence(self):
+        # The prompt's own rule: American writers print grams beside cups too.
+        result, _ = _refine(_refinement(_oil(), detected="UK", evidence="cup (120 g)"), raw=_EVIDENCE_RAW)
+        assert result.source_uom_system_detected is None
+
+    def test_a_piece_of_a_word_is_not_evidence(self):
+        for quote in ("ted pecorino", "live oil", "packed cu", "e oil"):
+            result, _ = _refine(_refinement(_oil(), detected="US", evidence=quote))
+            assert result.source_uom_system_detected is None, quote
+
+    def test_the_evidence_the_prompt_names_is_still_kept(self):
+        for detected, quote in (
+            ("AU", "1 cup (250 ml)"), ("AU", "(250 ml)"), ("AU", "1 tbsp (20 ml)"), ("US", "(237ml)"),
+            ("UK", "caster sugar"), ("UK", "plain flour"), ("AU", "Australian standard measures"),
+            ("Imperial", "1 stone potatoes"), ("Imperial", "1 stone"), ("Imperial", "teacups"),
+        ):
+            result, _ = _refine(_refinement(_oil(), detected=detected, evidence=quote), raw=_EVIDENCE_RAW)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (detected, quote), quote
