@@ -40,6 +40,16 @@ def test_a_relative_or_empty_image_is_no_image():
     assert page_meta_from_html("<html><body>no head</body></html>") == PageMeta(None, None)
 
 
+def test_an_image_address_that_does_not_parse_or_names_no_host_is_no_image():
+    # Fix Roadmap F-110: the "absolute http(s)" check was a prefix test, so "http://[bad/…" (which
+    # urlparse refuses) and "https://" (no host) passed as an image address.
+    for bad in ("http://[bad/hero.jpg", "https://", "https:///hero.jpg", "http://:80/hero.jpg"):
+        html = f'<meta property="og:image" content="{bad}">'
+        assert page_meta_from_html(html).image_url is None, bad
+    html = '<meta property="og:image" content="HTTPS://X.test/p.jpg">'
+    assert page_meta_from_html(html).image_url == "HTTPS://X.test/p.jpg"
+
+
 def test_the_first_occurrence_of_a_tag_wins():
     html = '<meta property="og:image" content="https://x.test/1.jpg"><meta property="og:image" content="https://x.test/2.jpg">'
     assert page_meta_from_html(html).image_url == "https://x.test/1.jpg"

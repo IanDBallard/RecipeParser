@@ -79,6 +79,18 @@ def _meta_tags(html: str) -> Dict[str, str]:
     return found
 
 
+def _is_absolute_http(url: str) -> bool:
+    """
+    True for an http(s) address that parses and names a host. A prefix test let "http://[bad/…"
+    (which ``urlparse`` refuses) and "https://" through (Fix Roadmap F-110).
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return parsed.scheme.lower() in ("http", "https") and bool(parsed.hostname)
+
+
 def page_meta_from_html(html: str) -> PageMeta:
     """
     The hero image and description a page declares in its own <meta> tags.
@@ -86,11 +98,11 @@ def page_meta_from_html(html: str) -> PageMeta:
     The scraper's markdown carries neither reliably — on 2026-09-12 an NYT page
     came back with no og:image line and, as its only image, the Edamam
     "Powered by" logo, while the page's own head named the real photograph.
-    An image that is not an absolute http(s) URL is treated as none.
+    An image that is not an absolute http(s) URL naming a host is treated as none.
     """
     tags = _meta_tags(html)
     image = next((tags[k] for k in _IMAGE_KEYS if k in tags), None)
-    if image is not None and not image.lower().startswith(("http://", "https://")):
+    if image is not None and not _is_absolute_http(image):
         image = None
     description = next((tags[k] for k in _DESCRIPTION_KEYS if k in tags), None)
     return PageMeta(image_url=image, description=description)

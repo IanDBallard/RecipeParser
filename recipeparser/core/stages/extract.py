@@ -43,7 +43,9 @@ def _run(
     chunk_text: str, client: Any, plain_text_mode: bool, limiter: Optional[GlobalRateLimiter]
 ) -> List[RecipeExtraction]:
     _slot(limiter)
-    result = extract_recipe_from_text(chunk_text, client) if plain_text_mode else extract_recipes(chunk_text, client)
+    # The limiter goes on down: a retry inside gemini.py takes a slot of its own (F-109).
+    result = (extract_recipe_from_text(chunk_text, client, limiter=limiter) if plain_text_mode
+              else extract_recipes(chunk_text, client, limiter=limiter))
     return result.recipes if result.recipes else []
 
 
@@ -67,7 +69,8 @@ def extract(
                          makes: the baker's-table call, the extraction and its retry, up to
                          three (Fix Roadmap F-012). The caller takes none on its behalf. The
                          limiter is a sliding window that holds no slot across a wait, so
-                         taking one per call cannot deadlock. None takes no slot.
+                         taking one per call cannot deadlock. None takes no slot. It is
+                         handed on, so each retry gemini.py makes takes its own (F-109).
 
     Returns:
         An ``Extraction``.  ``recipes`` is empty when the chunk contains no
@@ -89,7 +92,7 @@ def extract(
     if not plain_text_mode and needs_table_normalisation(chunk_text):
         log.info("extract(): baker's-percentage table detected — normalising.")
         _slot(limiter)
-        chunk_text = normalise_baker_table(chunk_text, client)
+        chunk_text = normalise_baker_table(chunk_text, client, limiter=limiter)
         # The table prompt re-lays a table out and is told to add no value, so a number it wrote
         # counts as the writer's: the source is both texts.
         source_text = f"{source_text}\n{chunk_text}"

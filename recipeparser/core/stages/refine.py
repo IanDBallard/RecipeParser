@@ -12,6 +12,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from recipeparser.core.numbers import written_measures
+from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.gemini import refine_recipe_for_cayenne
 from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction
 
@@ -226,24 +227,81 @@ def _quoted_from(quote: str, text: str) -> bool:
     return re.search(head + re.escape(quote) + tail, text) is not None
 
 
+# Fix Roadmap F-108: a quote of substance still verified any of the five systems, "2 cups flour" as UK
+# or Imperial alike. The quote must now carry, for the system it is offered for, one of the refine
+# prompt's kinds of evidence (gemini.py, SOURCE SYSTEM): a unit size the prompt names, a statement
+# naming the measures, a pre-metric British measure, or a regional ingredient name. "US" and "EU"
+# count only in capitals ("let us bake"); "AU" not at all ("au gratin").
+_SIZE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(ml|millilit(?:re|er)s?|fl\.?\s*oz|fluid\s+ounces?)(?![^\W\d_])")
+# A stated size and the systems it names: the US cup (and half), the metric cup (and half), the
+# Australian 20 ml tablespoon, the 568 ml / 20 fl oz Imperial pint (and half).
+_ML_SIZES = {
+    236: ("US",), 237: ("US",), 240: ("US",), 118: ("US",), 120: ("US",),
+    250: ("UK", "EU", "AU"), 125: ("UK", "EU", "AU"), 20: ("AU",), 568: ("Imperial",), 284: ("Imperial",),
+}
+_FL_OZ_SIZES = {8: ("US",), 20: ("Imperial",), 10: ("Imperial",)}
+_FRACTION = "¼-¾⅐-⅞"
+# The regional ingredient names (the prompt's "ingredient names only one country uses") are deliberately
+# a closed list: the common, unambiguous British/American pairs, each tied to the one system the prompt
+# gives it. UK: caster sugar, plain and self-raising flour, double and single cream, courgette,
+# aubergine, icing sugar, bicarbonate of soda, cornflour, spring onion, demerara sugar, golden syrup.
+# US: all-purpose flour, heavy (whipping) cream, half-and-half, confectioners' and powdered sugar,
+# stick of butter, zucchini, eggplant, cilantro, baking soda, cornstarch, scallion. Names both countries
+# use (coriander, mince) and spellings (colour, flavour) are left out. A genuine name outside the list
+# costs the detection, never gives a wrong one.
+_UK_NAMES = (
+    r"cast[eo]r sugar|plain flour|self[- ]raising flour|double cream|single cream|courgettes?|aubergines?"
+    r"|icing sugar|bicarbonate of soda|cornflour|spring onions?|demerara sugar|golden syrup"
+)
+_US_NAMES = (
+    r"all[- ]purpose flour|heavy (?:whipping )?cream|half[- ]and[- ]half|confectioners'? sugar"
+    r"|sticks? of butter|zucchinis?|eggplants?|cilantro|powdered sugar|baking soda|cornstarch|scallions?"
+)
+_SYSTEM_WORDS = {
+    "US": r"\bamerican?\b|\b(?:" + _US_NAMES + r")(?![^\W\d_])",
+    "UK": r"\bbritish\b|\bbritain\b|\buk\b|\bnew zealand\b|\bnz\b|\bmetric\b|\b(?:" + _UK_NAMES + r")\b",
+    "EU": r"\beurope(?:an)?\b|\bmetric\b",
+    "AU": r"\baustralian?\b|\bmetric\b",
+    "Imperial": r"\bimperial\b|\bbritish\b|\bpre-metric\b|\bgills?\b|\bteacups?(?:fuls?)?\b|\bbreakfast ?cups?\b"
+                r"|(?:\d|[" + _FRACTION + r"]|\bone|\bhalf a)\s*stones?\b",
+}
+_SYSTEM_CAPITALS = {"US": r"(?<![A-Za-z])U\.?S\.?(?:A\.?)?(?![A-Za-z])", "EU": r"(?<![A-Za-z])EU(?![A-Za-z])"}
+
+
+def _indicates(system: str, quote: str, written: str) -> bool:
+    """True when the plain ``quote`` (``written``: as the model gave it) is evidence of ``system``."""
+    for figure, unit in _SIZE.findall(quote):
+        sizes = _ML_SIZES if unit.startswith(("ml", "millilit")) else _FL_OZ_SIZES
+        if float(figure).is_integer() and system in sizes.get(int(float(figure)), ()):
+            return True
+    if re.search(_SYSTEM_WORDS[system], quote):
+        return True
+    capitals = _SYSTEM_CAPITALS.get(system)
+    return capitals is not None and re.search(capitals, written) is not None
+
+
 def _check_detection(refinement: CayenneRefinement, raw: RecipeExtraction, source_host: Optional[str]) -> None:
     """
     D5, in place. The detected system must be one of the five (in any case; written canonically)
     and its evidence must be a quote from the recipe text (whole words, with some substance:
-    ``_quoted_from``) or name the source host as given (the host or a dot-boundary suffix of it);
-    otherwise both are written null.
+    ``_quoted_from``) that is evidence of that system (``_indicates``), or name the source host as
+    given (the host or a dot-boundary suffix of it); otherwise both are written null.
     """
     detected = refinement.source_uom_system_detected
     system = _CANONICAL_SYSTEMS.get((detected or "").strip().lower())
     quote = _plain(refinement.source_uom_system_evidence or "")
     named_host = source_host is not None and _host_names(quote, source_host)
-    supported = system is not None and quote != "" and (named_host or _quoted_from(quote, _plain(_recipe_text(raw))))
+    supported = system is not None and quote != "" and (
+        named_host
+        or (_quoted_from(quote, _plain(_recipe_text(raw)))
+            and _indicates(system, quote, refinement.source_uom_system_evidence or ""))
+    )
     if supported:
         refinement.source_uom_system_detected = system
     else:
         if detected is not None:
             log.warning("refine(): dropped detected system %r — its evidence %r is not"
-                        " a quote of substance from the recipe, nor its host.",
+                        " a quote from the recipe that names that system, nor its host.",
                         detected, refinement.source_uom_system_evidence)
         refinement.source_uom_system_detected = None
         refinement.source_uom_system_evidence = None
@@ -255,6 +313,7 @@ def refine(
     *,
     source_host: Optional[str] = None,
     user_axes: Optional[Dict[str, List[str]]] = None,
+    limiter: Optional[GlobalRateLimiter] = None,
 ) -> CayenneRefinement:
     """
     Refine a raw RecipeExtraction into a structured CayenneRefinement.
@@ -275,6 +334,9 @@ def refine(
         user_axes:         Optional dict of axis_name → [tag, ...].
                            When None or empty, grid_categories will be {} in
                            the result.
+        limiter:           Handed to the Gemini call, whose retries each take a slot
+                           (Fix Roadmap F-109). The caller takes the first request's.
+                           None takes no slot.
 
     Returns:
         A validated ``CayenneRefinement`` object.
@@ -293,6 +355,7 @@ def refine(
         client=client,
         source_host=source_host,
         user_axes=user_axes,
+        limiter=limiter,
     )
 
     if result is None:

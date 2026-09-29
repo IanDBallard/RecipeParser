@@ -739,6 +739,23 @@ def test_refine_is_called_with_no_host_when_the_chunk_has_no_source_url():
     assert mock_refine.call_args.kwargs["source_host"] is None
 
 
+def test_refine_is_handed_the_limiter_for_its_retries():
+    """Fix Roadmap F-109: the pipeline takes the refinement's first slot; a retry inside gemini.py
+    takes its own from the limiter handed down."""
+    chunk = Chunk(text="Scones ...", input_type=InputType.URL)
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction([
+        RecipeExtraction(name="Scones", ingredients=["x"], directions=["y"]),
+    ], [])), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Scones")) as mock_refine, \
+         patch(_PATCH_CATEGORIZE, return_value={}), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        pipeline.run([chunk])
+
+    assert mock_refine.call_args.kwargs["limiter"] is pipeline._limiter
+
+
 def test_extract_takes_its_limiter_slots_itself():
     """Fix Roadmap F-012: extract() makes up to three Gemini calls (the baker's table, the extraction
     and the number-guard retry), so it takes a slot before each; the pipeline hands it the limiter

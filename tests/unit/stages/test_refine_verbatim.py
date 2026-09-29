@@ -13,6 +13,7 @@ RAW = RecipeExtraction(
         "1 tablespoon olive oil",
     ],
     directions=["Cook the spaghetti."],
+    notes="Measured with US cup measures.",
 )
 
 
@@ -128,12 +129,12 @@ class TestAiConversions:
 
 class TestTheDetectedSystem:
     def test_evidence_the_recipe_writes_is_kept(self):
-        result, _ = _refine(_refinement(_oil(), detected="US", evidence="1 ounce (about 1/3 packed cup)"))
-        assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("US", "1 ounce (about 1/3 packed cup)")
+        result, _ = _refine(_refinement(_oil(), detected="US", evidence="US cup measures"))
+        assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("US", "US cup measures")
 
     def test_quoted_and_recased_evidence_is_accepted(self):
         # Review Focus 2.
-        result, _ = _refine(_refinement(_oil(), detected="US", evidence="“1 OUNCE (about 1/3 packed cup)”"))
+        result, _ = _refine(_refinement(_oil(), detected="US", evidence="“US CUP Measures”"))
         assert result.source_uom_system_detected == "US"
 
     def test_evidence_the_recipe_never_writes_nulls_both(self):
@@ -164,7 +165,7 @@ class TestTheDetectedSystem:
 
     def test_a_lower_case_system_is_written_canonically(self):
         # Final review M2.
-        result, _ = _refine(_refinement(_oil(), detected=" imperial ", evidence="1 ounce (about 1/3 packed cup)"))
+        result, _ = _refine(_refinement(_oil(), detected=" imperial ", evidence="1 stone"), raw=_EVIDENCE_RAW)
         assert result.source_uom_system_detected == "Imperial"
         result, _ = _refine(_refinement(_oil(), detected="au", evidence="taste.com.au"), source_host="taste.com.au")
         assert result.source_uom_system_detected == "AU"
@@ -222,3 +223,104 @@ class TestWhatCountsAsEvidence:
         ):
             result, _ = _refine(_refinement(_oil(), detected=detected, evidence=quote), raw=_EVIDENCE_RAW)
             assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (detected, quote), quote
+
+
+# Fix Roadmap F-108 (batch 18): a quote of substance verified any of the five systems — "2 cups flour"
+# passed as US, UK, EU, AU or Imperial alike, because an ingredient word counted as substance. The
+# quote must now carry one of the prompt's kinds of evidence for the system it is offered for.
+_SYSTEM_RAW = RecipeExtraction(
+    name="Mixed Evidence",
+    notes="Let us bake. Written for US cup measures; European metric measures differ.",
+    ingredients=[
+        "2 cups flour",
+        "1 cup (250 ml) milk",
+        "1 cup(237ml) cream",
+        "1 tbsp (20 ml) caster sugar",
+        "1 pint (568 ml) stock",
+        "a 20 fl oz pint of beer",
+        "2 cups all-purpose flour",
+        "1 stone potatoes",
+        "1 lb stone fruit",
+        "1 gill cream",
+    ],
+    directions=["Bake."],
+)
+
+
+class TestEvidenceNamesItsSystem:
+    def test_an_ingredient_line_is_evidence_of_no_system(self):
+        for detected in ("US", "UK", "EU", "AU", "Imperial"):
+            result, _ = _refine(_refinement(_oil(), detected=detected, evidence="2 cups flour"), raw=_SYSTEM_RAW)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (None, None), detected
+
+    def test_evidence_offered_for_another_system_is_dropped(self):
+        for detected, quote in (
+            ("AU", "1 cup(237ml) cream"), ("US", "1 cup (250 ml)"), ("EU", "1 tbsp (20 ml)"),
+            ("US", "caster sugar"), ("Imperial", "caster sugar"),
+            ("UK", "1 stone potatoes"), ("AU", "2 cups all-purpose flour"), ("UK", "1 pint (568 ml)"),
+            ("EU", "US cup measures"), ("Imperial", "1 cup (250 ml) milk"),
+        ):
+            result, _ = _refine(_refinement(_oil(), detected=detected, evidence=quote), raw=_SYSTEM_RAW)
+            assert result.source_uom_system_detected is None, (detected, quote)
+
+    def test_a_word_that_only_looks_like_evidence_is_not(self):
+        for detected, quote in (("US", "let us bake"), ("Imperial", "stone fruit"), ("Imperial", "1 lb stone fruit")):
+            result, _ = _refine(_refinement(_oil(), detected=detected, evidence=quote), raw=_SYSTEM_RAW)
+            assert result.source_uom_system_detected is None, (detected, quote)
+
+    def test_each_systems_own_evidence_is_kept(self):
+        for detected, quote in (
+            ("US", "(237ml)"), ("US", "2 cups all-purpose flour"), ("US", "US cup measures"),
+            ("UK", "1 cup (250 ml)"), ("UK", "caster sugar"), ("EU", "(250 ml)"),
+            ("EU", "European metric measures"), ("AU", "1 tbsp (20 ml)"), ("AU", "1 cup (250 ml) milk"),
+            ("Imperial", "1 pint (568 ml)"), ("Imperial", "a 20 fl oz pint"), ("Imperial", "1 gill cream"),
+            ("Imperial", "1 stone potatoes"),
+        ):
+            result, _ = _refine(_refinement(_oil(), detected=detected, evidence=quote), raw=_SYSTEM_RAW)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (detected, quote), quote
+
+    def test_the_host_stays_evidence_for_the_system_it_is_offered_for(self):
+        result, _ = _refine(_refinement(_oil(), detected="AU", evidence="taste.com.au"), source_host="taste.com.au",
+                            raw=_SYSTEM_RAW)
+        assert result.source_uom_system_detected == "AU"
+
+
+# The prompt's fifth kind of evidence: ingredient names only one country uses. The review of batch 18
+# widened the closed lists to the common unambiguous British/American pairs.
+_NAMES_RAW = RecipeExtraction(
+    name="Ratatouille",
+    ingredients=[
+        "2 courgettes", "1 aubergine", "1 tbsp icing sugar", "1 tsp bicarbonate of soda", "1 tbsp cornflour",
+        "3 spring onions", "2 tbsp demerara sugar", "1 tbsp golden syrup",
+        "2 zucchini", "1 eggplant", "1 bunch cilantro", "1 tbsp powdered sugar", "1 tsp baking soda",
+        "1 tbsp cornstarch", "3 scallions", "1 bunch coriander",
+    ],
+    directions=["Cook."],
+)
+_UK_NAMES = ("courgettes", "aubergine", "icing sugar", "bicarbonate of soda", "cornflour", "spring onions",
+             "demerara sugar", "golden syrup", "2 COURGETTES")
+_US_NAMES = ("zucchini", "eggplant", "cilantro", "powdered sugar", "baking soda", "cornstarch", "scallions")
+
+
+class TestRegionalIngredientNames:
+    def test_a_british_name_is_uk_evidence(self):
+        for quote in _UK_NAMES:
+            result, _ = _refine(_refinement(_oil(), detected="UK", evidence=quote), raw=_NAMES_RAW)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("UK", quote), quote
+
+    def test_an_american_name_is_us_evidence(self):
+        for quote in _US_NAMES:
+            result, _ = _refine(_refinement(_oil(), detected="US", evidence=quote), raw=_NAMES_RAW)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("US", quote), quote
+
+    def test_a_name_is_evidence_of_its_own_country_only(self):
+        for detected, names in (("US", _UK_NAMES), ("AU", _UK_NAMES), ("Imperial", _UK_NAMES),
+                                ("UK", _US_NAMES), ("EU", _US_NAMES)):
+            for quote in names:
+                result, _ = _refine(_refinement(_oil(), detected=detected, evidence=quote), raw=_NAMES_RAW)
+                assert result.source_uom_system_detected is None, (detected, quote)
+
+    def test_a_shared_name_is_evidence_of_neither(self):
+        for detected in ("UK", "US"):
+            result, _ = _refine(_refinement(_oil(), detected=detected, evidence="1 bunch coriander"), raw=_NAMES_RAW)
+            assert result.source_uom_system_detected is None, detected
