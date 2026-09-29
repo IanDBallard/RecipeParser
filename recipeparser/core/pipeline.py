@@ -391,6 +391,7 @@ class RecipePipeline:
                     client=self._client,
                     source_host=host_of(chunk.source_url) if chunk.source_url else None,
                     user_axes=user_axes,
+                    limiter=self._limiter,  # for the retries inside gemini.py (F-109)
                 )
 
                 # CATEGORIZE (result is already embedded in refined via refine())

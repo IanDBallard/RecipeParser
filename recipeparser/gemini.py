@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
 from google.genai import errors as genai_errors
 from pydantic import BaseModel, Field, ValidationError, create_model
@@ -28,6 +28,9 @@ from recipeparser.config import (
 )
 from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import CayenneRefinement, RecipeList
+
+if TYPE_CHECKING:
+    from recipeparser.core.rate_limiter import GlobalRateLimiter
 
 log = logging.getLogger(__name__)
 
@@ -168,7 +171,13 @@ def _log_usage_metadata(response: object, what: str) -> None:
 
 
 def _call_with_retry(
-    client, model: str, contents: str, config: dict, *, what: str = "Gemini call"
+    client,
+    model: str,
+    contents: str,
+    config: dict,
+    *,
+    what: str = "Gemini call",
+    limiter: Optional["GlobalRateLimiter"] = None,
 ) -> object:
     """
     Wrapper around client.models.generate_content that retries on rate-limit
@@ -180,9 +189,16 @@ def _call_with_retry(
     a different thing from a local timeout), so it raises immediately on the
     first attempt instead of burning the 5x exponential back-off ladder on a
     call that already waited the full HTTP_TIMEOUT_SECS.
+
+    ``limiter``: every request after the first takes a slot from it (Fix Roadmap
+    F-109: a back-off retry is a request like any other). The first attempt's slot
+    is the caller's to take, or it would count twice. The limiter holds no slot
+    across a wait, so taking one here cannot deadlock. None takes no slot.
     """
     delay = BACKOFF_BASE_SECS
     for attempt in range(1, MAX_RETRIES + 2):
+        if attempt > 1 and limiter is not None:
+            limiter.wait_then_record_start()
         try:
             response = client.models.generate_content(
                 model=model,
@@ -215,7 +231,15 @@ def _finish_reason(response: object) -> str:
     return str(getattr(candidates[0], "finish_reason", "") or "")
 
 
-def _generate_and_parse(client, model: str, contents: str, config: dict, *, what: str) -> RecipeList:
+def _generate_and_parse(
+    client,
+    model: str,
+    contents: str,
+    config: dict,
+    *,
+    what: str,
+    limiter: Optional["GlobalRateLimiter"] = None,
+) -> RecipeList:
     """Call Gemini and parse the reply, retrying a reply that will not parse.
 
     ``_call_with_retry`` covers transport and quota failures. It cannot cover a
@@ -223,12 +247,18 @@ def _generate_and_parse(client, model: str, contents: str, config: dict, *, what
     why such a reply was previously swallowed and its recipes lost. The parse
     therefore happens inside this loop, not after it.
 
+    ``limiter`` is as for ``_call_with_retry``: a parse retry takes a slot too
+    (F-109), and the first attempt's is the caller's.
+
     Raises:
         ExtractionParseError: every attempt returned something unparseable.
     """
     last_error = "no attempt made"
     for attempt in range(1, MAX_PARSE_RETRIES + 2):
-        response = _call_with_retry(client, model=model, contents=contents, config=config, what=what)
+        if attempt > 1 and limiter is not None:
+            limiter.wait_then_record_start()
+        response = _call_with_retry(client, model=model, contents=contents, config=config, what=what,
+                                    limiter=limiter)
         text = (getattr(response, "text", "") or "").strip()
         if text:
             try:
@@ -328,7 +358,7 @@ Text:
 {text_chunk}"""
 
 
-def normalise_baker_table(text_chunk: str, client) -> str:
+def normalise_baker_table(text_chunk: str, client, *, limiter: Optional["GlobalRateLimiter"] = None) -> str:
     """
     Pre-process a chunk containing multi-column baker's percentage tables by
     asking Gemini to reformat them into readable per-ingredient lines.
@@ -343,6 +373,7 @@ def normalise_baker_table(text_chunk: str, client) -> str:
             contents=prompt,
             config={"temperature": 0},
             what="Table normalisation",
+            limiter=limiter,
         )
         normalised = response.text.strip()
         if normalised:
@@ -391,6 +422,8 @@ Text:
 def extract_recipe_from_text(
     text: str,
     client,
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
 ) -> RecipeList:
     """
     Extract a single recipe from plain text (e.g. from a Paprika import or
@@ -411,6 +444,7 @@ def extract_recipe_from_text(
             "temperature": 0.1,
         },
         what="Gemini plain-text extraction",
+        limiter=limiter,
     )
 
 
@@ -466,6 +500,8 @@ Text chunk:
 def extract_recipes(
     text_chunk: str,
     client,
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
 ) -> RecipeList:
     """
     Call Gemini with the extraction prompt and return a parsed RecipeList.
@@ -489,6 +525,7 @@ def extract_recipes(
             "temperature": 0.1,
         },
         what="Gemini extraction",
+        limiter=limiter,
     )
 
 
@@ -729,6 +766,8 @@ def refine_recipe_for_cayenne(
     client,
     source_host: Optional[str] = None,
     user_axes: Optional[Dict[str, List[str]]] = None,
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
 ) -> Optional[CayenneRefinement]:
     """
     Post-processing pass to convert raw text recipe into high-fidelity Cayenne data.
@@ -743,6 +782,8 @@ def refine_recipe_for_cayenne(
                            only evidence outside the recipe text.
         user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
                            When None or empty, grid_categories will be {} in the result.
+        limiter:           Takes a slot for each retry (F-109; see _call_with_retry). The
+                           caller takes the first request's.
     """
     axes = user_axes or {}
     schema = _build_dynamic_grid_schema(axes)
@@ -762,6 +803,7 @@ def refine_recipe_for_cayenne(
                 "temperature": 0.1,
             },
             what="Cayenne refinement",
+            limiter=limiter,
         )
         # response_json_schema does not auto-parse; we get raw JSON text.
         if not response.text or not response.text.strip():

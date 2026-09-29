@@ -12,6 +12,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from recipeparser.core.numbers import written_measures
+from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.gemini import refine_recipe_for_cayenne
 from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction
 
@@ -299,6 +300,7 @@ def refine(
     *,
     source_host: Optional[str] = None,
     user_axes: Optional[Dict[str, List[str]]] = None,
+    limiter: Optional[GlobalRateLimiter] = None,
 ) -> CayenneRefinement:
     """
     Refine a raw RecipeExtraction into a structured CayenneRefinement.
@@ -319,6 +321,9 @@ def refine(
         user_axes:         Optional dict of axis_name → [tag, ...].
                            When None or empty, grid_categories will be {} in
                            the result.
+        limiter:           Handed to the Gemini call, whose retries each take a slot
+                           (Fix Roadmap F-109). The caller takes the first request's.
+                           None takes no slot.
 
     Returns:
         A validated ``CayenneRefinement`` object.
@@ -337,6 +342,7 @@ def refine(
         client=client,
         source_host=source_host,
         user_axes=user_axes,
+        limiter=limiter,
     )
 
     if result is None:
