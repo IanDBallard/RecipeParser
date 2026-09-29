@@ -1339,7 +1339,10 @@ class TestGenerateRecipeImage:
     def test_a_quota_error_is_a_503_that_says_busy(self, client: TestClient) -> None:
         from google.genai import errors as genai_errors
         quota = genai_errors.ClientError.__new__(genai_errors.ClientError)
-        quota.code = 429; quota.status = "RESOURCE_EXHAUSTED"; quota.message = "quota"; quota.args = ("quota",)
+        quota.code = 429
+        quota.status = "RESOURCE_EXHAUSTED"
+        quota.message = "quota"
+        quota.args = ("quota",)
         with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT, return_value=MagicMock()), \
              patch(_GENERATE, side_effect=quota):
             resp = self._post(client)
@@ -1349,7 +1352,10 @@ class TestGenerateRecipeImage:
     def test_a_server_error_is_a_503(self, client: TestClient) -> None:
         from google.genai import errors as genai_errors
         down = genai_errors.ServerError.__new__(genai_errors.ServerError)
-        down.code = 503; down.status = "UNAVAILABLE"; down.message = "unavailable"; down.args = ("unavailable",)
+        down.code = 503
+        down.status = "UNAVAILABLE"
+        down.message = "unavailable"
+        down.args = ("unavailable",)
         with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT, return_value=MagicMock()), \
              patch(_GENERATE, side_effect=down):
             resp = self._post(client)
