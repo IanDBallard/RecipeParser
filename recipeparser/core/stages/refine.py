@@ -230,9 +230,8 @@ def _quoted_from(quote: str, text: str) -> bool:
 # Fix Roadmap F-108: a quote of substance still verified any of the five systems, "2 cups flour" as UK
 # or Imperial alike. The quote must now carry, for the system it is offered for, one of the refine
 # prompt's kinds of evidence (gemini.py, SOURCE SYSTEM): a unit size the prompt names, a statement
-# naming the measures, a pre-metric British measure, or a regional name. The names are a closed list,
-# the prompt's own and a few as unambiguous; a genuine one outside it costs the detection, never a
-# wrong one. "US" and "EU" count only in capitals ("let us bake"); "AU" not at all ("au gratin").
+# naming the measures, a pre-metric British measure, or a regional ingredient name. "US" and "EU"
+# count only in capitals ("let us bake"); "AU" not at all ("au gratin").
 _SIZE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(ml|millilit(?:re|er)s?|fl\.?\s*oz|fluid\s+ounces?)(?![^\W\d_])")
 # A stated size and the systems it names: the US cup (and half), the metric cup (and half), the
 # Australian 20 ml tablespoon, the 568 ml / 20 fl oz Imperial pint (and half).
@@ -242,11 +241,25 @@ _ML_SIZES = {
 }
 _FL_OZ_SIZES = {8: ("US",), 20: ("Imperial",), 10: ("Imperial",)}
 _FRACTION = "¼-¾⅐-⅞"
+# The regional ingredient names (the prompt's "ingredient names only one country uses") are deliberately
+# a closed list: the common, unambiguous British/American pairs, each tied to the one system the prompt
+# gives it. UK: caster sugar, plain and self-raising flour, double and single cream, courgette,
+# aubergine, icing sugar, bicarbonate of soda, cornflour, spring onion, demerara sugar, golden syrup.
+# US: all-purpose flour, heavy (whipping) cream, half-and-half, confectioners' and powdered sugar,
+# stick of butter, zucchini, eggplant, cilantro, baking soda, cornstarch, scallion. Names both countries
+# use (coriander, mince) and spellings (colour, flavour) are left out. A genuine name outside the list
+# costs the detection, never gives a wrong one.
+_UK_NAMES = (
+    r"cast[eo]r sugar|plain flour|self[- ]raising flour|double cream|single cream|courgettes?|aubergines?"
+    r"|icing sugar|bicarbonate of soda|cornflour|spring onions?|demerara sugar|golden syrup"
+)
+_US_NAMES = (
+    r"all[- ]purpose flour|heavy (?:whipping )?cream|half[- ]and[- ]half|confectioners'? sugar"
+    r"|sticks? of butter|zucchinis?|eggplants?|cilantro|powdered sugar|baking soda|cornstarch|scallions?"
+)
 _SYSTEM_WORDS = {
-    "US": r"\bamerican?\b|all[- ]purpose flour|heavy (?:whipping )?cream|half[- ]and[- ]half"
-          r"|confectioners'? sugar|sticks? of butter",
-    "UK": r"\bbritish\b|\bbritain\b|\buk\b|\bnew zealand\b|\bnz\b|\bmetric\b|cast[eo]r sugar"
-          r"|plain flour|self[- ]raising flour|double cream|single cream",
+    "US": r"\bamerican?\b|\b(?:" + _US_NAMES + r")(?![^\W\d_])",
+    "UK": r"\bbritish\b|\bbritain\b|\buk\b|\bnew zealand\b|\bnz\b|\bmetric\b|\b(?:" + _UK_NAMES + r")\b",
     "EU": r"\beurope(?:an)?\b|\bmetric\b",
     "AU": r"\baustralian?\b|\bmetric\b",
     "Imperial": r"\bimperial\b|\bbritish\b|\bpre-metric\b|\bgills?\b|\bteacups?(?:fuls?)?\b|\bbreakfast ?cups?\b"

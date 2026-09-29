@@ -283,3 +283,44 @@ class TestEvidenceNamesItsSystem:
         result, _ = _refine(_refinement(_oil(), detected="AU", evidence="taste.com.au"), source_host="taste.com.au",
                             raw=_SYSTEM_RAW)
         assert result.source_uom_system_detected == "AU"
+
+
+# The prompt's fifth kind of evidence: ingredient names only one country uses. The review of batch 18
+# widened the closed lists to the common unambiguous British/American pairs.
+_NAMES_RAW = RecipeExtraction(
+    name="Ratatouille",
+    ingredients=[
+        "2 courgettes", "1 aubergine", "1 tbsp icing sugar", "1 tsp bicarbonate of soda", "1 tbsp cornflour",
+        "3 spring onions", "2 tbsp demerara sugar", "1 tbsp golden syrup",
+        "2 zucchini", "1 eggplant", "1 bunch cilantro", "1 tbsp powdered sugar", "1 tsp baking soda",
+        "1 tbsp cornstarch", "3 scallions", "1 bunch coriander",
+    ],
+    directions=["Cook."],
+)
+_UK_NAMES = ("courgettes", "aubergine", "icing sugar", "bicarbonate of soda", "cornflour", "spring onions",
+             "demerara sugar", "golden syrup", "2 COURGETTES")
+_US_NAMES = ("zucchini", "eggplant", "cilantro", "powdered sugar", "baking soda", "cornstarch", "scallions")
+
+
+class TestRegionalIngredientNames:
+    def test_a_british_name_is_uk_evidence(self):
+        for quote in _UK_NAMES:
+            result, _ = _refine(_refinement(_oil(), detected="UK", evidence=quote), raw=_NAMES_RAW)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("UK", quote), quote
+
+    def test_an_american_name_is_us_evidence(self):
+        for quote in _US_NAMES:
+            result, _ = _refine(_refinement(_oil(), detected="US", evidence=quote), raw=_NAMES_RAW)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("US", quote), quote
+
+    def test_a_name_is_evidence_of_its_own_country_only(self):
+        for detected, names in (("US", _UK_NAMES), ("AU", _UK_NAMES), ("Imperial", _UK_NAMES),
+                                ("UK", _US_NAMES), ("EU", _US_NAMES)):
+            for quote in names:
+                result, _ = _refine(_refinement(_oil(), detected=detected, evidence=quote), raw=_NAMES_RAW)
+                assert result.source_uom_system_detected is None, (detected, quote)
+
+    def test_a_shared_name_is_evidence_of_neither(self):
+        for detected in ("UK", "US"):
+            result, _ = _refine(_refinement(_oil(), detected=detected, evidence="1 bunch coriander"), raw=_NAMES_RAW)
+            assert result.source_uom_system_detected is None, detected
