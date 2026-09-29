@@ -1395,6 +1395,21 @@ class TestGenerateRecipeImage:
         assert resp.status_code == 504
         assert resp.json()["detail"] == "Making the picture took too long. Try again."
 
+    def test_a_transport_error_is_a_503(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT, return_value=MagicMock()), \
+             patch(_GENERATE, side_effect=httpx.ConnectError("down")):
+            resp = self._post(client)
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "The picture service is unavailable. Try again later."
+
+    def test_too_many_ingredients_is_a_422_before_any_gemini_call(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT) as get_client, \
+             patch(_GENERATE) as gen:
+            resp = self._post(client, {"title": "Shakshuka", "ingredients": ["egg"] * 201})
+        assert resp.status_code == 422
+        get_client.assert_not_called()
+        gen.assert_not_called()
+
 
 class TestSelectPictureType:
     def test_the_extension_decides_over_a_mislabeled_content_type(self) -> None:

@@ -47,7 +47,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, Uploa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google.genai import errors as genai_errors
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import recipeparser.gemini as _gemini_mod
 from recipeparser.adapters.job_sink import JobSink
@@ -1711,10 +1711,11 @@ class PictureRequest(BaseModel):
     """What POST /recipes/{recipe_id}/image/generate is told: the draft as it is on screen (design D5)."""
     title: str
     description: Optional[str] = None
-    ingredients: List[str] = []
+    ingredients: List[str] = Field(default_factory=list, max_length=200)
 
 
 _NO_PICTURE = "Could not make a picture for this recipe."
+_PICTURE_SERVICE_UNAVAILABLE = "The picture service is unavailable. Try again later."
 
 
 @app.post(
@@ -1752,9 +1753,12 @@ async def generate_recipe_image(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Recipe AI is not configured to make pictures.",
         ) from exc
+    def _make_picture() -> bytes:
+        data, _mime = generate_picture(client, prompt)
+        return to_jpeg(data)
+
     try:
-        data, _mime = await asyncio.to_thread(generate_picture, client, prompt)
-        jpeg = to_jpeg(data)
+        jpeg = await asyncio.to_thread(_make_picture)
     except NoPictureError as exc:
         logger.warning("No picture for recipe %s: %s", recipe_id, exc)
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=_NO_PICTURE) from exc
@@ -1763,13 +1767,19 @@ async def generate_recipe_image(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="Making the picture took too long. Try again.",
         ) from exc
+    except httpx.HTTPError as exc:
+        logger.warning("The picture service was unreachable for recipe %s: %s", recipe_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=_PICTURE_SERVICE_UNAVAILABLE,
+        ) from exc
     except genai_errors.APIError as exc:
         logger.warning("Gemini refused a picture for recipe %s: %s", recipe_id, exc)
         busy = getattr(exc, "code", None) == 429
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The picture service is busy. Try again in a minute." if busy
-            else "The picture service is unavailable. Try again later.",
+            else _PICTURE_SERVICE_UNAVAILABLE,
         ) from exc
     logger.info("Recipe %s got a generated picture (%d bytes).", recipe_id, len(jpeg))
     return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
