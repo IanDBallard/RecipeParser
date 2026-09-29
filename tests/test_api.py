@@ -361,9 +361,10 @@ class TestPostJobs:
         assert upload.await_args.args[0] == "https://cdn.site.test/uploads/dish.jpg"  # the photo, not the badge
 
     def test_a_malformed_og_image_is_no_meta_image_not_a_failed_job(self) -> None:
-        """Fix Roadmap F-013: "http://[bad/…" passes page_meta_from_html's scheme check, and
-        looks_like_badge's urlparse raised ValueError on it outside every guard, failing the job.
-        It is no meta image: the markdown's photograph is the hero and the job runs."""
+        """Fix Roadmap F-013: "http://[bad/…" passed page_meta_from_html's scheme check (until
+        F-110), and looks_like_badge's urlparse raised ValueError on it outside every guard, failing
+        the job. It is no meta image: the markdown's photograph is the hero and the job runs. The
+        meta is stubbed, so this still guards looks_like_badge on its own."""
         from unittest.mock import AsyncMock
 
         from recipeparser.io.readers.url import PageMeta
