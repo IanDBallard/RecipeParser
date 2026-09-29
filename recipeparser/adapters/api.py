@@ -1090,8 +1090,8 @@ async def submit_job(
                 )
             )
             logger.info(
-                "Job %s completed — %d recipe(s), %d skipped.",
-                job_id, sink.recipe_count, sink.skipped_count,
+                "Job %s completed — %d recipe(s), %d skipped, %d category link(s) refused.",
+                job_id, sink.recipe_count, sink.skipped_count, sink.refused_link_count,
             )
             await asyncio.to_thread(
                 _finalize_ingestion_job,
@@ -1231,8 +1231,8 @@ async def submit_file_job(
                 )
             )
             logger.info(
-                "Job %s completed — %d recipe(s), %d skipped.",
-                job_id, sink.recipe_count, sink.skipped_count,
+                "Job %s completed — %d recipe(s), %d skipped, %d category link(s) refused.",
+                job_id, sink.recipe_count, sink.skipped_count, sink.refused_link_count,
             )
             await asyncio.to_thread(
                 _finalize_ingestion_job,

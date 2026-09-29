@@ -193,11 +193,19 @@ class RecatWorker:
         job = jobs[0]
         # Compare-and-swap on the status we read, so two workers racing for the same
         # row cannot both win it: the second update matches nothing.
-        claimed = (
+        claim = (
             self._sb.table("ingestion_jobs")
             .update({"status": "running", "stage": "CATEGORIZING", "updated_at": _now()})
-            .eq("id", job["id"]).eq("status", prior_status).execute().data
+            .eq("id", job["id"]).eq("status", prior_status)
         )
+        if prior_status == "running":
+            # A reclaim rewrites `running` to `running`, so the status alone cannot
+            # tell the winner from the loser: two workers that read the same stale
+            # row both matched it (Fix Roadmap F-112, 2026-09-29). The winner's
+            # write moves `updated_at`, so matching the value we read lets exactly
+            # one of them through.
+            claim = claim.eq("updated_at", job["updated_at"])
+        claimed = claim.execute().data
         return job if claimed else None
 
     # ── the job ──────────────────────────────────────────────────────────
@@ -227,6 +235,28 @@ class RecatWorker:
 
         total = self._sb.table("recipes").select("id", count="exact").eq("user_id", user_id).execute().count or 0
         params["cursor"] = str(params.get("cursor") or NIL_UUID)
+        skipped_count = int(job.get("skipped_count") or 0)
+        # A reclaimed job resumes from its cursor, so it resumes its tallies too
+        # (Fix Roadmap F-111, 2026-09-29). Until then they restarted at 0: the
+        # recipes tagged before the restart fell out of recipe_count and the bar
+        # went back to the start. recipe_count is read back as written -- it is
+        # already "distinct recipes matched" and the cursor only moves forward, so
+        # no recipe is counted twice. The batches already run are counted from
+        # the recipes at or below the cursor rather than inverted from
+        # progress_pct: that is floored to a whole percent (1 batch of 300 reads
+        # as 0) and was computed against a total the library may since have
+        # changed, while the count is exact against the same total as the rest of
+        # the job. A failed batch put every one of its recipes in `skipped`, and
+        # every batch before the cursor was full, so the failures come back out of
+        # skipped_count and the done/error verdict still weighs the whole job.
+        done_batches = failed = 0
+        if params["cursor"] != NIL_UUID:
+            before = (
+                self._sb.table("recipes").select("id", count="exact")
+                .eq("user_id", user_id).lte("id", params["cursor"]).execute().count or 0
+            )
+            done_batches = math.ceil(before / self._batch_size)
+            failed = min(done_batches, math.ceil(skipped_count / self._batch_size))
         return _HeldJob(
             job_id=job["id"],
             user_id=user_id,
@@ -236,7 +266,10 @@ class RecatWorker:
             offered=set(tag_ids),
             total_batches=max(1, math.ceil(total / self._batch_size)),
             skipped=list(job.get("skipped") or []),
-            skipped_count=int(job.get("skipped_count") or 0),
+            skipped_count=skipped_count,
+            done_batches=done_batches,
+            failed=failed,
+            matched=int(job.get("recipe_count") or 0),
         )
 
     def _step(self, held: _HeldJob) -> bool:
@@ -330,6 +363,35 @@ class RecatWorker:
                 count: Optional[int] = None, error: Optional[str] = None,
                 skipped: Optional[List[Dict[str, Any]]] = None,
                 skipped_count: Optional[int] = None) -> None:
+        """
+        Write the job's terminal state. `done` and `error` move the row only out of
+        `running` (Fix Roadmap F-113, 2026-09-29): a cancel is checked after each
+        batch, so one that landed after the last check was overwritten by `done`.
+        When that write finds the row already `cancelled`, the job is finished the
+        way the cancel branch finishes it -- stage DONE and the counts it reached,
+        keeping the progress its last batch wrote -- so the screen can say
+        "Stopped. N recipes tagged so far" rather than show a job that ran to 100%.
+        """
+        payload = self._terminal_payload(status, progress, count, error, skipped, skipped_count)
+        if status == "cancelled":
+            self._sb.table("ingestion_jobs").update(payload).eq("id", job_id).execute()
+            return
+        won = (
+            self._sb.table("ingestion_jobs").update(payload)
+            .eq("id", job_id).eq("status", "running").execute().data
+        )
+        if won:
+            return
+        log.info("recat job %s was no longer running at its %s write; finishing it as cancelled.",
+                 job_id, status)
+        stopped = self._terminal_payload("cancelled", None, count, None, skipped, skipped_count)
+        (self._sb.table("ingestion_jobs").update(stopped)
+         .eq("id", job_id).eq("status", "cancelled").execute())
+
+    @staticmethod
+    def _terminal_payload(status: str, progress: Optional[int], count: Optional[int],
+                          error: Optional[str], skipped: Optional[List[Dict[str, Any]]],
+                          skipped_count: Optional[int]) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "status": status,
             # `cancelled` is a finished job, not a failed one: a cook stopped it.
@@ -347,4 +409,4 @@ class RecatWorker:
             payload["skipped_count"] = skipped_count
         if error:
             payload["error_message"] = error
-        self._sb.table("ingestion_jobs").update(payload).eq("id", job_id).execute()
+        return payload

@@ -344,7 +344,9 @@ def test_a_stale_running_job_is_reclaimed_and_resumes_from_its_cursor():
     # poll asks only for `pending`, so it sits at whatever progress it reached.
     fake = FakeSupabase()
     fake.responses["categories"] = CATS
+    # updated_at is never null here: the stale poll filters on `updated_at < cutoff`.
     stale = {"id": "j1", "user_id": "u1", "kind": "recategorize", "status": "running",
+             "updated_at": "2026-09-01T10:00:00+00:00",
              "params": {"category_ids": ["t2"], "cursor": _rid(9)}}
 
     def jobs(q):
@@ -514,3 +516,127 @@ def test_a_crash_mid_job_errors_it_and_frees_the_worker():
     polls = len(_pending_polls(fake))
     worker.run_once()
     assert len(_pending_polls(fake)) == polls + 1, "the next poll looks for new work"
+
+
+# ── Fix Roadmap batch 17: reclaim, resume and the terminal write ────────────
+
+_STALE_TS = "2026-09-01T10:00:00.123456+00:00"
+
+
+class _JobRow:
+    """
+    A stateful ingestion_jobs row. An UPDATE applies only when every `.eq` filter
+    matches the row as it is NOW, and answers with the rows it changed -- which is
+    what PostgREST's `return=representation` gives supabase-py, and what the
+    worker's compare-and-swap writes read as "won" or "lost".
+    """
+    def __init__(self, **row):
+        self.row = dict(row)
+        self.stale_snapshot = dict(row)            # what a stale-lease poll read
+
+    def handler(self, q):
+        names = [o[0] for o in q.ops]
+        if names[0] == "select" and ("eq", ("status", "pending"), {}) in q.ops:
+            return _Result([])
+        if names[0] == "select" and ("eq", ("status", "running"), {}) in q.ops:
+            return _Result([dict(self.stale_snapshot)])
+        if names[0] == "select":
+            return _Result([{"status": self.row["status"]}])
+        payload = q.ops[0][1][0]
+        filters = [o[1] for o in q.ops if o[0] == "eq"]
+        if all(self.row.get(col) == val for col, val in filters):
+            self.row.update(payload)
+            return _Result([dict(self.row)])
+        return _Result([])
+
+
+def _stale_fake(row, recipes, total):
+    fake = FakeSupabase()
+    fake.responses["categories"] = CATS
+    fake.handlers["ingestion_jobs"] = row.handler
+
+    def recipes_h(q):
+        if any(o[0] == "select" and o[2].get("count") == "exact" for o in q.ops):
+            upto = next((o[1][1] for o in q.ops if o[0] == "lte"), None)
+            if upto is None:
+                return _Result([], count=total)
+            return _Result([], count=sum(1 for r in recipes if r["id"] <= _uuid_cursor(upto)))
+        cursor = next((o[1][1] for o in q.ops if o[0] == "gt"), None)
+        return _Result([r for r in recipes if r["id"] > _uuid_cursor(cursor)][:10])
+    fake.handlers["recipes"] = recipes_h
+    return fake
+
+
+def _stale_row(**over):
+    row = {"id": "j1", "user_id": "u1", "kind": "recategorize", "status": "running",
+           "stage": "CATEGORIZING", "updated_at": _STALE_TS,
+           "params": {"category_ids": ["t2"], "cursor": _rid(9)},
+           "progress_pct": 33, "recipe_count": 4, "skipped": [], "skipped_count": 0}
+    row.update(over)
+    return _JobRow(**row)
+
+
+def test_two_workers_reclaiming_one_stale_job_cannot_both_win_it():
+    # F-112. Both read the same stale row. The first claim rewrites status to the
+    # `running` it already was, so a swap on status alone lets the second win too
+    # and two workers tag the same library side by side. The swap must also match
+    # the `updated_at` that was read, which the first claim has since moved.
+    row = _stale_row()
+    fake = _stale_fake(row, _recipes(25), 25)
+    first = _worker(fake, MagicMock(return_value={}))._claim()
+    second = _worker(fake, MagicMock(return_value={}))._claim()
+    assert first is not None
+    assert second is None, "the second reclaim of the same stale row must lose"
+    claim = next(q for q in fake.queries if q.table == "ingestion_jobs" and q.ops[0][0] == "update")
+    assert ("eq", ("updated_at", _STALE_TS), {}) in claim.ops
+
+
+def test_a_reclaimed_job_resumes_its_count_and_progress():
+    # F-111. The job reached recipe 10 of 25 (one batch of three, 4 recipes tagged)
+    # before its worker died. The reclaim resumed from the cursor but counted from
+    # 0, so the 4 recipes tagged before the restart dropped out of recipe_count and
+    # the bar went back to 33% for what is really the second batch.
+    row = _stale_row()
+    fake = _stale_fake(row, _recipes(25), 25)
+    cat = MagicMock(return_value={_rid(10): ["Thai"]})
+    assert _worker(fake, cat).run_once() == 1
+    assert row.row["recipe_count"] == 5                  # 4 before the restart + 1 now
+    assert row.row["progress_pct"] == 66                 # batch 2 of 3, not batch 1
+    assert row.row["params"]["cursor"] == _rid(19)
+
+
+def test_a_reclaimed_job_keeps_its_failed_batches_in_the_verdict():
+    # F-111, the verdict's half: a batch that failed before the restart is in
+    # `skipped` (ten ids), so it still counts against the job. Without it the
+    # resumed job divides only its own failures by every batch the job ran.
+    skipped = [{"recipe_id": _rid(i), "reason": "down"} for i in range(10)]
+    row = _stale_row(recipe_count=0, skipped=skipped, skipped_count=10)
+    fake = _stale_fake(row, _recipes(25), 25)
+    worker = _worker(fake, MagicMock(return_value={}))
+    for _ in range(5):
+        worker.run_once()
+        if row.row["status"] != "running":
+            break
+    assert row.row["status"] == "error"
+    assert "1 of 3 batches failed" in row.row["error_message"]
+
+
+def test_a_cancel_after_the_last_check_is_not_overwritten_by_done():
+    # F-113. The cook presses Stop after the worker's last cancel check but before
+    # it writes `done`. The terminal write must move the job only out of
+    # `running`, so the cancel stands -- and the job still finishes coherently:
+    # stage DONE, its counts intact, so the screen says "Stopped. N recipes
+    # tagged so far" rather than showing a job stuck mid-flight.
+    row = _stale_row(params={"category_ids": ["t2"], "cursor": _rid(19)},
+                     progress_pct=66, recipe_count=2)
+    fake = _stale_fake(row, _recipes(25), 25)
+    cat = MagicMock(return_value={_rid(20): ["Thai"]})
+    worker = _worker(fake, cat)
+    assert worker.run_once() == 1                        # the last batch; check says running
+    row.row["status"] = "cancelled"                      # Stop lands here
+    assert worker.run_once() == 1                        # the empty page: finish
+    assert row.row["status"] == "cancelled"
+    assert row.row["stage"] == "DONE"
+    assert row.row["recipe_count"] == 3
+    assert row.row["progress_pct"] == 99                 # where it stopped, not 100
+    assert worker.run_once() == 0                        # and the worker let go of it

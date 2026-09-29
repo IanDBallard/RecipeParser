@@ -10,7 +10,7 @@ from recipeparser.core.models import Chunk, InputType
 def _sink(**kwargs: Any) -> JobSink:
     written: List[Any] = []
     # Real arity — write_recipe_to_supabase(recipe, user_id, recipe_id=None,
-    # category_ids=None) — not a three-positional shape. A fake shaped like
+    # category_ids=None, on_link_refused=None) — not a three-positional shape. A fake shaped like
     # the real function is what makes the keyword-vs-positional defect (see
     # test_write_receives_category_ids_by_keyword_and_recipe_id_stays_none)
     # visible to the suite instead of silently binding by position.
@@ -18,7 +18,9 @@ def _sink(**kwargs: Any) -> JobSink:
         job_id="job-1",
         user_id="user-1",
         category_ids={},
-        write=lambda recipe, user_id, recipe_id=None, category_ids=None: written.append(recipe),
+        write=lambda recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None: (
+            written.append(recipe)
+        ),
         now=kwargs.pop("now", lambda: "fixed-ts"),
         **kwargs,
     )
@@ -43,7 +45,7 @@ def test_each_result_is_written_immediately_and_counted():
 
 
 def test_a_failed_write_is_counted_as_a_skip_not_raised():
-    def _boom(recipe, user_id, recipe_id=None, category_ids=None):
+    def _boom(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
         raise RuntimeError("insert rejected")
 
     sink = JobSink(job_id="j", user_id="u", category_ids={}, write=_boom, now=lambda: "fixed-ts")
@@ -65,7 +67,7 @@ def test_write_receives_category_ids_by_keyword_and_recipe_id_stays_none():
     """
     calls: List[Dict[str, Any]] = []
 
-    def _write(recipe, user_id, recipe_id=None, category_ids=None):
+    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
         calls.append({"recipe_id": recipe_id, "category_ids": category_ids})
 
     sink = JobSink(
@@ -241,9 +243,49 @@ def test_finalize_omits_the_hint_when_no_recipe_carried_a_key():
 
 
 def test_a_recipe_whose_write_failed_does_not_vote():
-    def _boom(recipe, user_id, recipe_id=None, category_ids=None):
+    def _boom(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
         raise RuntimeError("no")
 
     sink = JobSink(job_id="job-1", user_id="user-1", category_ids={}, write=_boom, now=lambda: "t")
     sink.on_result(_CitedRecipe(source_key="the woks of life"))
     assert "source_hint" not in sink.finalize_payload(True)
+
+
+# ── Fix Roadmap F-115: a refused category link reaches the job ─────────────
+
+
+def _refusing_write(*refused_ids: str):
+    """A write with the real arity that keeps the recipe but refuses some links."""
+    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
+        for cid in refused_ids:
+            on_link_refused({"category_id": cid, "reason": "409: violates foreign key"})
+    return _write
+
+
+def test_a_refused_category_link_is_recorded_against_the_job(caplog):
+    # The writer kept the recipe and lost one link (F-004's row-by-row retry). The
+    # job used to hear nothing of it; now the sink records which recipe lost which
+    # category, and the job's own log says so.
+    sink = JobSink(job_id="job-1", user_id="user-1", category_ids={"Thai": "cat-thai"},
+                   write=_refusing_write("cat-gone"), now=lambda: "t")
+    with caplog.at_level("WARNING", logger="recipeparser.adapters.job_sink"):
+        sink.on_result(_Recipe("Pad Thai"))
+    assert sink.refused_link_count == 1
+    assert sink.refused_links == [
+        {"label": "Pad Thai", "category_id": "cat-gone", "reason": "409: violates foreign key"}
+    ]
+    assert any("job-1" in r.getMessage() and "Pad Thai" in r.getMessage()
+               and "cat-gone" in r.getMessage() for r in caplog.records)
+
+
+def test_a_refused_link_is_not_a_skipped_section():
+    # skipped/skipped_count mean "a section that produced no recipe" to the client
+    # ("1 section produced no recipe; it is listed below", "1 missed"). The recipe
+    # WAS written, so a lost link must not be reported there: that would be false.
+    sink = JobSink(job_id="job-1", user_id="user-1", category_ids={"Thai": "cat-thai"},
+                   write=_refusing_write("cat-gone", "cat-also-gone"), now=lambda: "t")
+    sink.on_result(_Recipe("Pad Thai"))
+    payload = sink.finalize_payload(True)
+    assert sink.recipe_count == 1
+    assert payload["skipped_count"] == 0 and payload["skipped"] == []
+    assert sink.refused_link_count == 2
