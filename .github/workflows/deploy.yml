@@ -24,9 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     # One deploy at a time. Cayenne's own job cannot join this group (it is a
     # different repository's workflow), so deploy.sh also takes a lock on the
-    # VM to serialise across both.
+    # VM to serialise across both. A pull request only builds, so it gets a
+    # group of its own per branch rather than queueing behind master's deploys
+    # (Fix Roadmap F-059, 2026-09-29).
     concurrency:
-      group: recipeparser-deploy
+      group: ${{ github.event_name == 'push' && 'recipeparser-deploy' || format('recipeparser-pr-{0}', github.ref) }}
       cancel-in-progress: false
     # packages: write is exercised only on a push (the ghcr login and push
     # steps below); a pull-request run never reaches either.

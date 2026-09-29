@@ -62,8 +62,6 @@ jobs:
           DISABLE_AUTH: '1'
           # The bypass has no fallback identity — it must name a UUID subject.
           TEST_USER_ID: '00000000-0000-0000-0000-000000000001'
-          # Dummy value — tests never hit real Supabase; prevents KeyError in auth middleware
-          SUPABASE_JWT_SECRET: 'ci-dummy-secret-not-used-in-production'
         run: |
           python -m pytest tests/ -v \
             --ignore=tests/smoke_test_exe.py \
