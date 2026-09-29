@@ -226,24 +226,68 @@ def _quoted_from(quote: str, text: str) -> bool:
     return re.search(head + re.escape(quote) + tail, text) is not None
 
 
+# Fix Roadmap F-108: a quote of substance still verified any of the five systems, "2 cups flour" as UK
+# or Imperial alike. The quote must now carry, for the system it is offered for, one of the refine
+# prompt's kinds of evidence (gemini.py, SOURCE SYSTEM): a unit size the prompt names, a statement
+# naming the measures, a pre-metric British measure, or a regional name. The names are a closed list,
+# the prompt's own and a few as unambiguous; a genuine one outside it costs the detection, never a
+# wrong one. "US" and "EU" count only in capitals ("let us bake"); "AU" not at all ("au gratin").
+_SIZE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(ml|millilit(?:re|er)s?|fl\.?\s*oz|fluid\s+ounces?)(?![^\W\d_])")
+# A stated size and the systems it names: the US cup (and half), the metric cup (and half), the
+# Australian 20 ml tablespoon, the 568 ml / 20 fl oz Imperial pint (and half).
+_ML_SIZES = {
+    236: ("US",), 237: ("US",), 240: ("US",), 118: ("US",), 120: ("US",),
+    250: ("UK", "EU", "AU"), 125: ("UK", "EU", "AU"), 20: ("AU",), 568: ("Imperial",), 284: ("Imperial",),
+}
+_FL_OZ_SIZES = {8: ("US",), 20: ("Imperial",), 10: ("Imperial",)}
+_FRACTION = "¼-¾⅐-⅞"
+_SYSTEM_WORDS = {
+    "US": r"\bamerican?\b|all[- ]purpose flour|heavy (?:whipping )?cream|half[- ]and[- ]half"
+          r"|confectioners'? sugar|sticks? of butter",
+    "UK": r"\bbritish\b|\bbritain\b|\buk\b|\bnew zealand\b|\bnz\b|\bmetric\b|cast[eo]r sugar"
+          r"|plain flour|self[- ]raising flour|double cream|single cream",
+    "EU": r"\beurope(?:an)?\b|\bmetric\b",
+    "AU": r"\baustralian?\b|\bmetric\b",
+    "Imperial": r"\bimperial\b|\bbritish\b|\bpre-metric\b|\bgills?\b|\bteacups?(?:fuls?)?\b|\bbreakfast ?cups?\b"
+                r"|(?:\d|[" + _FRACTION + r"]|\bone|\bhalf a)\s*stones?\b",
+}
+_SYSTEM_CAPITALS = {"US": r"(?<![A-Za-z])U\.?S\.?(?:A\.?)?(?![A-Za-z])", "EU": r"(?<![A-Za-z])EU(?![A-Za-z])"}
+
+
+def _indicates(system: str, quote: str, written: str) -> bool:
+    """True when the plain ``quote`` (``written``: as the model gave it) is evidence of ``system``."""
+    for figure, unit in _SIZE.findall(quote):
+        sizes = _ML_SIZES if unit.startswith(("ml", "millilit")) else _FL_OZ_SIZES
+        if float(figure).is_integer() and system in sizes.get(int(float(figure)), ()):
+            return True
+    if re.search(_SYSTEM_WORDS[system], quote):
+        return True
+    capitals = _SYSTEM_CAPITALS.get(system)
+    return capitals is not None and re.search(capitals, written) is not None
+
+
 def _check_detection(refinement: CayenneRefinement, raw: RecipeExtraction, source_host: Optional[str]) -> None:
     """
     D5, in place. The detected system must be one of the five (in any case; written canonically)
     and its evidence must be a quote from the recipe text (whole words, with some substance:
-    ``_quoted_from``) or name the source host as given (the host or a dot-boundary suffix of it);
-    otherwise both are written null.
+    ``_quoted_from``) that is evidence of that system (``_indicates``), or name the source host as
+    given (the host or a dot-boundary suffix of it); otherwise both are written null.
     """
     detected = refinement.source_uom_system_detected
     system = _CANONICAL_SYSTEMS.get((detected or "").strip().lower())
     quote = _plain(refinement.source_uom_system_evidence or "")
     named_host = source_host is not None and _host_names(quote, source_host)
-    supported = system is not None and quote != "" and (named_host or _quoted_from(quote, _plain(_recipe_text(raw))))
+    supported = system is not None and quote != "" and (
+        named_host
+        or (_quoted_from(quote, _plain(_recipe_text(raw)))
+            and _indicates(system, quote, refinement.source_uom_system_evidence or ""))
+    )
     if supported:
         refinement.source_uom_system_detected = system
     else:
         if detected is not None:
             log.warning("refine(): dropped detected system %r — its evidence %r is not"
-                        " a quote of substance from the recipe, nor its host.",
+                        " a quote from the recipe that names that system, nor its host.",
                         detected, refinement.source_uom_system_evidence)
         refinement.source_uom_system_detected = None
         refinement.source_uom_system_evidence = None
