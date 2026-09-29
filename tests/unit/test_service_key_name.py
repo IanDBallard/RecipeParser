@@ -1,6 +1,8 @@
 """One service-key variable name, and a loud failure for the old one (spec 4.7)."""
 from __future__ import annotations
 
+import os
+from fnmatch import fnmatch
 from pathlib import Path
 
 import pytest
@@ -54,29 +56,43 @@ _ALLOWED_LEGACY_MENTIONS = {
 _THIS_FILE = Path(__file__).resolve()
 
 
-def _relpath(path: Path) -> str:
-    return path.relative_to(ROOT).as_posix()
+def _legacy_mentions(root: Path) -> list[Path]:
+    """
+    Every scanned file under ``root`` that names the legacy variable.
 
-
-def _is_excluded(path: Path) -> bool:
-    rel = _relpath(path)
-    if rel in _EXCLUDED_FILES or rel in _ALLOWED_LEGACY_MENTIONS:
-        return True
-    return any(rel == excluded or rel.startswith(excluded + "/") for excluded in _EXCLUDED_DIRS)
-
-
-def test_no_module_reads_the_legacy_name():
+    A directory holding its own ``.git`` below ``root`` is another checkout — a
+    worktree under ``.claude/worktrees/``, or a clone — with its own copy of the
+    whole tree, not this checkout's source. It is pruned (Fix Roadmap F-047,
+    2026-09-29): walking into one made this test fail on any machine with a
+    leftover worktree while CI, which has none, stayed green.
+    """
     hits = []
-    for pattern in _SCAN_GLOBS:
-        for f in ROOT.rglob(pattern):
-            if not f.is_file() or f.resolve() == _THIS_FILE or _is_excluded(f):
+    for folder, dirs, files in os.walk(root):
+        here = Path(folder)
+        rel_dir = here.relative_to(root).as_posix()
+        dirs[:] = [
+            d for d in dirs
+            if (d if rel_dir == "." else f"{rel_dir}/{d}") not in _EXCLUDED_DIRS
+            and not (here / d / ".git").exists()
+        ]
+        for name in files:
+            if not any(fnmatch(name, pattern) for pattern in _SCAN_GLOBS):
+                continue
+            f = here / name
+            rel = f.relative_to(root).as_posix()
+            if f.resolve() == _THIS_FILE or rel in _EXCLUDED_FILES or rel in _ALLOWED_LEGACY_MENTIONS:
                 continue
             try:
                 text = f.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
                 continue
             if _LEGACY_KEY_NAME in text:
-                hits.append(str(f))
+                hits.append(f)
+    return hits
+
+
+def test_no_module_reads_the_legacy_name():
+    hits = [str(f) for f in _legacy_mentions(ROOT)]
 
     assert hits == [], f"legacy {_LEGACY_KEY_NAME} still read in:\n" + "\n".join(hits)
 
@@ -103,3 +119,19 @@ def test_neither_set_is_not_an_error(monkeypatch):
     monkeypatch.delenv(_LEGACY_KEY_NAME, raising=False)
 
     check_service_key_name()
+
+
+def test_the_scan_skips_a_nested_checkout(tmp_path):
+    """A worktree or clone inside the tree is another checkout, not this one's
+    source (Fix Roadmap F-047): `.claude/worktrees/*` made this test fail on any
+    machine with a leftover worktree, while CI, which has none, stayed green."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text(f"os.environ['{_LEGACY_KEY_NAME}']\n", encoding="utf-8")
+    nested = tmp_path / ".claude" / "worktrees" / "old"
+    (nested / "pkg").mkdir(parents=True)
+    (nested / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+    (nested / "pkg" / "mod.py").write_text(f"os.environ['{_LEGACY_KEY_NAME}']\n", encoding="utf-8")
+
+    found = sorted(p.relative_to(tmp_path).as_posix() for p in _legacy_mentions(tmp_path))
+
+    assert found == ["pkg/mod.py"]
