@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### ✨ Added — AI recipe picture feature
+- `POST /recipes/{id}/image/generate` generates a picture of the recipe's dish using Gemini (`gemini-3.1-flash-image`, override with `GEMINI_IMAGE_MODEL`). The cook previews it in the editor as a pending picture; Save stores it through `POST /recipes/{id}/image` with `source=generated`.
+- `POST /recipes/{id}/image` gains an optional `source` form field. `source=generated` marks the picture as AI-generated (written to `recipes.image_source`); omitted, the column is written null. Any other value is a 422.
+
+### ✨ Changed — picture writes set image_source
+- Every `POST` and `DELETE /recipes/{id}/image` writes both `image_url` and `image_source` in a single update, so no device ever syncs a picture carrying the other picture's marker.
+
+### ⚠️ Requires — apply the Cayenne migration **before** deploying this version
+- **`recipe_image_source.sql`** — `recipes.image_source` column for the picture marker.
+
+---
+
 ## [9.1.0] — 2026-09-26
 
 A Paprika library of any size imports, and every picture the ingestor stores is scaled to Cayenne's size (#61). No migration; one new dependency.

@@ -43,7 +43,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google.genai import errors as genai_errors
@@ -1585,8 +1585,14 @@ async def _owned_recipe_client(recipe_id: str, user_id: str) -> Any:
     return sb
 
 
-async def _write_image_url(sb: Any, recipe_id: str, user_id: str, image_url: Optional[str]) -> None:
-    """Write ``image_url`` on the recipe, or fail the request.
+async def _write_image_url(
+    sb: Any, recipe_id: str, user_id: str, image_url: Optional[str], image_source: Optional[str] = None,
+) -> None:
+    """Write ``image_url`` and ``image_source`` on the recipe together, or fail the request.
+
+    One update, so no device ever syncs a picture carrying the other picture's
+    marker (AI recipe picture, D6). ``image_source`` is null for anything but a
+    generated picture, which is what clears the marker when a photo replaces it.
 
     Raised, not logged and swallowed as the ingestion path does with a hero
     image: there the picture is a bonus on a recipe that is being created
@@ -1594,7 +1600,12 @@ async def _write_image_url(sb: Any, recipe_id: str, user_id: str, image_url: Opt
     that did not change would have no way to tell.
     """
     try:
-        update = sb.table("recipes").update({"image_url": image_url}).eq("id", recipe_id).eq("user_id", user_id)
+        update = (
+            sb.table("recipes")
+            .update({"image_url": image_url, "image_source": image_source})
+            .eq("id", recipe_id)
+            .eq("user_id", user_id)
+        )
         await asyncio.to_thread(update.execute)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Could not write image_url for recipe %s.", recipe_id)
@@ -1608,6 +1619,7 @@ async def _write_image_url(sb: Any, recipe_id: str, user_id: str, image_url: Opt
 async def set_recipe_image(
     recipe_id: str,
     file: UploadFile = File(...),
+    source: Optional[str] = Form(None),
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
 ) -> RecipeImageResponse:
     """Store a picture the cook chose in the editor and hand back its URL.
@@ -1618,9 +1630,17 @@ async def set_recipe_image(
     — PowerSync delivers the row this endpoint updates — so one place decides
     what a recipe's picture is.
 
+    ``source=generated`` marks the picture as AI-generated (``image_source``);
+    omitted, the column is written null. Any other value is a 422.
+
     422 for a file that is not a picture, 413 over the ceiling, 404 for a recipe
     the caller does not own, 200 + ``{ image_url }`` otherwise.
     """
+    if source is not None and source != "generated":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown picture source '{source}'.",
+        )
     filename = file.filename or ""
     try:
         content_type = _select_picture_type(filename, file.content_type or "")
@@ -1661,7 +1681,7 @@ async def set_recipe_image(
     await asyncio.to_thread(store.remove, recipe_id, written)
 
     image_url = _versioned(public_url, int(time.time()))
-    await _write_image_url(sb, recipe_id, user_id, image_url)
+    await _write_image_url(sb, recipe_id, user_id, image_url, source)
     logger.info("Recipe %s took a new picture (%s, %d bytes).", recipe_id, content_type, len(data))
     return RecipeImageResponse(image_url=image_url)
 

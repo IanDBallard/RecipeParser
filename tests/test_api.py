@@ -1161,11 +1161,12 @@ def _updated_column(sb: MagicMock) -> Any:
 class TestRecipeImage:
     def _post(
         self, client: TestClient, filename: str, content: bytes,
-        content_type: str, recipe_id: str = _RECIPE_ID,
+        content_type: str, recipe_id: str = _RECIPE_ID, source: Optional[str] = None,
     ) -> Any:
         return client.post(
             f"/recipes/{recipe_id}/image",
             files={"file": (filename, io.BytesIO(content), content_type)},
+            data={} if source is None else {"source": source},
         )
 
     def test_a_picture_is_stored_and_the_row_takes_its_url(self, client: TestClient) -> None:
@@ -1180,7 +1181,7 @@ class TestRecipeImage:
         assert image_url.startswith("https://x.supabase.co/storage/v1/object/public/recipe-images/r.jpg?v=")
         # The row carries exactly what the client was told, or the device that
         # syncs the row and the device that made the change disagree.
-        assert _updated_column(sb) == {"image_url": image_url}
+        assert _updated_column(sb) == {"image_url": image_url, "image_source": None}
 
     def test_the_url_is_cache_busted_so_a_replacement_is_seen(self, client: TestClient) -> None:
         sb = _service_client()
@@ -1247,6 +1248,31 @@ class TestRecipeImage:
         # recipe the caller does not own is never written.
         store_cls.return_value.put.assert_not_called()
 
+    def test_a_generated_picture_is_marked(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = "https://x.supabase.co/storage/v1/object/public/recipe-images/r.jpg"
+            resp = self._post(client, "generated.jpg", b"\xff\xd8\xff\xe0", "image/jpeg", source="generated")
+        assert resp.status_code == 200
+        assert _updated_column(sb) == {"image_url": resp.json()["image_url"], "image_source": "generated"}
+
+    def test_a_plain_upload_over_a_generated_picture_writes_image_source_null(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = "https://x.supabase.co/storage/v1/object/public/recipe-images/r.jpg"
+            resp = self._post(client, "photo.jpg", b"\xff\xd8\xff\xe0", "image/jpeg")
+        assert resp.status_code == 200
+        assert _updated_column(sb)["image_source"] is None
+
+    def test_an_unknown_source_is_a_422_before_anything_is_stored(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            resp = self._post(client, "photo.jpg", b"\xff\xd8\xff\xe0", "image/jpeg", source="camera")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Unknown picture source 'camera'."
+        store_cls.return_value.put.assert_not_called()
+        sb.table.return_value.update.assert_not_called()
+
     def test_a_storage_failure_is_a_503_and_the_row_is_left_alone(self, client: TestClient) -> None:
         sb = _service_client()
         with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
@@ -1266,7 +1292,7 @@ class TestRecipeImage:
             resp = client.delete(f"/recipes/{_RECIPE_ID}/image")
         assert resp.status_code == 200
         assert resp.json() == {"image_url": None}
-        assert _updated_column(sb) == {"image_url": None}
+        assert _updated_column(sb) == {"image_url": None, "image_source": None}
         store_cls.return_value.remove.assert_called_once_with(_RECIPE_ID)
 
     def test_delete_on_a_recipe_the_caller_does_not_own_is_a_404(self, client: TestClient) -> None:
