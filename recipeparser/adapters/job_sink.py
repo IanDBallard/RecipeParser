@@ -68,13 +68,36 @@ class JobSink:
         # citation, so "most common" would file an 800-recipe archive under
         # whichever site happened to have the most recipes in it.
         self._source_keys: Set[str] = set()
+        # Category links the writer could not make for a recipe it DID write
+        # (Fix Roadmap F-115, 2026-09-29): {"label", "category_id", "reason"}.
+        # Deliberately not in `skipped`: the client reads every entry there as a
+        # section that produced no recipe ("1 section produced no recipe", "1
+        # missed"), which a recipe that lost one tag is not. No column the
+        # client reads fits, so for now they reach the job's log and the
+        # completion line; the count stays true while the list is capped.
+        self.refused_link_count = 0
+        self.refused_links: List[Dict[str, Any]] = []
 
     # ── callbacks handed to RecipePipeline.run ────────────────────────────────
 
     def on_result(self, recipe: IngestResponse) -> None:
         """Persist one finished recipe. A failure here costs that recipe, not the job."""
+        title = getattr(recipe, "title", None)
+
+        def _link_refused(link: Dict[str, str]) -> None:
+            self.refused_link_count += 1
+            if len(self.refused_links) < SKIPPED_LIST_CAP:
+                self.refused_links.append({"label": title, **link})
+            log.warning(
+                "Job %s: recipe %r was written, but its link to category %s was refused: %s",
+                self._job_id, title, link.get("category_id"), link.get("reason"),
+            )
+
         try:
-            self._write(recipe, self._user_id, category_ids=self._category_ids)
+            self._write(
+                recipe, self._user_id,
+                category_ids=self._category_ids, on_link_refused=_link_refused,
+            )
         except Exception as exc:
             log.exception(
                 "Job %s: failed to write recipe %r — counting it as skipped.",

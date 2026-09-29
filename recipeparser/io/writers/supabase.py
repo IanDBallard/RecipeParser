@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import httpx
 from dotenv import load_dotenv
@@ -43,6 +43,10 @@ def _get_creds() -> Tuple[str, str]:
     return url, key
 
 
+# One category link the junction write could not make: {"category_id", "reason"}.
+RefusedLink = Dict[str, str]
+
+
 def _write_category_junctions(
     recipe_id: str,
     user_id: str,
@@ -50,7 +54,7 @@ def _write_category_junctions(
     category_ids: Dict[str, str],
     supabase_url: str,
     service_key: str,
-) -> None:
+) -> List[RefusedLink]:
     """
     Insert rows into the ``recipe_categories`` junction table for each tag
     in ``grid_categories`` that has a matching UUID in ``category_ids``.
@@ -59,6 +63,10 @@ def _write_category_junctions(
     the recipe row is never rolled back due to a junction table error. A
     refused batch is retried row by row, so one bad category id costs only
     its own link (Fix Roadmap F-004).
+
+    Returns the links it could not write, each with why, so the job that
+    wrote the recipe can account for them (Fix Roadmap F-115, 2026-09-29):
+    until then a lost link reached only this module's log.
 
     Args:
         recipe_id:       UUID of the newly-inserted recipe row.
@@ -69,7 +77,7 @@ def _write_category_junctions(
         service_key:     Service-role key.
     """
     if not grid_categories or not category_ids:
-        return
+        return []
 
     # Collect all tag names from the grid, deduplicate
     all_tags: List[str] = []
@@ -83,7 +91,7 @@ def _write_category_junctions(
                 all_tags.append(tag)
 
     if not all_tags:
-        return
+        return []
 
     # Build junction rows — only for tags that have a known UUID
     rows: List[Dict[str, str]] = []
@@ -108,7 +116,7 @@ def _write_category_junctions(
             "Junction write: no matching category UUIDs for recipe %s — skipping.",
             recipe_id,
         )
-        return
+        return []
 
     headers = {
         "Authorization": f"Bearer {service_key}",
@@ -128,7 +136,11 @@ def _write_category_junctions(
         log.warning(
             "Junction write: network error for recipe %s: %s", recipe_id, exc
         )
-        return
+        # No answer, so none of these links is known to have landed.
+        return [
+            {"category_id": row["category_id"], "reason": f"network error: {exc}"}
+            for row in rows
+        ]
 
     if resp.status_code in (200, 201):
         log.info(
@@ -136,7 +148,7 @@ def _write_category_junctions(
             len(rows),
             recipe_id,
         )
-        return
+        return []
 
     # One request is all-or-nothing, so a single bad row — a category the cook
     # deleted while the import ran, which the foreign key then refuses — used to
@@ -152,6 +164,7 @@ def _write_category_junctions(
         len(rows),
     )
     written = 0
+    refused: List[RefusedLink] = []
     for row in rows:
         try:
             one = httpx.post(
@@ -165,6 +178,7 @@ def _write_category_junctions(
                 "Junction write: network error linking recipe %s to category %s: %s",
                 recipe_id, row["category_id"], exc,
             )
+            refused.append({"category_id": row["category_id"], "reason": f"network error: {exc}"})
             continue
         if one.status_code in (200, 201):
             written += 1
@@ -173,11 +187,16 @@ def _write_category_junctions(
                 "Junction write: category %s refused for recipe %s [%s]: %s",
                 row["category_id"], recipe_id, one.status_code, one.text[:300],
             )
+            refused.append({
+                "category_id": row["category_id"],
+                "reason": f"[{one.status_code}] {one.text[:300]}",
+            })
     log.info(
         "Junction write: %d of %d recipe_categories rows inserted for recipe %s "
         "after the batch was refused.",
         written, len(rows), recipe_id,
     )
+    return refused
 
 
 def write_recipe_to_supabase(
@@ -185,6 +204,7 @@ def write_recipe_to_supabase(
     user_id: str,
     recipe_id: Optional[str] = None,
     category_ids: Optional[Dict[str, str]] = None,
+    on_link_refused: Optional[Callable[[RefusedLink], None]] = None,
 ) -> str:
     """
     Persist a completed IngestResponse to the Supabase `recipes` table,
@@ -203,6 +223,9 @@ def write_recipe_to_supabase(
                        and the recipe has grid_categories, junction rows are written
                        to ``recipe_categories``.  When None or empty, no junction
                        rows are written (Zero-Tag Mandate).
+        on_link_refused: Optional callback, called once for each category link
+                       the junction write could not make (Fix Roadmap F-115).
+                       The recipe row is written either way.
 
     Returns:
         The UUID string of the inserted recipe row.
@@ -304,7 +327,7 @@ def write_recipe_to_supabase(
     # row costs only its own link, see _write_category_junctions)
     grid = getattr(recipe, "grid_categories", None) or {}
     if grid and category_ids:
-        _write_category_junctions(
+        refused = _write_category_junctions(
             recipe_id=rid,
             user_id=user_id,
             grid_categories=grid,
@@ -312,6 +335,9 @@ def write_recipe_to_supabase(
             supabase_url=supabase_url,
             service_key=service_key,
         )
+        if on_link_refused is not None:
+            for link in refused:
+                on_link_refused(link)
 
     return rid
 

@@ -237,6 +237,70 @@ class TestSupabaseWriterInsertsRecipeCategories:
             f"batch is refused; landed={landed}"
         )
 
+    def test_a_refused_link_is_reported_to_the_caller(self, monkeypatch):
+        """
+        Fix Roadmap F-115. F-004's retry kept the surviving links but only logged
+        the refused one, so the job that wrote the recipe never heard about it.
+        The writer hands each link it could not write to the caller, with why.
+        """
+        recipe = _make_recipe("Pad Thai")
+        recipe.grid_categories = {"Cuisine": ["Thai"], "Speed": ["Quick"]}
+        monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+        # httpx.post is mocked below; nothing leaves this process.
+        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+
+        def post(url, *, headers, json, timeout):
+            resp = MagicMock()
+            if url.endswith("/recipe_categories") and any(
+                r["category_id"] == "cat-gone" for r in json
+            ):
+                resp.status_code = 409
+                resp.text = 'violates foreign key constraint "recipe_categories_category_id_fkey"'
+            else:
+                resp.status_code = 201
+            return resp
+
+        refused: List[dict] = []
+        with patch("recipeparser.io.writers.supabase.httpx.post", side_effect=post):
+            write_recipe_to_supabase(
+                recipe, "user-uuid-1",
+                category_ids={"Thai": "cat-thai", "Quick": "cat-gone"},
+                on_link_refused=refused.append,
+            )
+
+        assert [r["category_id"] for r in refused] == ["cat-gone"]
+        assert "409" in refused[0]["reason"] and "foreign key" in refused[0]["reason"]
+
+    def test_links_lost_to_a_network_error_are_reported_to_the_caller(self, monkeypatch):
+        """F-115: a batch that never got an answer lost every link it carried."""
+        import httpx
+
+        recipe = _make_recipe("Pad Thai")
+        recipe.grid_categories = {"Cuisine": ["Thai"], "Speed": ["Quick"]}
+        monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+        # httpx.post is mocked below; nothing leaves this process.
+        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+
+        def post(url, *, headers, json, timeout):
+            if url.endswith("/recipe_categories"):
+                raise httpx.ConnectError("connection reset")
+            resp = MagicMock()
+            resp.status_code = 201
+            return resp
+
+        refused: List[dict] = []
+        with patch("recipeparser.io.writers.supabase.httpx.post", side_effect=post):
+            write_recipe_to_supabase(
+                recipe, "user-uuid-1",
+                category_ids={"Thai": "cat-thai", "Quick": "cat-quick"},
+                on_link_refused=refused.append,
+            )
+
+        assert sorted(r["category_id"] for r in refused) == ["cat-quick", "cat-thai"]
+        assert all("connection reset" in r["reason"] for r in refused)
+
 
 # ---------------------------------------------------------------------------
 # Test 3 — PaprikaWriter produces a valid ZIP with Fat Tokens stripped
