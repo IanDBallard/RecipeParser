@@ -8,6 +8,7 @@ Endpoints (canonical — Phase 6):
   POST /jobs/{job_id}/resume  — resume a paused job
   POST /jobs/{job_id}/cancel  — cancel a job
   POST /recipes/{recipe_id}/image   — store the picture a cook chose (200 + { image_url })
+  POST /recipes/{recipe_id}/image/generate — return a generated picture in JPEG (200 + bytes, stores nothing)
   DELETE /recipes/{recipe_id}/image — clear it (200 + { image_url: null })
   POST /embed             — generate a 1536-dim embedding (returns 200 + {embedding})
   GET  /health            — liveness probe + the auth mode the app booted with
@@ -27,34 +28,37 @@ Auth:
 from __future__ import annotations
 
 import asyncio
+import datetime
 import ipaddress
+import logging
 import os
 import re
 import shutil
 import tempfile
 import time
-import datetime
 import uuid
-
-from recipeparser.core.taxonomy import descendants_of
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, status
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from google.genai import errors as genai_errors
 from pydantic import BaseModel
 
+import recipeparser.gemini as _gemini_mod
 from recipeparser.adapters.job_sink import JobSink
-from recipeparser.config import MAX_UPLOAD_BYTES, live_writes_blocked as _live_writes_blocked
+from recipeparser.config import MAX_UPLOAD_BYTES
+from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
+from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
 from recipeparser.core.pipeline import RecipePipeline
+from recipeparser.core.taxonomy import descendants_of
 from recipeparser.exceptions import UnreadableInputError
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
@@ -65,7 +69,6 @@ from recipeparser.io.readers.url import PageMeta, UrlReader, looks_like_badge, p
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.supabase import write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
-import recipeparser.gemini as _gemini_mod
 
 # Before the first logger call in this module: uvicorn leaves the root logger
 # bare, so without this every INFO line in the package is silent.
@@ -751,6 +754,7 @@ def _make_stage_callback(job_id: str) -> Callable[[str], None]:
             return
         try:
             import datetime
+
             from supabase import create_client  # type: ignore[import-not-found]
             sb = create_client(supabase_url, supabase_key)
             sb.table("ingestion_jobs").update({
@@ -1681,3 +1685,71 @@ async def clear_recipe_image(
     await asyncio.to_thread(SupabaseImageStore().remove, recipe_id)
     logger.info("Recipe %s lost its picture.", recipe_id)
     return RecipeImageResponse(image_url=None)
+
+
+class PictureRequest(BaseModel):
+    """What POST /recipes/{recipe_id}/image/generate is told: the draft as it is on screen (design D5)."""
+    title: str
+    description: Optional[str] = None
+    ingredients: List[str] = []
+
+
+_NO_PICTURE = "Could not make a picture for this recipe."
+
+
+@app.post(
+    "/recipes/{recipe_id}/image/generate",
+    status_code=200,
+    response_class=Response,
+    responses={200: {"content": {"image/jpeg": {}}}},
+)
+async def generate_recipe_image(
+    recipe_id: str,
+    body: PictureRequest,
+    user: dict[str, Any] = Depends(_verify_supabase_jwt),
+) -> Response:
+    """A generated picture of the recipe's dish, as JPEG bytes. Nothing is stored.
+
+    The cook previews it in the editor as a pending picture; Save stores it through
+    POST /recipes/{id}/image with source=generated (AI recipe picture, D4). The
+    ownership read comes first so a stranger's id costs no Gemini call.
+
+    404 not the caller's recipe; 422 blank title or no image in the reply; 503 no
+    key, quota, or Gemini down; 504 past PICTURE_TIMEOUT_SECS.
+    """
+    if not body.title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A picture needs the recipe's title.",
+        )
+    user_id: str = user.get("sub", "")
+    await _owned_recipe_client(recipe_id, user_id)
+    prompt = build_picture_prompt(body.title, body.description, body.ingredients)
+    try:
+        client = _get_client()
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Recipe AI is not configured to make pictures.",
+        ) from exc
+    try:
+        data, _mime = await asyncio.to_thread(generate_picture, client, prompt)
+        jpeg = to_jpeg(data)
+    except NoPictureError as exc:
+        logger.warning("No picture for recipe %s: %s", recipe_id, exc)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=_NO_PICTURE) from exc
+    except httpx.TimeoutException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Making the picture took too long. Try again.",
+        ) from exc
+    except genai_errors.APIError as exc:
+        logger.warning("Gemini refused a picture for recipe %s: %s", recipe_id, exc)
+        busy = getattr(exc, "code", None) == 429
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The picture service is busy. Try again in a minute." if busy
+            else "The picture service is unavailable. Try again later.",
+        ) from exc
+    logger.info("Recipe %s got a generated picture (%d bytes).", recipe_id, len(jpeg))
+    return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
