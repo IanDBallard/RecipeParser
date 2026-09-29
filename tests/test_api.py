@@ -21,6 +21,7 @@ import uuid
 from typing import Any, Optional
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -1160,11 +1161,12 @@ def _updated_column(sb: MagicMock) -> Any:
 class TestRecipeImage:
     def _post(
         self, client: TestClient, filename: str, content: bytes,
-        content_type: str, recipe_id: str = _RECIPE_ID,
+        content_type: str, recipe_id: str = _RECIPE_ID, source: Optional[str] = None,
     ) -> Any:
         return client.post(
             f"/recipes/{recipe_id}/image",
             files={"file": (filename, io.BytesIO(content), content_type)},
+            data={} if source is None else {"source": source},
         )
 
     def test_a_picture_is_stored_and_the_row_takes_its_url(self, client: TestClient) -> None:
@@ -1179,7 +1181,7 @@ class TestRecipeImage:
         assert image_url.startswith("https://x.supabase.co/storage/v1/object/public/recipe-images/r.jpg?v=")
         # The row carries exactly what the client was told, or the device that
         # syncs the row and the device that made the change disagree.
-        assert _updated_column(sb) == {"image_url": image_url}
+        assert _updated_column(sb) == {"image_url": image_url, "image_source": None}
 
     def test_the_url_is_cache_busted_so_a_replacement_is_seen(self, client: TestClient) -> None:
         sb = _service_client()
@@ -1246,6 +1248,31 @@ class TestRecipeImage:
         # recipe the caller does not own is never written.
         store_cls.return_value.put.assert_not_called()
 
+    def test_a_generated_picture_is_marked(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = "https://x.supabase.co/storage/v1/object/public/recipe-images/r.jpg"
+            resp = self._post(client, "generated.jpg", b"\xff\xd8\xff\xe0", "image/jpeg", source="generated")
+        assert resp.status_code == 200
+        assert _updated_column(sb) == {"image_url": resp.json()["image_url"], "image_source": "generated"}
+
+    def test_a_plain_upload_over_a_generated_picture_writes_image_source_null(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.return_value = "https://x.supabase.co/storage/v1/object/public/recipe-images/r.jpg"
+            resp = self._post(client, "photo.jpg", b"\xff\xd8\xff\xe0", "image/jpeg")
+        assert resp.status_code == 200
+        assert _updated_column(sb)["image_source"] is None
+
+    def test_an_unknown_source_is_a_422_before_anything_is_stored(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            resp = self._post(client, "photo.jpg", b"\xff\xd8\xff\xe0", "image/jpeg", source="camera")
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Unknown picture source 'camera'."
+        store_cls.return_value.put.assert_not_called()
+        sb.table.return_value.update.assert_not_called()
+
     def test_a_storage_failure_is_a_503_and_the_row_is_left_alone(self, client: TestClient) -> None:
         sb = _service_client()
         with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
@@ -1265,7 +1292,7 @@ class TestRecipeImage:
             resp = client.delete(f"/recipes/{_RECIPE_ID}/image")
         assert resp.status_code == 200
         assert resp.json() == {"image_url": None}
-        assert _updated_column(sb) == {"image_url": None}
+        assert _updated_column(sb) == {"image_url": None, "image_source": None}
         store_cls.return_value.remove.assert_called_once_with(_RECIPE_ID)
 
     def test_delete_on_a_recipe_the_caller_does_not_own_is_a_404(self, client: TestClient) -> None:
@@ -1274,6 +1301,114 @@ class TestRecipeImage:
             resp = client.delete(f"/recipes/{_RECIPE_ID}/image")
         assert resp.status_code == 404
         store_cls.return_value.remove.assert_not_called()
+
+
+_GENERATE = "recipeparser.adapters.api.generate_picture"
+
+
+def _png_bytes() -> bytes:
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), (10, 120, 10)).save(buf, "PNG")
+    return buf.getvalue()
+
+
+class TestGenerateRecipeImage:
+    BODY = {"title": "Shakshuka", "description": "Eggs in spiced tomato", "ingredients": ["6 eggs", "1 can tomatoes"]}
+
+    def _post(self, client: TestClient, body: Any = None, recipe_id: str = _RECIPE_ID) -> Any:
+        return client.post(f"/recipes/{recipe_id}/image/generate", json=self.BODY if body is None else body)
+
+    def test_returns_a_jpeg_and_writes_nothing(self, client: TestClient) -> None:
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_CLIENT, return_value=MagicMock()), \
+             patch(_GENERATE, return_value=(_png_bytes(), "image/png")) as gen:
+            resp = self._post(client)
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/jpeg"
+        assert resp.headers["cache-control"] == "no-store"
+        assert resp.content[:3] == b"\xff\xd8\xff"
+        prompt = gen.call_args.args[1]
+        assert "Title: Shakshuka" in prompt and "- 6 eggs" in prompt
+        sb.table.return_value.update.assert_not_called()
+
+    def test_a_recipe_the_caller_does_not_own_is_a_404_before_any_gemini_call(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=_service_client(owned=False)), patch(_CLIENT) as get_client, \
+             patch(_GENERATE) as gen:
+            resp = self._post(client)
+        assert resp.status_code == 404
+        get_client.assert_not_called()
+        gen.assert_not_called()
+
+    def test_a_blank_title_is_a_422(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_GENERATE) as gen:
+            resp = self._post(client, {"title": "   ", "ingredients": []})
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "A picture needs the recipe's title."
+        gen.assert_not_called()
+
+    def test_no_picture_is_a_422(self, client: TestClient) -> None:
+        from recipeparser.core.picture_gen import NoPictureError
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT, return_value=MagicMock()), \
+             patch(_GENERATE, side_effect=NoPictureError("prompt blocked: SAFETY")):
+            resp = self._post(client)
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "Could not make a picture for this recipe."
+
+    def test_no_key_is_a_503(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), \
+             patch(_CLIENT, side_effect=RuntimeError("GOOGLE_API_KEY not found in environment")):
+            resp = self._post(client)
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "Recipe AI is not configured to make pictures."
+
+    def test_a_quota_error_is_a_503_that_says_busy(self, client: TestClient) -> None:
+        from google.genai import errors as genai_errors
+        quota = genai_errors.ClientError.__new__(genai_errors.ClientError)
+        quota.code = 429
+        quota.status = "RESOURCE_EXHAUSTED"
+        quota.message = "quota"
+        quota.args = ("quota",)
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT, return_value=MagicMock()), \
+             patch(_GENERATE, side_effect=quota):
+            resp = self._post(client)
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "The picture service is busy. Try again in a minute."
+
+    def test_a_server_error_is_a_503(self, client: TestClient) -> None:
+        from google.genai import errors as genai_errors
+        down = genai_errors.ServerError.__new__(genai_errors.ServerError)
+        down.code = 503
+        down.status = "UNAVAILABLE"
+        down.message = "unavailable"
+        down.args = ("unavailable",)
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT, return_value=MagicMock()), \
+             patch(_GENERATE, side_effect=down):
+            resp = self._post(client)
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "The picture service is unavailable. Try again later."
+
+    def test_a_timeout_is_a_504(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT, return_value=MagicMock()), \
+             patch(_GENERATE, side_effect=httpx.ReadTimeout("slow")):
+            resp = self._post(client)
+        assert resp.status_code == 504
+        assert resp.json()["detail"] == "Making the picture took too long. Try again."
+
+    def test_a_transport_error_is_a_503(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT, return_value=MagicMock()), \
+             patch(_GENERATE, side_effect=httpx.ConnectError("down")):
+            resp = self._post(client)
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "The picture service is unavailable. Try again later."
+
+    def test_too_many_ingredients_is_a_422_before_any_gemini_call(self, client: TestClient) -> None:
+        with patch(_SERVICE_CLIENT, return_value=_service_client()), patch(_CLIENT) as get_client, \
+             patch(_GENERATE) as gen:
+            resp = self._post(client, {"title": "Shakshuka", "ingredients": ["egg"] * 201})
+        assert resp.status_code == 422
+        get_client.assert_not_called()
+        gen.assert_not_called()
 
 
 class TestSelectPictureType:
@@ -1499,3 +1634,15 @@ class TestCors:
         # rejected by browsers, and this API writes to a user's library.
         resp = self._preflight(client, "PUT")
         assert "PUT" not in resp.headers.get("access-control-allow-methods", "")
+
+    def test_generate_image_preflight(self, client: TestClient) -> None:
+        resp = client.options(
+            "/recipes/r1/image/generate",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        assert resp.status_code == 200
+        assert "POST" in resp.headers.get("access-control-allow-methods", "")

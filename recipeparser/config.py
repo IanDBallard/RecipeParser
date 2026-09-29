@@ -40,6 +40,15 @@ GEMINI_EMBEDDING_MODEL: str = os.environ.get(
     "GEMINI_EMBEDDING_MODEL", "models/gemini-embedding-001"
 )
 
+# The image model behind POST /recipes/{id}/image/generate (AI recipe picture,
+# design 2026-09-28, D8). gemini-2.5-flash-image shuts down 2026-10-02; this is
+# its stable successor. Override with GEMINI_IMAGE_MODEL to try another.
+GEMINI_IMAGE_MODEL: str = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
+
+# The picture call's own bound, in seconds. A cook is waiting on it, so it is
+# far shorter than HTTP_TIMEOUT_SECS and is never retried.
+PICTURE_TIMEOUT_SECS: int = 60
+
 # Every call this package makes is a bounded extraction, refinement or
 # classification task with one correct JSON (or plain-text) answer, not
 # open-ended reasoning — thinking tokens buy nothing here and bill at the

@@ -116,6 +116,8 @@ select = ["E", "F", "I", "TID"]
 "tests/goldens/test_image_recovery_golden.py" = ["TID"]
 # This test verifies the unmatched archive round-trips through PaprikaReader by design.
 "tests/unit/scripts/test_extract_unmatched_paprika.py" = ["TID"]
+# Picture generation test has long assertion lines that cannot easily be split.
+"tests/unit/test_picture_gen.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.9"
