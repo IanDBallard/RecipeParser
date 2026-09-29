@@ -5,17 +5,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Unreleased]
+## [9.2.0] — 2026-09-29
 
-### ✨ Added — AI recipe picture feature
+AI recipe picture: a generate endpoint and a generated-picture marker (#68). Also a liveness check for ingest jobs (#63), a read-only similarity script (#64), and Fix Roadmap batches 3 and 4 (#65, #66). Needs one Cayenne migration, already live.
+
+### ✨ Added — AI recipe picture feature (#68)
 - `POST /recipes/{id}/image/generate` generates a picture of the recipe's dish using Gemini (`gemini-3.1-flash-image`, override with `GEMINI_IMAGE_MODEL`). The cook previews it in the editor as a pending picture; Save stores it through `POST /recipes/{id}/image` with `source=generated`.
 - `POST /recipes/{id}/image` gains an optional `source` form field. `source=generated` marks the picture as AI-generated (written to `recipes.image_source`); omitted, the column is written null. Any other value is a 422.
 
-### ✨ Changed — picture writes set image_source
+### ✨ Changed — picture writes set image_source (#68)
 - Every `POST` and `DELETE /recipes/{id}/image` writes both `image_url` and `image_source` in a single update, so no device ever syncs a picture carrying the other picture's marker.
 
 ### ⚠️ Requires — apply the Cayenne migration **before** deploying this version
-- **`recipe_image_source.sql`** — `recipes.image_source` column for the picture marker.
+- **`recipe_image_source.sql`** — `recipes.image_source` column for the picture marker. Applied by Cayenne's CI when Cayenne#147 merged, before this version deployed.
+
+### ✨ Added — ingest job liveness (#63)
+- `adapters/ingest_liveness.py` gives each running ingest job a heartbeat. A job whose process died, for example an OOM or a forced deploy, is ended rather than left `running` for ever. Before this, such a job blocked imports on every device, answered Cancel with a 404, and made `deploy.sh` refuse later deploys (Cayenne F-001). The heartbeat runs whenever the service client exists, whatever `REGEN_WORKER_ENABLED` says.
+
+### ✨ Added — `scripts/measure_similarity_tiers.py` (#64)
+- A read-only script that re-derives Cayenne's similar-recipe thresholds (`SAME_RECIPE`, `DIFFERENT_TAKE`) from the library's embeddings.
+
+### 🐛 Fixed — intake guards (Fix Roadmap batch 4, #65)
+- Detection evidence must appear as whole words and say something beyond a bare measure (F-010).
+- A writer's second measure is checked by its unit as well as its number (F-011).
+- Also fixed: the rate limiter's slots, a bad image, and a URL being fetched more than once. Details are in #65.
+
+### 🐛 Fixed — writes and workers (Fix Roadmap batch 3, #66)
+- A refused category link is retried row by row, so one bad id no longer loses every link (F-004).
+- A null body column fails regeneration instead of regenerating to nothing (F-005).
+- Also fixed: claims are released, shutdown is bounded, recategorise does one batch per poll, and worker liveness is tracked. Details are in #66.
+
+### 🔧 CI (#67)
+- Every GitHub Action moved to its current major, off the retired Node 20 runtime.
+
+### 🧪 Testing
+- 1344 passed, 1 skipped at this version (1272 at 9.1.0).
 
 ---
 
