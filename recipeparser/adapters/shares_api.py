@@ -17,8 +17,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
+import uuid
 from collections import deque
-from typing import Any, Callable, Deque, Dict, Optional, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -26,12 +27,14 @@ from pydantic import BaseModel
 log = logging.getLogger(__name__)
 
 CHECKS_PER_HOUR = 20
+MAX_RECIPES = 200
 
 NO_ACCOUNT = "No Cayenne account uses that email."
 OWN_EMAIL = "That's your own email."
 TOO_MANY_CHECKS = "Too many checks. Try again in an hour."
 NOT_CONFIGURED = "Sharing is not configured on this server."
 UNREACHABLE = "Could not reach the share queue. Try again."
+RECIPES_NOT_FOUND = "One or more of those recipes were not found."
 
 
 class RecipientCheckLimiter:
@@ -74,6 +77,15 @@ class RecipientRequest(BaseModel):
 
 class RecipientResponse(BaseModel):
     email: str
+
+
+class ShareRequest(BaseModel):
+    email: str
+    recipe_ids: List[uuid.UUID]
+
+
+class ShareCreated(BaseModel):
+    share_id: str
 
 
 def build_router(
@@ -125,5 +137,31 @@ def build_router(
         """D6: does a Cayenne account use this address? Asked before a share is created."""
         email, _ = _recipient(_client(), user, body.email)
         return RecipientResponse(email=email)
+
+    @router.post("/shares", response_model=ShareCreated, status_code=status.HTTP_201_CREATED)
+    def create_share(body: ShareRequest, user: Dict[str, Any] = Depends(verify)) -> ShareCreated:
+        """Create a share of the caller's recipes. The recipient is checked again: the account
+        may have gone since *Next*. 404, naming no id, if any recipe is not the caller's."""
+        ids = list(dict.fromkeys(str(i) for i in body.recipe_ids))
+        if not ids:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="Choose at least one recipe to share.")
+        if len(ids) > MAX_RECIPES:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail=f"A share holds at most {MAX_RECIPES} recipes.")
+        sender_email = normalise_email(user.get("email") or "")
+        if not sender_email:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="Your account has no email address to share from.")
+        sb = _client()
+        email, recipient = _recipient(sb, user, body.email)
+        share_id = _rpc(sb, "create_recipe_share", {
+            "p_sender": user["sub"], "p_sender_email": sender_email,
+            "p_recipient": recipient, "p_recipient_email": email, "p_recipe_ids": ids,
+        })
+        if not share_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=RECIPES_NOT_FOUND)
+        log.info("Share %s created (%d recipe(s)).", share_id, len(ids))
+        return ShareCreated(share_id=str(share_id))
 
     return router

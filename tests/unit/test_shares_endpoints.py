@@ -121,3 +121,78 @@ def test_no_service_client_is_503(client, monkeypatch):
     monkeypatch.setattr(api, "_get_supabase_service_client", lambda: None)
     response = _as(client, SENDER).post("/shares/recipient", json={"email": "friend@example.com"})
     assert response.status_code == 503
+
+
+# ── POST /shares ─────────────────────────────────────────────────────────────
+
+def test_a_share_is_created_through_the_function_and_answers_201(client, fake):
+    fake.rpcs["create_recipe_share"] = lambda p: SHARE
+    response = _as(client, SENDER).post("/shares", json={"email": "Friend@example.com",
+                                                        "recipe_ids": [R2, R1, R2]})
+    assert response.status_code == 201
+    assert response.json() == {"share_id": SHARE}
+    assert fake.calls("create_recipe_share") == [{
+        "p_sender": SENDER, "p_sender_email": "cook@example.com",
+        "p_recipient": RECIPIENT, "p_recipient_email": "friend@example.com",
+        # Duplicates removed, first-seen order kept: the order is the items' position.
+        "p_recipe_ids": [R2, R1],
+    }]
+
+
+def test_a_recipe_the_sender_does_not_own_is_404_naming_no_id(client, fake):
+    fake.rpcs["create_recipe_share"] = lambda p: None
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": [R1]})
+    assert response.status_code == 404
+    assert response.json()["detail"] == "One or more of those recipes were not found."
+
+
+def test_an_empty_share_is_422_before_any_lookup(client, fake):
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": []})
+    assert response.status_code == 422
+    assert fake.rpc_calls == []
+
+
+def test_more_than_two_hundred_recipes_is_422(client, fake):
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(201)]
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": ids})
+    assert response.status_code == 422
+    assert "200" in response.json()["detail"]
+    assert fake.rpc_calls == []
+
+
+def test_two_hundred_after_duplicates_are_removed_is_allowed(client, fake):
+    fake.rpcs["create_recipe_share"] = lambda p: SHARE
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(200)]
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com",
+                                                        "recipe_ids": ids + ids[:5]})
+    assert response.status_code == 201
+
+
+def test_a_recipient_whose_account_has_gone_is_404(client, fake):
+    fake.rpcs["create_recipe_share"] = lambda p: SHARE
+    response = _as(client, SENDER).post("/shares", json={"email": "gone@example.com", "recipe_ids": [R1]})
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No Cayenne account uses that email."
+    assert fake.calls("create_recipe_share") == []
+
+
+def test_a_sender_without_an_email_claim_is_422(client, fake):
+    fake.rpcs["create_recipe_share"] = lambda p: SHARE
+    response = _as(client, SENDER, email=None).post("/shares", json={"email": "friend@example.com",
+                                                                    "recipe_ids": [R1]})
+    assert response.status_code == 422
+    assert fake.calls("create_recipe_share") == []
+
+
+def test_a_malformed_recipe_id_is_422(client, fake):
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": ["x"]})
+    assert response.status_code == 422
+    assert fake.rpc_calls == []
+
+
+def test_a_database_failure_is_503(client, fake):
+    def boom(p):
+        raise RuntimeError("connection reset")
+    fake.rpcs["create_recipe_share"] = boom
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": [R1]})
+    assert response.status_code == 503
