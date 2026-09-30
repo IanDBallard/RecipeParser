@@ -103,27 +103,33 @@ class ShareWorker:
         """Returns 1 when it worked on a job, 0 when there was none. The sweep does not count:
         it must not keep run_workers from sleeping."""
         self._sweep()
-        try:
-            if self._held is None:
-                job = self._claim()
-                if job is None:
-                    return 0
+        # A failure below is the database or the network, not an item (an item's own failure
+        # is caught in _step), and it is raised, never turned into an `error` job: that would
+        # strand the share in `accepting` for good, while the copy's fixed ids make a redo
+        # harmless. Raising is what run_workers counts as an idle poll, so an outage cannot
+        # spin the loop, and /health's stamp for this worker stops advancing, so it shows.
+        if self._held is None:
+            job = self._claim()
+            if job is None:
+                return 0
+            try:
                 self._held = self._start(job)
-                if self._held is None:
-                    return 1
-            if self._step(self._held):
-                self._held = None
-        except Exception as exc:  # noqa: BLE001
-            # The database or the network, not an item: an item's own failure is caught in
-            # _step. Let go and leave the job `running`; when its lease lapses a poll
-            # reclaims it, and the copy's fixed ids make the redo harmless. Ending it `error`
-            # here would strand the share in `accepting` for good. And report the poll idle,
-            # as run_workers counts a poll that raised: returning 1 would let keeps_loop_busy
-            # skip the loop's sleep, and an outage would become a tight loop.
-            job_id = self._held.job_id if self._held else "?"
+            except Exception:
+                # Never held: the job stays `running`, and its lease brings it back.
+                log.error("share job %s: could not start; the lease will retry it.", job["id"])
+                raise
+            if self._held is None:
+                return 1
+        try:
+            finished = self._step(self._held)
+        except Exception:
+            # Still ours, so keep holding it: the next poll, after run_workers' sleep, carries
+            # on from here. Letting go would idle the share until the lease lapsed, ten
+            # minutes of "Copying" over a one-second blip.
+            log.error("share job %s: poll failed; retrying on the next poll.", self._held.job_id)
+            raise
+        if finished:
             self._held = None
-            log.error("share job %s: poll failed (%s); the lease will retry it.", job_id, exc, exc_info=True)
-            return 0
         return 1
 
     def _claim(self) -> Optional[Dict[str, Any]]:
@@ -220,18 +226,16 @@ class ShareWorker:
         image_url, image_source, stored = self._picture(held, item, new_id)
         params = {"p_item": item["id"], "p_new_id": new_id,
                   "p_image_url": image_url, "p_image_source": image_source}
+        # A call that raised may still have committed, its reply lost: the picture stays then,
+        # since removing it could leave the new recipe pointing at nothing, and an unused
+        # object costs less than that.
         try:
-            try:
-                outcome = str(self._sb.rpc("copy_shared_item", params).execute().data)
-            except Exception as exc:  # noqa: BLE001
-                # Once more, as RecatWorker retries a batch: a dropped connection should not
-                # cost a recipe. The function is idempotent, so a retry after a commit is harmless.
-                log.info("share %s: copying item %s failed (%s) — retrying once.", held.share_id, item["id"], exc)
-                outcome = str(self._sb.rpc("copy_shared_item", params).execute().data)
-        except Exception:
-            if stored:
-                self._discard(new_id)
-            raise
+            outcome = str(self._sb.rpc("copy_shared_item", params).execute().data)
+        except Exception as exc:  # noqa: BLE001
+            # Once more, as RecatWorker retries a batch: a dropped connection should not cost a
+            # recipe. The function is idempotent, so a retry after a commit is harmless.
+            log.info("share %s: copying item %s failed (%s) — retrying once.", held.share_id, item["id"], exc)
+            outcome = str(self._sb.rpc("copy_shared_item", params).execute().data)
         if stored and outcome != "accepted":
             # The original went, or another share's copy won the race: no recipe points at
             # the picture just stored, and it would be paid for for ever.

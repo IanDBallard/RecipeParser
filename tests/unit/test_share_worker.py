@@ -228,7 +228,8 @@ def test_a_database_failure_leaves_the_job_running_for_the_lease():
     _seed(fake, [_item(1, A)], [_recipe(A)])
     fake.raises[("recipe_share_items", "select")] = RuntimeError("connection refused")
     worker = _worker(fake)
-    assert worker.run_once() == 0                       # idle, so run_workers still sleeps
+    with pytest.raises(RuntimeError):                   # raised, so run_workers counts it idle
+        worker.run_once()                               # and /health does not stamp the poll
     assert _job(fake)["status"] == "running"            # not error: the share would be stranded
     del fake.raises[("recipe_share_items", "select")]
     _job(fake)["updated_at"] = LONG_AGO
@@ -242,7 +243,23 @@ def test_a_database_that_cannot_be_reached_is_an_idle_poll():
     fake = FakeSupabase()
     _seed(fake, [_item(1, A)], [_recipe(A)])
     fake.raises[("ingestion_jobs", "select")] = RuntimeError("connection refused")
-    assert _worker(fake).run_once() == 0
+    with pytest.raises(RuntimeError):
+        _worker(fake).run_once()
+
+
+def test_a_brief_failure_mid_job_keeps_the_job_and_the_next_poll_carries_on():
+    # The job is still this worker's: letting go of it would leave it until the lease lapses,
+    # ten minutes of a share stuck at "Copying" over a one-second blip.
+    fake = FakeSupabase()
+    _seed(fake, [_item(1, A), _item(2, B)], [_recipe(A), _recipe(B)])
+    worker = _worker(fake)
+    fake.raises[("recipe_share_items", "update")] = RuntimeError("connection reset")
+    with pytest.raises(RuntimeError):
+        worker.run_once()
+    del fake.raises[("recipe_share_items", "update")]
+    # No lease has lapsed: the job's updated_at is left as the claim wrote it.
+    _run_to_end(worker, fake)
+    assert _status(fake) == ["accepted", "accepted"]
 
 
 # ── the picture ──────────────────────────────────────────────────────────────
@@ -329,7 +346,9 @@ def test_a_picture_stored_for_an_original_deleted_meanwhile_is_removed():
     assert images.removed == [copy_id(_item(1, A)["id"])]
 
 
-def test_a_picture_stored_for_an_item_that_fails_is_removed():
+def test_a_picture_is_kept_when_the_copy_call_fails():
+    # The call may have committed with only its reply lost; removing the picture then would
+    # leave the new recipe pointing at nothing. An unused object costs less than that.
     fake = FakeSupabase()
     images = FakeImageStore()
     fake.objects[f"{A}.jpg"] = b"jpeg-bytes"
@@ -341,7 +360,7 @@ def test_a_picture_stored_for_an_item_that_fails_is_removed():
     fake.rpcs["copy_shared_item"] = down
     _run_to_end(_worker(fake, images), fake)
     assert _status(fake) == ["failed"]
-    assert images.removed == [copy_id(_item(1, A)["id"])]
+    assert images.removed == []
 
 
 def test_a_copied_picture_is_kept():
