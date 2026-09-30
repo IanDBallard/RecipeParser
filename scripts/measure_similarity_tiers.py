@@ -198,6 +198,10 @@ def main() -> int:
     print("Reading id, title, source_key, embedding from `recipes` (read-only)...")
     rows, skipped = load_rows(sb, args.user)
     n = len(rows)
+    if n < 2:
+        print(f"  valid: {n}   malformed/skipped: {skipped}")
+        print("Fewer than two valid embeddings -- nothing to measure.")
+        return 2
     m = unit_matrix([r["vec"] for r in rows])
     sims = within_user(m @ m.T, [r["user_id"] for r in rows])
     all_scores = pair_scores(sims)
