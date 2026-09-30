@@ -1,0 +1,129 @@
+"""
+recipeparser/adapters/shares_api.py — the recipe-sharing endpoints (Cayenne's recipe-sharing
+design, Part 2).
+
+A share hands another Cayenne user a copy of some recipes; they accept it, all or some, and
+the copies become theirs. The client reads both queues by sync and asks for every change
+here. Each change is one Cayenne database function, executable by the service role alone
+(the database plan, ruling 1): supabase-py sends one request per call, so it cannot hold a
+transaction, and the function is the transaction.
+
+Kept out of api.py, which is already long and has a refactor queued (Fix Roadmap F-068).
+``build_router`` takes the auth dependency and the client factory rather than importing
+them, so this module never imports api.py and api.py stays the only place they are defined.
+"""
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from collections import deque
+from typing import Any, Callable, Deque, Dict, Optional, Tuple
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+
+log = logging.getLogger(__name__)
+
+CHECKS_PER_HOUR = 20
+
+NO_ACCOUNT = "No Cayenne account uses that email."
+OWN_EMAIL = "That's your own email."
+TOO_MANY_CHECKS = "Too many checks. Try again in an hour."
+NOT_CONFIGURED = "Sharing is not configured on this server."
+UNREACHABLE = "Could not reach the share queue. Try again."
+
+
+class RecipientCheckLimiter:
+    """D6's limit: at most ``limit`` recipient lookups per sender in any ``window`` seconds.
+
+    In process memory. The API is one container on one VM, so a restart forgets the counts;
+    that is acceptable for a limit whose job is to slow enumeration, not to stop it (Part 2).
+    Endpoints are plain ``def``s that FastAPI runs on a thread pool, hence the lock.
+    """
+
+    def __init__(self, limit: int = CHECKS_PER_HOUR, window: float = 3600.0,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self._limit, self._window, self._clock = limit, window, clock
+        self._hits: Dict[str, Deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, sender_id: str) -> bool:
+        now = self._clock()
+        with self._lock:
+            hits = self._hits.setdefault(sender_id, deque())
+            while hits and hits[0] <= now - self._window:
+                hits.popleft()
+            if len(hits) >= self._limit:
+                return False
+            hits.append(now)
+            return True
+
+    def reset(self) -> None:
+        with self._lock:
+            self._hits.clear()
+
+
+def normalise_email(raw: str) -> str:
+    return raw.strip().lower()
+
+
+class RecipientRequest(BaseModel):
+    email: str
+
+
+class RecipientResponse(BaseModel):
+    email: str
+
+
+def build_router(
+    verify: Callable[..., Dict[str, Any]],
+    service_client: Callable[[], Any],
+    limiter: RecipientCheckLimiter,
+) -> APIRouter:
+    """The sharing endpoints. ``verify`` is the auth dependency; ``service_client`` returns the
+    service-role client or None when the server has none."""
+    router = APIRouter()
+
+    def _client() -> Any:
+        sb = service_client()
+        if sb is None:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=NOT_CONFIGURED)
+        return sb
+
+    def _rpc(sb: Any, fn: str, params: Dict[str, Any], *, invalid: Optional[str] = None) -> Any:
+        """Call a sharing function. SQLSTATE 22023 is the functions' refusal of an argument:
+        a 422 carrying ``invalid`` where the caller expects one. Anything else is a 503."""
+        try:
+            return sb.rpc(fn, params).execute().data
+        except Exception as exc:  # noqa: BLE001
+            if invalid is not None and getattr(exc, "code", None) == "22023":
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=invalid) from exc
+            log.exception("Sharing function %s failed.", fn)
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
+
+    def _recipient(sb: Any, user: Dict[str, Any], raw_email: str) -> Tuple[str, str]:
+        """D6: (the normalised address, its account's id), or the refusal Part 2's table gives."""
+        email = normalise_email(raw_email)
+        if "@" not in email:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Enter an email address.")
+        if email == normalise_email(user.get("email") or ""):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=OWN_EMAIL)
+        # Counted only once a lookup is about to run: a malformed address or one's own teaches
+        # nothing about who has an account, so neither spends one of the twenty.
+        if not limiter.allow(user["sub"]):
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=TOO_MANY_CHECKS)
+        found = _rpc(sb, "user_id_for_email", {"p_email": email})
+        if not found:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_ACCOUNT)
+        if str(found) == user["sub"]:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=OWN_EMAIL)
+        return email, str(found)
+
+    @router.post("/shares/recipient", response_model=RecipientResponse)
+    def check_recipient(body: RecipientRequest, user: Dict[str, Any] = Depends(verify)) -> RecipientResponse:
+        """D6: does a Cayenne account use this address? Asked before a share is created."""
+        email, _ = _recipient(_client(), user, body.email)
+        return RecipientResponse(email=email)
+
+    return router
