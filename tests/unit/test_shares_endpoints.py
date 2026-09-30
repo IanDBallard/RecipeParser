@@ -10,6 +10,7 @@ from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
+from postgrest.exceptions import APIError
 
 import recipeparser.adapters.api as api
 from tests.unit.share_fakes import FakeSupabase
@@ -50,6 +51,10 @@ def _as(client: TestClient, user_id: str, email: Any = "default") -> TestClient:
         claims["email"] = email
     api.app.dependency_overrides[api._verify_supabase_jwt] = lambda: claims
     return client
+
+
+def _refused(code: str = "22023") -> APIError:
+    return APIError({"code": code, "message": "refused", "details": None, "hint": None})
 
 
 # ── POST /shares/recipient ───────────────────────────────────────────────────
@@ -196,3 +201,132 @@ def test_a_database_failure_is_503(client, fake):
     fake.rpcs["create_recipe_share"] = boom
     response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": [R1]})
     assert response.status_code == 503
+
+
+# ── POST /shares/{id}/accept ─────────────────────────────────────────────────
+
+def test_accepting_queues_the_copy_job_and_answers_202(client, fake):
+    fake.rpcs["accept_recipe_share"] = lambda p: JOB
+    response = _as(client, RECIPIENT).post(f"/shares/{SHARE}/accept", json={"skip_item_ids": [R1]})
+    assert response.status_code == 202
+    assert response.json() == {"job_id": JOB}
+    assert fake.calls("accept_recipe_share") == [{"p_share": SHARE, "p_recipient": RECIPIENT, "p_skip": [R1]}]
+
+
+def test_accepting_with_no_body_skips_nothing(client, fake):
+    fake.rpcs["accept_recipe_share"] = lambda p: JOB
+    assert _as(client, RECIPIENT).post(f"/shares/{SHARE}/accept").status_code == 202
+    assert fake.calls("accept_recipe_share")[0]["p_skip"] == []
+
+
+def test_skipping_every_item_is_422_with_the_spec_sentence(client, fake):
+    def refuse(p):
+        raise _refused()
+    fake.rpcs["accept_recipe_share"] = refuse
+    response = _as(client, RECIPIENT).post(f"/shares/{SHARE}/accept", json={"skip_item_ids": [R1, R2]})
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Choose at least one recipe, or decline the share."
+
+
+def test_accepting_a_share_no_longer_pending_is_409(client, fake):
+    # Accepted already, cancelled, declined or expired: the function touches nothing.
+    fake.rpcs["accept_recipe_share"] = lambda p: None
+    response = _as(client, RECIPIENT).post(f"/shares/{SHARE}/accept", json={"skip_item_ids": []})
+    assert response.status_code == 409
+    assert response.json()["detail"] == "This share is no longer pending."
+
+
+def _not_found(response) -> bool:
+    # The endpoint's own sentence, not FastAPI's "Not Found" for a path with no route.
+    return response.status_code == 404 and response.json()["detail"] == "Share not found."
+
+
+def test_a_stranger_accepting_is_404_not_403(client, fake):
+    fake.rpcs["accept_recipe_share"] = lambda p: None
+    assert _not_found(_as(client, STRANGER).post(f"/shares/{SHARE}/accept"))
+
+
+def test_the_sender_accepting_their_own_share_is_404(client, fake):
+    fake.rpcs["accept_recipe_share"] = lambda p: None
+    assert _not_found(_as(client, SENDER).post(f"/shares/{SHARE}/accept"))
+
+
+def test_an_unknown_share_is_404(client, fake):
+    fake.rpcs["accept_recipe_share"] = lambda p: None
+    other = "77777777-7777-4777-8777-777777777777"
+    assert _not_found(_as(client, RECIPIENT).post(f"/shares/{other}/accept"))
+
+
+def test_a_malformed_share_id_is_422(client, fake):
+    assert _as(client, RECIPIENT).post("/shares/not-a-uuid/accept").status_code == 422
+    assert fake.rpc_calls == []
+
+
+# ── POST /shares/{id}/decline and /cancel ────────────────────────────────────
+
+def test_the_recipient_declines(client, fake):
+    fake.rpcs["close_recipe_share"] = lambda p: True
+    response = _as(client, RECIPIENT).post(f"/shares/{SHARE}/decline")
+    assert response.status_code == 200
+    assert response.json() == {"status": "declined"}
+    assert fake.calls("close_recipe_share") == [{"p_share": SHARE, "p_actor": RECIPIENT, "p_status": "declined"}]
+
+
+def test_the_sender_cancels(client, fake):
+    fake.rpcs["close_recipe_share"] = lambda p: True
+    response = _as(client, SENDER).post(f"/shares/{SHARE}/cancel")
+    assert response.status_code == 200
+    assert fake.calls("close_recipe_share") == [{"p_share": SHARE, "p_actor": SENDER, "p_status": "cancelled"}]
+
+
+def test_a_second_decline_is_409(client, fake):
+    fake.rpcs["close_recipe_share"] = lambda p: False
+    assert _as(client, RECIPIENT).post(f"/shares/{SHARE}/decline").status_code == 409
+
+
+def test_cancelling_once_accepting_has_begun_is_409(client, fake):
+    fake.rpcs["close_recipe_share"] = lambda p: False
+    response = _as(client, SENDER).post(f"/shares/{SHARE}/cancel")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "This share is no longer pending."
+
+
+def test_the_sender_declining_is_404(client, fake):
+    fake.rpcs["close_recipe_share"] = lambda p: False
+    assert _not_found(_as(client, SENDER).post(f"/shares/{SHARE}/decline"))
+
+
+def test_the_recipient_cancelling_is_404(client, fake):
+    fake.rpcs["close_recipe_share"] = lambda p: False
+    assert _not_found(_as(client, RECIPIENT).post(f"/shares/{SHARE}/cancel"))
+
+
+def test_a_stranger_closing_is_404(client, fake):
+    fake.rpcs["close_recipe_share"] = lambda p: False
+    assert _not_found(_as(client, STRANGER).post(f"/shares/{SHARE}/decline"))
+    assert _not_found(_as(client, STRANGER).post(f"/shares/{SHARE}/cancel"))
+
+
+def test_an_accept_racing_a_cancel_answers_one_success_and_one_409(client, fake):
+    # The race itself is settled in Postgres: both functions update only a pending row, so
+    # at most one touches it (the database plan's Task 3 probe). What this pins is the
+    # endpoint's half: whichever call finds nothing to change answers 409, not 200 or 500.
+    state = {"status": "pending"}
+
+    def accept(p):
+        if state["status"] != "pending":
+            return None
+        state["status"] = "accepting"
+        return JOB
+
+    def close(p):
+        if state["status"] != "pending":
+            return False
+        state["status"] = p["p_status"]
+        return True
+
+    fake.rpcs["accept_recipe_share"] = accept
+    fake.rpcs["close_recipe_share"] = close
+    first = _as(client, RECIPIENT).post(f"/shares/{SHARE}/accept")
+    second = _as(client, SENDER).post(f"/shares/{SHARE}/cancel")
+    assert (first.status_code, second.status_code) == (202, 409)

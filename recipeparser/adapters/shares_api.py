@@ -35,6 +35,9 @@ TOO_MANY_CHECKS = "Too many checks. Try again in an hour."
 NOT_CONFIGURED = "Sharing is not configured on this server."
 UNREACHABLE = "Could not reach the share queue. Try again."
 RECIPES_NOT_FOUND = "One or more of those recipes were not found."
+NOT_PENDING = "This share is no longer pending."
+ALL_SKIPPED = "Choose at least one recipe, or decline the share."
+SHARE_NOT_FOUND = "Share not found."
 
 
 class RecipientCheckLimiter:
@@ -88,12 +91,24 @@ class ShareCreated(BaseModel):
     share_id: str
 
 
+class AcceptRequest(BaseModel):
+    skip_item_ids: List[uuid.UUID] = []
+
+
+class AcceptResponse(BaseModel):
+    job_id: str
+
+
+class ClosedResponse(BaseModel):
+    status: str
+
+
 def build_router(
     verify: Callable[..., Dict[str, Any]],
     service_client: Callable[[], Any],
     limiter: RecipientCheckLimiter,
 ) -> APIRouter:
-    """The sharing endpoints. ``verify`` is the auth dependency; ``service_client`` returns the
+    """The five sharing endpoints. ``verify`` is the auth dependency; ``service_client`` returns the
     service-role client or None when the server has none."""
     router = APIRouter()
 
@@ -132,6 +147,19 @@ def build_router(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=OWN_EMAIL)
         return email, str(found)
 
+    def _refusal(sb: Any, share_id: str, user_id: str, role: str) -> HTTPException:
+        """Why a transition touched nothing. 404 unless the caller is this share's ``role``
+        (``sender_id`` or ``recipient_id``), so a share id cannot be probed; 409 otherwise."""
+        try:
+            rows = (sb.table("recipe_shares").select("sender_id,recipient_id")
+                    .eq("id", share_id).limit(1).execute().data or [])
+        except Exception:  # noqa: BLE001
+            log.exception("Could not read share %s after a refused transition.", share_id)
+            return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE)
+        if not rows or rows[0].get(role) != user_id:
+            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=SHARE_NOT_FOUND)
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=NOT_PENDING)
+
     @router.post("/shares/recipient", response_model=RecipientResponse)
     def check_recipient(body: RecipientRequest, user: Dict[str, Any] = Depends(verify)) -> RecipientResponse:
         """D6: does a Cayenne account use this address? Asked before a share is created."""
@@ -163,5 +191,37 @@ def build_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=RECIPES_NOT_FOUND)
         log.info("Share %s created (%d recipe(s)).", share_id, len(ids))
         return ShareCreated(share_id=str(share_id))
+
+    @router.post("/shares/{share_id}/accept", response_model=AcceptResponse, status_code=status.HTTP_202_ACCEPTED)
+    def accept_share(share_id: uuid.UUID, body: Optional[AcceptRequest] = None,
+                     user: Dict[str, Any] = Depends(verify)) -> AcceptResponse:
+        """Accept all but the listed items. The copy runs as a ``share_accept`` job (Part 3)."""
+        sb = _client()
+        skip = [str(i) for i in (body.skip_item_ids if body else [])]
+        job_id = _rpc(sb, "accept_recipe_share",
+                      {"p_share": str(share_id), "p_recipient": user["sub"], "p_skip": skip},
+                      invalid=ALL_SKIPPED)
+        if not job_id:
+            raise _refusal(sb, str(share_id), user["sub"], "recipient_id")
+        log.info("Share %s accepted; copy job %s queued.", share_id, job_id)
+        return AcceptResponse(job_id=str(job_id))
+
+    @router.post("/shares/{share_id}/decline", response_model=ClosedResponse)
+    def decline_share(share_id: uuid.UUID, user: Dict[str, Any] = Depends(verify)) -> ClosedResponse:
+        """The recipient turns a pending share down (D7)."""
+        sb = _client()
+        if not _rpc(sb, "close_recipe_share",
+                    {"p_share": str(share_id), "p_actor": user["sub"], "p_status": "declined"}):
+            raise _refusal(sb, str(share_id), user["sub"], "recipient_id")
+        return ClosedResponse(status="declined")
+
+    @router.post("/shares/{share_id}/cancel", response_model=ClosedResponse)
+    def cancel_share(share_id: uuid.UUID, user: Dict[str, Any] = Depends(verify)) -> ClosedResponse:
+        """The sender withdraws a share while it is still pending (D7)."""
+        sb = _client()
+        if not _rpc(sb, "close_recipe_share",
+                    {"p_share": str(share_id), "p_actor": user["sub"], "p_status": "cancelled"}):
+            raise _refusal(sb, str(share_id), user["sub"], "sender_id")
+        return ClosedResponse(status="cancelled")
 
     return router
