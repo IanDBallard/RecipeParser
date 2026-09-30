@@ -69,7 +69,7 @@ def test_parseable_durations_are_unaffected_by_the_tidy():
 def test_unparseable_servings_note_collapses_runs_of_whitespace():
     """parse_servings carried the identical defect on its own failure path.
     The backfill cannot reach it -- it derives servings text from the numeric
-    base_servings column -- but SupabaseWriter passes real recipe text through
+    base_servings column -- but write_recipe_to_supabase passes real recipe text through
     duration_columns on every ingest, so servings_note leaked the same way."""
     span = parse_servings("serves\n\n\n\n  a\t\tcrowd  ")
     assert span.min is None and span.max is None

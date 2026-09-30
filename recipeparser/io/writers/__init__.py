@@ -20,7 +20,6 @@ class RecipeWriter(ABC):
     Port for writing completed recipes to a destination.
 
     Concrete implementations live in ``recipeparser/io/writers/``:
-      - ``SupabaseWriter``   — writes to Supabase ``recipes`` + ``recipe_categories``
       - ``PaprikaWriter``    — writes to a ``.paprikarecipes`` ZIP archive
       - ``CayenneZipWriter`` — writes to a ``.cayenne`` ZIP with ``_cayenne_meta``
 

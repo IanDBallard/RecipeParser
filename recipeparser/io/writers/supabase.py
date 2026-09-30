@@ -1,5 +1,5 @@
 """
-supabase.py — SupabaseWriter: writes completed recipes to Supabase.
+supabase.py — write_recipe_to_supabase: writes completed recipes to Supabase.
 
 ARCHITECTURAL INVARIANT:
   The RecipeParser API is the sole writer of ingested recipe data to Supabase.
@@ -24,7 +24,6 @@ import httpx
 from dotenv import load_dotenv
 
 from recipeparser.config import live_writes_blocked
-from recipeparser.io.writers import RecipeWriter
 from recipeparser.models import IngestResponse
 
 load_dotenv()
@@ -429,60 +428,3 @@ def verify_recipe_in_supabase(
         errors.append(f"embedding length {len(emb)}, expected 1536")
 
     return errors
-
-
-# ---------------------------------------------------------------------------
-# SupabaseWriter — RecipeWriter port implementation
-# ---------------------------------------------------------------------------
-
-class SupabaseWriter(RecipeWriter):
-    """
-    Writes a batch of ``IngestResponse`` objects to Supabase.
-
-    Configuration is passed at construction time so the ``write()`` call
-    is a pure data-push with no extra arguments required.
-
-    Args:
-        user_id:      The authenticated user's UUID (from JWT ``sub`` claim).
-        category_ids: Optional mapping of category_name → UUID from
-                      ``SupabaseCategorySource.load_category_ids()``.
-                      When provided, junction rows are written to
-                      ``recipe_categories`` for each recipe's ``grid_categories``.
-                      When ``None`` or empty, no junction rows are written.
-
-    Example::
-
-        writer = SupabaseWriter(user_id="abc-123", category_ids=cat_map)
-        writer.write(pipeline_results)
-    """
-
-    def __init__(
-        self,
-        user_id: str,
-        category_ids: Optional[Dict[str, str]] = None,
-    ) -> None:
-        self._user_id = user_id
-        self._category_ids = category_ids or {}
-
-    def write(self, recipes: List[IngestResponse], **kwargs: object) -> None:
-        """
-        Persist each recipe to Supabase ``recipes`` + ``recipe_categories``.
-
-        Iterates the list sequentially. Each recipe is written atomically via
-        ``write_recipe_to_supabase()``. A failure on one recipe raises
-        ``RuntimeError`` immediately (fail-fast).
-
-        Args:
-            recipes: All successfully processed ``IngestResponse`` objects.
-            **kwargs: Accepted but ignored (satisfies the ABC contract).
-
-        Raises:
-            RuntimeError: If env vars are missing or any Supabase insert fails.
-        """
-        for recipe in recipes:
-            write_recipe_to_supabase(
-                recipe=recipe,
-                user_id=self._user_id,
-                category_ids=self._category_ids if self._category_ids else None,
-            )
-        log.info("SupabaseWriter: wrote %d recipe(s) for user %s.", len(recipes), self._user_id)

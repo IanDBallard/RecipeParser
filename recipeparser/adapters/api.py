@@ -28,7 +28,6 @@ Auth:
 from __future__ import annotations
 
 import asyncio
-import datetime
 import ipaddress
 import logging
 import os
@@ -39,7 +38,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Tuple
 from urllib.parse import urlparse
 
 import httpx
@@ -54,6 +53,7 @@ from recipeparser.adapters.job_sink import JobSink
 from recipeparser.config import MAX_UPLOAD_BYTES
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
+from recipeparser.core.clock import utc_timestamp
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
@@ -652,12 +652,11 @@ def _create_ingestion_job(
     Failures are logged but NOT re-raised — a missing job row is bad UX
     but must never prevent the job from starting.
     """
-    import datetime
     sb = _get_supabase_service_client()
     if sb is None:
         logger.warning("Job %s: Supabase credentials not set — skipping ingestion_jobs INSERT.", job_id)
         return
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    now = utc_timestamp()
     try:
         sb.table("ingestion_jobs").insert({
             "id": job_id,
@@ -753,14 +752,12 @@ def _make_stage_callback(job_id: str) -> Callable[[str], None]:
             )
             return
         try:
-            import datetime
-
             from supabase import create_client  # type: ignore[import-not-found]
             sb = create_client(supabase_url, supabase_key)
             sb.table("ingestion_jobs").update({
                 "stage": stage,
                 "status": "running",
-                "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
+                "updated_at": utc_timestamp(),
             }).eq("id", job_id).execute()
             logger.debug("Job %s: stage → %s", job_id, stage)
         except Exception:
@@ -787,14 +784,12 @@ def _make_progress_writer(job_id: str) -> Callable[[int], None]:
         if _live_writes_blocked():
             return
         try:
-            import datetime  # noqa: PLC0415
-
             sb = _get_supabase_service_client()
             if sb is None:
                 return
             sb.table("ingestion_jobs").update({
                 "progress_pct": pct,
-                "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+                "updated_at": utc_timestamp(),
             }).eq("id", job_id).execute()
         except Exception:
             logger.exception("Job %s: failed to write progress %d%%.", job_id, pct)
@@ -856,14 +851,12 @@ def _update_total_chunks(job_id: str, total: int, source_hint: Optional[str] = N
         logger.warning("Test run: skipping the total_chunks update for job %s.", job_id)
         return
     try:
-        import datetime  # noqa: PLC0415
-
         sb = _get_supabase_service_client()
         if sb is None:
             return
         payload: Dict[str, Any] = {
             "total_chunks": total,
-            "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+            "updated_at": utc_timestamp(),
         }
         if source_hint is not None:
             payload["source_hint"] = source_hint
@@ -968,6 +961,98 @@ def _select_reader(filename: str, content_type: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# The ingestion job both job endpoints start
+# ---------------------------------------------------------------------------
+
+async def _run_ingestion_job(
+    job_id: str,
+    user_id: str,
+    controller: PipelineController,
+    read: Callable[[], Awaitable[Tuple[Any, List[Chunk]]]],
+    failure_name: Optional[str],
+    log_label: str,
+) -> None:
+    """Run one ingestion job to its end: the half ``POST /jobs`` and ``POST /jobs/file`` share.
+
+    ``read`` produces the Gemini client and the chunks, and is all that differs
+    between a URL, a pasted text and a file. Everything after it is the same: the
+    category map, the sink, progress, the pipeline, and the job row's last write.
+    A failure in ``read`` or after it finishes the row as an error, worded with
+    ``failure_name`` (the URL or the file name).
+    """
+    # NOTE: Do NOT call controller.transition("start") here.
+    # RecipePipeline.run() calls it internally (IDLE → RUNNING).
+    # Calling it here first would cause an invalid double-transition.
+    sink = None
+    try:
+        client, chunks = await read()
+
+        category_source = SupabaseCategorySource()
+        category_ids = category_source.load_category_ids(user_id)
+        sink = JobSink(
+            job_id=job_id,
+            user_id=user_id,
+            category_ids=category_ids,
+            write=write_recipe_to_supabase,
+        )
+        write_progress = _make_progress_writer(job_id)
+
+        def _on_progress(stage: str, completed: int, total: int) -> None:
+            before = len(sink.progress_updates)
+            sink.on_progress(stage, completed, total)
+            if len(sink.progress_updates) > before:
+                write_progress(sink.progress_updates[-1])
+
+        # RecipePipeline.run() transitions IDLE→RUNNING internally,
+        # processes all chunks (with per-chunk error isolation), then
+        # transitions RUNNING→IDLE on success.
+        pipeline = RecipePipeline(
+            client=client,
+            controller=controller,
+            category_source=category_source,
+            image_store=SupabaseImageStore(),
+        )
+        await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
+        await asyncio.to_thread(
+            lambda: pipeline.run(
+                chunks,
+                on_progress=_on_progress,
+                user_id=user_id,
+                on_result=sink.on_result,
+                on_skip=sink.on_skip,
+            )
+        )
+        logger.info(
+            "Job %s completed — %d recipe(s), %d skipped, %d category link(s) refused.",
+            job_id, sink.recipe_count, sink.skipped_count, sink.refused_link_count,
+        )
+        await asyncio.to_thread(
+            _finalize_ingestion_job,
+            job_id,
+            # The controller is back at IDLE by now, so the flag is the only
+            # thing that still knows the user pressed Cancel (spec 5.1).
+            sink.finalize_payload(True, cancelled=controller.cancel_requested),
+        )
+    except Exception as exc:
+        logger.error("%s %s failed: %s", log_label, job_id, exc, exc_info=True)
+        # Transition to IDLE via "error" event.  The FSM allows this from
+        # RUNNING, PAUSING, and RESUMING states.  If the pipeline never
+        # started (e.g. a reader raised before pipeline.run()), the controller
+        # is still IDLE and the transition is a no-op (logs a warning).
+        controller.transition("error")
+        message = _job_error_message(failure_name, exc)
+        payload = (
+            sink.finalize_payload(False, message)
+            if sink is not None
+            else {"status": "error", "stage": "ERROR", "error_message": message}
+        )
+        await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
+    finally:
+        _active_jobs.pop(job_id, None)
+
+
+
+# ---------------------------------------------------------------------------
 # POST /jobs  — canonical URL/text fire-and-forget endpoint
 # ---------------------------------------------------------------------------
 
@@ -1000,121 +1085,64 @@ async def submit_job(
     controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
     _active_jobs[job_id] = (user_id, controller)
 
-    async def _run() -> None:
-        sink = None
-        try:
-            client = _get_client()
-            source_text: str
-            source_url: Optional[str] = None
-            stored_image_url: Optional[str] = None
+    async def _read() -> Tuple[Any, List[Chunk]]:
+        client = _get_client()
+        source_text: str
+        source_url: Optional[str] = None
+        stored_image_url: Optional[str] = None
 
-            page_meta = PageMeta(None, None)
-            if body.url:
-                source_url = body.url
-                # UrlReader is the one place that decides what a fetched URL means: the Jina
-                # fetch, its timeout, and every refusal (an HTTP error, a timeout, a blank page,
-                # a bot-protection challenge) as a UrlFetchError. This endpoint kept its own copy
-                # until 2026-09-28, and #54's reader fix was dead code here until #55 copied it
-                # (RecipeParser#57, Fix Roadmap F-014). The reader is synchronous, so it runs in
-                # a thread.
-                [fetched] = await asyncio.to_thread(UrlReader().read, body.url)
-                markdown_text = fetched.text
-                # The page's own head first (og:image, the description), the
-                # scraper's markdown second: the markdown dropped both on the
-                # NYT page of 2026-09-12 and offered a logo instead.
-                page_meta = await _fetch_page_meta(body.url)
-                page_image = (
-                    page_meta.image_url
-                    if page_meta.image_url and not looks_like_badge(page_meta.image_url)
-                    else None
+        page_meta = PageMeta(None, None)
+        if body.url:
+            source_url = body.url
+            # UrlReader is the one place that decides what a fetched URL means: the Jina
+            # fetch, its timeout, and every refusal (an HTTP error, a timeout, a blank page,
+            # a bot-protection challenge) as a UrlFetchError. This endpoint kept its own copy
+            # until 2026-09-28, and #54's reader fix was dead code here until #55 copied it
+            # (RecipeParser#57, Fix Roadmap F-014). The reader is synchronous, so it runs in
+            # a thread.
+            [fetched] = await asyncio.to_thread(UrlReader().read, body.url)
+            markdown_text = fetched.text
+            # The page's own head first (og:image, the description), the
+            # scraper's markdown second: the markdown dropped both on the
+            # NYT page of 2026-09-12 and offered a logo instead.
+            page_meta = await _fetch_page_meta(body.url)
+            page_image = (
+                page_meta.image_url
+                if page_meta.image_url and not looks_like_badge(page_meta.image_url)
+                else None
+            )
+            image_url_candidate = page_image or _extract_image_url_from_markdown(markdown_text)
+            recipe_id_for_img = str(uuid.uuid4())
+            if image_url_candidate:
+                stored_image_url = await _upload_image_to_storage(
+                    image_url_candidate, recipe_id_for_img
                 )
-                image_url_candidate = page_image or _extract_image_url_from_markdown(markdown_text)
-                recipe_id_for_img = str(uuid.uuid4())
-                if image_url_candidate:
-                    stored_image_url = await _upload_image_to_storage(
-                        image_url_candidate, recipe_id_for_img
-                    )
-                source_text = html_to_text(markdown_text)
-            else:
-                source_text = (body.text or "").strip()
+            source_text = html_to_text(markdown_text)
+        else:
+            source_text = (body.text or "").strip()
 
-            # Build a single URL/text chunk for the pipeline.
-            # Both URL-scraped and raw-text paths use InputType.URL so the
-            # pipeline routes them through the full EXTRACT→REFINE→…→ASSEMBLE
-            # sequence.  source_url is None for raw-text submissions.
-            # A list of one, so the total_chunks write below and the run() call
-            # take the same shape here as they do in the file endpoint.
-            # The page's description is the page's own statement, so it rides
-            # SourceMeta and beats the model's reading, as a Paprika entry's does.
-            chunks = [
-                Chunk(
-                    text=source_text,
-                    input_type=InputType.URL,
-                    source_url=source_url,
-                    image_url=stored_image_url,
-                    citation=web_citation(body.url) if body.url else None,
-                    meta=SourceMeta(description=page_meta.description) if page_meta.description else None,
-                )
-            ]
-
-            category_source = SupabaseCategorySource()
-            category_ids = category_source.load_category_ids(user_id)
-            sink = JobSink(
-                job_id=job_id,
-                user_id=user_id,
-                category_ids=category_ids,
-                write=write_recipe_to_supabase,
+        # Build a single URL/text chunk for the pipeline.
+        # Both URL-scraped and raw-text paths use InputType.URL so the
+        # pipeline routes them through the full EXTRACT→REFINE→…→ASSEMBLE
+        # sequence.  source_url is None for raw-text submissions.
+        # A list of one, so _run_ingestion_job takes the same shape here
+        # as it does from the file endpoint.
+        # The page's description is the page's own statement, so it rides
+        # SourceMeta and beats the model's reading, as a Paprika entry's does.
+        chunks = [
+            Chunk(
+                text=source_text,
+                input_type=InputType.URL,
+                source_url=source_url,
+                image_url=stored_image_url,
+                citation=web_citation(body.url) if body.url else None,
+                meta=SourceMeta(description=page_meta.description) if page_meta.description else None,
             )
-            write_progress = _make_progress_writer(job_id)
-
-            def _on_progress(stage: str, completed: int, total: int) -> None:
-                before = len(sink.progress_updates)
-                sink.on_progress(stage, completed, total)
-                if len(sink.progress_updates) > before:
-                    write_progress(sink.progress_updates[-1])
-
-            pipeline = RecipePipeline(
-                client=client,
-                controller=controller,
-                category_source=category_source,
-                image_store=SupabaseImageStore(),
-            )
-            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
-            await asyncio.to_thread(
-                lambda: pipeline.run(
-                    chunks,
-                    on_progress=_on_progress,
-                    user_id=user_id,
-                    on_result=sink.on_result,
-                    on_skip=sink.on_skip,
-                )
-            )
-            logger.info(
-                "Job %s completed — %d recipe(s), %d skipped, %d category link(s) refused.",
-                job_id, sink.recipe_count, sink.skipped_count, sink.refused_link_count,
-            )
-            await asyncio.to_thread(
-                _finalize_ingestion_job,
-                job_id,
-                # The controller is back at IDLE by now, so the flag is the only
-                # thing that still knows the user pressed Cancel (spec 5.1).
-                sink.finalize_payload(True, cancelled=controller.cancel_requested),
-            )
-        except Exception as exc:
-            logger.error("Job %s failed: %s", job_id, exc, exc_info=True)
-            controller.transition("error")
-            message = _job_error_message(body.url, exc)
-            payload = (
-                sink.finalize_payload(False, message)
-                if sink is not None
-                else {"status": "error", "stage": "ERROR", "error_message": message}
-            )
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
-        finally:
-            _active_jobs.pop(job_id, None)
+        ]
+        return client, chunks
 
     _create_ingestion_job(job_id, user_id, source_hint=body.url or None)
-    asyncio.create_task(_run())
+    asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, body.url, "Job"))
     return AsyncJobResponse(job_id=job_id)
 
 
@@ -1166,100 +1194,33 @@ async def submit_file_job(
     controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
     _active_jobs[job_id] = (user_id, controller)
 
-    async def _run() -> None:
-        # NOTE: Do NOT call controller.transition("start") here.
-        # RecipePipeline.run() calls it internally (IDLE → RUNNING).
-        # Calling it here first would cause an invalid double-transition.
-        sink = None
+    async def _read() -> Tuple[Any, List[Chunk]]:
         try:
-            try:
-                client = _get_client()
-                # Use the appropriate reader to produce List[Chunk].
-                # The pipeline's stage router (_get_stages) inspects each
-                # chunk's input_type and routes accordingly:
-                #   PDF / EPUB          → full pipeline (EXTRACT→…→ASSEMBLE)
-                #   IMAGE               → full pipeline (EXTRACT→…→ASSEMBLE)
-                #   PAPRIKA_LEGACY      → full pipeline (EXTRACT→…→ASSEMBLE)
-                #   PAPRIKA_CAYENNE + embedding  → ASSEMBLE only ($0)
-                #   PAPRIKA_CAYENNE no embedding → EMBED + ASSEMBLE (1 call)
-                if reader_tag == "pdf":
-                    # With the client, a scan is transcribed rather than refused (Input media 1).
-                    chunks = await asyncio.to_thread(_PdfReader(client=client).read, tmp_path)
-                elif reader_tag == "epub":
-                    chunks = await asyncio.to_thread(_EpubReader().read, tmp_path)
-                elif reader_tag == "image":
-                    # A model call inside the reader: the OCR is the read.
-                    chunks = await asyncio.to_thread(_ImageReader(client).read, tmp_path)
-                else:  # paprika
-                    chunks = await asyncio.to_thread(_PaprikaReader().read, tmp_path)
-            finally:
-                os.unlink(tmp_path)
-
-            category_source = SupabaseCategorySource()
-            category_ids = category_source.load_category_ids(user_id)
-            sink = JobSink(
-                job_id=job_id,
-                user_id=user_id,
-                category_ids=category_ids,
-                write=write_recipe_to_supabase,
-            )
-            write_progress = _make_progress_writer(job_id)
-
-            def _on_progress(stage: str, completed: int, total: int) -> None:
-                before = len(sink.progress_updates)
-                sink.on_progress(stage, completed, total)
-                if len(sink.progress_updates) > before:
-                    write_progress(sink.progress_updates[-1])
-
-            # RecipePipeline.run() transitions IDLE→RUNNING internally,
-            # processes all chunks (with per-chunk error isolation), then
-            # transitions RUNNING→IDLE on success.
-            pipeline = RecipePipeline(
-                client=client,
-                controller=controller,
-                category_source=category_source,
-                image_store=SupabaseImageStore(),
-            )
-            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
-            await asyncio.to_thread(
-                lambda: pipeline.run(
-                    chunks,
-                    on_progress=_on_progress,
-                    user_id=user_id,
-                    on_result=sink.on_result,
-                    on_skip=sink.on_skip,
-                )
-            )
-            logger.info(
-                "Job %s completed — %d recipe(s), %d skipped, %d category link(s) refused.",
-                job_id, sink.recipe_count, sink.skipped_count, sink.refused_link_count,
-            )
-            await asyncio.to_thread(
-                _finalize_ingestion_job,
-                job_id,
-                # The controller is back at IDLE by now, so the flag is the only
-                # thing that still knows the user pressed Cancel (spec 5.1).
-                sink.finalize_payload(True, cancelled=controller.cancel_requested),
-            )
-        except Exception as exc:
-            logger.error("File job %s failed: %s", job_id, exc, exc_info=True)
-            # Transition to IDLE via "error" event.  The FSM allows this from
-            # RUNNING, PAUSING, and RESUMING states.  If the pipeline never
-            # started (e.g. reader raised before pipeline.run()), the controller
-            # is still IDLE and the transition is a no-op (logs a warning).
-            controller.transition("error")
-            message = _job_error_message(filename, exc)
-            payload = (
-                sink.finalize_payload(False, message)
-                if sink is not None
-                else {"status": "error", "stage": "ERROR", "error_message": message}
-            )
-            await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
+            client = _get_client()
+            # Use the appropriate reader to produce List[Chunk].
+            # The pipeline's stage router (_get_stages) inspects each
+            # chunk's input_type and routes accordingly:
+            #   PDF / EPUB          → full pipeline (EXTRACT→…→ASSEMBLE)
+            #   IMAGE               → full pipeline (EXTRACT→…→ASSEMBLE)
+            #   PAPRIKA_LEGACY      → full pipeline (EXTRACT→…→ASSEMBLE)
+            #   PAPRIKA_CAYENNE + embedding  → ASSEMBLE only ($0)
+            #   PAPRIKA_CAYENNE no embedding → EMBED + ASSEMBLE (1 call)
+            if reader_tag == "pdf":
+                # With the client, a scan is transcribed rather than refused (Input media 1).
+                chunks = await asyncio.to_thread(_PdfReader(client=client).read, tmp_path)
+            elif reader_tag == "epub":
+                chunks = await asyncio.to_thread(_EpubReader().read, tmp_path)
+            elif reader_tag == "image":
+                # A model call inside the reader: the OCR is the read.
+                chunks = await asyncio.to_thread(_ImageReader(client).read, tmp_path)
+            else:  # paprika
+                chunks = await asyncio.to_thread(_PaprikaReader().read, tmp_path)
         finally:
-            _active_jobs.pop(job_id, None)
+            os.unlink(tmp_path)
+        return client, chunks
 
     _create_ingestion_job(job_id, user_id, source_hint=filename or None)
-    asyncio.create_task(_run())
+    asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, filename, "File job"))
     return AsyncJobResponse(job_id=job_id)
 
 
@@ -1354,7 +1315,7 @@ def submit_recategorize_job(
     hint = ", ".join(n for n in names if n)[:80]
 
     job_id = str(uuid.uuid4())
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    now = utc_timestamp()
     try:
         sb.table("ingestion_jobs").insert({
             "id": job_id,
@@ -1455,7 +1416,7 @@ def cancel_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)
         sb = _get_supabase_service_client()
         sb.table("ingestion_jobs").update({
             "status": "cancelled",
-            "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
+            "updated_at": utc_timestamp(),
         }).eq("id", job_id).eq("user_id", user.get("sub", "")).execute()
         logger.info("Recategorise job %s cancelled by its owner.", job_id)
         return {"job_id": job_id, "status": "cancelled"}

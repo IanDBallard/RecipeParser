@@ -375,8 +375,11 @@ class TestRateLimitTracking:
         ctrl = PipelineController()
         ctrl.transition("start")
         ctrl.trigger_rate_limit_pause(resume_secs=0)
-        # Give the timer thread time to fire
-        time.sleep(0.2)
+        # Wait for the timer thread itself, not a guessed interval (F-068).
+        timer = ctrl._auto_resume_timer
+        assert timer is not None
+        timer.join(timeout=5.0)
+        assert not timer.is_alive(), "the auto-resume timer never fired"
         assert ctrl.status == PipelineStatus.RESUMING
 
     def test_request_resume_cancels_auto_resume_timer(self):
