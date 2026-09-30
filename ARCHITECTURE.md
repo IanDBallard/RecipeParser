@@ -590,8 +590,13 @@ POST /jobs  →  202 { job_id }
                      6. INSERT recipes + embeddings → Supabase
                      7. fsm.transition(DONE)      → UPDATE ingestion_jobs
 
-GET /jobs/{job_id}  →  { status, stage, progress_pct, recipe_count, error }
+GET /jobs/{job_id}  →  { job_id, status }
 ```
+
+`GET /jobs/{job_id}` answers from the in-memory registry of running jobs (`JobStatusResponse`): `status` is the
+pipeline controller's state, and a job that has finished, or is not the caller's, is a 404. The stage, progress,
+recipe count and error live on the `ingestion_jobs` row, which is what Cayenne reads, by sync; the client calls
+none of the job-status routes (Cayenne `SpecificationDocumentation/INGESTION_API.md`).
 
 ## 11. Image Storage
 
