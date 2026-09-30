@@ -9,15 +9,19 @@ picture the sender later replaces or removes is not the recipient's), then the d
 function copy_shared_item, which writes the recipe, its categories, the item and the share's
 count in one transaction. The copy's id is uuid5(SHARE_NAMESPACE, item id), so a redo after
 a crash lands on the same row and the same object key.
+
+The same worker runs the sweep: pending shares past expires_at become expired every fifteen
+minutes, and shares resolved more than thirty days ago are deleted once a day.
 """
 from __future__ import annotations
 
 import logging
 import os
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from recipeparser.adapters.recat_worker import STALE_LEASE_MINUTES
 from recipeparser.core.clock import utc_timestamp
@@ -28,6 +32,9 @@ log = logging.getLogger(__name__)
 # Fixed for ever: changing it would give a redo a different id from the first attempt, and
 # the copy would be made twice.
 SHARE_NAMESPACE = uuid.UUID("fdcd01df-db30-423b-91de-7586d4ec7ea2")
+
+EXPIRE_EVERY_SECONDS = 15 * 60
+PURGE_EVERY_SECONDS = 24 * 60 * 60
 
 _OPEN = ["pending", "copying"]
 _SETTLED = {"accepted", "duplicate", "unavailable", "failed"}
@@ -80,16 +87,22 @@ class ShareWorker:
         image_store: Any,
         *,
         supabase_url: Optional[str] = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._sb = supabase
         self._images = image_store
         self._supabase_url = supabase_url if supabase_url is not None else os.environ.get("SUPABASE_URL", "")
+        self._clock = clock
         self._held: Optional[_HeldJob] = None
+        self._next_expire: Optional[float] = None
+        self._next_purge: Optional[float] = None
 
-    # ── one poll: at most one item ──────────────────────────────────────
+    # ── one poll: the sweep when due, then at most one item ─────────────
 
     def run_once(self) -> int:
-        """Returns 1 when it worked on a job, 0 when there was none."""
+        """Returns 1 when it worked on a job, 0 when there was none. The sweep does not count:
+        it must not keep run_workers from sleeping."""
+        self._sweep()
         try:
             if self._held is None:
                 job = self._claim()
@@ -283,3 +296,25 @@ class ShareWorker:
         if error:
             payload["error_message"] = error
         self._sb.table("ingestion_jobs").update(payload).eq("id", job_id).eq("status", "running").execute()
+
+    # ── the sweep (Part 4) ───────────────────────────────────────────────
+
+    def _sweep(self) -> None:
+        now = self._clock()
+        if self._next_expire is None or now >= self._next_expire:
+            self._next_expire = now + EXPIRE_EVERY_SECONDS
+            self._sweep_call("expire_recipe_shares")
+        if self._next_purge is None or now >= self._next_purge:
+            self._next_purge = now + PURGE_EVERY_SECONDS
+            self._sweep_call("purge_recipe_shares")
+
+    def _sweep_call(self, fn: str) -> None:
+        """Best effort: a failure waits for the next due time rather than retrying every poll,
+        which would fill the log for as long as the database is away."""
+        try:
+            n = self._sb.rpc(fn, {}).execute().data
+        except Exception as exc:  # noqa: BLE001
+            log.error("%s failed: %s", fn, exc)
+            return
+        if n:
+            log.info("%s: %s share(s).", fn, n)

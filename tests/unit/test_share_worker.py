@@ -1,4 +1,4 @@
-"""ShareWorker: the share_accept copy job (recipe-sharing design, Part 3).
+"""ShareWorker: the share_accept copy job and the sweep (recipe-sharing design, Parts 3-4).
 
 copy_shared_item and finish_recipe_share are emulated over the fake's rows as the database
 plan defines them (tests/unit/share_fakes.py); Cayenne's CI probes prove the functions. These
@@ -50,10 +50,12 @@ def _seed(fake: FakeSupabase, items: List[Dict[str, Any]], recipes: List[Dict[st
                                       "created_at": LONG_AGO, "updated_at": updated_at}]
     fake.rpcs["copy_shared_item"] = emulate_copy(fake)
     fake.rpcs["finish_recipe_share"] = emulate_finish(fake)
+    fake.rpcs["expire_recipe_shares"] = lambda p: 0
+    fake.rpcs["purge_recipe_shares"] = lambda p: 0
 
 
-def _worker(fake: FakeSupabase, images: Optional[FakeImageStore] = None) -> ShareWorker:
-    return ShareWorker(fake, images or FakeImageStore(), supabase_url=SUPABASE_URL)
+def _worker(fake: FakeSupabase, images: Optional[FakeImageStore] = None, clock=lambda: 0.0) -> ShareWorker:
+    return ShareWorker(fake, images or FakeImageStore(), supabase_url=SUPABASE_URL, clock=clock)
 
 
 def _job(fake: FakeSupabase) -> Dict[str, Any]:
@@ -360,3 +362,56 @@ def test_a_copied_picture_is_kept():
 ])
 def test_bucket_key(url, key):
     assert bucket_key(url, SUPABASE_URL) == key
+
+
+# ── the sweep (Part 4) ───────────────────────────────────────────────────────
+
+def _counting(fake: FakeSupabase, name: str) -> List[int]:
+    calls: List[int] = []
+    fake.rpcs[name] = lambda p: calls.append(1) or 0
+    return calls
+
+
+def test_the_sweep_expires_every_fifteen_minutes_and_purges_daily():
+    fake = FakeSupabase()
+    _seed(fake, [], [])
+    fake.tables["ingestion_jobs"] = []
+    expired, purged = _counting(fake, "expire_recipe_shares"), _counting(fake, "purge_recipe_shares")
+    now = [0.0]
+    worker = _worker(fake, clock=lambda: now[0])
+
+    worker.run_once()                                    # at start: both
+    assert (len(expired), len(purged)) == (1, 1)
+    now[0] = 14 * 60
+    worker.run_once()
+    assert (len(expired), len(purged)) == (1, 1)
+    now[0] = 15 * 60
+    worker.run_once()
+    assert (len(expired), len(purged)) == (2, 1)
+    now[0] = 24 * 60 * 60
+    worker.run_once()
+    assert (len(expired), len(purged)) == (3, 2)
+
+
+def test_a_failing_sweep_waits_for_its_next_turn_and_does_not_stop_the_copy():
+    fake = FakeSupabase()
+    _seed(fake, [_item(1, A)], [_recipe(A)])
+    attempts: List[int] = []
+
+    def down(p):
+        attempts.append(1)
+        raise RuntimeError("database unavailable")
+
+    fake.rpcs["expire_recipe_shares"] = down
+    worker = _worker(fake)
+    _run_to_end(worker, fake)
+    assert _status(fake) == ["accepted"]
+    assert len(attempts) == 1                            # not once per poll
+
+
+def test_the_sweep_does_not_keep_the_loop_busy():
+    fake = FakeSupabase()
+    _seed(fake, [], [])
+    fake.tables["ingestion_jobs"] = []
+    fake.rpcs["expire_recipe_shares"] = lambda p: 3
+    assert _worker(fake).run_once() == 0
