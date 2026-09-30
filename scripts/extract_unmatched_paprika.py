@@ -103,9 +103,10 @@ class Summary:
     """The restore's own accounting, so its 68 can be reconciled against this script's.
 
     `unmatched_members` is what select_unmatched returns the count of (entries,
-    blanks excluded); `unmatched_titles` is the count restore_source_urls.py's
-    plan_restore would report — one per distinct title, which is what the "68"
-    actually was. `surplus_titles` are titles with more archive entries than
+    blanks excluded); `unmatched_titles` counts one per distinct non-blank title.
+    restore_source_urls.py's plan_restore — whose count the "68" was — also
+    counts the blank title as one unmatched title, so its figure is
+    `restore_unmatched_titles`, one higher whenever there is a blank (F-071). `surplus_titles` are titles with more archive entries than
     rows: select_unmatched writes none of them (it cannot tell which entry is
     the lost one), so this is the only place that reports the group at all.
     """
@@ -114,6 +115,11 @@ class Summary:
     unmatched_titles: int
     blank_titles: int
     surplus_titles: List[str] = field(default_factory=list)
+
+    @property
+    def restore_unmatched_titles(self) -> int:
+        """The unmatched-title count plan_restore reports: the blank title is one of them."""
+        return self.unmatched_titles + (1 if self.blank_titles else 0)
 
 
 def summarise(members: Sequence[Member], rows: Sequence[Dict[str, Any]]) -> Summary:
@@ -191,6 +197,11 @@ def main() -> int:
         f"{summary.unmatched_members} unmatched entries across {summary.unmatched_titles} titles; "
         f"{summary.blank_titles} skipped: blank title"
     )
+    if summary.blank_titles:
+        print(
+            f"restore_source_urls.py reports {summary.restore_unmatched_titles} unmatched titles: "
+            "it counts the blank title as one."
+        )
     if summary.surplus_titles:
         print(f"{len(summary.surplus_titles)} titles have more archive entries than rows — check by hand:")
         for title in summary.surplus_titles:
