@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from recipeparser.core.clock import utc_timestamp
 from recipeparser.core.stages.categorize import filter_batch_result
 from recipeparser.core.taxonomy import root_of
 from recipeparser.gemini import categorize_batch
@@ -43,7 +44,7 @@ STALE_LEASE_MINUTES = 10
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return utc_timestamp()
 
 
 def resolve_new_axes(
@@ -352,7 +353,7 @@ class RecatWorker:
 
     def _stale_running_jobs(self) -> List[Dict[str, Any]]:
         """A recategorise job left `running` past the lease, oldest first."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=STALE_LEASE_MINUTES)).isoformat()
+        cutoff = utc_timestamp(datetime.now(timezone.utc) - timedelta(minutes=STALE_LEASE_MINUTES))
         return (
             self._sb.table("ingestion_jobs").select("*")
             .eq("kind", "recategorize").eq("status", "running").lt("updated_at", cutoff)

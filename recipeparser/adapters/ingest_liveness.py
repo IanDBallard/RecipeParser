@@ -25,6 +25,8 @@ import datetime
 import logging
 from typing import Any, Callable, Iterable, List
 
+from recipeparser.core.clock import utc_timestamp
+
 log = logging.getLogger(__name__)
 
 # Five heartbeats' grace: one missed write is noise, five is a dead process.
@@ -38,7 +40,7 @@ INTERRUPTED_MESSAGE = (
 
 
 def _stamp(now: datetime.datetime) -> str:
-    return now.isoformat()
+    return utc_timestamp(now)
 
 
 def touch_live_jobs(sb: Any, job_ids: List[str], now: datetime.datetime) -> None:

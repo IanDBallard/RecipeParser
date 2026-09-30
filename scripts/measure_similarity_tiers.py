@@ -4,8 +4,8 @@ section (cayenne-web/src/lib/domain/similarity.ts; design
 docs/superpowers/specs/2026-09-27-similar-recipes-design.md in the Cayenne repository).
 
 Every recipe carries one embedding of its title + ingredient lines. This script scores every pair
-in the library -- a plain dot product of unit vectors, exactly as Cayenne's cosine.ts does -- and
-prints three things to read the thresholds from:
+within one account's library -- a plain dot product of unit vectors, exactly as Cayenne's
+cosine.ts does -- and prints three things to read the thresholds from:
 
   1. the pairs by cosine band, split by whether the two titles match (a same-title pair is
      almost always a copy or the same dish; a different-title pair is what a threshold must not
@@ -19,6 +19,12 @@ change to the embedded text. Run this after any of those and update similarity.t
 
     python scripts/measure_similarity_tiers.py
     python scripts/measure_similarity_tiers.py --top 100
+    python scripts/measure_similarity_tiers.py --user <uuid>
+
+The app only ever compares recipes inside one user's synced library, so two recipes of different
+accounts are never paired (Fix Roadmap F-101): a second account that imported the same Paprika
+archive would otherwise fill the >= 0.99 band with cross-account copies. The counts below add up
+each library's own pairs; --user measures one library alone.
 
 READ-ONLY: this script only ever selects from `recipes`. It never writes.
 
@@ -29,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -69,6 +76,25 @@ def _pairs(n: int) -> Tuple[np.ndarray, np.ndarray]:
     return np.triu_indices(n, 1)
 
 
+def within_user(sims: np.ndarray, owners: List[str]) -> np.ndarray:
+    """``sims`` with every pair from two different accounts set to NaN, so no measure below counts it.
+
+    Every comparison with NaN is false, so a masked pair falls in no band and makes no page show the
+    section; the percentiles and the top pairs skip NaN explicitly.
+    """
+    owner = np.asarray(owners, dtype=object)
+    masked = sims.astype(np.float64, copy=True)
+    masked[owner[:, None] != owner[None, :]] = np.nan
+    return masked
+
+
+def pair_scores(sims: np.ndarray) -> np.ndarray:
+    """Every pair's score once (i < j), leaving out the pairs within_user masked."""
+    i, j = _pairs(sims.shape[0])
+    scores = sims[i, j]
+    return scores[~np.isnan(scores)]
+
+
 def band_table(sims: np.ndarray, titles: List[str]) -> List[Tuple[float, float, int, int]]:
     """(low, high, same-title pairs, different-title pairs) per band; each pair counted once."""
     i, j = _pairs(len(titles))
@@ -96,7 +122,7 @@ def top_different_title_pairs(sims: np.ndarray, titles: List[str], n: int) -> Li
     out: List[Tuple[float, int, int]] = []
     for k in np.argsort(-scores):
         a, b = int(i[k]), int(j[k])
-        if titles[a] == titles[b]:
+        if np.isnan(scores[k]) or titles[a] == titles[b]:
             continue
         out.append((float(scores[k]), a, b))
         if len(out) >= n:
@@ -105,27 +131,34 @@ def top_different_title_pairs(sims: np.ndarray, titles: List[str], n: int) -> Li
 
 
 def _parse_embedding(raw: Any) -> Optional[List[float]]:
-    value = json.loads(raw) if isinstance(raw, str) else raw
+    """1536 finite numbers, or None so the row is counted as skipped (F-102).
+
+    As Cayenne's cosine.ts parseEmbedding does: a null or non-numeric element, or a NaN or
+    infinity, makes the whole embedding malformed instead of stopping the run.
+    """
+    try:
+        value = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return None
     if not isinstance(value, list) or len(value) != EMBEDDING_DIM:
+        return None
+    if not all(
+        isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in value
+    ):
         return None
     return [float(x) for x in value]
 
 
-def load_rows(sb: Any) -> Tuple[List[dict], int]:
-    """Every recipe with a valid embedding, and how many were skipped as malformed."""
+def load_rows(sb: Any, user_id: Optional[str] = None) -> Tuple[List[dict], int]:
+    """Every recipe with a valid embedding, only ``user_id``'s if given, and how many were skipped as malformed."""
     rows: List[dict] = []
     skipped = 0
     offset = 0
     while True:
-        page = (
-            sb.table("recipes")
-            .select("id,title,source_key,embedding")
-            .order("id")
-            .range(offset, offset + PAGE - 1)
-            .execute()
-            .data
-            or []
-        )
+        query = sb.table("recipes").select("id,user_id,title,source_key,embedding")
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
+        page = query.order("id").range(offset, offset + PAGE - 1).execute().data or []
         if not page:
             break
         for row in page:
@@ -134,7 +167,13 @@ def load_rows(sb: Any) -> Tuple[List[dict], int]:
                 skipped += 1
                 continue
             rows.append(
-                {"id": row["id"], "title": row.get("title") or "", "source_key": row.get("source_key"), "vec": vec}
+                {
+                    "id": row["id"],
+                    "user_id": row.get("user_id"),
+                    "title": row.get("title") or "",
+                    "source_key": row.get("source_key"),
+                    "vec": vec,
+                }
             )
         offset += PAGE
     return rows, skipped
@@ -147,6 +186,7 @@ def _label(row: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Re-measure Cayenne's similar-recipe tiers. READ-ONLY.")
     ap.add_argument("--top", type=int, default=70, help="Different-title pairs to list (default: 70).")
+    ap.add_argument("--user", help="Measure this account's library alone (default: every account, each on its own).")
     args = ap.parse_args()
 
     from dotenv import load_dotenv  # noqa: PLC0415
@@ -156,22 +196,26 @@ def main() -> int:
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
 
     print("Reading id, title, source_key, embedding from `recipes` (read-only)...")
-    rows, skipped = load_rows(sb)
+    rows, skipped = load_rows(sb, args.user)
     n = len(rows)
-    print(f"  valid: {n}   malformed/skipped: {skipped}   pairs: {n * (n - 1) // 2}")
     if n < 2:
+        print(f"  valid: {n}   malformed/skipped: {skipped}")
         print("Fewer than two valid embeddings -- nothing to measure.")
         return 2
-
     m = unit_matrix([r["vec"] for r in rows])
-    sims = m @ m.T
+    sims = within_user(m @ m.T, [r["user_id"] for r in rows])
+    all_scores = pair_scores(sims)
+    libraries = len({r["user_id"] for r in rows})
+    print(f"  valid: {n}   malformed/skipped: {skipped}   libraries: {libraries}   pairs: {len(all_scores)}")
+    if len(all_scores) == 0:
+        print("No library has two valid embeddings -- nothing to measure.")
+        return 2
+
     titles = [normalise_title(r["title"]) for r in rows]
 
     print("\nband          same_title  diff_title")
     for lo, hi, same, diff in band_table(sims, titles):
         print(f"{lo:.2f}-{min(hi, 1.0):.2f}   {same:>10}  {diff:>10}")
-    i, j = _pairs(n)
-    all_scores = sims[i, j]
     percentiles = {p: round(float(np.percentile(all_scores, p)), 4) for p in (50, 90, 99, 99.9, 99.99)}
     print("percentiles, all pairs:", percentiles)
 

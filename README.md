@@ -20,7 +20,7 @@ It uses Google's **Gemini 2.5 Flash** model to understand recipe structure, hand
 - **Parallel processing** — extraction and categorisation both run concurrently with a configurable concurrency cap, with automatic exponential back-off on rate limits
 - **Handles diverse EPUB and PDF structures** — prose recipes, ingredient lists, baker's percentage tables, multi-recipe chapters, and text-only historic cookbooks all work; PDFs are supported with pre-flight checks and page-based extraction
 - **TOC-based reconciliation** — extracts table of contents (EPUB nav/NCX or PDF outline) when present, compares it to extracted recipes, and logs any missed or extra recipes; extraction always uses page/document chunking for best results
-- **Recipe Refinement (Cayenne)** — converts raw recipes into structured JSON with normalized ingredients and "Fat Token" directions, including 1536-dimension vector embeddings using `text-embedding-004`
+- **Recipe Refinement (Cayenne)** — converts raw recipes into structured JSON with normalized ingredients and "Fat Token" directions, including 1536-dimension vector embeddings using `gemini-embedding-001`
 - **Safe and robust** — per-task timeouts, typed custom exceptions, graceful degradation (a failed segment is skipped, not fatal), and image-less recipes export cleanly without crashing Paprika
 
 ---
@@ -164,7 +164,7 @@ recipeparser-gui
 
 ## Cayenne Ingestion API
 
-The project includes a FastAPI server for high-fidelity recipe extraction and vector search indexing, used by the [Project Cayenne](https://github.com/iandballard/cayenne) mobile app.
+The project includes a FastAPI server for high-fidelity recipe extraction and vector search indexing, used by [Project Cayenne](https://github.com/IanDBallard/Cayenne), a SvelteKit progressive web app.
 
 ### Starting the Server
 
@@ -179,7 +179,17 @@ python start_server.py
 ```
 
 The launcher runs the verifying configuration — the same one the Cayenne client
-expects in production. `GET /health` reports `{"status":"ok","auth_mode":"verifying"}`.
+expects in production. `GET /health` reports, for example:
+
+```json
+{"status":"ok","auth_mode":"verifying","regen_workers":"started","worker_polls":{"RegenWorker":"2026-09-30T19:05:28.123456+00:00","RecatWorker":"2026-09-30T19:05:31.004211+00:00"}}
+```
+
+`auth_mode` is `verifying` or `bypassed` (*Auth bypass*, below). `regen_workers` is `disabled` when
+`REGEN_WORKER_ENABLED` is unset and `started` when the workers are running; it is fixed at boot.
+`worker_polls` maps each running worker to the UTC time its last poll finished, so a stamp that
+stops advancing is a stuck worker. Cayenne's deploy requires `"auth_mode":"verifying"` and
+`"regen_workers":"started"`.
 
 > **⚠️ Required database migration: Cayenne 013 (`recipe_edit_columns`).** Apply it
 > **before** deploying this version. The Supabase writer puts `ingredient_lines`,
@@ -196,7 +206,7 @@ expects in production. `GET /health` reports `{"status":"ok","auth_mode":"verify
 |---|---|
 | `GOOGLE_API_KEY` | Google AI Studio key for Gemini API calls |
 | `SUPABASE_URL` | Your Supabase project URL, e.g. `https://<ref>.supabase.co` — required for image uploads to the `recipe-images` bucket |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service-role** key (never the anon key) — required for image uploads. Never ship this in the mobile app. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase **service-role** key (never the anon key) — required for image uploads. Never ship it in the Cayenne client. |
 
 **Optional environment variables:**
 
@@ -238,53 +248,26 @@ Never set `DISABLE_AUTH` in a deployed environment, in `.env`, or in `docker-com
 
 ### Endpoints
 
-#### `POST /ingest`
+The contract — request and response shapes, errors and the job lifecycle — is Cayenne's
+[`SpecificationDocumentation/INGESTION_API.md`](https://github.com/IanDBallard/Cayenne/blob/main/SpecificationDocumentation/INGESTION_API.md),
+which is the source of truth; `recipeparser/adapters/api.py` implements it. Every endpoint but
+`GET /health` takes `Authorization: Bearer <Supabase access token>`.
 
-Accepts raw recipe text and returns a refined `CayenneRecipe` object with a vector embedding.
+| Endpoint | Purpose |
+|---|---|
+| `POST /jobs` | Ingest a URL or pasted text. Answers `202 { job_id }` at once; the recipes reach the app by sync. |
+| `POST /jobs/file` | Ingest a PDF, EPUB, `.paprikarecipes` export or a JPEG/PNG photo, the same way. |
+| `POST /jobs/recategorize` | Queue a recategorisation of the caller's whole library, run by the recategorise worker. |
+| `POST /jobs/{job_id}/cancel` | Stop the caller's job. |
+| `GET /jobs/{job_id}`, `POST /jobs/{job_id}/pause`, `POST /jobs/{job_id}/resume` | Over the in-memory job registry; Cayenne calls none of them. |
+| `POST /recipes/{recipe_id}/image` | Store the picture a cook chose for their recipe. |
+| `POST /recipes/{recipe_id}/image/generate` | Ask Gemini for a picture of the recipe as drafted. |
+| `DELETE /recipes/{recipe_id}/image` | Remove the recipe's picture. |
+| `POST /embed` | `{ text }` → `{ embedding }`, a 1536-float vector from `gemini-embedding-001`, for Cayenne's search. |
+| `GET /health` | Liveness and boot state (above). |
 
-> **Note:** URL ingestion is not yet implemented. The `url` field is accepted but returns HTTP 400. Only `text` ingestion is currently supported.
-
-**Request Body:**
-```json
-{
-  "text": "1 cup flour, 2 eggs. Mix and bake at 350F for 20 mins."
-}
-```
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `text` | string | required | Raw recipe text to ingest |
-| `url` | string | null | URL to scrape (not yet implemented) |
-
-**Response** (`IngestResponse`):
-- `structured_ingredients`: List of objects with `id`, `amount`, `unit`, `name`, `fallback_string`, `converted_amount`, `converted_unit`, `is_ai_converted`.
-- `tokenized_directions`: Steps with embedded Fat Token references (`{{ing_01|fallback text}}`).
-- `embedding`: 1536-float vector from `text-embedding-004`.
-
-**3-step pipeline:**
-1. **Extraction** — `extract_recipe_from_text()` → raw `RecipeList` via Gemini 2.5 Flash
-2. **Refinement** — `refine_recipe_for_cayenne()` → `CayenneRefinement` with Fat Tokens + unit conversions
-3. **Vectorisation** — `get_embeddings()` → 1536-dimension embedding from `text-embedding-004`
-
-#### `POST /embed`
-
-Stand-alone endpoint to vectorize a search query string for semantic search.
-
-**Request Body:**
-```json
-{
-  "text": "citrus and refreshing"
-}
-```
-
-**Response:**
-```json
-{
-  "embedding": [0.123, -0.456, ...]
-}
-```
-
-Returns a 1536-float vector. Used by the Cayenne mobile app's `useHybridSearch` hook.
+Ingestion is never synchronous: there is no `POST /ingest` (removed; recipes are written by the job
+and synced to the app, never returned in a response).
 
 ---
 
@@ -391,7 +374,7 @@ recipeparser/
 ├── paths.py           User-writable paths (app data, categories, output)
 ├── pipeline.py        Orchestration — parallel execution, hero injection, dedup, export
 ├── export.py          Paprika 3 archive bundler
-├── api.py             FastAPI server — /ingest and /embed endpoints (Cayenne Ingestion API)
+├── api.py             Shim for adapters/api.py — the FastAPI server (Cayenne Ingestion API)
 └── categories.yaml    Default recipe taxonomy
 
 tests/

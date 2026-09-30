@@ -84,8 +84,26 @@ jobs:
 
       # deploy.sh verifies api through /health -- there is no version.txt
       # build arg for this image, unlike web.
+      #
+      # deploy.sh prints "auto-deploy is OFF on the VM ..." on stdout when the
+      # switch skips the run. GITHUB_STEP_SUMMARY exists only here on the
+      # runner, not in the VM's shell, so this step copies that line into the
+      # summary, as Cayenne's deploy step does (Fix Roadmap F-139). pipefail
+      # makes status the ssh call's, not tee's: a step with no `shell:` runs
+      # as `bash -e`, without it.
       - name: Deploy
         if: github.event_name == 'push' && env.CAYENNE_VM_HOST != ''
         run: |
+          set -o pipefail
+          out="$RUNNER_TEMP/deploy.out"
+          status=0
           tailscale ssh "$CAYENNE_VM_HOST" \
-            "sudo bash -c 'set -a; . /opt/cayenne/site.env; set +a; /opt/cayenne/deploy.sh --service api --sha ${{ github.sha }} --ci'"
+            "sudo bash -c 'set -a; . /opt/cayenne/site.env; set +a; /opt/cayenne/deploy.sh --service api --sha ${{ github.sha }} --ci'" |
+            tee "$out" || status=$?
+          if grep -q -e '^auto-deploy is OFF on the VM' "$out"; then
+            {
+              echo "**Deploy skipped:** $(grep -e '^auto-deploy is OFF on the VM' "$out")."
+              echo "The image was pushed; turn the switch on with \`auto-deploy.sh on\` (deploy/README.md in the Cayenne repository)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"

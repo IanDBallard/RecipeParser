@@ -3,9 +3,9 @@ tests/unit/writers/test_writers.py — Phase 5 gate tests for RecipeWriter imple
 
 Gate command: pytest tests/unit/writers/ -v
 
-Five tests:
-  1. test_supabase_writer_inserts_all_recipes
-  2. test_supabase_writer_inserts_recipe_categories
+Five tests at first. Test 1 checked the SupabaseWriter class's loop and went
+with the class, which nothing but tests constructed (Fix Roadmap F-068):
+  2. test_the_writer_inserts_recipe_categories (write_recipe_to_supabase)
   3. test_paprika_writer_produces_valid_zip
   4. test_cayenne_zip_writer_embeds_cayenne_meta
   5. test_round_trip_cayenne_zip_to_paprika_reader_is_zero_cost
@@ -26,7 +26,7 @@ from recipeparser.io.readers.paprika import PaprikaReader
 from recipeparser.io.writers.cayenne_zip import CayenneZipWriter
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.paprika_zip import PaprikaWriter
-from recipeparser.io.writers.supabase import SupabaseWriter, write_recipe_to_supabase
+from recipeparser.io.writers.supabase import write_recipe_to_supabase
 from recipeparser.models import IngestResponse, StructuredIngredient, TokenizedDirection
 
 # ---------------------------------------------------------------------------
@@ -87,70 +87,16 @@ def _make_recipe(
 
 
 # ---------------------------------------------------------------------------
-# Test 1 — SupabaseWriter inserts all recipes
+# Test 2 — the Supabase writer inserts recipe_categories junction rows
 # ---------------------------------------------------------------------------
 
-class TestSupabaseWriterInsertsAllRecipes:
-    """SupabaseWriter.write() must call write_recipe_to_supabase once per recipe."""
+class TestTheSupabaseWriterInsertsRecipeCategories:
+    """write_recipe_to_supabase must write junction rows when category_ids are provided."""
 
-    def test_supabase_writer_inserts_all_recipes(self, monkeypatch):
-        """
-        Given two IngestResponse fixtures, SupabaseWriter.write() must POST to
-        /rest/v1/recipes exactly twice — once per recipe.
-        """
-        r1 = _make_recipe("Pasta Carbonara")
-        r2 = _make_recipe("Risotto Milanese")
-
-        # Patch the env vars so _get_creds() succeeds without a real .env
-        monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
-        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
-        # httpx.post is mocked below, so no network call ever leaves this
-        # process — the live-write guard exists to stop a *real* Supabase
-        # write from a pytest run, which this isn't.
-        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
-
-        mock_response = MagicMock()
-        mock_response.status_code = 201
-
-        with patch("recipeparser.io.writers.supabase.httpx.post", return_value=mock_response) as mock_post:
-            writer = SupabaseWriter(user_id="user-uuid-1")
-            writer.write([r1, r2])
-
-        # Filter only the /recipes calls (not /recipe_categories junction calls)
-        recipes_calls = [
-            c for c in mock_post.call_args_list
-            if "/rest/v1/recipes" in str(c)
-        ]
-        assert len(recipes_calls) == 2, (
-            f"Expected 2 POST calls to /rest/v1/recipes, got {len(recipes_calls)}"
-        )
-
-        # Verify the titles were sent in the correct order
-        titles_sent = [
-            c.kwargs["json"]["title"] if "json" in c.kwargs else c.args[1]["title"]
-            for c in recipes_calls
-        ]
-        # Extract title from the json kwarg
-        titles_sent = []
-        for c in recipes_calls:
-            payload = c.kwargs.get("json") or (c.args[1] if len(c.args) > 1 else {})
-            titles_sent.append(payload.get("title"))
-
-        assert "Pasta Carbonara" in titles_sent
-        assert "Risotto Milanese" in titles_sent
-
-
-# ---------------------------------------------------------------------------
-# Test 2 — SupabaseWriter inserts recipe_categories junction rows
-# ---------------------------------------------------------------------------
-
-class TestSupabaseWriterInsertsRecipeCategories:
-    """SupabaseWriter must write junction rows when category_ids are provided."""
-
-    def test_supabase_writer_inserts_recipe_categories(self, monkeypatch):
+    def test_the_writer_inserts_recipe_categories(self, monkeypatch):
         """
         Given a recipe with grid_categories={"Cuisine": ["Italian"]} and
-        category_ids={"Italian": "cat-uuid-1"}, SupabaseWriter.write() must
+        category_ids={"Italian": "cat-uuid-1"}, write_recipe_to_supabase() must
         POST to /rest/v1/recipe_categories with a row containing the correct
         recipe_id, category_id, and user_id.
         """
@@ -169,8 +115,7 @@ class TestSupabaseWriterInsertsRecipeCategories:
         category_ids = {"Italian": "cat-uuid-1"}
 
         with patch("recipeparser.io.writers.supabase.httpx.post", return_value=mock_response) as mock_post:
-            writer = SupabaseWriter(user_id="user-uuid-1", category_ids=category_ids)
-            writer.write([recipe])
+            write_recipe_to_supabase(recipe, "user-uuid-1", category_ids=category_ids)
 
         all_calls = mock_post.call_args_list
         junction_calls = [
@@ -220,10 +165,10 @@ class TestSupabaseWriterInsertsRecipeCategories:
             return resp
 
         with patch("recipeparser.io.writers.supabase.httpx.post", side_effect=post) as mock_post:
-            SupabaseWriter(
-                user_id="user-uuid-1",
+            write_recipe_to_supabase(
+                recipe, "user-uuid-1",
                 category_ids={"Thai": "cat-thai", "Quick": "cat-gone"},
-            ).write([recipe])
+            )
 
         landed = [
             r["category_id"]

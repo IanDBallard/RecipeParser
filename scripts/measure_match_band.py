@@ -26,6 +26,11 @@ cosine.ts normalise() exactly (divide by L2 norm; a zero vector stays zero).
 
     python scripts/measure_match_band.py
     python scripts/measure_match_band.py --queries 30 --titles 80 --seed 1
+    python scripts/measure_match_band.py --user <uuid>
+
+Search runs inside one user's library, so --user measures that library alone. Without it the
+floor is scored against every account's recipes at once, and a second account that imported
+the same archive counts each recipe twice (Fix Roadmap F-101).
 
 READ-ONLY: this script only ever selects from `recipes`. It never writes.
 
@@ -139,17 +144,19 @@ def percentile(data: List[float], pct: float) -> float:
     return ordered[lo] * (hi - k) + ordered[hi] * (k - lo)
 
 
-def load_valid_rows(sb: Any) -> "tuple[int, int, List[Dict[str, Any]]]":
-    """Page through `recipes`, parsing/normalising each embedding. Returns
-    (rows_read, rows_skipped_malformed, valid_rows)."""
+def load_valid_rows(sb: Any, user_id: Optional[str] = None) -> "tuple[int, int, List[Dict[str, Any]]]":
+    """Page through `recipes` (only ``user_id``'s, if given), parsing/normalising
+    each embedding. Returns (rows_read, rows_skipped_malformed, valid_rows)."""
     rows_read = 0
     malformed = 0
     valid_rows: List[Dict[str, Any]] = []
     offset = 0
     while True:
+        query = sb.table("recipes").select("id,title,embedding")
+        if user_id is not None:
+            query = query.eq("user_id", user_id)
         page = (
-            sb.table("recipes")
-            .select("id,title,embedding")
+            query
             .order("id")
             .range(offset, offset + PAGE - 1)
             .execute()
@@ -183,6 +190,7 @@ def main() -> int:
         "--titles", type=int, default=50,
         help="Number of recipe titles to sample for the ceiling measurement (default: 50).",
     )
+    ap.add_argument("--user", help="Measure this account's library alone (default: every account's recipes).")
     ap.add_argument("--seed", type=int, default=0, help="RNG seed for deterministic sampling (default: 0).")
     ap.add_argument(
         "--percentile", type=float, default=90.0,
@@ -194,7 +202,7 @@ def main() -> int:
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
 
     print("Reading id, title, embedding from `recipes` (read-only)...")
-    rows_read, malformed, valid_rows = load_valid_rows(sb)
+    rows_read, malformed, valid_rows = load_valid_rows(sb, args.user)
     print(f"  rows read: {rows_read}   malformed/skipped: {malformed}   valid: {len(valid_rows)}")
 
     if not valid_rows:

@@ -590,8 +590,13 @@ POST /jobs  →  202 { job_id }
                      6. INSERT recipes + embeddings → Supabase
                      7. fsm.transition(DONE)      → UPDATE ingestion_jobs
 
-GET /jobs/{job_id}  →  { status, stage, progress_pct, recipe_count, error }
+GET /jobs/{job_id}  →  { job_id, status }
 ```
+
+`GET /jobs/{job_id}` answers from the in-memory registry of running jobs (`JobStatusResponse`): `status` is the
+pipeline controller's state, and a job that has finished, or is not the caller's, is a 404. The stage, progress,
+recipe count and error live on the `ingestion_jobs` row, which is what Cayenne reads, by sync; the client calls
+none of the job-status routes (Cayenne `SpecificationDocumentation/INGESTION_API.md`).
 
 ## 11. Image Storage
 
@@ -732,6 +737,6 @@ The client edits **raw** columns only (`title`, `ingredient_lines`, `direction_s
 
 Workers start from the FastAPI lifespan when `REGEN_WORKER_ENABLED=1` and the service-role Supabase client is configured. Poll every 10 s; regen concurrency 2.
 
-> **⚠️ Migration 013 is a deploy blocker, not a worker prerequisite.** `SupabaseWriter` writes `ingredient_lines`, `direction_steps`, `body_rev`, `derived_rev`, `amount_overrides` and the nine duration/servings columns on **every** INSERT, unconditionally and behind no feature flag (`io/writers/supabase.py`). Against a pre-013 schema PostgREST rejects the row with `PGRST204` and ingest raises `RuntimeError` — **every ingest fails, for every user, on every path**, whether or not `REGEN_WORKER_ENABLED` is set. Apply Cayenne migration 013 (`recipe_edit_columns`) before deploying this version. Migration 014 (`regen_rpcs`) is required in addition before setting `REGEN_WORKER_ENABLED=1`, because `claim_stale_recipes` and `regen_failed` do not exist without it; their required semantics are recorded in `docs/sql/regen-rpcs.md`.
+> **⚠️ Migration 013 is a deploy blocker, not a worker prerequisite.** `write_recipe_to_supabase` writes `ingredient_lines`, `direction_steps`, `body_rev`, `derived_rev`, `amount_overrides` and the nine duration/servings columns on **every** INSERT, unconditionally and behind no feature flag (`io/writers/supabase.py`). Against a pre-013 schema PostgREST rejects the row with `PGRST204` and ingest raises `RuntimeError` — **every ingest fails, for every user, on every path**, whether or not `REGEN_WORKER_ENABLED` is set. Apply Cayenne migration 013 (`recipe_edit_columns`) before deploying this version. Migration 014 (`regen_rpcs`) is required in addition before setting `REGEN_WORKER_ENABLED=1`, because `claim_stale_recipes` and `regen_failed` do not exist without it; their required semantics are recorded in `docs/sql/regen-rpcs.md`.
 
 REFINE's `base_servings` and `grid_categories` are discarded on regen: both are user-owned after ingest. `amount_overrides` is emptied on every successful regen because the new structured entries reflect the rewritten lines.

@@ -98,3 +98,24 @@ def test_summarise_flags_a_title_with_more_entries_than_rows():
     summary = summarise(members, rows)
     assert summary.surplus_titles == ["Lost Cake"]
     assert select_unmatched(members, rows) == []
+
+
+def test_the_restore_count_includes_the_blank_title_as_one():
+    """F-071: plan_restore counts the blank title as an unmatched title; this script did not."""
+    from scripts.restore_source_urls import plan_restore
+
+    members = [
+        ("a.paprikarecipe", b"a", {"name": "Ghost Soup"}),
+        ("b.paprikarecipe", b"b", {"name": ""}),
+        ("c.paprikarecipe", b"c", {"name": "  "}),
+    ]
+    rows = [_row(0, "Tomato Soup")]
+    summary = summarise(members, rows)
+    assert summary.unmatched_titles == 1
+    assert summary.restore_unmatched_titles == 2
+    assert summary.restore_unmatched_titles == len(plan_restore([m[2] for m in members], rows).unmatched)
+
+
+def test_without_a_blank_the_two_counts_agree():
+    summary = summarise([("a.paprikarecipe", b"a", {"name": "Ghost Soup"})], [])
+    assert summary.restore_unmatched_titles == summary.unmatched_titles == 1

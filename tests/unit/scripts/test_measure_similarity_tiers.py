@@ -1,16 +1,23 @@
 """The tier measurement's arithmetic, with no network in sight."""
 from __future__ import annotations
 
+import json
 import math
+from unittest.mock import MagicMock
 
 import numpy as np
 
 from scripts.measure_similarity_tiers import (
+    EMBEDDING_DIM,
+    _parse_embedding,
     band_table,
+    load_rows,
     normalise_title,
     pages_with_neighbour,
+    pair_scores,
     top_different_title_pairs,
     unit_matrix,
+    within_user,
 )
 
 
@@ -72,3 +79,69 @@ class TestTopDifferentTitlePairs:
         scores = [s for s, _, _ in pairs]
         assert scores == sorted(scores, reverse=True)
         assert (0, 1) not in [(i, j) for _, i, j in pairs]
+
+
+class TestWithinUser:
+    """F-101: the app compares recipes only inside one user's library."""
+
+    def test_a_copy_in_another_account_is_never_paired(self):
+        # Two accounts imported the same recipe: a perfect match that no user ever sees.
+        sims = within_user(_sims([_at(1), _at(1), _at(0.92)]), ["ann", "bob", "ann"])
+        titles = ["pie", "pie", "plate pie"]
+        table = {(lo, hi): (same, diff) for lo, hi, same, diff in band_table(sims, titles)}
+        assert table[(0.99, 1.01)] == (0, 0)
+        assert table[(0.91, 0.93)] == (0, 1)  # ann's pie with ann's plate pie; bob's pie has no partner
+        assert len(pair_scores(sims)) == 1
+
+    def test_pages_and_top_pairs_ignore_other_accounts(self):
+        sims = within_user(_sims([_at(1), _at(1), _at(0.92)]), ["ann", "bob", "bob"])
+        assert pages_with_neighbour(sims, 0.95) == (0, 0)
+        assert [(i, j) for _, i, j in top_different_title_pairs(sims, ["a", "b", "c"], 10)] == [(1, 2)]
+
+
+def _embedding(fill=0.5):
+    return [fill] * EMBEDDING_DIM
+
+
+class TestParseEmbedding:
+    """F-102: one malformed embedding is skipped, as cosine.ts parseEmbedding skips it."""
+
+    def test_a_null_element_is_malformed_not_a_crash(self):
+        vec = _embedding()
+        vec[7] = None
+        assert _parse_embedding(vec) is None
+
+    def test_a_non_finite_element_is_malformed(self):
+        for bad in (float("nan"), float("inf")):
+            vec = _embedding()
+            vec[0] = bad
+            assert _parse_embedding(vec) is None
+
+    def test_a_string_or_boolean_element_is_malformed(self):
+        for bad in ("0.5", True):
+            vec = _embedding()
+            vec[0] = bad
+            assert _parse_embedding(vec) is None
+
+    def test_json_text_that_does_not_parse_is_malformed(self):
+        assert _parse_embedding("[0.5, ") is None
+
+    def test_a_valid_embedding_parses_from_json_text(self):
+        assert _parse_embedding(json.dumps(_embedding())) == _embedding()
+
+    def test_the_loader_counts_the_bad_row_as_skipped_and_carries_on(self):
+        bad = _embedding()
+        bad[3] = None
+        page = [
+            {"id": "r1", "user_id": "ann", "title": "Pie", "embedding": _embedding()},
+            {"id": "r2", "user_id": "ann", "title": "Tart", "embedding": bad},
+        ]
+        sb = MagicMock()
+        query = sb.table.return_value.select.return_value
+        query.eq.return_value = query
+        query.order.return_value.range.return_value.execute.side_effect = [
+            MagicMock(data=page), MagicMock(data=[]),
+        ]
+        rows, skipped = load_rows(sb, "ann")
+        assert [r["id"] for r in rows] == ["r1"] and skipped == 1
+        assert {c.args for c in query.eq.call_args_list} == {("user_id", "ann")}
