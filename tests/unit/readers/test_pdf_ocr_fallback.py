@@ -10,7 +10,7 @@ import pytest
 from recipeparser.config import MAX_CHUNK_CHARS
 from recipeparser.core.models import InputType
 from recipeparser.exceptions import PdfExtractionError
-from recipeparser.io.readers.pdf import PdfReader, load_pdf
+from recipeparser.io.readers.pdf import PdfReader, extract_text_from_pdf, load_pdf
 
 
 def _pdf(tmp_path: Path, text: str, name: str = "scan.pdf") -> str:
@@ -176,3 +176,31 @@ def test_a_file_that_is_not_a_pdf_is_refused_without_the_path(tmp_path):
         load_pdf(str(path), str(tmp_path / "out"))
     # PyMuPDF's own text names the file on Linux, so it must not be echoed.
     assert str(excinfo.value) == "could not be opened as a PDF."
+
+
+# F-069: the CLI's extract_text_from_pdf kept its own copy of the scan test, with
+# its own sentence. It now asks the same question load_pdf asks.
+
+def test_the_cli_refuses_a_scan_without_a_client_in_the_reader_s_words(tmp_path):
+    path = _pdf(tmp_path, "")
+    with pytest.raises(PdfExtractionError) as cli:
+        extract_text_from_pdf(path)
+    with pytest.raises(PdfExtractionError) as reader:
+        load_pdf(path, str(tmp_path / "out"))
+    assert str(cli.value) == str(reader.value)
+    assert str(cli.value).startswith("has little or no extractable text")
+
+
+def test_the_cli_keeps_the_ocr_page_cap_too(tmp_path, monkeypatch):
+    from recipeparser.io.readers import pdf as pdf_mod
+
+    monkeypatch.setattr(pdf_mod, "PDF_OCR_MAX_PAGES", 1)
+    client = _client("must not be read")
+    with pytest.raises(PdfExtractionError, match="up to 1"):
+        extract_text_from_pdf(_two_page_pdf(tmp_path), client=client)
+    client.models.generate_content.assert_not_called()
+
+
+def test_the_cli_transcribes_a_scan_with_a_client(tmp_path):
+    client = _client("Pancakes, flour, milk, eggs.")
+    assert "Pancakes" in extract_text_from_pdf(_pdf(tmp_path, ""), client=client)

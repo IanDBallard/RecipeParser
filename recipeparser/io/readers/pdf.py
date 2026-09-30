@@ -127,19 +127,7 @@ def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, 
         image_dir = os.path.join(output_dir, "images")
         os.makedirs(image_dir, exist_ok=True)
 
-        avg_chars, sample_pages = _text_density(doc)
-        if avg_chars < PDF_PREFLIGHT_MIN_CHARS_PER_PAGE:
-            if client is None:
-                raise PdfExtractionError(
-                    f"has little or no extractable text (avg {avg_chars:.0f} chars/page "
-                    f"over the first {sample_pages} pages); it may be a scan without OCR."
-                )
-            if doc.page_count > PDF_OCR_MAX_PAGES:
-                raise PdfExtractionError(
-                    f"has little or no extractable text and {doc.page_count} pages; "
-                    f"a scan is transcribed page by page, up to {PDF_OCR_MAX_PAGES}."
-                )
-            log.info("Scanned PDF detected (avg %.0f chars/page) — transcribing through Gemini Vision.", avg_chars)
+        if _is_scan(doc, client):
             from recipeparser.gemini import extract_text_via_vision  # noqa: PLC0415
 
             transcript = extract_text_via_vision(doc, client)
@@ -192,6 +180,30 @@ def _text_density(doc: "fitz.Document") -> Tuple[float, int]:
     sample_pages = min(PDF_PREFLIGHT_SAMPLE_PAGES, doc.page_count)
     total_chars = sum(len(doc[i].get_text()) for i in range(sample_pages))
     return (total_chars / sample_pages if sample_pages else 0.0), sample_pages
+
+
+def _is_scan(doc: "fitz.Document", client: Any) -> bool:
+    """True when the document has too little text to read and must be transcribed.
+
+    The one scanned-PDF test, for the job reader and the CLI alike (F-069). Raises
+    PdfExtractionError when a scan cannot be transcribed: there is no client, or it
+    has more pages than a transcription takes.
+    """
+    avg_chars, sample_pages = _text_density(doc)
+    if avg_chars >= PDF_PREFLIGHT_MIN_CHARS_PER_PAGE:
+        return False
+    if client is None:
+        raise PdfExtractionError(
+            f"has little or no extractable text (avg {avg_chars:.0f} chars/page "
+            f"over the first {sample_pages} pages); it may be a scan without OCR."
+        )
+    if doc.page_count > PDF_OCR_MAX_PAGES:
+        raise PdfExtractionError(
+            f"has little or no extractable text and {doc.page_count} pages; "
+            f"a scan is transcribed page by page, up to {PDF_OCR_MAX_PAGES}."
+        )
+    log.info("Scanned PDF detected (avg %.0f chars/page) — transcribing through Gemini Vision.", avg_chars)
+    return True
 
 
 def _get_book_citation(doc: "fitz.Document") -> Citation:
@@ -248,24 +260,10 @@ def extract_text_from_pdf(pdf_path: str, client: Any = None) -> str:
         if doc.is_encrypted:
             raise PdfExtractionError("is password-protected.")
 
-        # Pre-flight: detect scanned vs. text PDF.
-        sample_pages = min(PDF_PREFLIGHT_SAMPLE_PAGES, doc.page_count)
-        total_chars = sum(len(doc[i].get_text()) for i in range(sample_pages))
-        avg_chars = total_chars / sample_pages if sample_pages else 0
-
-        if avg_chars < PDF_PREFLIGHT_MIN_CHARS_PER_PAGE:
-            # Scanned PDF fallback
-            if client is None:
-                raise PdfExtractionError(
-                    f"Scanned PDF detected (avg {avg_chars:.0f} chars/page) but no "
-                    "Gemini client provided for Vision OCR fallback."
-                )
-            log.info("Scanned PDF detected — falling back to Gemini Vision OCR.")
-            from recipeparser.gemini import extract_text_via_vision
+        if _is_scan(doc, client):
+            from recipeparser.gemini import extract_text_via_vision  # noqa: PLC0415
             return extract_text_via_vision(doc, client)
-        else:
-            # Text-based PDF
-            pages_text = [doc[i].get_text() for i in range(doc.page_count)]
-            return "\n\n".join(p for p in pages_text if p.strip())
+        pages_text = [doc[i].get_text() for i in range(doc.page_count)]
+        return "\n\n".join(p for p in pages_text if p.strip())
     finally:
         doc.close()
