@@ -1,5 +1,7 @@
 # RecipeParser Provider Guide
 
+> **Status, 2026-10-01: a design that was never built.** This guide describes a provider abstraction: an `LLMProvider` ABC, `core/providers/base.py`, `factory.py`, `mock.py` and a file per vendor. None of it exists; `recipeparser/core/providers/__init__.py` is empty and is the only file there. The Gemini calls are made directly, from `recipeparser/gemini.py` (extraction, refinement, embeddings), `recipeparser/categories.py` and `recipeparser/toc.py`. The models are `GEMINI_MODEL` and `GEMINI_EMBEDDING_MODEL` in `recipeparser/config.py`. Read what follows as the design it was, not as how the code works.
+
 How to add a new LLM or embedding provider.
 
 ---
