@@ -362,6 +362,44 @@ def test_a_picture_stored_for_an_original_deleted_meanwhile_is_removed():
     assert images.removed == [copy_id(_item(1, A)["id"])]
 
 
+def test_a_picture_left_by_a_crashed_attempt_is_removed_when_the_redo_finds_the_original_gone():
+    # Fix Roadmap F-174. The first attempt stored the copy's picture and died before the copy
+    # call; by the redo the original is deleted, so nothing is stored this time. The object
+    # the first attempt left is still under the copy's id, and no recipe will ever use it.
+    fake = FakeSupabase()
+    images = FakeImageStore()
+    _seed(fake, [_item(1, A, status="copying")], [])
+    _run_to_end(_worker(fake, images), fake)
+    assert _status(fake) == ["unavailable"]
+    assert images.puts == []
+    assert images.removed == [copy_id(_item(1, A)["id"])]
+
+
+def test_a_picture_left_by_a_crashed_attempt_is_removed_when_the_redo_finds_a_duplicate():
+    # F-174: as above, but another share's copy of the same original landed meanwhile.
+    fake = FakeSupabase()
+    images = FakeImageStore()
+    fake.objects[f"{A}.jpg"] = b"jpeg-bytes"
+    earlier = _recipe("77777777-7777-4777-8777-777777777777", owner=RECIPIENT, copied_from_recipe_id=A)
+    _seed(fake, [_item(1, A, status="copying")], [_recipe(A, image_url=f"{PUBLIC_PREFIX}{A}.jpg"), earlier])
+    _run_to_end(_worker(fake, images), fake)
+    assert _status(fake) == ["duplicate"]
+    assert images.removed == [copy_id(_item(1, A)["id"])]
+
+
+def test_a_redo_whose_copy_already_landed_keeps_its_picture():
+    # F-174's guard: the copy call committed and the worker died before hearing so. The redo
+    # answers accepted, and the picture under the copy's id is the live recipe's.
+    fake = FakeSupabase()
+    images = FakeImageStore()
+    new_id = copy_id(_item(1, A)["id"])
+    landed = _recipe(new_id, owner=RECIPIENT, copied_from_recipe_id=A, image_url=f"{PUBLIC_PREFIX}{new_id}.jpg")
+    _seed(fake, [_item(1, A, status="copying")], [_recipe(A, image_url=f"{PUBLIC_PREFIX}{A}.jpg"), landed])
+    _run_to_end(_worker(fake, images), fake)
+    assert _status(fake) == ["accepted"]
+    assert images.removed == []
+
+
 def test_a_picture_is_kept_when_the_copy_call_fails():
     # The call may have committed with only its reply lost; removing the picture then would
     # leave the new recipe pointing at nothing. An unused object costs less than that.

@@ -38,6 +38,8 @@ PURGE_EVERY_SECONDS = 24 * 60 * 60
 
 _OPEN = ["pending", "copying"]
 _SETTLED = {"accepted", "duplicate", "unavailable", "failed"}
+# copy_shared_item's answers that mean no recipe was made under the copy's id.
+_NO_COPY = {"duplicate", "unavailable"}
 _TYPE_BY_EXTENSION = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif",
 }
@@ -242,9 +244,12 @@ class ShareWorker:
             # recipe. The function is idempotent, so a retry after a commit is harmless.
             log.info("share %s: copying item %s failed (%s) — retrying once.", held.share_id, item["id"], exc)
             outcome = str(self._sb.rpc("copy_shared_item", params).execute().data)
-        if stored and outcome != "accepted":
+        if outcome in _NO_COPY or (stored and outcome != "accepted"):
             # The original went, or another share's copy won the race: no recipe points at
-            # the picture just stored, and it would be paid for for ever.
+            # a picture under this copy's id, and it would be paid for for ever. That holds
+            # whether this attempt stored it or one that crashed before the copy call did
+            # (Fix Roadmap F-174), and both answers mean no recipe has this id:
+            # copy_shared_item answers a redo whose copy landed with "accepted".
             self._discard(new_id)
         return outcome
 
