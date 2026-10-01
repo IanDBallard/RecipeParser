@@ -50,6 +50,8 @@ from pydantic import BaseModel, Field
 
 import recipeparser.gemini as _gemini_mod
 from recipeparser.adapters.job_sink import JobSink
+from recipeparser.adapters.shares_api import RecipientCheckLimiter
+from recipeparser.adapters.shares_api import build_router as _build_share_router
 from recipeparser.config import MAX_UPLOAD_BYTES
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
@@ -238,9 +240,11 @@ async def _lifespan(_app: FastAPI):
         # Imported here so the worker modules are not a hard dependency of the API import.
         from recipeparser.adapters import regen_worker as _rw  # noqa: PLC0415
         from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
+        from recipeparser.adapters.share_worker import ShareWorker  # noqa: PLC0415
         workers: list = [
             _rw.RegenWorker(supabase, _get_client()),
             RecatWorker(supabase, _get_client()),
+            ShareWorker(supabase, SupabaseImageStore()),
         ]
         task = asyncio.create_task(_rw.run_workers(workers, stop, polls=_worker_polls))
         _regen_worker_state = "started"
@@ -1744,3 +1748,14 @@ async def generate_recipe_image(
         ) from exc
     logger.info("Recipe %s got a generated picture (%d bytes).", recipe_id, len(jpeg))
     return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+# ---------------------------------------------------------------------------
+# Recipe sharing — POST /shares/recipient, /shares, /shares/{id}/accept|decline|cancel
+# ---------------------------------------------------------------------------
+# The endpoints live in shares_api.py. The client factory is passed as a lambda so that it
+# is looked up on every call, which is what lets a test replace _get_supabase_service_client.
+_share_check_limiter = RecipientCheckLimiter()
+app.include_router(_build_share_router(
+    _verify_supabase_jwt, lambda: _get_supabase_service_client(), _share_check_limiter,
+))

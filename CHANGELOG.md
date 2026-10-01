@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.3.0] — 2026-10-01
+
+Recipe sharing: five endpoints, a copy job and a sweep (#75). Needs one Cayenne migration.
+
+### ✨ Added — recipe sharing (#75)
+- `POST /shares/recipient` checks whether a Cayenne account uses an address, at most 20 lookups an hour per sender. `POST /shares` creates a share of up to 200 of the caller's recipes; its lookup of the recipient counts toward the same limit, so a sender can send about ten shares an hour. `POST /shares/{id}/accept` (optionally skipping some items), `/decline` and `/cancel` move a share on. A share the caller is not a party to is a 404; one that has already moved on is a 409. All five live in `adapters/shares_api.py`.
+- `ShareWorker` copies an accepted share into the recipient's library, one recipe per poll. Each copy gets its own copy of the picture in storage. The copy's id is derived from the item, so a restart mid-share makes no second copy. It also expires pending shares after 14 days and deletes shares 30 days after they end. It starts with the other workers when `REGEN_WORKER_ENABLED` is set.
+- Every change is a Cayenne database function called over `rpc`, so each step is one transaction.
+
+### ⚠️ Requires — apply the Cayenne migration **before** deploying this version
+- **`20260930220000_recipe_shares.sql`** — the share tables, `recipes.copied_from_recipe_id`, and the eight functions these endpoints and the worker call. Without it every sharing endpoint answers 503 and the sweep logs an error every 15 minutes.
+
 ## [9.2.0] — 2026-09-29
 
 AI recipe picture: a generate endpoint and a generated-picture marker (#68). Also a liveness check for ingest jobs (#63), a read-only similarity script (#64), and Fix Roadmap batches 3 and 4 (#65, #66). Needs one Cayenne migration, already live.
