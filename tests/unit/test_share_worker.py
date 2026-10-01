@@ -213,6 +213,22 @@ def test_a_recategorise_job_is_not_taken():
     assert _worker(fake).run_once() == 0
 
 
+@pytest.mark.parametrize("status", ["pending", "declined", "cancelled", "expired", "accepted"])
+def test_a_job_for_a_share_not_being_accepted_copies_nothing(status):
+    # Only accept_recipe_share moves a share to `accepting` and queues its job. A job row made
+    # any other way (a write path to ingestion_jobs that should not exist) must not copy a share
+    # the sender cancelled, the recipient declined, or that expired.
+    fake = FakeSupabase()
+    _seed(fake, [_item(1, A)], [_recipe(A)])
+    fake.tables["recipe_shares"][0]["status"] = status
+    _worker(fake).run_once()
+    job = _job(fake)
+    assert (job["status"], job["stage"]) == ("error", "ERROR")
+    assert job["error_message"] == "The share is not being accepted"
+    assert fake.calls("copy_shared_item") == []
+    assert _status(fake) == ["pending"]
+
+
 def test_a_share_that_no_longer_exists_ends_the_job_in_error():
     fake = FakeSupabase()
     _seed(fake, [_item(1, A)], [_recipe(A)])
