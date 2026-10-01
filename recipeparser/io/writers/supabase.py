@@ -45,6 +45,12 @@ def _get_creds() -> Tuple[str, str]:
 # One category link the junction write could not make: {"category_id", "reason"}.
 RefusedLink = Dict[str, str]
 
+# The junction insert's conflict target. Each row carries a fresh id, so without it
+# PostgREST arbitrates on the primary key, which never fires, and a link that is
+# already there is refused with a 409 instead of ignored. RecatWorker upserts on
+# the same pair.
+_ON_PAIR = {"on_conflict": "recipe_id,category_id"}
+
 
 def _write_category_junctions(
     recipe_id: str,
@@ -62,8 +68,9 @@ def _write_category_junctions(
     the recipe row is never rolled back due to a junction table error. A
     refused batch is retried row by row, so one bad category id costs only
     its own link (Fix Roadmap F-004). So is a batch that got no answer at all
-    (F-128): the insert ignores duplicates, so the rows are safe to send again
-    whether or not the batch landed.
+    (F-128): the insert ignores a duplicate of the (recipe_id, category_id) pair
+    (``_ON_PAIR``), so the rows are safe to send again whether or not the batch
+    landed.
 
     Returns the links it could not write, each with why, so the job that
     wrote the recipe can account for them (Fix Roadmap F-115, 2026-09-29):
@@ -130,14 +137,15 @@ def _write_category_junctions(
         resp = httpx.post(
             f"{supabase_url}/rest/v1/recipe_categories",
             headers=headers,
+            params=_ON_PAIR,
             json=rows,
             timeout=15.0,
         )
     except httpx.RequestError as exc:
         # No answer, so none of these links is known to have landed, and until
         # F-128 every one was given up here. `Prefer: resolution=ignore-duplicates`
-        # makes a second insert of a link that did land a no-op, so the rows
-        # below are safe to send again.
+        # on the pair (`_ON_PAIR`) makes a second insert of a link that did land a
+        # no-op, so the rows below are safe to send again.
         log.warning(
             "Junction write: network error for recipe %s (%s) — retrying each of "
             "%d row(s) on its own.",
@@ -172,6 +180,7 @@ def _write_category_junctions(
             one = httpx.post(
                 f"{supabase_url}/rest/v1/recipe_categories",
                 headers=headers,
+                params=_ON_PAIR,
                 json=[row],
                 timeout=15.0,
             )

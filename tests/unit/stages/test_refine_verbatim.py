@@ -195,6 +195,12 @@ class TestTheDetectedSystem:
             assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (None, None), (
                 host, system)
 
+    def test_a_port_or_a_trailing_dot_on_the_host_does_not_hide_its_system(self):
+        # host_of keeps both ("bbc.co.uk:8080", "bbc.co.uk."); the map reads past them.
+        for host in ("bbc.co.uk:8080", "bbc.co.uk.", "BBC.co.uk"):
+            result, _ = _refine(_refinement(_oil(), detected="UK", evidence="co.uk"), source_host=host)
+            assert result.source_uom_system_detected == "UK", host
+
     def test_a_host_the_prompt_does_not_map_is_evidence_of_nothing(self):
         # F-131: a .com site is read everywhere; the prompt names no system for it.
         for system in ("US", "UK", "EU", "AU", "Imperial"):

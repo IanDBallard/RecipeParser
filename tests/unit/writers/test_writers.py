@@ -153,7 +153,7 @@ class TestTheSupabaseWriterInsertsRecipeCategories:
         # httpx.post is mocked below; nothing leaves this process.
         monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
 
-        def post(url, *, headers, json, timeout):
+        def post(url, *, headers, json, timeout, params=None):
             resp = MagicMock()
             if url.endswith("/recipe_categories") and any(
                 r["category_id"] == "cat-gone" for r in json
@@ -195,7 +195,7 @@ class TestTheSupabaseWriterInsertsRecipeCategories:
         # httpx.post is mocked below; nothing leaves this process.
         monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
 
-        def post(url, *, headers, json, timeout):
+        def post(url, *, headers, json, timeout, params=None):
             resp = MagicMock()
             if url.endswith("/recipe_categories") and any(
                 r["category_id"] == "cat-gone" for r in json
@@ -228,7 +228,7 @@ class TestTheSupabaseWriterInsertsRecipeCategories:
         # httpx.post is mocked below; nothing leaves this process.
         monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
 
-        def post(url, *, headers, json, timeout):
+        def post(url, *, headers, json, timeout, params=None):
             if url.endswith("/recipe_categories"):
                 raise httpx.ConnectError("connection reset")
             resp = MagicMock()
@@ -264,7 +264,7 @@ class TestTheSupabaseWriterInsertsRecipeCategories:
 
         junction_calls: List[list] = []
 
-        def post(url, *, headers, json, timeout):
+        def post(url, *, headers, json, timeout, params=None):
             if url.endswith("/recipe_categories"):
                 junction_calls.append(json)
                 if len(junction_calls) == 1:
@@ -297,6 +297,9 @@ class TestTheSupabaseWriterInsertsRecipeCategories:
             write_recipe_to_supabase(recipe, "user-uuid-1", category_ids={"Thai": "cat-thai"})
         junction = [c for c in mock_post.call_args_list if c.args[0].endswith("/recipe_categories")]
         assert "resolution=ignore-duplicates" in junction[0].kwargs["headers"]["Prefer"]
+        # Each row carries a fresh id, so without a conflict target PostgREST arbitrates on the
+        # primary key, which never fires, and a link that landed is refused with a 409.
+        assert junction[0].kwargs["params"] == {"on_conflict": "recipe_id,category_id"}
 
 
 # ---------------------------------------------------------------------------
