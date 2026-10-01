@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.3.2] — 2026-10-01
+
+### 🐛 Fixed — a recipe that runs onto the next page of a short PDF
+- `PdfReader` now sends a PDF whose whole text fits in one chunk (`MAX_CHUNK_CHARS`, 30,000 characters) as a single chunk. Before, every page was its own chunk, so a recipe photographed or scanned across a page break reached the model as two halves, and came out incomplete or not at all. A longer PDF is still read page by page. The hero-photo pass still runs on the pages before they are joined. Short documents were the target, but this covers any PDF that fits: `text-pages.pdf` (four pages) is now one chunk too.
+- A short untitled PDF (one that fits in one chunk) no longer becomes "an unknown book". Its chunk carries no citation, so the model's reading of the page names the source, as it does for a photo. Before, `resolve_citation` treated "unknown book" as settled, so a cookbook named on the scanned page was thrown away. A long untitled PDF is still one unknown book, so its recipes keep a single source. A PDF whose metadata has a title is still that book.
+
+### 🧪 Tests
+- `tests/unit/readers/test_pdf_short_document.py` covers the join, the page path for a long PDF, and the three citation cases. The reader golden for `text-pages.pdf` is now the joined chunk.
+- The Gemini-backed goldens (stages, image recovery) keep `text-pages.pdf` on the page path through `read_pdf_by_page`. Its recorded replies are keyed to page chunks, and the whole-document replies need a run with a real key (`--record-gemini`).
+
 ## [9.3.1] — 2026-10-01
 
 ### 🔒 Fixed — a share job copies only a share being accepted

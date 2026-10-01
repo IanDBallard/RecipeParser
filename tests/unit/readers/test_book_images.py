@@ -94,7 +94,7 @@ class TestEpubReaderImages:
         assert chunk.images == {}
 
 
-def test_pdf_reader_chunks_carry_their_page_photo(tmp_path):
+def test_pdf_reader_chunks_carry_their_page_photo(tmp_path, monkeypatch):
     pixmap = fitz.Pixmap(fitz.csRGB, 160, 160, bytes(range(256)) * 300, False)
     jpeg = pixmap.tobytes("jpeg")
     assert len(jpeg) >= MIN_PHOTO_BYTES, "fixture photo must clear the decorative-image bar"
@@ -106,6 +106,12 @@ def test_pdf_reader_chunks_carry_their_page_photo(tmp_path):
     path = tmp_path / "book.pdf"
     doc.save(str(path))
 
+    # Three short pages fit in one chunk, and that chunk carries the photo.
+    (whole,) = PdfReader().read(str(path))
+    assert list(whole.images) == ["page2_img1.jpeg"]
+
+    # A document too long for one chunk is read page by page, each page with its own photo.
+    monkeypatch.setattr("recipeparser.io.readers.pdf.MAX_CHUNK_CHARS", 100)
     chunks = PdfReader().read(str(path))
     carried = [list(c.images) for c in chunks]
     assert carried == [[], ["page2_img1.jpeg"], []]
