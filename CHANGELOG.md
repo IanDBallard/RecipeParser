@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [9.3.0] — 2026-09-30
+## [9.3.0] — 2026-10-01
 
 Recipe sharing: five endpoints, a copy job and a sweep (#75). Needs one Cayenne migration.
 
