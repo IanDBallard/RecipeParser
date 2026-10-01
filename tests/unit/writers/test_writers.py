@@ -246,6 +246,58 @@ class TestTheSupabaseWriterInsertsRecipeCategories:
         assert sorted(r["category_id"] for r in refused) == ["cat-quick", "cat-thai"]
         assert all("connection reset" in r["reason"] for r in refused)
 
+    def test_a_network_error_on_the_batch_is_retried_row_by_row(self, monkeypatch):
+        """
+        Fix Roadmap F-128. A refused batch was retried row by row, but a batch
+        that got no answer was not retried at all, so one dropped connection
+        lost every link. The insert ignores duplicates, so the rows are safe to
+        send again even if the batch did land.
+        """
+        import httpx
+
+        recipe = _make_recipe("Pad Thai")
+        recipe.grid_categories = {"Cuisine": ["Thai"], "Speed": ["Quick"]}
+        monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+        # httpx.post is mocked below; nothing leaves this process.
+        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+
+        junction_calls: List[list] = []
+
+        def post(url, *, headers, json, timeout):
+            if url.endswith("/recipe_categories"):
+                junction_calls.append(json)
+                if len(junction_calls) == 1:
+                    raise httpx.ConnectError("connection reset")
+            resp = MagicMock()
+            resp.status_code = 201
+            return resp
+
+        refused: List[dict] = []
+        with patch("recipeparser.io.writers.supabase.httpx.post", side_effect=post):
+            write_recipe_to_supabase(
+                recipe, "user-uuid-1",
+                category_ids={"Thai": "cat-thai", "Quick": "cat-quick"},
+                on_link_refused=refused.append,
+            )
+
+        assert refused == []
+        assert [len(rows) for rows in junction_calls] == [2, 1, 1]
+
+    def test_the_junction_insert_ignores_duplicates(self, monkeypatch):
+        """F-128's retry is only safe while the insert ignores a link that already landed."""
+        recipe = _make_recipe("Pad Thai")
+        recipe.grid_categories = {"Cuisine": ["Thai"]}
+        monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+        resp = MagicMock()
+        resp.status_code = 201
+        with patch("recipeparser.io.writers.supabase.httpx.post", return_value=resp) as mock_post:
+            write_recipe_to_supabase(recipe, "user-uuid-1", category_ids={"Thai": "cat-thai"})
+        junction = [c for c in mock_post.call_args_list if c.args[0].endswith("/recipe_categories")]
+        assert "resolution=ignore-duplicates" in junction[0].kwargs["headers"]["Prefer"]
+
 
 # ---------------------------------------------------------------------------
 # Test 3 — PaprikaWriter produces a valid ZIP with Fat Tokens stripped
