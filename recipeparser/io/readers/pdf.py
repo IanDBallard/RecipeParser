@@ -4,11 +4,12 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-from typing import Any, List, Set, Tuple
+from typing import Any, List, Optional, Set, Tuple
 
 import fitz  # type: ignore[import-untyped]  # PyMuPDF
 
 from recipeparser.config import (
+    MAX_CHUNK_CHARS,
     MIN_PHOTO_BYTES,
     PDF_OCR_MAX_PAGES,
     PDF_PREFLIGHT_MAX_PAGES,
@@ -28,13 +29,15 @@ log = logging.getLogger(__name__)
 
 class PdfReader(RecipeReader):
     """
-    Reads a PDF file and returns one Chunk per page (or page group).
+    Reads a PDF file and returns one Chunk per page (or page group), or one
+    Chunk for the whole document when its text fits in one.
 
     Each chunk carries:
     - ``text``: page text with [IMAGE: filename] breadcrumb markers
     - ``input_type``: InputType.PDF
     - ``source_url``: None (a book has no URL)
-    - ``citation``: the PDF's title and author metadata, if any
+    - ``citation``: the PDF's title and author metadata, if any; None for an
+      untitled PDF short enough to be one chunk (see ``_whole_if_short``)
     - ``images``: the bytes of every photo the text marks, keyed by filename
 
     Images are extracted to a temporary directory that is gone once read()
@@ -56,7 +59,8 @@ class PdfReader(RecipeReader):
             source: File-system path to the .pdf file.
 
         Returns:
-            List of Chunk objects, one per non-empty page.
+            List of Chunk objects, one per non-empty page — or a single chunk
+            when the whole document fits in ``MAX_CHUNK_CHARS``.
 
         Raises:
             PdfExtractionError: pre-flight checks (encrypted, no pages, too
@@ -76,15 +80,25 @@ class PdfReader(RecipeReader):
 
         chunks: List[Chunk] = []
         # A photo-only page's image moves onto the page after it; the bytes are
-        # read now because image_dir is deleted when read() returns.
-        for text in inject_hero_markers(raw_chunks):
+        # read now because image_dir is deleted when read() returns. The hero
+        # pass runs on the pages before a short document is joined: it is a rule
+        # about a page and the page after it.
+        texts, short = _whole_if_short([t for t in inject_hero_markers(raw_chunks) if t.strip()])
+        # An untitled PDF of a page or two is a phone scan, not a book the reader
+        # knows: "an unknown book" would settle the source (see resolve_citation)
+        # and throw away the cookbook the page names. With no citation the model's
+        # reading names it, as it does for a photo. A long untitled PDF stays one
+        # unknown book, so its recipes keep one source rather than whatever each
+        # page's model reading says.
+        chunk_citation: Optional[Citation] = None if short and citation.kind == "unknown" else citation
+        for text in texts:
             if text.strip():
                 chunks.append(
                     Chunk(
                         text=text,
                         input_type=InputType.PDF,
                         source_url=None,
-                        citation=citation,
+                        citation=chunk_citation,
                         # load_pdf() drops the page number for empty/skipped pages before
                         # returning raw_chunks, so no true page range is in scope here;
                         # a null label is honest, an invented one is not.
@@ -94,6 +108,21 @@ class PdfReader(RecipeReader):
                 )
 
         return chunks
+
+
+def _whole_if_short(pages: List[str]) -> Tuple[List[str], bool]:
+    """The pages as one chunk when their joined text fits in ``MAX_CHUNK_CHARS``, else unchanged; and whether it fit.
+
+    A recipe that runs onto the next page — a cookbook page photographed or
+    scanned as two — was cut in two by the page split, and the model saw half a
+    recipe each time. A document that short is a recipe or a few, not a book, and
+    a chunk holding several recipes is the shape an EPUB chapter and a scan
+    transcript already take. A longer document keeps its page chunks.
+    """
+    joined = "\n\n".join(pages)
+    if len(joined) > MAX_CHUNK_CHARS:
+        return pages, False
+    return ([joined] if len(pages) > 1 else pages), True
 
 
 def load_pdf(path: str, output_dir: str, client: Any = None) -> Tuple[Citation, str, Set[str], List[str]]:

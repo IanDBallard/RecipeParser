@@ -16,8 +16,8 @@ from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.io.readers.epub import EpubReader
 from recipeparser.io.readers.paprika import PaprikaReader
-from recipeparser.io.readers.pdf import PdfReader, extract_text_from_pdf
-from tests.goldens.conftest import FIXED_AXES
+from recipeparser.io.readers.pdf import extract_text_from_pdf
+from tests.goldens.conftest import FIXED_AXES, read_pdf_by_page
 from tests.goldens.paths import corpus_path
 
 #: Every fixture that reaches the extract/refine/categorize path, and how its
@@ -38,7 +38,7 @@ def _chunks_for(fixture: str, monkeypatch):
     if fixture.endswith(".epub"):
         return EpubReader().read(str(corpus_path(fixture)))
     if fixture.endswith(".pdf"):
-        return PdfReader().read(str(corpus_path(fixture)))
+        return read_pdf_by_page(str(corpus_path(fixture)))
     if fixture.endswith(".paprikarecipes"):
         return PaprikaReader().read(str(corpus_path(fixture)))
     raise AssertionError(f"no reader for {fixture}")

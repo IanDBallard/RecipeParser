@@ -40,11 +40,10 @@ from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.io.readers.epub import EpubReader
 from recipeparser.io.readers.paprika import PaprikaReader
-from recipeparser.io.readers.pdf import PdfReader
 from recipeparser.io.readers.url import looks_like_badge, page_meta_from_html
 from recipeparser.io.writers.cayenne_zip import CayenneZipWriter
 from recipeparser.io.writers.paprika_zip import PaprikaWriter
-from tests.goldens.conftest import FIXED_AXES
+from tests.goldens.conftest import FIXED_AXES, read_pdf_by_page
 from tests.goldens.paths import CORPUS_FIXTURES, corpus_path
 
 #: Stands for "the photo_data of the Paprika entry with this recipe's name".
@@ -126,7 +125,7 @@ def _read(fixture: str):
     if fixture.endswith(".epub"):
         return EpubReader().read(path)
     if fixture.endswith(".pdf"):
-        return PdfReader().read(path)
+        return read_pdf_by_page(path)
     return PaprikaReader().read(path)
 
 
