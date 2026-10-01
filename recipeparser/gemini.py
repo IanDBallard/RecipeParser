@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, TypeVar
 
 from google.genai import errors as genai_errors
 from pydantic import BaseModel, Field, ValidationError, create_model
@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     from recipeparser.core.rate_limiter import GlobalRateLimiter
 
 log = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 def _strip_additional_properties(obj: Any) -> Any:
@@ -195,25 +197,43 @@ def _call_with_retry(
     is the caller's to take, or it would count twice. The limiter holds no slot
     across a wait, so taking one here cannot deadlock. None takes no slot.
     """
+    def _once() -> object:
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=_finalize_config(config),
+        )
+        _log_usage_metadata(response, what)
+        return response
+
+    return _with_backoff(_once, limiter=limiter)
+
+
+def _with_backoff(
+    call: Callable[[], T],
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
+    max_retries: int = MAX_RETRIES,
+) -> T:
+    """Run ``call``, retrying a rate-limit or transient server error with exponential back-off.
+
+    The one back-off ladder, for ``generate_content`` (``_call_with_retry``) and
+    ``embed_content`` (``get_embeddings``, F-132) alike. Anything else raises at once.
+    ``limiter`` is as for ``_call_with_retry``: every attempt after the first takes a slot.
+    """
     delay = BACKOFF_BASE_SECS
-    for attempt in range(1, MAX_RETRIES + 2):
+    for attempt in range(1, max_retries + 2):
         if attempt > 1 and limiter is not None:
             limiter.wait_then_record_start()
         try:
-            response = client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=_finalize_config(config),
-            )
-            _log_usage_metadata(response, what)
-            return response
+            return call()
         except Exception as exc:
             retryable = _is_rate_limit_error(exc) or _is_transient_server_error(exc)
-            if retryable and attempt <= MAX_RETRIES:
+            if retryable and attempt <= max_retries:
                 log.warning(
                     "Transient error hit (attempt %d/%d) — waiting %ds before retry: %s",
                     attempt,
-                    MAX_RETRIES,
+                    max_retries,
                     delay,
                     exc,
                 )
@@ -221,6 +241,7 @@ def _call_with_retry(
                 delay = min(delay * 2, BACKOFF_MAX_SECS)
             else:
                 raise
+    raise AssertionError("unreachable: the last attempt returns or raises")
 
 
 def _finish_reason(response: object) -> str:
@@ -304,10 +325,23 @@ def verify_connectivity(client) -> bool:
         return False
 
 
-def get_embeddings(text: str, client) -> List[float]:
-    """Generates a 1536-dimension embedding for the given text."""
+def get_embeddings(
+    text: str,
+    client,
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
+    max_retries: int = MAX_RETRIES,
+) -> List[float]:
+    """Generates a 1536-dimension embedding for the given text.
+
+    A rate-limit or transient server error is retried with the same back-off as
+    every ``generate_content`` call (Fix Roadmap F-132): until then one 503
+    failed an ingest's EMBED step, or a regeneration, outright. ``max_retries``
+    lets a caller with a person waiting (``POST /embed``) shorten the ladder.
+    """
     from google.genai import types as genai_types
-    try:
+
+    def _once() -> object:
         response = client.models.embed_content(
             model=GEMINI_EMBEDDING_MODEL,
             contents=text,
@@ -322,7 +356,11 @@ def get_embeddings(text: str, client) -> List[float]:
             ),
         )
         _log_usage_metadata(response, "Embedding")
-        return response.embeddings[0].values
+        return response
+
+    try:
+        response = _with_backoff(_once, limiter=limiter, max_retries=max_retries)
+        return response.embeddings[0].values  # type: ignore[attr-defined]
     except Exception as e:
         log.error("Embedding generation failed: %s", e)
         raise  # Don't silently return zeros — surface the real error
