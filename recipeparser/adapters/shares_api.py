@@ -22,12 +22,14 @@ from collections import deque
 from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
 
 CHECKS_PER_HOUR = 20
 MAX_RECIPES = 200
+# What a request body may carry before it is read: room for the duplicates the endpoints remove.
+MAX_PARSED_IDS = 2 * MAX_RECIPES
 
 NO_ACCOUNT = "No Cayenne account uses that email."
 OWN_EMAIL = "That's your own email."
@@ -38,6 +40,7 @@ RECIPES_NOT_FOUND = "One or more of those recipes were not found."
 NOT_PENDING = "This share is no longer pending."
 ALL_SKIPPED = "Choose at least one recipe, or decline the share."
 SHARE_NOT_FOUND = "Share not found."
+SHARE_REFUSED = "That share could not be made. Check the recipes and the email, and try again."
 
 
 class RecipientCheckLimiter:
@@ -84,7 +87,9 @@ class RecipientResponse(BaseModel):
 
 class ShareRequest(BaseModel):
     email: str
-    recipe_ids: List[uuid.UUID]
+    # Bounded at parse time (Fix Roadmap F-175), at twice the limit: the endpoint removes
+    # duplicates before it counts, and answers its own sentence for a list over MAX_RECIPES.
+    recipe_ids: List[uuid.UUID] = Field(max_length=MAX_PARSED_IDS)
 
 
 class ShareCreated(BaseModel):
@@ -92,7 +97,7 @@ class ShareCreated(BaseModel):
 
 
 class AcceptRequest(BaseModel):
-    skip_item_ids: List[uuid.UUID] = []
+    skip_item_ids: List[uuid.UUID] = Field(default_factory=list, max_length=MAX_PARSED_IDS)
 
 
 class AcceptResponse(BaseModel):
@@ -183,10 +188,12 @@ def build_router(
                                 detail="Your account has no email address to share from.")
         sb = _client()
         email, recipient = _recipient(sb, user, body.email)
+        # `invalid`: the checks above and the function's own are written twice. Should they
+        # drift, its refusal of an argument is the caller's 422, not an outage's 503 (F-175).
         share_id = _rpc(sb, "create_recipe_share", {
             "p_sender": user["sub"], "p_sender_email": sender_email,
             "p_recipient": recipient, "p_recipient_email": email, "p_recipe_ids": ids,
-        })
+        }, invalid=SHARE_REFUSED)
         if not share_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=RECIPES_NOT_FOUND)
         log.info("Share %s created (%d recipe(s)).", share_id, len(ids))

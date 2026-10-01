@@ -179,18 +179,36 @@ def _recipe_text(raw: RecipeExtraction) -> str:
 _CANONICAL_SYSTEMS = {s.lower(): s for s in SOURCE_SYSTEMS}
 
 
+def _bare_host(host: str) -> str:
+    """``host`` in plain form without a port or a trailing dot, both of which ``host_of`` keeps."""
+    return _plain(host).split(":", 1)[0].rstrip(".")
+
+
 def _host_names(quote: str, source_host: str) -> bool:
     """
     True when ``quote`` names the given host: the host itself, or a non-empty suffix of it that starts
     at a dot boundary (".com.au", "com.au"). A leading "www." is ignored on both. Never an arbitrary
     substring: "aste.com" does not name "taste.com.au".
     """
-    host = _plain(source_host).removeprefix("www.")
     quote = quote.removeprefix("www.")
     bare = quote.lstrip(".")
     if not bare:
         return False
-    return host == bare or host.endswith("." + bare)
+    # The host as given, and without its port or trailing dot: the quote may be of either.
+    hosts = {h.removeprefix("www.") for h in (_plain(source_host), _bare_host(source_host))}
+    return any(host == bare or host.endswith("." + bare) for host in hosts)
+
+
+# The prompt's own map (gemini.build_refine_prompt, SOURCE SYSTEM): ".co.uk is UK, .com.au is AU,
+# .co.nz is UK". A host is evidence of that one system and of no other (Fix Roadmap F-131); a host
+# the prompt does not map (.com, .org, …) is read everywhere and is evidence of nothing.
+_HOST_SYSTEMS = ((".co.uk", "UK"), (".com.au", "AU"), (".co.nz", "UK"))
+
+
+def _host_system(source_host: str) -> Optional[str]:
+    """The one system the prompt lets this host stand for, or None."""
+    host = _bare_host(source_host)
+    return next((system for suffix, system in _HOST_SYSTEMS if host.endswith(suffix)), None)
 
 
 # Fix Roadmap F-010: words that say nothing about the system on their own. Every system writes a cup,
@@ -285,12 +303,18 @@ def _check_detection(refinement: CayenneRefinement, raw: RecipeExtraction, sourc
     D5, in place. The detected system must be one of the five (in any case; written canonically)
     and its evidence must be a quote from the recipe text (whole words, with some substance:
     ``_quoted_from``) that is evidence of that system (``_indicates``), or name the source host as
-    given (the host or a dot-boundary suffix of it); otherwise both are written null.
+    given (the host or a dot-boundary suffix of it) where that host stands for that system
+    (``_host_system``, F-131); otherwise both are written null.
     """
     detected = refinement.source_uom_system_detected
     system = _CANONICAL_SYSTEMS.get((detected or "").strip().lower())
     quote = _plain(refinement.source_uom_system_evidence or "")
-    named_host = source_host is not None and _host_names(quote, source_host)
+    named_host = (
+        source_host is not None
+        and system is not None
+        and _host_names(quote, source_host)
+        and _host_system(source_host) == system
+    )
     supported = system is not None and quote != "" and (
         named_host
         or (_quoted_from(quote, _plain(_recipe_text(raw)))
@@ -301,7 +325,7 @@ def _check_detection(refinement: CayenneRefinement, raw: RecipeExtraction, sourc
     else:
         if detected is not None:
             log.warning("refine(): dropped detected system %r — its evidence %r is not"
-                        " a quote from the recipe that names that system, nor its host.",
+                        " a quote from the recipe that names that system, nor a host that stands for it.",
                         detected, refinement.source_uom_system_evidence)
         refinement.source_uom_system_detected = None
         refinement.source_uom_system_evidence = None

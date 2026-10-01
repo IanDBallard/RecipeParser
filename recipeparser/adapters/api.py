@@ -613,7 +613,8 @@ def embed_text(
     """Generate a 1536-dim embedding for the given text."""
     try:
         client = _get_client()  # validates API key is present
-        embedding = _gemini_mod.get_embeddings(body.text, client)
+        # One retry, not the whole ladder: a person is waiting on this search.
+        embedding = _gemini_mod.get_embeddings(body.text, client, max_retries=1)
         return EmbedResponse(embedding=embedding)
     except Exception as exc:
         raise HTTPException(

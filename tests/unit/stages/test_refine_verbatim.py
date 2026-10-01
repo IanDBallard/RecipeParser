@@ -181,6 +181,40 @@ class TestTheDetectedSystem:
             result, _ = _refine(_refinement(_oil(), detected="AU", evidence=quote), source_host="taste.com.au")
             assert result.source_uom_system_detected is None, quote
 
+    def test_a_host_is_evidence_only_for_the_system_the_prompt_gives_it(self):
+        # Fix Roadmap F-131: the host verified ANY system, so "taste.com.au" offered for US stuck.
+        # The prompt's map: .co.uk is UK, .com.au is AU, .co.nz is UK.
+        for host, system in (("taste.com.au", "AU"), ("bbc.co.uk", "UK"), ("stuff.co.nz", "UK")):
+            result, _ = _refine(_refinement(_oil(), detected=system, evidence=host), source_host=host)
+            assert result.source_uom_system_detected == system, host
+        for host, system in (
+            ("taste.com.au", "US"), ("taste.com.au", "UK"), ("bbc.co.uk", "Imperial"), ("bbc.co.uk", "US"),
+            ("stuff.co.nz", "AU"),
+        ):
+            result, _ = _refine(_refinement(_oil(), detected=system, evidence=host), source_host=host)
+            assert (result.source_uom_system_detected, result.source_uom_system_evidence) == (None, None), (
+                host, system)
+
+    def test_a_port_or_a_trailing_dot_on_the_host_does_not_hide_its_system(self):
+        # host_of keeps both ("bbc.co.uk:8080", "bbc.co.uk."); the map reads past them.
+        for host in ("bbc.co.uk:8080", "bbc.co.uk.", "BBC.co.uk"):
+            result, _ = _refine(_refinement(_oil(), detected="UK", evidence="co.uk"), source_host=host)
+            assert result.source_uom_system_detected == "UK", host
+
+    def test_a_host_the_prompt_does_not_map_is_evidence_of_nothing(self):
+        # F-131: a .com site is read everywhere; the prompt names no system for it.
+        for system in ("US", "UK", "EU", "AU", "Imperial"):
+            result, _ = _refine(
+                _refinement(_oil(), detected=system, evidence="cooking.nytimes.com"), source_host="cooking.nytimes.com"
+            )
+            assert result.source_uom_system_detected is None, system
+
+    def test_a_quote_from_the_recipe_still_stands_whatever_the_host(self):
+        # F-131 narrows the host path only: an American recipe on an Australian site is still US.
+        result, _ = _refine(_refinement(_oil(), detected="Imperial", evidence="1 stone"), raw=_EVIDENCE_RAW,
+                            source_host="taste.com.au")
+        assert result.source_uom_system_detected == "Imperial"
+
 
 # Fix Roadmap F-010 (RecipeParser#59's final review, ruling 7): the evidence guard took any substring of
 # the recipe, so a quote of "cup" verified and a wrong system stuck, resizing every cup and spoon.

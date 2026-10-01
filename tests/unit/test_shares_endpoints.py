@@ -173,6 +173,44 @@ def test_two_hundred_after_duplicates_are_removed_is_allowed(client, fake):
     assert response.status_code == 201
 
 
+def test_a_list_far_over_the_limit_is_refused_before_it_is_read(client, fake):
+    # Fix Roadmap F-175: the id list had no size limit at parse time, so a body of any length
+    # was read, de-duplicated and counted before the 200 check ran. Twice the limit leaves
+    # room for the duplicates the endpoint removes; beyond it the body is refused unread.
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(401)]
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": ids})
+    assert response.status_code == 422
+    assert fake.rpc_calls == []
+
+
+def test_a_skip_list_far_over_the_limit_is_refused_before_it_is_read(client, fake):
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(401)]
+    response = _as(client, RECIPIENT).post(f"/shares/{SHARE}/accept", json={"skip_item_ids": ids})
+    assert response.status_code == 422
+    assert fake.rpc_calls == []
+
+
+def test_an_argument_the_function_refuses_is_a_422_not_a_503(client, fake):
+    # F-175: these checks and create_recipe_share's are written twice. If they ever drift,
+    # the function's 22023 is the caller's mistake, not an outage.
+    def refuse(p):
+        raise _refused("22023")
+
+    fake.rpcs["create_recipe_share"] = refuse
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": [R1]})
+    assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
+
+
+def test_a_database_failure_creating_a_share_is_still_a_503(client, fake):
+    def down(p):
+        raise _refused("57014")
+
+    fake.rpcs["create_recipe_share"] = down
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": [R1]})
+    assert response.status_code == 503
+
+
 def test_a_recipient_whose_account_has_gone_is_404(client, fake):
     fake.rpcs["create_recipe_share"] = lambda p: SHARE
     response = _as(client, SENDER).post("/shares", json={"email": "gone@example.com", "recipe_ids": [R1]})

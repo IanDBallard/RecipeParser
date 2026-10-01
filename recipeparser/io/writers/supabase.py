@@ -45,6 +45,12 @@ def _get_creds() -> Tuple[str, str]:
 # One category link the junction write could not make: {"category_id", "reason"}.
 RefusedLink = Dict[str, str]
 
+# The junction insert's conflict target. Each row carries a fresh id, so without it
+# PostgREST arbitrates on the primary key, which never fires, and a link that is
+# already there is refused with a 409 instead of ignored. RecatWorker upserts on
+# the same pair.
+_ON_PAIR = {"on_conflict": "recipe_id,category_id"}
+
 
 def _write_category_junctions(
     recipe_id: str,
@@ -61,7 +67,10 @@ def _write_category_junctions(
     This is a best-effort write — failures are logged but do NOT raise, so
     the recipe row is never rolled back due to a junction table error. A
     refused batch is retried row by row, so one bad category id costs only
-    its own link (Fix Roadmap F-004).
+    its own link (Fix Roadmap F-004). So is a batch that got no answer at all
+    (F-128): the insert ignores a duplicate of the (recipe_id, category_id) pair
+    (``_ON_PAIR``), so the rows are safe to send again whether or not the batch
+    landed.
 
     Returns the links it could not write, each with why, so the job that
     wrote the recipe can account for them (Fix Roadmap F-115, 2026-09-29):
@@ -128,40 +137,42 @@ def _write_category_junctions(
         resp = httpx.post(
             f"{supabase_url}/rest/v1/recipe_categories",
             headers=headers,
+            params=_ON_PAIR,
             json=rows,
             timeout=15.0,
         )
     except httpx.RequestError as exc:
+        # No answer, so none of these links is known to have landed, and until
+        # F-128 every one was given up here. `Prefer: resolution=ignore-duplicates`
+        # on the pair (`_ON_PAIR`) makes a second insert of a link that did land a
+        # no-op, so the rows below are safe to send again.
         log.warning(
-            "Junction write: network error for recipe %s: %s", recipe_id, exc
+            "Junction write: network error for recipe %s (%s) — retrying each of "
+            "%d row(s) on its own.",
+            recipe_id, exc, len(rows),
         )
-        # No answer, so none of these links is known to have landed.
-        return [
-            {"category_id": row["category_id"], "reason": f"network error: {exc}"}
-            for row in rows
-        ]
+    else:
+        if resp.status_code in (200, 201):
+            log.info(
+                "Junction write: %d recipe_categories rows inserted for recipe %s.",
+                len(rows),
+                recipe_id,
+            )
+            return []
 
-    if resp.status_code in (200, 201):
-        log.info(
-            "Junction write: %d recipe_categories rows inserted for recipe %s.",
-            len(rows),
+        # One request is all-or-nothing, so a single bad row — a category the cook
+        # deleted while the import ran, which the foreign key then refuses — used to
+        # cost the recipe EVERY category link (Fix Roadmap F-004). Retry row by row
+        # so only the refused links are lost. Refusal is the rare path and a recipe
+        # carries a handful of tags, so the extra requests cost nothing in practice.
+        log.warning(
+            "Junction write: batch INSERT refused [%s] for recipe %s (%s) — retrying "
+            "each of %d row(s) on its own.",
+            resp.status_code,
             recipe_id,
+            resp.text[:300],
+            len(rows),
         )
-        return []
-
-    # One request is all-or-nothing, so a single bad row — a category the cook
-    # deleted while the import ran, which the foreign key then refuses — used to
-    # cost the recipe EVERY category link (Fix Roadmap F-004). Retry row by row
-    # so only the refused links are lost. Refusal is the rare path and a recipe
-    # carries a handful of tags, so the extra requests cost nothing in practice.
-    log.warning(
-        "Junction write: batch INSERT refused [%s] for recipe %s (%s) — retrying "
-        "each of %d row(s) on its own.",
-        resp.status_code,
-        recipe_id,
-        resp.text[:300],
-        len(rows),
-    )
     written = 0
     refused: List[RefusedLink] = []
     for row in rows:
@@ -169,6 +180,7 @@ def _write_category_junctions(
             one = httpx.post(
                 f"{supabase_url}/rest/v1/recipe_categories",
                 headers=headers,
+                params=_ON_PAIR,
                 json=[row],
                 timeout=15.0,
             )
@@ -192,7 +204,7 @@ def _write_category_junctions(
             })
     log.info(
         "Junction write: %d of %d recipe_categories rows inserted for recipe %s "
-        "after the batch was refused.",
+        "after the batch failed.",
         written, len(rows), recipe_id,
     )
     return refused
