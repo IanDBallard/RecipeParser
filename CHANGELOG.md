@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.3.1] — 2026-10-01
+
+### 🔒 Fixed — a share job copies only a share being accepted
+- `ShareWorker` now refuses a `share_accept` job whose share is not `accepting`, and ends the job `error` with "The share is not being accepted". Before this, a job row made any way other than `accept_recipe_share` would copy the share's pending items, even if the share was pending, declined, cancelled by its sender, or expired. Production's `ingestion_jobs` carried a hand-made policy that let users insert their own job rows, which made this reachable. Cayenne removes that policy separately; this guard holds even if a write path ever reopens.
+
 ## [9.3.0] — 2026-10-01
 
 Recipe sharing: five endpoints, a copy job and a sweep (#75). Needs one Cayenne migration.

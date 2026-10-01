@@ -171,13 +171,19 @@ class ShareWorker:
     def _start(self, job: Dict[str, Any]) -> Optional[_HeldJob]:
         share_id = str((job.get("params") or {}).get("share_id") or "")
         shares = (
-            self._sb.table("recipe_shares").select("id,sender_id,recipient_id")
+            self._sb.table("recipe_shares").select("id,sender_id,recipient_id,status")
             .eq("id", share_id).limit(1).execute().data or []
         ) if share_id else []
         if not shares or shares[0]["recipient_id"] != job["user_id"]:
             self._finish(job["id"], "error", error="The share no longer exists")
             return None
         share = shares[0]
+        if share.get("status") != "accepting":
+            # Only accept_recipe_share moves a share to `accepting`, in the transaction that queues
+            # its job. A job for a share in any other state was not made by an accept, so copying
+            # it would hand over recipes the sender cancelled or the recipient declined.
+            self._finish(job["id"], "error", error="The share is not being accepted")
+            return None
         items = (self._sb.table("recipe_share_items").select("id,status")
                  .eq("share_id", share_id).execute().data or [])
         taken = [i for i in items if i["status"] != "skipped"]
