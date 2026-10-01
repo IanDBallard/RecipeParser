@@ -1,5 +1,7 @@
 # RecipeParser Migration Plan
 
+> **Status, 2026-10-01: historical.** This is the plan for a cutover that is complete: the core, io and adapters layout and the `ingestion_jobs` pipeline it describes are what runs today. It is kept as the record of that cutover, not as a live checklist. Later schema changes live in Cayenne's `supabase/migrations/`.
+
 ## 1. Philosophy
 
 This is a **big-bang replacement**. The new architecture replaces the old one entirely in a single cutover. There are no incremental migration steps, no compatibility shims, and no legacy code paths. The system either runs the new architecture or it does not run.

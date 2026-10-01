@@ -22,13 +22,8 @@ recipeparser/
 │   ├── engine.py                  # RecipeEngine class — orchestrates the pipeline
 │   ├── chunker.py                 # Splits source text into processable segments
 │   ├── fsm.py                     # ExtractionFSM — externalized state machine
-│   └── providers/
-│       ├── base.py                # LLMProvider + EmbeddingProvider ABCs
-│       ├── factory.py             # create_provider() / create_embedding_provider()
-│       ├── gemini.py              # GeminiProvider (extraction, refinement, categorization) + GeminiEmbeddingProvider (gemini-embedding-001)
-│       ├── openai.py              # OpenAIProvider (GPT-4o extraction — future)
-│       ├── anthropic.py           # AnthropicProvider (Claude — future)
-│       └── mock.py                # MockProvider + MockEmbeddingProvider (tests)
+│   └── providers/                 # an empty __init__.py only: the provider layer of §5 and §6
+│                                  # was designed and never built (2026-10-01)
 │
 ├── io/
 │   ├── readers/                   # Source → SourceDocument(text, images)
@@ -227,6 +222,8 @@ The engine calls `fsm.transition(...)` at each stage boundary. The adapter decid
 
 ## 5. LLM Provider Interface
 
+> **Status, 2026-10-01: a design that was never built.** There is no `LLMProvider` ABC, `base.py` or `factory.py`; `core/providers/` holds an empty `__init__.py`. The Gemini calls are made directly, from `recipeparser/gemini.py` (extraction, refinement, embeddings), `recipeparser/categories.py` and `recipeparser/toc.py`. The models are `GEMINI_MODEL` and `GEMINI_EMBEDDING_MODEL` in `recipeparser/config.py`. This section is kept as the design it was.
+
 All LLM operations are accessed through the `LLMProvider` ABC defined in `core/providers/base.py`. The engine imports only this interface — never a concrete provider.
 
 ```python
@@ -285,7 +282,7 @@ def create_provider(name: str, api_key: str, model: Optional[str] = None) -> LLM
 
 | Provider | Class | Model | Status |
 |----------|-------|-------|--------|
-| `gemini` | `GeminiProvider` | `gemini-2.5-flash` | ✅ Default |
+| `gemini` | none; direct calls in `gemini.py` | `GEMINI_MODEL`, `gemini-3.1-flash-lite` by default (`gemini-2.5-flash` retires 2026-10-16) | ✅ The only one |
 | `openai` | `OpenAIProvider` | `gpt-4o` | 🔲 Future |
 | `anthropic` | `AnthropicProvider` | `claude-3-5-sonnet` | 🔲 Future |
 | `mock` | `MockProvider` | n/a | ✅ Tests |
@@ -295,6 +292,8 @@ def create_provider(name: str, api_key: str, model: Optional[str] = None) -> LLM
 Each provider implementation is responsible for its own retry logic. The `GeminiProvider` uses the existing exponential back-off from `gemini.py` (`_call_with_retry`). Other providers implement equivalent logic appropriate to their SDK.
 
 ## 6. Embedding Strategy
+
+> **Status, 2026-10-01: a design that was never built.** There is no `EmbeddingProvider` ABC or factory. Embedding is one function, `get_embeddings()` in `recipeparser/gemini.py`, using `GEMINI_EMBEDDING_MODEL` (`gemini-embedding-001`, 1536 dimensions).
 
 Embedding is a separate concern from LLM extraction and uses its own provider interface.
 
