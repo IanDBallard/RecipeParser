@@ -4,15 +4,18 @@ amounts design, docs/superpowers/specs/2026-10-02-direction-amounts-design.md; R
 
 Recipes imported before 9.5.0 carry legacy tokens, ``{{ing_02|flour}}``, which say nothing about
 how much of the ingredient a step uses, so the kitchen can only show the whole amount or nothing.
-This asks Gemini, once per recipe, which ingredient each mention in the raw steps refers to and how
+This asks Gemini, once per recipe, which ingredient each mention in the steps refers to and how
 much it uses, and rewrites ``tokenized_directions`` alone. The ingredient list, its ids, amounts and
-conversions, the embedding, the categories and the cook's edits are not touched: the model answers
-with quotes, and ``core.fat_tokens.splice_mentions`` places each token where its words are in the
-raw step, so no word of a recipe can change. A quote it cannot find loses its chip, nothing else.
+conversions, the embedding, the categories and the cook's edits are not touched. The steps are the
+text the kitchen shows today — the current tokens' words, in the current numbering — not the raw
+``direction_steps``: those carry the source's OCR noise ("1 In a wok", "30 40 minutes") that the
+import cleaned. The model answers with quotes, and ``core.fat_tokens.splice_mentions`` places each
+token where its words are, so no word of a recipe changes. A quote it cannot place loses its chip,
+nothing else.
 
 Skipped: a recipe whose tokens already carry a use (``--force`` re-tags it), a stale recipe
 (``derived_rev < body_rev`` — the regeneration worker re-derives it with 9.5.0's REFINE anyway),
-one with no steps or no ingredients, and one whose columns are not lists. The write is conditional
+one with no directions or no ingredients, and one whose columns are not lists. The write is conditional
 on ``body_rev`` and ``derived_rev`` being what was read, so a cook's edit mid-run wins.
 
     # --all-users in place of --user-id re-tags every library (a shared recipe is a row of its own)
@@ -51,7 +54,7 @@ from recipeparser.core.fat_tokens import check_mentions, is_tagged, splice_menti
 from recipeparser.models import DirectionMention, StructuredIngredient, TokenizedDirection  # noqa: E402
 
 PAGE = 500
-COLUMNS = "id,title,structured_ingredients,tokenized_directions,direction_steps,body_rev,derived_rev"
+COLUMNS = "id,title,structured_ingredients,tokenized_directions,body_rev,derived_rev"
 
 Tagger = Callable[[List[StructuredIngredient], List[str]], List[DirectionMention]]
 
@@ -65,7 +68,6 @@ class RowResult:
     before: Any = None
     dropped: List[str] = field(default_factory=list)
     demoted: List[str] = field(default_factory=list)
-    text_changed: bool = False
     error: str = ""
 
 
@@ -79,9 +81,8 @@ def plan_row(row: Dict[str, Any], tag: Tagger, force: bool = False) -> RowResult
     result = RowResult(id=row["id"], title=str(row.get("title") or ""), status="tagged",
                        before=row.get("tokenized_directions"))
     ingredients_raw = _list(row.get("structured_ingredients"))
-    steps_raw = _list(row.get("direction_steps"))
     tokenized_raw = _list(row.get("tokenized_directions"))
-    if ingredients_raw is None or steps_raw is None or tokenized_raw is None:
+    if ingredients_raw is None or tokenized_raw is None:
         result.status = "malformed"
         return result
     if (row.get("derived_rev") or 0) < (row.get("body_rev") or 0):
@@ -96,7 +97,8 @@ def plan_row(row: Dict[str, Any], tag: Tagger, force: bool = False) -> RowResult
     if is_tagged(old) and not force:
         result.status = "already-tagged"
         return result
-    steps = [str(s) for s in steps_raw]
+    # What the kitchen shows today, in its numbering: the text the chips are placed in.
+    steps = [strip_fat_tokens(d.text) for d in old]
     if not steps or not ingredients:
         result.status = "empty"
         return result
@@ -105,9 +107,8 @@ def plan_row(row: Dict[str, Any], tag: Tagger, force: bool = False) -> RowResult
     except Exception as exc:  # noqa: BLE001
         result.status, result.error = "failed", str(exc)
         return result
-    spliced, result.dropped = splice_mentions(steps, mentions, [i.id for i in ingredients])
+    spliced, result.dropped = splice_mentions(steps, mentions, [i.id for i in ingredients], [d.step for d in old])
     result.directions, result.demoted = check_mentions(ingredients, spliced)
-    result.text_changed = [strip_fat_tokens(d.text) for d in old] != steps
     return result
 
 
@@ -124,12 +125,11 @@ def write_row(sb: Any, row: Dict[str, Any], directions: Sequence[TokenizedDirect
     return bool(response.data)
 
 
-def summarise(results: Sequence[RowResult]) -> Tuple["Counter[str]", int, int, int]:
+def summarise(results: Sequence[RowResult]) -> Tuple["Counter[str]", int, int]:
     statuses = Counter(r.status for r in results)
     dropped = sum(len(r.dropped) for r in results)
-    demoted = sum(len(r.demoted) for r in results)
-    changed = sum(1 for r in results if r.status == "tagged" and r.text_changed)
-    return statuses, dropped, demoted, changed
+    corrected = sum(len(r.demoted) for r in results)
+    return statuses, dropped, corrected
 
 
 def _creds() -> Tuple[str, str]:
@@ -231,14 +231,13 @@ def main() -> int:
         if r.status != "tagged":
             continue
         if args.verbose:
-            note = "  [step text differs from the old tokens]" if r.text_changed else ""
-            print(f"\n  {r.title!r}  ({r.id}){note}")
+            print(f"\n  {r.title!r}  ({r.id})")
             for d in r.directions:
                 print(f"    {d.step}. {d.text}")
             for line in r.dropped:
                 print(f"    dropped: {line}")
             for line in r.demoted:
-                print(f"    demoted: {line}")
+                print(f"    corrected: {line}")
         if not args.live:
             continue
         assert writer is not None
@@ -256,13 +255,12 @@ def main() -> int:
     if record_fh:
         record_fh.close()
 
-    statuses, dropped, demoted, changed = summarise(results)
+    statuses, dropped, corrected = summarise(results)
     print(f"\n{len(rows)} recipes read")
     for status in ("tagged", "already-tagged", "stale", "empty", "malformed", "failed"):
         print(f"  {status:15s} {statuses.get(status, 0):5d}")
-    print(f"  mentions dropped (quote not found or unknown id): {dropped}")
-    print(f"  mentions demoted to none by the checks:          {demoted}")
-    print(f"  recipes whose step text was not the raw steps:    {changed}")
+    print(f"  mentions dropped (not placed, or unknown id):     {dropped}")
+    print(f"  mentions corrected by the checks:                 {corrected}")
     if args.limit is not None and sent >= args.limit:
         print(f"  stopped at --limit {args.limit}; the rest were not sent")
     if args.live:

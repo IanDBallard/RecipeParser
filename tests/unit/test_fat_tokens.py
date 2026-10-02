@@ -155,3 +155,94 @@ def test_refine_demotes_and_logs(caplog):
         _check_mentions(refinement)
     assert refinement.tokenized_directions[1].text == "Knead in {{ing_02|the flour|none}}."
     assert "Gnocchi" in caplog.text
+
+
+# The first live sample (2026-10-02, 20 recipes) showed the model putting amounts on names, the whole
+# amount at every mention, and mentions out of order. Each case below is from that sample.
+class TestTheFirstSample:
+    BUTTER = StructuredIngredient(id="ing_01", amount=175, unit="g", name="butter", fallback_string="175 g butter")
+    SUGAR = StructuredIngredient(id="ing_02", amount=50, unit="g", name="confectioners' sugar",
+                                 fallback_string="50 g confectioners' sugar")
+    PEEL = StructuredIngredient(id="ing_05", amount=1, name="lemon peel", fallback_string="grated peel of 1 lemon")
+    OIL = StructuredIngredient(id="ing_09", amount=2, unit="tablespoons", name="canola oil",
+                               fallback_string="2 tablespoons canola oil")
+    PEAS = StructuredIngredient(id="ing_10", amount=1, unit="cup", name="peas", fallback_string="1 cup peas")
+    BUTTERMILK = StructuredIngredient(id="ing_11", amount=400, unit="ml", name="buttermilk",
+                                      fallback_string="400 ml buttermilk")
+    RICE = StructuredIngredient(id="ing_12", amount=1.5, unit="cups", name="rice", fallback_string="1 1/2 cups rice")
+    ALL = [BUTTER, SUGAR, PEEL, OIL, PEAS, BUTTERMILK, RICE]
+
+    def _check(self, *texts):
+        return [d.text for d in check_mentions(self.ALL, _d(*texts))[0]]
+
+    def test_an_amount_on_the_name_that_is_the_whole_line_becomes_all(self):
+        assert self._check(
+            "Place the {{ing_01|butter|175 g}} and {{ing_02|confectioners’ sugar|50 g}} in the bowl; "
+            "add grated {{ing_05|lemon peel|1}}."
+        ) == [
+            "Place the {{ing_01|butter|all}} and {{ing_02|confectioners’ sugar|all}} in the bowl; "
+            "add grated {{ing_05|lemon peel|all}}."
+        ]
+
+    def test_an_amount_on_the_name_after_a_written_quantity_becomes_none(self):
+        assert self._check(
+            "Heat 1 tablespoon of the {{ing_09|canola oil|1 tablespoon}}.",
+            "Add 1 cup {{ing_10|freshly shelled (or frozen) peas|1 cup}} to it.",
+        ) == [
+            "Heat 1 tablespoon of the {{ing_09|canola oil|none}}.",
+            "Add 1 cup {{ing_10|freshly shelled (or frozen) peas|none}} to it.",
+        ]
+
+    def test_an_amount_on_the_name_that_is_a_share_becomes_none(self):
+        assert self._check("Pour in half the {{ing_11|buttermilk|200 ml}}.") == [
+            "Pour in half the {{ing_11|buttermilk|none}}."
+        ]
+
+    def test_a_quantity_in_words_keeps_its_amount(self):
+        assert self._check("Immerse in water with {{ing_09|two tablespoons|2 tablespoons}} of the oil.") == [
+            "Immerse in water with {{ing_09|two tablespoons|2 tablespoons}} of the oil."
+        ]
+
+    def test_only_the_first_all_keeps_it(self):
+        assert self._check(
+            "Wash the {{ing_12|rice|all}} well.",
+            "Add the {{ing_12|rice|all}}, then drain the {{ing_12|rice|all}}.",
+        ) == [
+            "Wash the {{ing_12|rice|all}} well.",
+            "Add the {{ing_12|rice|none}}, then drain the {{ing_12|rice|none}}.",
+        ]
+
+    def test_the_soda_bread_mentions_out_of_order_and_twice_are_all_placed(self):
+        step = ("Put the flours, salt into a bowl. Draw the flour into the buttermilk. "
+                "You may not need all the buttermilk, it depends on the flour you use.")
+        mentions = [
+            DirectionMention(step=1, quote="flours", context="Put the flours, salt", ingredient_id="ing_01",
+                             use="none"),
+            DirectionMention(step=1, quote="flour", context="depends on the flour you use", ingredient_id="ing_02",
+                             use="none"),
+            DirectionMention(step=1, quote="flour", context="Draw the flour into", ingredient_id="ing_01", use="none"),
+            DirectionMention(step=1, quote="buttermilk", context="not need all the buttermilk,",
+                             ingredient_id="ing_05", use="none"),
+            DirectionMention(step=1, quote="flours", context="Put the flours, salt", ingredient_id="ing_01",
+                             use="none"),
+        ]
+        directions, dropped = splice_mentions([step], mentions, ["ing_01", "ing_02", "ing_05"])
+        assert dropped == []
+        assert directions[0].text == (
+            "Put the {{ing_01|flours|none}}, salt into a bowl. Draw the {{ing_01|flour|none}} into the buttermilk. "
+            "You may not need all the {{ing_05|buttermilk|none}}, it depends on the {{ing_02|flour|none}} you use."
+        )
+
+    def test_a_curly_apostrophe_in_the_step_matches_a_straight_one_in_the_context(self):
+        step = "Stir the pepper; they’ll smoke. Grind the pepper."
+        mentions = [DirectionMention(step=1, quote="pepper", context="Grind the pepper.", ingredient_id="ing_01",
+                                     use="none"),
+                    DirectionMention(step=1, quote="pepper", context="the pepper; they'll smoke",
+                                     ingredient_id="ing_01", use="all")]
+        directions, dropped = splice_mentions([step], mentions, ["ing_01"])
+        assert dropped == []
+        assert directions[0].text == "Stir the {{ing_01|pepper|all}}; they’ll smoke. Grind the {{ing_01|pepper|none}}."
+
+    def test_keeps_the_recipes_own_step_numbers(self):
+        directions, _ = splice_mentions(["Mix.", "Bake."], [], [], [3, 4])
+        assert [d.step for d in directions] == [3, 4]

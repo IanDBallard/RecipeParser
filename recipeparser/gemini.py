@@ -766,15 +766,20 @@ def _format_axes_for_prompt(
 # How much of an ingredient one mention in the directions uses (Cayenne's direction amounts
 # design). One text, shared by REFINE's rule 2 and the re-tagging pass, so the two cannot drift.
 _MENTION_USES = """   - Say how much of the ingredient each mention uses, as "use":
-       * all  - the whole amount the ingredient line gives is used here, at once.
-       * an amount - the direction itself states a quantity for this mention. The words are ONLY
-         that quantity as written ("1/2 cup (60 g)", "2"), not the ingredient's name, and the use
-         is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
+       * all  - the whole amount the ingredient line gives goes in here, at once. Only the FIRST
+         time it does: later mentions of the same food ("drain the rice", "until the rice is
+         done", "the butter mixture") are none.
+       * an amount - the direction itself writes a quantity for this mention. The words are ONLY
+         that quantity as written ("1/2 cup (60 g)", "2", "two tablespoons"), never the
+         ingredient's name, and the use is the quantity as a decimal number and a unit: "0.5 cup",
+         "60 g", "2" for a count. If the direction names the ingredient without writing a
+         quantity beside it, the use is all, rest or none - never an amount, even when you know
+         the line's amount.
        * rest - what is left after amounts the directions stated earlier: "the remaining flour",
          "the rest of the sugar". The words are the ingredient's name.
        * none - the ingredient is named but no amount follows from the text: "add more flour
-         until sticky", "a bit more", "season with salt", "salt to taste", "Salt it".
-   - Never say "all" for a mention that is one of several uses of the same ingredient.
+         until sticky", "a bit more", "season with salt", "salt to taste", "Salt it", a share
+         ("half the cider", "a third of the flour"), or a later mention of food already added.
    - When unsure, say "none". A missing number is safe; a wrong one is not.
    - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour"."""
 
@@ -986,6 +991,9 @@ RULES:
    - Examples, as step text -> quote, context, use:
        "Whisk together the flour and salt" -> "flour", "Whisk together the flour and", all;
                                               "salt", "the flour and salt", all
+       "Place the butter and sugar in a bowl" -> "butter", "Place the butter and sugar", all;
+                                                 "sugar", "butter and sugar in a bowl", all
+       "Heat 1 tablespoon of the oil" -> "1 tablespoon", "Heat 1 tablespoon of the oil", "1 tablespoon"
        "Add about 1/2 cup (60 g) flour; add more flour until sticky"
            -> "1/2 cup (60 g)", "Add about 1/2 cup (60 g) flour", "0.5 cup";
               "flour", "add more flour until sticky", none
