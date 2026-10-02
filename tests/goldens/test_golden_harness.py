@@ -83,7 +83,7 @@ def test_every_recording_is_valid_and_named_by_its_own_key():
         assert "response_json_schema" not in payload["config"], f"{path} stored a schema"
         assert path.name == f"{payload['stage']}-{payload['ordinal']:02d}.json", path
         assert len(path.parent.name) == 8, f"{path.parent} is not a body sha8 directory"
-        assert path.parent.parent.name in paths.CORPUS_FIXTURES, path
+        assert path.parent.parent.name in paths.CORPUS_FIXTURES + paths.PROMPT_FIXTURES, path
         seen += 1
     assert seen > 0, "no recordings found — tests/goldens/gemini/ is empty"
     assert gc.GoldenClient is not None  # imported to prove the module loads cleanly

@@ -72,7 +72,11 @@ def _post(client, ingredients=ING, known_foods=("flour",)):
                        json={"ingredients": list(ingredients), "known_foods": list(known_foods)})
 
 
-def test_no_token_is_401(client):
+def test_no_token_is_401(client, monkeypatch):
+    # An earlier suite member may have reloaded api with DISABLE_AUTH engaged
+    # (the worker-lifespan tests); pin the verifying path so this test does not
+    # depend on suite ordering.
+    monkeypatch.setattr(api, "_DISABLE_AUTH", False)
     response = client.post("/shopping/classify", json={"ingredients": [], "known_foods": []})
     assert response.status_code in (401, 403)  # HTTPBearer's refusal
 
