@@ -178,7 +178,29 @@ class StructuredIngredient(BaseModel):
 
 class TokenizedDirection(BaseModel):
     step: int = Field(description="1-based step number.")
-    text: str = Field(description="Direction text with Fat Tokens {{id|fallback}}.")
+    text: str = Field(
+        description=(
+            "Direction text with Fat Tokens {{id|words|use}}: words exactly as written, use one of "
+            "all, rest, none, or an amount such as '0.5 cup'."
+        )
+    )
+
+
+class DirectionMention(BaseModel):
+    """One ingredient mention in a raw direction step, as the re-tagging pass reports it."""
+    step: int = Field(description="1-based number of the step the mention is in.")
+    quote: str = Field(description="The words to wrap, copied exactly from that step.")
+    context: str = Field(
+        default="",
+        description="The quote with about five words around it, copied exactly from the step: it tells apart two mentions with the same words.",
+    )
+    ingredient_id: str = Field(description="The id of the ingredient the words refer to.")
+    use: str = Field(description="all, rest, none, or the amount as a decimal and a unit, e.g. '0.5 cup'.")
+
+
+class DirectionMentions(BaseModel):
+    """The re-tagging pass's whole answer for one recipe."""
+    mentions: List[DirectionMention] = Field(default_factory=list)
 
 
 class CayenneRefinement(BaseModel):

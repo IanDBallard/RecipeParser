@@ -14,8 +14,10 @@ from syrupy.assertion import SnapshotAssertion
 from recipeparser import gemini, shopping, toc
 from recipeparser.models import (
     CayenneRefinement,
+    DirectionMentions,
     RecipeExtraction,
     RecipeList,
+    StructuredIngredient,
     TocList,
     TocRecipeClassification,
 )
@@ -33,6 +35,12 @@ PLACEHOLDER_RECIPE = RecipeExtraction(
     ingredients=["2 cups/250g plain flour", "1 cup sugar"],
     directions=["Mix everything.", "Bake until done."],
 )
+
+PLACEHOLDER_STRUCTURED = [
+    StructuredIngredient(id="ing_01", amount=2.0, unit="cups", name="plain flour",
+                         fallback_string="2 cups/250g plain flour"),
+    StructuredIngredient(id="ing_02", amount=1.0, unit="cup", name="sugar", fallback_string="1 cup sugar"),
+]
 
 PLACEHOLDER_INGREDIENTS = [
     ClassifyIngredient(key="r1:i1", text="2 cups plain flour", name="plain flour",
@@ -109,6 +117,13 @@ class TestBuildersMatchTheCallSites:
         )
         assert sent == shopping.build_classify_prompt(PLACEHOLDER_INGREDIENTS, ["flour"])
 
+    def test_direction_mentions(self, monkeypatch):
+        steps = list(PLACEHOLDER_RECIPE.directions)
+        sent = _sent_contents(
+            monkeypatch, lambda c: gemini.tag_direction_mentions(PLACEHOLDER_STRUCTURED, steps, c)
+        )
+        assert sent == gemini.build_mentions_prompt(PLACEHOLDER_STRUCTURED, steps)
+
     def test_toc_parse_truncates_a_long_body(self):
         rendered = toc.build_toc_parse_prompt(["x" * 30_000])
         assert "[... truncated ...]" in rendered
@@ -132,6 +147,9 @@ class TestPromptSnapshots:
 
     def test_refine_prompt_with_a_host(self, snapshot: SnapshotAssertion):
         assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "taste.com.au", FIXED_AXES) == snapshot
+
+    def test_direction_mentions_prompt(self, snapshot: SnapshotAssertion):
+        assert gemini.build_mentions_prompt(PLACEHOLDER_STRUCTURED, list(PLACEHOLDER_RECIPE.directions)) == snapshot
 
     def test_toc_parse_prompt(self, snapshot: SnapshotAssertion):
         assert toc.build_toc_parse_prompt(["Contents", "Soups .... 3"]) == snapshot
@@ -162,6 +180,9 @@ class TestSchemaSnapshots:
         model = gemini._build_dynamic_grid_schema(FIXED_AXES)
         assert gemini._schema_for_gemini(model) == snapshot
 
+    def test_direction_mentions_schema(self, snapshot: SnapshotAssertion):
+        assert gemini._schema_for_gemini(DirectionMentions) == snapshot
+
     def test_toc_list_schema(self, snapshot: SnapshotAssertion):
         assert gemini._schema_for_gemini(TocList) == snapshot
 
@@ -172,7 +193,7 @@ class TestSchemaSnapshots:
         assert gemini._schema_for_gemini(ClassifyReply) == snapshot
 
     @pytest.mark.parametrize(
-        "model", [RecipeList, CayenneRefinement, TocList, TocRecipeClassification, ClassifyReply]
+        "model", [RecipeList, CayenneRefinement, DirectionMentions, TocList, TocRecipeClassification, ClassifyReply]
     )
     def test_no_schema_carries_additional_properties(self, model):
         rendered = json.dumps(gemini._schema_for_gemini(model))

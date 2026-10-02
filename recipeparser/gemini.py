@@ -27,7 +27,7 @@ from recipeparser.config import (
     THINKING_BUDGET,
 )
 from recipeparser.exceptions import ExtractionParseError
-from recipeparser.models import CayenneRefinement, RecipeList
+from recipeparser.models import CayenneRefinement, DirectionMention, DirectionMentions, RecipeList, StructuredIngredient
 
 if TYPE_CHECKING:
     from recipeparser.core.rate_limiter import GlobalRateLimiter
@@ -763,6 +763,22 @@ def _format_axes_for_prompt(
     return "\n".join(lines)
 
 
+# How much of an ingredient one mention in the directions uses (Cayenne's direction amounts
+# design). One text, shared by REFINE's rule 2 and the re-tagging pass, so the two cannot drift.
+_MENTION_USES = """   - Say how much of the ingredient each mention uses, as "use":
+       * all  - the whole amount the ingredient line gives is used here, at once.
+       * an amount - the direction itself states a quantity for this mention. The words are ONLY
+         that quantity as written ("1/2 cup (60 g)", "2"), not the ingredient's name, and the use
+         is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
+       * rest - what is left after amounts the directions stated earlier: "the remaining flour",
+         "the rest of the sugar". The words are the ingredient's name.
+       * none - the ingredient is named but no amount follows from the text: "add more flour
+         until sticky", "a bit more", "season with salt", "salt to taste", "Salt it".
+   - Never say "all" for a mention that is one of several uses of the same ingredient.
+   - When unsure, say "none". A missing number is safe; a wrong one is not.
+   - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour"."""
+
+
 def build_refine_prompt(
     raw_recipe: object,
     source_host: Optional[str],
@@ -812,8 +828,14 @@ RULES:
      measurement of nothing.
 
 2. TOKENIZED DIRECTIONS:
-   - Rewrite directions using Fat Tokens: {{{{ingredient_id|original_text}}}}
-   - Example: "Mix the flour" -> "Mix the {{{{ing_01|flour}}}}"
+   - Rewrite each direction with Fat Tokens: {{{{ingredient_id|words|use}}}}. Copy the direction
+     exactly; replacing every token with its words must give back the direction as written.
+{_MENTION_USES}
+   - Examples:
+       "Whisk together the flour and salt" -> "Whisk together the {{{{ing_01|flour|all}}}} and {{{{ing_03|salt|all}}}}"
+       "Add about 1/2 cup (60 g) flour" -> "Add about {{{{ing_02|1/2 cup (60 g)|0.5 cup}}}} flour"
+       "Add the remaining flour" -> "Add the remaining {{{{ing_02|flour|rest}}}}"
+       "Add more flour until sticky" -> "Add more {{{{ing_02|flour|none}}}} until sticky"
 
 3. PHASES:
    - If the raw recipe groups its ingredients or directions into phases,
@@ -940,6 +962,67 @@ def refine_recipe_for_cayenne(
     except Exception as e:
         log.error("Cayenne refinement failed: %s", e)
         return None
+
+
+def build_mentions_prompt(ingredients: List[StructuredIngredient], steps: List[str]) -> str:
+    """The re-tagging prompt (Cayenne's direction amounts design): a recipe already refined, its
+    ingredient lines with their ids, and its raw steps. The answer is quotes, not rewritten text, so
+    ``core.fat_tokens.splice_mentions`` can place each token where its words are and the steps keep
+    every word they had."""
+    lines = "\n".join(f"  {i.id}: {i.fallback_string}" for i in ingredients)
+    numbered = "\n".join(f"  {n}. {text}" for n, text in enumerate(steps, start=1))
+    return f"""
+You are a culinary data refiner. For the recipe below, find every mention of an ingredient in the
+directions and say how much of that ingredient each mention uses.
+
+RULES:
+   - Report the mentions of each step in the order they appear in it.
+   - "quote" is the mention's words, copied character for character from that step.
+   - "context" is the quote with about five words around it, copied character for character from
+     the step, so two mentions with the same words can be told apart.
+   - "ingredient_id" is the id of the ingredient line the words refer to.
+   - A heading step ("**Phase 1**") has no mentions.
+{_MENTION_USES}
+   - Examples, as step text -> quote, context, use:
+       "Whisk together the flour and salt" -> "flour", "Whisk together the flour and", all;
+                                              "salt", "the flour and salt", all
+       "Add about 1/2 cup (60 g) flour; add more flour until sticky"
+           -> "1/2 cup (60 g)", "Add about 1/2 cup (60 g) flour", "0.5 cup";
+              "flour", "add more flour until sticky", none
+       "Add the remaining flour" -> "flour", "Add the remaining flour", rest
+
+INGREDIENTS:
+{lines}
+
+DIRECTIONS:
+{numbered}
+"""
+
+
+def tag_direction_mentions(
+    ingredients: List[StructuredIngredient],
+    steps: List[str],
+    client,
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
+) -> List[DirectionMention]:
+    """Every ingredient mention in ``steps`` with its use, from one Gemini call. Raises on failure:
+    the caller (a backfill) decides whether a recipe it could not tag is skipped or retried."""
+    response = _call_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=build_mentions_prompt(ingredients, steps),
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": _schema_for_gemini(DirectionMentions),
+            "temperature": 0.1,
+        },
+        what="Direction mentions",
+        limiter=limiter,
+    )
+    if not response.text or not response.text.strip():
+        raise RuntimeError("tag_direction_mentions(): Gemini returned an empty response")
+    return DirectionMentions.model_validate(json.loads(response.text)).mentions
 
 
 class _RecipeTags(BaseModel):

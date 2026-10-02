@@ -2,7 +2,7 @@
 scripts/retag_axis.py -- re-tag one axis of a library under the tagging rules,
 replacing what is there (Cayenne Fix Roadmap F-205).
 
-Until 9.5.0 both tagging prompts asked only for tags that "describe" or "apply
+Until 9.6.0 both tagging prompts asked only for tags that "describe" or "apply
 to" a recipe, and the model answered by what appeared anywhere in it: potato
 gnocchi was tagged Egg for the eggs in its dough, minestrone Chicken for its
 stock. The prompts now carry TAGGING_RULES (recipeparser/gemini.py). A bulk

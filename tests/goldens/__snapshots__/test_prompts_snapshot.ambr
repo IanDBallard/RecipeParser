@@ -56,6 +56,49 @@
   
   '''
 # ---
+# name: TestPromptSnapshots.test_direction_mentions_prompt
+  '''
+  
+  You are a culinary data refiner. For the recipe below, find every mention of an ingredient in the
+  directions and say how much of that ingredient each mention uses.
+  
+  RULES:
+     - Report the mentions of each step in the order they appear in it.
+     - "quote" is the mention's words, copied character for character from that step.
+     - "context" is the quote with about five words around it, copied character for character from
+       the step, so two mentions with the same words can be told apart.
+     - "ingredient_id" is the id of the ingredient line the words refer to.
+     - A heading step ("**Phase 1**") has no mentions.
+     - Say how much of the ingredient each mention uses, as "use":
+         * all  - the whole amount the ingredient line gives is used here, at once.
+         * an amount - the direction itself states a quantity for this mention. The words are ONLY
+           that quantity as written ("1/2 cup (60 g)", "2"), not the ingredient's name, and the use
+           is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
+         * rest - what is left after amounts the directions stated earlier: "the remaining flour",
+           "the rest of the sugar". The words are the ingredient's name.
+         * none - the ingredient is named but no amount follows from the text: "add more flour
+           until sticky", "a bit more", "season with salt", "salt to taste", "Salt it".
+     - Never say "all" for a mention that is one of several uses of the same ingredient.
+     - When unsure, say "none". A missing number is safe; a wrong one is not.
+     - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour".
+     - Examples, as step text -> quote, context, use:
+         "Whisk together the flour and salt" -> "flour", "Whisk together the flour and", all;
+                                                "salt", "the flour and salt", all
+         "Add about 1/2 cup (60 g) flour; add more flour until sticky"
+             -> "1/2 cup (60 g)", "Add about 1/2 cup (60 g) flour", "0.5 cup";
+                "flour", "add more flour until sticky", none
+         "Add the remaining flour" -> "flour", "Add the remaining flour", rest
+  
+  INGREDIENTS:
+    ing_01: 2 cups/250g plain flour
+    ing_02: 1 cup sugar
+  
+  DIRECTIONS:
+    1. Mix everything.
+    2. Bake until done.
+  
+  '''
+# ---
 # name: TestPromptSnapshots.test_extract_prompt[extract]
   '''
   
@@ -173,8 +216,25 @@
        measurement of nothing.
   
   2. TOKENIZED DIRECTIONS:
-     - Rewrite directions using Fat Tokens: {{ingredient_id|original_text}}
-     - Example: "Mix the flour" -> "Mix the {{ing_01|flour}}"
+     - Rewrite each direction with Fat Tokens: {{ingredient_id|words|use}}. Copy the direction
+       exactly; replacing every token with its words must give back the direction as written.
+     - Say how much of the ingredient each mention uses, as "use":
+         * all  - the whole amount the ingredient line gives is used here, at once.
+         * an amount - the direction itself states a quantity for this mention. The words are ONLY
+           that quantity as written ("1/2 cup (60 g)", "2"), not the ingredient's name, and the use
+           is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
+         * rest - what is left after amounts the directions stated earlier: "the remaining flour",
+           "the rest of the sugar". The words are the ingredient's name.
+         * none - the ingredient is named but no amount follows from the text: "add more flour
+           until sticky", "a bit more", "season with salt", "salt to taste", "Salt it".
+     - Never say "all" for a mention that is one of several uses of the same ingredient.
+     - When unsure, say "none". A missing number is safe; a wrong one is not.
+     - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour".
+     - Examples:
+         "Whisk together the flour and salt" -> "Whisk together the {{ing_01|flour|all}} and {{ing_03|salt|all}}"
+         "Add about 1/2 cup (60 g) flour" -> "Add about {{ing_02|1/2 cup (60 g)|0.5 cup}} flour"
+         "Add the remaining flour" -> "Add the remaining {{ing_02|flour|rest}}"
+         "Add more flour until sticky" -> "Add more {{ing_02|flour|none}} until sticky"
   
   3. PHASES:
      - If the raw recipe groups its ingredients or directions into phases,
@@ -267,8 +327,25 @@
        measurement of nothing.
   
   2. TOKENIZED DIRECTIONS:
-     - Rewrite directions using Fat Tokens: {{ingredient_id|original_text}}
-     - Example: "Mix the flour" -> "Mix the {{ing_01|flour}}"
+     - Rewrite each direction with Fat Tokens: {{ingredient_id|words|use}}. Copy the direction
+       exactly; replacing every token with its words must give back the direction as written.
+     - Say how much of the ingredient each mention uses, as "use":
+         * all  - the whole amount the ingredient line gives is used here, at once.
+         * an amount - the direction itself states a quantity for this mention. The words are ONLY
+           that quantity as written ("1/2 cup (60 g)", "2"), not the ingredient's name, and the use
+           is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
+         * rest - what is left after amounts the directions stated earlier: "the remaining flour",
+           "the rest of the sugar". The words are the ingredient's name.
+         * none - the ingredient is named but no amount follows from the text: "add more flour
+           until sticky", "a bit more", "season with salt", "salt to taste", "Salt it".
+     - Never say "all" for a mention that is one of several uses of the same ingredient.
+     - When unsure, say "none". A missing number is safe; a wrong one is not.
+     - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour".
+     - Examples:
+         "Whisk together the flour and salt" -> "Whisk together the {{ing_01|flour|all}} and {{ing_03|salt|all}}"
+         "Add about 1/2 cup (60 g) flour" -> "Add about {{ing_02|1/2 cup (60 g)|0.5 cup}} flour"
+         "Add the remaining flour" -> "Add the remaining {{ing_02|flour|rest}}"
+         "Add more flour until sticky" -> "Add more {{ing_02|flour|none}} until sticky"
   
   3. PHASES:
      - If the raw recipe groups its ingredients or directions into phases,
@@ -361,8 +438,25 @@
        measurement of nothing.
   
   2. TOKENIZED DIRECTIONS:
-     - Rewrite directions using Fat Tokens: {{ingredient_id|original_text}}
-     - Example: "Mix the flour" -> "Mix the {{ing_01|flour}}"
+     - Rewrite each direction with Fat Tokens: {{ingredient_id|words|use}}. Copy the direction
+       exactly; replacing every token with its words must give back the direction as written.
+     - Say how much of the ingredient each mention uses, as "use":
+         * all  - the whole amount the ingredient line gives is used here, at once.
+         * an amount - the direction itself states a quantity for this mention. The words are ONLY
+           that quantity as written ("1/2 cup (60 g)", "2"), not the ingredient's name, and the use
+           is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
+         * rest - what is left after amounts the directions stated earlier: "the remaining flour",
+           "the rest of the sugar". The words are the ingredient's name.
+         * none - the ingredient is named but no amount follows from the text: "add more flour
+           until sticky", "a bit more", "season with salt", "salt to taste", "Salt it".
+     - Never say "all" for a mention that is one of several uses of the same ingredient.
+     - When unsure, say "none". A missing number is safe; a wrong one is not.
+     - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour".
+     - Examples:
+         "Whisk together the flour and salt" -> "Whisk together the {{ing_01|flour|all}} and {{ing_03|salt|all}}"
+         "Add about 1/2 cup (60 g) flour" -> "Add about {{ing_02|1/2 cup (60 g)|0.5 cup}} flour"
+         "Add the remaining flour" -> "Add the remaining {{ing_02|flour|rest}}"
+         "Add more flour until sticky" -> "Add more {{ing_02|flour|none}} until sticky"
   
   3. PHASES:
      - If the raw recipe groups its ingredients or directions into phases,
@@ -572,7 +666,7 @@
             'type': 'integer',
           }),
           'text': dict({
-            'description': 'Direction text with Fat Tokens {{id|fallback}}.',
+            'description': "Direction text with Fat Tokens {{id|words|use}}: words exactly as written, use one of all, rest, none, or an amount such as '0.5 cup'.",
             'title': 'Text',
             'type': 'string',
           }),
@@ -744,6 +838,63 @@
     'type': 'object',
   })
 # ---
+# name: TestSchemaSnapshots.test_direction_mentions_schema
+  dict({
+    '$defs': dict({
+      'DirectionMention': dict({
+        'description': 'One ingredient mention in a raw direction step, as the re-tagging pass reports it.',
+        'properties': dict({
+          'context': dict({
+            'default': '',
+            'description': 'The quote with about five words around it, copied exactly from the step: it tells apart two mentions with the same words.',
+            'title': 'Context',
+            'type': 'string',
+          }),
+          'ingredient_id': dict({
+            'description': 'The id of the ingredient the words refer to.',
+            'title': 'Ingredient Id',
+            'type': 'string',
+          }),
+          'quote': dict({
+            'description': 'The words to wrap, copied exactly from that step.',
+            'title': 'Quote',
+            'type': 'string',
+          }),
+          'step': dict({
+            'description': '1-based number of the step the mention is in.',
+            'title': 'Step',
+            'type': 'integer',
+          }),
+          'use': dict({
+            'description': "all, rest, none, or the amount as a decimal and a unit, e.g. '0.5 cup'.",
+            'title': 'Use',
+            'type': 'string',
+          }),
+        }),
+        'required': list([
+          'step',
+          'quote',
+          'ingredient_id',
+          'use',
+        ]),
+        'title': 'DirectionMention',
+        'type': 'object',
+      }),
+    }),
+    'description': "The re-tagging pass's whole answer for one recipe.",
+    'properties': dict({
+      'mentions': dict({
+        'items': dict({
+          '$ref': '#/$defs/DirectionMention',
+        }),
+        'title': 'Mentions',
+        'type': 'array',
+      }),
+    }),
+    'title': 'DirectionMentions',
+    'type': 'object',
+  })
+# ---
 # name: TestSchemaSnapshots.test_dynamic_grid_schema
   dict({
     '$defs': dict({
@@ -891,7 +1042,7 @@
             'type': 'integer',
           }),
           'text': dict({
-            'description': 'Direction text with Fat Tokens {{id|fallback}}.',
+            'description': "Direction text with Fat Tokens {{id|words|use}}: words exactly as written, use one of all, rest, none, or an amount such as '0.5 cup'.",
             'title': 'Text',
             'type': 'string',
           }),
