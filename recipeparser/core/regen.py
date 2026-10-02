@@ -8,17 +8,12 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 from __future__ import annotations
 
-import re
 from typing import Any, Dict, List, Mapping, Tuple
 
+from recipeparser.core.fat_tokens import strip_fat_tokens
 from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
 
-_FAT_TOKEN_RE = re.compile(r"\{\{[^|]+\|([^}]+)\}\}")
-
-
-def strip_fat_tokens(text: str) -> str:
-    """'Mix {{ing_01|flour}}' -> 'Mix flour'."""
-    return _FAT_TOKEN_RE.sub(r"\1", text)
+__all__ = ["strip_fat_tokens", "raw_lines_from_derived", "raw_body_column", "build_extraction", "build_update"]
 
 
 def raw_lines_from_derived(

@@ -21,12 +21,12 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
+from recipeparser.core.fat_tokens import strip_fat_tokens
 from recipeparser.io.writers import RecipeWriter
 from recipeparser.models import IngestResponse, RecipeExtraction
 from recipeparser.utils import title_case
 
 # Regex that matches a single Fat Token: {{ing_01|fallback text}}
-_FAT_TOKEN_RE = re.compile(r"\{\{[^|]+\|([^}]+)\}\}")
 
 log = logging.getLogger(__name__)
 
@@ -234,11 +234,8 @@ def merge_exports(paths: List[Path], output_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 def _strip_fat_tokens(text: str) -> str:
-    """Replace every Fat Token with its fallback string.
-
-    ``{{ing_01|1.5 cups flour}}`` → ``1.5 cups flour``
-    """
-    return _FAT_TOKEN_RE.sub(r"\1", text)
+    """Replace every Fat Token with its words: ``{{ing_01|flour|all}}`` → ``flour``."""
+    return strip_fat_tokens(text)
 
 
 def _ingest_to_paprika_dict(recipe: IngestResponse) -> Dict[str, Any]:
