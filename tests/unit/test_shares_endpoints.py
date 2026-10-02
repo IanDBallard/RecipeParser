@@ -148,7 +148,11 @@ def test_a_recipe_the_sender_does_not_own_is_404_naming_no_id(client, fake):
     fake.rpcs["create_recipe_share"] = lambda p: None
     response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": [R1]})
     assert response.status_code == 404
-    assert response.json()["detail"] == "One or more of those recipes were not found."
+    detail = response.json()["detail"]
+    assert detail.startswith("One or more of those recipes were not found.")
+    # Fix Roadmap F-166: the cook's own recipe, made offline and still in the upload queue, is
+    # the likely cause, so the sentence says what to do about it. It still names no id.
+    assert "finish syncing" in detail and R1 not in detail
 
 
 def test_an_empty_share_is_422_before_any_lookup(client, fake):

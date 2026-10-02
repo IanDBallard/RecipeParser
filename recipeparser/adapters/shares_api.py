@@ -36,7 +36,12 @@ OWN_EMAIL = "That's your own email."
 TOO_MANY_CHECKS = "Too many checks. Try again in an hour."
 NOT_CONFIGURED = "Sharing is not configured on this server."
 UNREACHABLE = "Could not reach the share queue. Try again."
-RECIPES_NOT_FOUND = "One or more of those recipes were not found."
+# The second sentence is for the likely cause (Fix Roadmap F-166): the cook's own recipe, made
+# offline, is still in the device's upload queue, so the server has not seen it.
+RECIPES_NOT_FOUND = (
+    "One or more of those recipes were not found. "
+    "A recipe you have just added has to finish syncing before it can be shared."
+)
 NOT_PENDING = "This share is no longer pending."
 ALL_SKIPPED = "Choose at least one recipe, or decline the share."
 SHARE_NOT_FOUND = "Share not found."
