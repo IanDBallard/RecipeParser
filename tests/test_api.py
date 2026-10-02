@@ -1605,6 +1605,36 @@ class TestUnreadableInputMessages:
             "https://example.com/some-recipe is blocked by the site's bot-protection challenge page."
         )
 
+    def test_a_site_that_refuses_automated_readers_says_to_paste_the_text(self, monkeypatch: Any) -> None:
+        """
+        seriouseats.com, 2026-10-02: Jina answered 451 and the site answered the
+        server's direct fetch with a 402 (pay-per-crawl) while serving a browser.
+        The job said only "could not be fetched (HTTP 451).", naming Jina's policy
+        rather than the site's, and nothing about what would work.
+        """
+        import requests
+
+        captured = self._finalized(monkeypatch)
+        stack, _client, _pipeline = _patch_pipeline_and_writer()
+
+        jina = MagicMock(status_code=451, text="blocked")
+        jina.raise_for_status.side_effect = requests.HTTPError("451", response=jina)
+        site = MagicMock(status_code=402, text="Payment Required", headers={"content-type": "text/html"})
+
+        with stack, \
+             patch(_JINA_GET, side_effect=[jina, site]), \
+             patch("recipeparser.io.readers.url._resolves_to_public", return_value=True), \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            resp = tc.post("/jobs", json={"url": "https://example.com/soup"})
+            assert resp.status_code == 202
+            self._drain(resp.json()["job_id"])
+
+        assert captured["status"] == "error"
+        assert captured["error_message"] == (
+            "https://example.com/soup refuses automated readers (HTTP 402). "
+            "Open it in your browser, copy the recipe and paste its text in place of the link."
+        )
+
 
 class TestCors:
     """The preflight a browser sends before each verb this API answers.

@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from recipeparser.exceptions import UrlFetchError
+from recipeparser.exceptions import SiteRefusedError, UrlFetchError
 from recipeparser.io.readers.url import (
     UrlReader,
     _duration,
@@ -154,13 +154,30 @@ def test_redirects_are_followed_by_hand(public_dns: Any) -> None:
     assert mock_get.call_args_list[2].args == ("https://www.seriouseats.com/recipes/black-bean-soup",)
 
 
-def test_when_both_fetches_fail_the_job_reports_jinas_failure(public_dns: Any) -> None:
+_PASTE = "Open it in your browser, copy the recipe and paste its text in place of the link."
+
+
+@pytest.mark.parametrize("status", [401, 402, 403, 451])
+def test_a_site_that_refuses_the_direct_fetch_is_named_with_what_to_do(public_dns: Any, status: int) -> None:
+    """The site's own refusal, not Jina's status: seriouseats.com answered 402 to the server, 2026-10-02."""
     with patch(
         "recipeparser.io.readers.url.requests.get",
-        side_effect=[_jina_refusal(451), _page("Forbidden", status=403, content_type="text/plain")],
+        side_effect=[_jina_refusal(451), _page("Payment Required", status=status, content_type="text/plain")],
+    ):
+        with pytest.raises(SiteRefusedError) as excinfo:
+            UrlReader().read(SOURCE)
+    assert isinstance(excinfo.value, UrlFetchError)
+    assert str(excinfo.value) == f"refuses automated readers (HTTP {status}). {_PASTE}"
+
+
+def test_any_other_direct_failure_reports_jinas_failure(public_dns: Any) -> None:
+    with patch(
+        "recipeparser.io.readers.url.requests.get",
+        side_effect=[_jina_refusal(451), _page("Not Found", status=404)],
     ):
         with pytest.raises(UrlFetchError) as excinfo:
             UrlReader().read(SOURCE)
+    assert not isinstance(excinfo.value, SiteRefusedError)
     assert str(excinfo.value) == "could not be fetched (HTTP 451)."
 
 
@@ -175,9 +192,9 @@ def test_a_bug_in_the_fallback_still_reports_jinas_failure(public_dns: Any) -> N
 def test_a_direct_challenge_page_is_not_read_as_a_recipe(public_dns: Any) -> None:
     challenge = "<html><head><title>Just a moment...</title></head><body>Checking your browser</body></html>"
     with patch("recipeparser.io.readers.url.requests.get", side_effect=[_jina_refusal(), _page(challenge)]):
-        with pytest.raises(UrlFetchError) as excinfo:
+        with pytest.raises(SiteRefusedError) as excinfo:
             UrlReader().read(SOURCE)
-    assert str(excinfo.value) == "could not be fetched (HTTP 451)."
+    assert str(excinfo.value) == f"is blocked by the site's bot-protection challenge page. {_PASTE}"
 
 
 @pytest.mark.parametrize(
