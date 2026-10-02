@@ -20,6 +20,28 @@
   
   '''
 # ---
+# name: TestPromptSnapshots.test_classify_prompt
+  '''
+  You are a grocery shopping classifier. For each ingredient below, say what a shopper buys for it.
+  
+  Rules:
+  - "food" names what a shopper buys, singular and lower case ("egg", not "Eggs").
+  - Reuse a food from KNOWN FOODS when the ingredient is the same thing, spelled exactly as the known food is.
+  - Keep a variety only when it changes what is bought: "red onion" stays "red onion"; "diced onion" is "onion"; "free-range eggs" is "egg".
+  - "aisle" is the store aisle the food is found in, one of: produce, meat_fish, dairy_eggs, bakery, dry_goods, spices, condiments, tins_jars, frozen, drinks, household, other.
+  - "pantry" is true for what a typical home kitchen keeps in stock (salt, oil, flour, dried spices).
+  - "count" is how many whole units a shopper buys for this ingredient (2.2 onion, 0.3 head garlic, 1 tin). When "count" is set, "count_unit" names what is counted: the food itself, singular ("onion", "egg"), or how it is bought ("tin", "head", "bunch") - never a cooking measure ("cup", "tbsp"). Use null for both "count" and "count_unit" when the food is bought by weight or volume (flour, milk, mince).
+  - Answer every ingredient by its "key", each exactly once.
+  
+  KNOWN FOODS:
+  ["flour"]
+  
+  INGREDIENTS:
+  {"key": "r1:i1", "text": "2 cups plain flour", "name": "plain flour", "amount": 2.0, "unit": "cup"}
+  {"key": "r1:i2", "text": "salt to taste", "name": "salt", "amount": null, "unit": null}
+  
+  '''
+# ---
 # name: TestPromptSnapshots.test_extract_prompt[extract]
   '''
   
@@ -593,6 +615,92 @@
       'tokenized_directions',
     ]),
     'title': 'CayenneRefinement',
+    'type': 'object',
+  })
+# ---
+# name: TestSchemaSnapshots.test_classify_schema
+  dict({
+    '$defs': dict({
+      'ClassifiedItem': dict({
+        'properties': dict({
+          'aisle': dict({
+            'enum': list([
+              'produce',
+              'meat_fish',
+              'dairy_eggs',
+              'bakery',
+              'dry_goods',
+              'spices',
+              'condiments',
+              'tins_jars',
+              'frozen',
+              'drinks',
+              'household',
+              'other',
+            ]),
+            'title': 'Aisle',
+            'type': 'string',
+          }),
+          'count': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Count',
+          }),
+          'count_unit': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Count Unit',
+          }),
+          'food': dict({
+            'title': 'Food',
+            'type': 'string',
+          }),
+          'key': dict({
+            'title': 'Key',
+            'type': 'string',
+          }),
+          'pantry': dict({
+            'title': 'Pantry',
+            'type': 'boolean',
+          }),
+        }),
+        'required': list([
+          'key',
+          'food',
+          'aisle',
+          'pantry',
+        ]),
+        'title': 'ClassifiedItem',
+        'type': 'object',
+      }),
+    }),
+    'properties': dict({
+      'items': dict({
+        'items': dict({
+          '$ref': '#/$defs/ClassifiedItem',
+        }),
+        'title': 'Items',
+        'type': 'array',
+      }),
+    }),
+    'required': list([
+      'items',
+    ]),
+    'title': 'ClassifyReply',
     'type': 'object',
   })
 # ---

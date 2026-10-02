@@ -85,6 +85,19 @@ class TestSniffStage:
         contents = [object(), "You are an OCR assistant. The image is a page from a recipe document."]
         assert gc.sniff_stage(contents) == "vision"
 
+    def test_sniffs_classify(self):
+        from recipeparser.shopping import ClassifyIngredient, build_classify_prompt
+
+        prompt = build_classify_prompt(
+            [ClassifyIngredient(key="k", text="1 onion", name="onion")], ["onion"]
+        )
+        assert gc.sniff_stage(prompt) == "classify"
+        # The body starts at the KNOWN FOODS list, so a recording is keyed to its
+        # inputs and the instruction text above the marker can change freely.
+        body = gc.prompt_body(prompt, "classify")
+        assert body.lstrip().startswith('["onion"]')
+        assert '"1 onion"' in body
+
     def test_an_unrecognised_prompt_fails_loudly(self):
         with pytest.raises(gc.UnknownPromptError):
             gc.sniff_stage("Write me a poem about soup.")

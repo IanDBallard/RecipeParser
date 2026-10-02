@@ -146,20 +146,43 @@ def test_a_callers_own_http_options_survive_alongside_the_timeout():
     assert sent["headers"] == {"X-Trace": "abc"}, "caller's headers were dropped"
 
 
-def test_the_timeout_wins_over_a_callers_own_timeout():
-    """If a caller sets its own timeout, the module's bound still applies.
+def test_the_timeout_is_a_ceiling_for_callers_own_timeout():
+    """The timeout is a CEILING: a caller may tighten it, never lengthen it.
 
     Merging must not become a way to opt out of the timeout — that would
     reintroduce the unbounded call this whole mechanism exists to prevent.
+    A tighter timeout (like shopping classify's 60 s) is kept; a longer one
+    (or absence) becomes the ceiling (180 s).
     """
+    # A tighter timeout is kept.
     client = _client(SimpleNamespace(text="ok", candidates=[]))
-
     _call_with_retry(
         client,
         model="gemini-2.5-flash",
         contents="hi",
-        config={"http_options": {"timeout": 5}},
+        config={"http_options": {"timeout": 60_000}},
     )
+    sent = client.models.generate_content.call_args[1]["config"]["http_options"]
+    assert sent["timeout"] == 60_000
 
+    # A longer timeout is capped to the ceiling.
+    client = _client(SimpleNamespace(text="ok", candidates=[]))
+    _call_with_retry(
+        client,
+        model="gemini-2.5-flash",
+        contents="hi",
+        config={"http_options": {"timeout": 999_999_999}},
+    )
+    sent = client.models.generate_content.call_args[1]["config"]["http_options"]
+    assert sent["timeout"] == HTTP_TIMEOUT_SECS * 1000
+
+    # An absent timeout becomes the ceiling.
+    client = _client(SimpleNamespace(text="ok", candidates=[]))
+    _call_with_retry(
+        client,
+        model="gemini-2.5-flash",
+        contents="hi",
+        config={},
+    )
     sent = client.models.generate_content.call_args[1]["config"]["http_options"]
     assert sent["timeout"] == HTTP_TIMEOUT_SECS * 1000

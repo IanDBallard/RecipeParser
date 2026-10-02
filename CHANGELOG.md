@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.4.0] — 2026-10-02
+
+Shopping list Stage 2a (Cayenne's shopping design, Part 3 §2). Needs no migration.
+
+### ✨ Added — POST /shopping/classify
+- One synchronous call at Generate: the device sends up to 400 scaled ingredients and up to 2,000 known foods, and gets each ingredient's `food`, `aisle` (one of the twelve, enumerated in the response schema), `pantry`, `count` and `count_unit` back. Every quantity on the list is computed on the device; the endpoint reads and writes no table. A reply that fails a structural check is asked for once more, then answered 502 with the reason. Lives in `adapters/shopping_api.py`; the classify call in `recipeparser/shopping.py`.
+
+### 🧪 Tests
+- `tests/unit/test_shopping_classify.py` and `test_shopping_endpoints.py`, the model scripted. The classify prompt and response schema join the snapshots, and a recorded golden set (`tests/goldens/gemini/shopping-classify/`) holds naming consistency with known foods, the design's *Evidence* cases, and count tolerances against the real model. The first recording caught the model echoing a cooking measure as count_unit, so the prompt now says count_unit names what is counted - and the recordings prove it complies.
+
 ## [9.3.4] — 2026-10-02
 
 ### 🐛 Fixed — a site that refuses automated readers says so, and what to do instead

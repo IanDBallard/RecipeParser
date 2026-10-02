@@ -49,6 +49,10 @@ GEMINI_IMAGE_MODEL: str = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3.1-flash
 # far shorter than HTTP_TIMEOUT_SECS and is never retried.
 PICTURE_TIMEOUT_SECS: int = 60
 
+# A cook is waiting at Generate: one bounded call, not a long think. Applied as
+# the HTTP timeout of the classify call (shopping design, Part 3 §2).
+CLASSIFY_TIMEOUT_SECS: int = 60
+
 # Every call this package makes is a bounded extraction, refinement or
 # classification task with one correct JSON (or plain-text) answer, not
 # open-ended reasoning — thinking tokens buy nothing here and bill at the
