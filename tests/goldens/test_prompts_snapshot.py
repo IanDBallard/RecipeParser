@@ -11,7 +11,7 @@ import json
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from recipeparser import gemini, toc
+from recipeparser import gemini, shopping, toc
 from recipeparser.models import (
     CayenneRefinement,
     RecipeExtraction,
@@ -19,6 +19,7 @@ from recipeparser.models import (
     TocList,
     TocRecipeClassification,
 )
+from recipeparser.shopping import ClassifyIngredient, ClassifyReply
 from tests.goldens.conftest import FIXED_AXES
 
 PLACEHOLDER_BODY = "PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does."
@@ -32,6 +33,12 @@ PLACEHOLDER_RECIPE = RecipeExtraction(
     ingredients=["2 cups/250g plain flour", "1 cup sugar"],
     directions=["Mix everything.", "Bake until done."],
 )
+
+PLACEHOLDER_INGREDIENTS = [
+    ClassifyIngredient(key="r1:i1", text="2 cups plain flour", name="plain flour",
+                       amount=2.0, unit="cup"),
+    ClassifyIngredient(key="r1:i2", text="salt to taste", name="salt"),
+]
 
 
 def _sent_contents(monkeypatch, call) -> str:
@@ -95,6 +102,13 @@ class TestBuildersMatchTheCallSites:
         )
         assert sent == toc.build_toc_classify_prompt([e[0] for e in entries])
 
+    def test_classify(self, monkeypatch):
+        sent = _sent_contents(
+            monkeypatch,
+            lambda c: shopping.classify_ingredients(c, PLACEHOLDER_INGREDIENTS, ["flour"]),
+        )
+        assert sent == shopping.build_classify_prompt(PLACEHOLDER_INGREDIENTS, ["flour"])
+
     def test_toc_parse_truncates_a_long_body(self):
         rendered = toc.build_toc_parse_prompt(["x" * 30_000])
         assert "[... truncated ...]" in rendered
@@ -125,6 +139,9 @@ class TestPromptSnapshots:
     def test_toc_classify_prompt(self, snapshot: SnapshotAssertion):
         assert toc.build_toc_classify_prompt(["Soups", "Boiled Custard"]) == snapshot
 
+    def test_classify_prompt(self, snapshot: SnapshotAssertion):
+        assert shopping.build_classify_prompt(PLACEHOLDER_INGREDIENTS, ["flour"]) == snapshot
+
     def test_categorize_batch_prompt(self, snapshot: SnapshotAssertion):
         assert gemini.build_categorize_batch_prompt(
             [{"id": "r1", "title": "Lasagne", "ingredient_lines": ["pasta"], "direction_steps": ["Bake."]}],
@@ -151,8 +168,11 @@ class TestSchemaSnapshots:
     def test_toc_classification_schema(self, snapshot: SnapshotAssertion):
         assert gemini._schema_for_gemini(TocRecipeClassification) == snapshot
 
+    def test_classify_schema(self, snapshot: SnapshotAssertion):
+        assert gemini._schema_for_gemini(ClassifyReply) == snapshot
+
     @pytest.mark.parametrize(
-        "model", [RecipeList, CayenneRefinement, TocList, TocRecipeClassification]
+        "model", [RecipeList, CayenneRefinement, TocList, TocRecipeClassification, ClassifyReply]
     )
     def test_no_schema_carries_additional_properties(self, model):
         rendered = json.dumps(gemini._schema_for_gemini(model))
