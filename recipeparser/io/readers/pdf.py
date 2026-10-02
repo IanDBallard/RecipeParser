@@ -23,6 +23,7 @@ from recipeparser.exceptions import PdfExtractionError
 from recipeparser.io.readers import RecipeReader
 from recipeparser.io.readers.book_images import images_named_in, inject_hero_markers
 from recipeparser.io.readers.epub import split_large_chunk
+from recipeparser.io.readers.photo_check import keep_as_photo
 
 log = logging.getLogger(__name__)
 
@@ -247,7 +248,11 @@ def _extract_page_images(
     page_num: int,
     image_dir: str,
 ) -> List[str]:
-    """Extract images from a page; save those >= MIN_PHOTO_BYTES. Return list of qualifying filenames."""
+    """Extract a page's images and save those that may be photos; return their filenames.
+
+    An image is kept when it is at least MIN_PHOTO_BYTES and looks like a photograph
+    (keep_as_photo, F-203): a blank crop or an ornament is never offered to the model.
+    """
     filenames: List[str] = []
     image_list = page.get_images(full=True)
     for img_index, img in enumerate(image_list):
@@ -263,6 +268,8 @@ def _extract_page_images(
         if len(image_bytes) < MIN_PHOTO_BYTES:
             continue
         filename = f"page{page_num + 1}_img{img_index + 1}.{ext}"
+        if not keep_as_photo(filename, image_bytes):
+            continue
         filepath = os.path.join(image_dir, filename)
         with open(filepath, "wb") as f:
             f.write(image_bytes)

@@ -15,6 +15,32 @@ from typing import Optional
 # Real recipe photos are consistently >= 20 KB; separators are typically 2-14 KB.
 MIN_PHOTO_BYTES: int = 20_000
 
+# A book image that decodes is kept as a photograph only when it looks like one
+# (book_images.photo_refusal, Fix Roadmap F-203). Byte size alone let through a
+# blank white page crop and a black ornament, both well over MIN_PHOTO_BYTES.
+# The shortest edge a photo of a dish has: a spacer, a bullet or a rule is
+# smaller. Cayenne draws a thumbnail at 44-160 px, so 100 is still a picture;
+# larger ornaments are left to the line-art test below.
+MIN_PHOTO_EDGE_PX: int = 100
+# Wider than this (either way round) is a rule, a banner or a border strip.
+MAX_PHOTO_ASPECT: float = 4.0
+# Luminance standard deviation (0-255, at 64 px) below which an image is a flat
+# field: a blank page, a solid block, a paper texture (0-1 measured). Photographs
+# measured 12-71, the lowest a dark, narrow-range one (the moon); 6 leaves margin.
+MIN_PHOTO_CONTRAST: float = 6.0
+# Line art (an ink ornament, a silhouette, a block of text) is ink on paper: at
+# least LINE_ART_EXTREMES_SHARE of it in the darkest or lightest quarter of
+# luminance, AND at least LINE_ART_TOP_TWO_SHARE in its two commonest colours,
+# AND fewer than MIN_PHOTO_COLOURS colours. Measured 2026-10-02 at 64 px and 8
+# levels a channel: a black spiky ornament 0.92 / 0.88 / 8; a block of text
+# 0.96 / 0.96 / 3; colour photos 0.05-0.64 / 0.15-0.37 / 35-80; black-and-white
+# photos 0.01-0.57, the narrow-range ones (grass, gravel, a clock) at most 0.25;
+# a cup of coffee small on a white page 0.91 / 0.89 / 26, kept by its colours.
+# A coloured ornament (red on white, 0.77) is NOT caught: red is not ink-dark.
+LINE_ART_EXTREMES_SHARE: float = 0.9
+LINE_ART_TOP_TWO_SHARE: float = 0.8
+MIN_PHOTO_COLOURS: int = 12
+
 # Maximum characters per text chunk sent to the LLM.
 # GEMINI_MODEL has a large context window, but very long chapters inflate
 # latency. ~30 k chars ≈ ~7-8 k tokens.

@@ -18,6 +18,7 @@ from recipeparser.config import MAX_CHUNK_CHARS, MIN_PHOTO_BYTES
 from recipeparser.core.citation import Citation, book_citation
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers import RecipeReader
+from recipeparser.io.readers.photo_check import keep_as_photo
 
 log = logging.getLogger(__name__)
 
@@ -205,7 +206,8 @@ def load_epub(epub_path: str, output_dir: str) -> Tuple[Citation, str, Set[str],
 def extract_all_images(book: epub.EpubBook, output_dir: str) -> Tuple[str, Set[str]]:
     """
     Write qualifying image items from the EPUB to <output_dir>/images/.
-    Images smaller than MIN_PHOTO_BYTES are skipped as decorative separators.
+    Images smaller than MIN_PHOTO_BYTES are skipped as decorative separators, and
+    so is one that does not look like a photograph (keep_as_photo, F-203).
     Returns (image_dir_path, qualifying_filenames_set).
     """
     image_dir = os.path.join(output_dir, "images")
@@ -221,13 +223,16 @@ def extract_all_images(book: epub.EpubBook, output_dir: str) -> Tuple[str, Set[s
                 skipped += 1
                 log.debug("Skipping small image '%s' (%d bytes).", file_name, len(content))
                 continue
+            if not keep_as_photo(file_name, content):
+                skipped += 1
+                continue
             file_path = os.path.join(image_dir, file_name)
             with open(file_path, "wb") as f:
                 f.write(content)
             qualifying.add(file_name)
             saved += 1
 
-    log.info("Images: %d saved, %d skipped (< %d bytes).", saved, skipped, MIN_PHOTO_BYTES)
+    log.info("Images: %d saved, %d skipped (< %d bytes, or not a photograph).", saved, skipped, MIN_PHOTO_BYTES)
     return image_dir, qualifying
 
 

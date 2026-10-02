@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.4.1] — 2026-10-02
+
+Cayenne Fix Roadmap F-203. Needs no migration.
+
+### 🐛 Fixed — a cookbook's ornaments and blank crops are no longer offered as a recipe's photo
+- PDF and EPUB readers offered the model every image on a page over `MIN_PHOTO_BYTES` (20 KB) as a candidate photo. Byte size let through blank white page crops, paper textures and a black spiky ornament ("Perfect Minestrone"), and the model named them as the recipe's photo when they were the only image on the page.
+- `io/readers/photo_check.py` now looks at the pixels of every image that clears the byte floor. It refuses one under 100 px on an edge, wider than 4:1, nearly uniform (luminance spread under 6), or ink-on-paper line art: at least 90 % in the darkest or lightest quarter, at least 80 % in two colours, and fewer than 12 colours. Bytes Pillow cannot decode are kept, as before, rather than lose a photograph to a missing codec. Transparency is laid on white, as Cayenne shows it.
+- The thresholds were calibrated on real photographs (colour, black-and-white, low-contrast, narrow-range textures, a photo small on a white page) and on blanks, paper textures, ornaments, silhouettes and text. Every one is classified as intended. **Known gap:** a coloured ornament (red on white) is not ink-dark and still passes.
+
+### ✨ Added — `scripts/clear_book_non_photos.py`
+- Applies the same test to the pictures already stored on a user's book recipes (`source_kind = 'book'`, not AI-generated) and clears the ones it refuses (`image_url` set to null). Dry run by default. `--live` requires `--record`, a CSV of every cleared row's id, title, URL and reason; the stored file is left in the bucket, so a wrong call is undone by writing the URL back.
+
+### 🧪 Tests
+- `tests/unit/readers/test_photo_check.py`: photographs kept (colour, black-and-white, low contrast, small on a white page, 4:1); blanks, a paper texture, an ornament (on white and on transparency), a block of text, a tiny image and a strip refused; a real PDF page with a photo and an ornament marks only the photo. The photograph is `tests/fixtures/coffee_cc0.jpg`, scikit-image's CC0 `coffee` sample. `tests/unit/scripts/test_clear_book_non_photos.py`: what the clean-up looks at, clears, keeps, and never fetches.
+
 ## [9.4.0] — 2026-10-02
 
 Shopping list Stage 2a (Cayenne's shopping design, Part 3 §2). Needs no migration.
