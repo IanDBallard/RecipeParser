@@ -35,6 +35,8 @@ _STAGE_RULES: Tuple[Tuple[str, str], ...] = (
     ("toc-classify", "table-of-contents entries from a cookbook"),
     ("vision", "ocr assistant"),
     ("connectivity", "reply with the single word ok"),
+    # classify must precede table too: its prompt lists the "bakery" aisle,
+    # which contains table's "baker" marker.
     ("classify", "grocery shopping classifier"),
     ("table", "baker"),
 )

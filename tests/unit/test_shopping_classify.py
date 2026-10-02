@@ -10,7 +10,6 @@ from typing import List, Optional
 
 import pytest
 
-from recipeparser import shopping
 from recipeparser.shopping import (
     AISLES,
     ClassifyCheckError,
@@ -110,7 +109,12 @@ class TestChecks:
         (reply([item("r1:i1"), item("r1:i2", count=2.0, count_unit=None)]), "count_unit"),
         (reply([item("r1:i1"), item("r1:i2", count=None, count_unit="tin")]), "count_unit"),
         (reply([item("r1:i1"), item("r1:i2", food="  ")]), "food"),
-        (reply([item("r1:i1"), item("r1:i2", aisle="pet_food")]), "aisle"),
+        # Not "aisle": ClassifiedItem.aisle is the Literal[Aisle] the schema
+        # constrains the model to (AISLES's own comment), so Pydantic rejects
+        # an out-of-enum value at model_validate() — before _check() ever
+        # runs its own `item.aisle not in AISLES` line. This is the "could
+        # not be read" branch, same as unparseable JSON.
+        (reply([item("r1:i1"), item("r1:i2", aisle="pet_food")]), "read"),
         ("not json at all", "read"),
     ])
     def test_a_failed_check_retries_once_then_raises_the_reason(self, bad, reason_word):
@@ -143,3 +147,11 @@ class TestFinalizeTimeout:
         assert _finalize_config({"http_options": {"timeout": 60_000}})["http_options"]["timeout"] == 60_000
         assert _finalize_config({})["http_options"]["timeout"] == _HTTP_TIMEOUT_MS
         assert _finalize_config({"http_options": {"timeout": 999_999_999}})["http_options"]["timeout"] == _HTTP_TIMEOUT_MS
+
+    def test_a_falsy_caller_timeout_becomes_the_default_not_unbounded(self):
+        """0 must not reach min() as an unbounded request, and None must not
+        reach it as a TypeError against _HTTP_TIMEOUT_MS (the ceiling hole)."""
+        from recipeparser.gemini import _HTTP_TIMEOUT_MS, _finalize_config
+
+        assert _finalize_config({"http_options": {"timeout": 0}})["http_options"]["timeout"] == _HTTP_TIMEOUT_MS
+        assert _finalize_config({"http_options": {"timeout": None}})["http_options"]["timeout"] == _HTTP_TIMEOUT_MS

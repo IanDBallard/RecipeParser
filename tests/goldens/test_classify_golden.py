@@ -12,8 +12,6 @@ classification to Generate to avoid.
 """
 from __future__ import annotations
 
-import pytest
-
 from recipeparser.shopping import ClassifyIngredient, classify_ingredients
 
 FIXTURE = "shopping-classify"

@@ -146,6 +146,9 @@ def _once(client, prompt: str) -> List[ClassifiedItem]:
             "http_options": {"timeout": CLASSIFY_TIMEOUT_SECS * 1000},
         },
         what="Shopping classify",
+        # One retry, not the whole ladder: a person is waiting on Generate
+        # (/embed's precedent).
+        max_retries=1,
     )
     text = (getattr(response, "text", "") or "").strip()
     if not text:
@@ -153,7 +156,11 @@ def _once(client, prompt: str) -> List[ClassifiedItem]:
     try:
         reply = ClassifyReply.model_validate(json.loads(text))
     except Exception as exc:
-        raise ValueError(f"the model's reply could not be read: {exc}") from exc
+        # The Pydantic/JSON detail is for the log, not the cook: the 502 this
+        # feeds (classify_ingredients -> ClassifyCheckError -> the endpoint)
+        # must stay a stable sentence, never a raw exception dump.
+        log.warning("Classify reply could not be read: %s", exc)
+        raise ValueError("the model's reply could not be read as the classify schema") from exc
     return reply.items
 
 

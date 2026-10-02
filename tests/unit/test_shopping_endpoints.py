@@ -7,14 +7,20 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from google.genai import errors as genai_errors
 
 import recipeparser.adapters.api as api
 from recipeparser.adapters.shopping_api import (
+    CLASSIFY_BUSY,
+    CLASSIFY_TIMEOUT,
+    CLASSIFY_UNAVAILABLE,
     DUPLICATE_KEYS,
     MAX_INGREDIENTS,
     MAX_KNOWN_FOODS,
+    NOT_CONFIGURED,
     TOO_MANY_INGREDIENTS,
     TOO_MANY_KNOWN_FOODS,
 )
@@ -54,6 +60,35 @@ class ScriptedClient:
                 return _R()
 
         self.models = _Models()
+
+
+class RaisingClient:
+    """client.models.generate_content always raising the exception *exc_factory*
+    builds, counting how many times it was called."""
+
+    def __init__(self, exc_factory):
+        self.call_count = 0
+        self._exc_factory = exc_factory
+        outer = self
+
+        class _Models:
+            def generate_content(self, *, model, contents, config):
+                outer.call_count += 1
+                raise outer._exc_factory()
+
+        self.models = _Models()
+
+
+def _quota_error() -> Exception:
+    """A real, typed google-genai ClientError carrying a 429 — the shape
+    generate_recipe_image's busy branch matches, and the text ("quota") that
+    gemini._is_rate_limit_error retries on."""
+    exc = genai_errors.ClientError.__new__(genai_errors.ClientError)
+    exc.code = 429
+    exc.status = "RESOURCE_EXHAUSTED"
+    exc.message = "quota exceeded"
+    exc.args = ("quota exceeded",)
+    return exc
 
 
 @pytest.fixture
@@ -144,3 +179,47 @@ def test_a_failed_check_then_a_good_reply_is_200(client, monkeypatch):
     response = _post(_as(client))
     assert response.status_code == 200
     assert scripted.call_count == 2
+
+
+def test_a_missing_key_is_503_not_configured_without_a_model_call(client, monkeypatch):
+    def _no_client():
+        raise RuntimeError("no GOOGLE_API_KEY")
+
+    monkeypatch.setattr(api, "_get_client", _no_client)
+    response = _post(_as(client))
+    assert response.status_code == 503
+    assert response.json()["detail"] == NOT_CONFIGURED
+
+
+def test_a_transport_timeout_is_504(client, monkeypatch):
+    raising = RaisingClient(lambda: httpx.TimeoutException("timed out"))
+    monkeypatch.setattr(api, "_get_client", lambda: raising)
+    response = _post(_as(client))
+    assert response.status_code == 504
+    assert response.json()["detail"] == CLASSIFY_TIMEOUT
+    # A transport timeout is never retried (gemini._call_with_retry's own rule).
+    assert raising.call_count == 1
+
+
+def test_a_rate_limit_error_is_503_busy_after_exactly_one_retry(client, monkeypatch):
+    # max_retries=1 (Task 2): one back-off retry, not the full 5x ladder a
+    # cook would otherwise wait through.
+    monkeypatch.setattr("recipeparser.gemini.time.sleep", lambda *_: None)
+    raising = RaisingClient(_quota_error)
+    monkeypatch.setattr(api, "_get_client", lambda: raising)
+    response = _post(_as(client))
+    assert response.status_code == 503
+    assert response.json()["detail"] == CLASSIFY_BUSY
+    assert raising.call_count == 2
+
+
+def test_an_unrecognized_exception_is_503_unavailable(client, monkeypatch):
+    # Not a ValueError: classify_ingredients' own check-retry loop catches
+    # ValueError for a reply that fails a structural check, which is a
+    # different failure (a 502) from this one (the model call itself blowing
+    # up with something nobody mapped).
+    raising = RaisingClient(lambda: ConnectionError("something else broke"))
+    monkeypatch.setattr(api, "_get_client", lambda: raising)
+    response = _post(_as(client))
+    assert response.status_code == 503
+    assert response.json()["detail"] == CLASSIFY_UNAVAILABLE

@@ -149,8 +149,14 @@ def _finalize_config(config: dict) -> dict:
         # merging from becoming a way to opt out of the bound.
         "http_options": {
             **config.get("http_options", {}),
+            # A falsy caller timeout (0, or an explicit None) must still become
+            # a real bound: `.get(..., default)` only supplies the default when
+            # the key is absent, so a caller-set 0 would reach min() as 0 (an
+            # unbounded request to the SDK) and a caller-set None would reach
+            # min() as None and raise TypeError against _HTTP_TIMEOUT_MS. `or`
+            # catches both before min() ever sees them.
             "timeout": min(
-                config.get("http_options", {}).get("timeout", _HTTP_TIMEOUT_MS),
+                config.get("http_options", {}).get("timeout") or _HTTP_TIMEOUT_MS,
                 _HTTP_TIMEOUT_MS,
             ),
         },
@@ -187,6 +193,7 @@ def _call_with_retry(
     *,
     what: str = "Gemini call",
     limiter: Optional["GlobalRateLimiter"] = None,
+    max_retries: int = MAX_RETRIES,
 ) -> object:
     """
     Wrapper around client.models.generate_content that retries on rate-limit
@@ -203,6 +210,10 @@ def _call_with_retry(
     F-109: a back-off retry is a request like any other). The first attempt's slot
     is the caller's to take, or it would count twice. The limiter holds no slot
     across a wait, so taking one here cannot deadlock. None takes no slot.
+
+    ``max_retries`` lets a caller with a person waiting (POST /embed,
+    the shopping classify call) shorten the ladder, as ``get_embeddings``
+    already does.
     """
     def _once() -> object:
         response = client.models.generate_content(
@@ -213,7 +224,7 @@ def _call_with_retry(
         _log_usage_metadata(response, what)
         return response
 
-    return _with_backoff(_once, limiter=limiter)
+    return _with_backoff(_once, limiter=limiter, max_retries=max_retries)
 
 
 def _with_backoff(
