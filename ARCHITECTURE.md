@@ -30,7 +30,7 @@ recipeparser/
 │   │   ├── base.py                # SourceReader ABC + SourceDocument dataclass
 │   │   ├── epub.py                # EPUB reader
 │   │   ├── pdf.py                 # PDF reader
-│   │   ├── url.py                 # URL reader (via Jina r.jina.ai)
+│   │   ├── url.py                 # URL reader (via Jina r.jina.ai; direct fetch on failure)
 │   │   ├── text.py                # Plain text passthrough
 │   │   └── paprika.py             # .paprikarecipes reader (Paprika + Cayenne formats)
 │   ├── writers/                   # List[CayenneRecipe] + images → output file
@@ -411,7 +411,7 @@ class SourceReader(ABC):
 |--------|-------|-------|-------|
 | `epub.py` | `EpubReader` | File path | Extracts text + images from EPUB spine |
 | `pdf.py` | `PdfReader` | File path | Extracts text + embedded images from PDF |
-| `url.py` | `UrlReader` | URL string | Fetches via `https://r.jina.ai/{url}`; no images |
+| `url.py` | `UrlReader` | URL string | Fetches via `https://r.jina.ai/{url}`; when Jina fails, fetches the page directly and reads its schema.org Recipe JSON-LD, else its article text; no images |
 | `text.py` | `TextReader` | Raw string | Passthrough; no images |
 | `paprika.py` | `PaprikaReader` | File path | Handles both Paprika and Cayenne `.paprikarecipes` formats |
 
