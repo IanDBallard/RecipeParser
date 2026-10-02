@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.5.1] — 2026-10-02
+
+What the first live sample of the direction-amounts backfill (20 recipes, dry run) showed. Needs no migration.
+
+### 🐛 Fixed — an amount on an ingredient's name no longer prints as a bare number
+- The model sometimes put an amount on the name instead of on a quantity: `Place the {{ing_01|butter|175 g}}`, which the Cayenne kitchen prints as "Place the 175 g". REFINE has the same prompt, so imports and edits since 9.5.0 could carry it. `check_mentions` now requires an amount token's words to be a quantity (a digit, a fraction, a number word). When they are not, it makes the token `none` if the text before already writes a quantity ("Heat 1 tablespoon of the {{canola oil}}"), `all` if the amount is the line's whole amount ("Place the {{butter}}", 175 g of 175 g), and `none` otherwise ("half the {{buttermilk}}", 200 ml of 400).
+- The prompt now says it outright: an amount's words are only the quantity, and a mention with no quantity beside it is never an amount.
+
+### 🐛 Fixed — the whole amount shows once
+- The model said `all` at every mention of the same food: wash the 1 ½ cups rice, add the 1 ½ cups rice, drain the 1 ½ cups rice. Only the first `all` of an ingredient keeps it now; later ones become `none`. The prompt says so too.
+
+### 🐛 Fixed — the backfill tags the text the kitchen shows, and places mentions in text order
+- It placed tokens in the raw `direction_steps`, which carry the source's OCR noise the import cleaned ("1 In a wok … cook. stirring", "30 40 minutes"). Six of twenty recipes would have swapped cleaned text for noisy text. It now tags the current tokens' words, in the recipe's own step numbering, so no word a cook reads changes.
+- Mentions were placed in the order the model listed them, so one listed out of order, or twice, lost the rest of its step (seven in one soda bread). Each is now placed on its own, by its context or an unambiguous quote, then taken in text order; a repeat is skipped. Curly quotes and dashes are folded when matching context ("they’ll" against "they'll").
+
+### 🧪 Tests
+- `tests/unit/test_fat_tokens.py::TestTheFirstSample`: each case from the sample. The backfill's tests cover the shown-text base and the numbering. Prompt snapshots move.
+
 ## [9.5.0] — 2026-10-02
 
 Cayenne's direction amounts design (`docs/superpowers/specs/2026-10-02-direction-amounts-design.md` in the Cayenne repository). Needs no migration. **Deploy the Cayenne client first.** An older client reads `{{id|words|use}}` with the old two-field regex and fills an amount token with the whole amount ("Add about 0.75 cup flour flour"), so this must not write tagged tokens before the client that reads them is live.
