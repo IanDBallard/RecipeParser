@@ -15,6 +15,8 @@ Skipped: a recipe whose tokens already carry a use (``--force`` re-tags it), a s
 one with no steps or no ingredients, and one whose columns are not lists. The write is conditional
 on ``body_rev`` and ``derived_rev`` being what was read, so a cook's edit mid-run wins.
 
+    # --all-users in place of --user-id re-tags every library (a shared recipe is a row of its own)
+
     # dry run of a sample -- calls Gemini, prints each recipe's new steps, writes nothing
     python scripts/backfill_direction_amounts.py --user-id <uuid> --limit 20 --verbose
 
@@ -138,11 +140,13 @@ def _creds() -> Tuple[str, str]:
     return url, key
 
 
-def _read_rows(sb: Any, user_id: str, recipe_id: Optional[str]) -> List[Dict[str, Any]]:
+def _read_rows(sb: Any, user_id: Optional[str], recipe_id: Optional[str]) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     offset = 0
     while True:
-        query = sb.table("recipes").select(COLUMNS).eq("user_id", user_id)
+        query = sb.table("recipes").select(COLUMNS)
+        if user_id:
+            query = query.eq("user_id", user_id)
         if recipe_id:
             query = query.eq("id", recipe_id)
         page = query.order("id").range(offset, offset + PAGE - 1).execute().data or []
@@ -168,7 +172,9 @@ def _restore(sb: Any, path: Path, live: bool) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Tag every direction mention with the amount it uses.")
-    ap.add_argument("--user-id", required=True, help="The owner whose library to re-tag.")
+    who = ap.add_mutually_exclusive_group(required=True)
+    who.add_argument("--user-id", help="The owner whose library to re-tag.")
+    who.add_argument("--all-users", action="store_true", help="Every library: shared copies are rows of their own.")
     ap.add_argument("--recipe-id", help="Re-tag this one recipe only.")
     ap.add_argument("--limit", type=int, help="Stop after this many recipes have been sent to Gemini.")
     ap.add_argument("--workers", type=int, default=4, help="Gemini calls in flight at once (default 4).")
