@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.5.0] — 2026-10-02
+
+Cayenne's direction amounts design (`docs/superpowers/specs/2026-10-02-direction-amounts-design.md` in the Cayenne repository). Needs no migration. **Deploy the Cayenne client first.** An older client reads `{{id|words|use}}` with the old two-field regex and fills an amount token with the whole amount ("Add about 0.75 cup flour flour"), so this must not write tagged tokens before the client that reads them is live.
+
+### ✨ Changed — each mention in the directions says how much of the ingredient it uses
+- A Fat Token is now `{{id|words|use}}`. `use` is `all`, `rest`, `none`, or the amount the step states (`0.5 cup`, `60 g`, `2`), in which case the token wraps only the quantity the source wrote: `Add about {{ing_02|1/2 cup (60 g)|0.5 cup}} flour`. Before, every mention was `{{id|words}}` and the kitchen filled each with the ingredient's whole amount, so a recipe that adds flour in parts told the cook to add all of it three times.
+- REFINE's rule 2 says so, with the rules one shared text (`gemini._MENTION_USES`) so the re-tagging pass below cannot drift from it. When unsure the model is told to say `none`: a missing number is safe, a wrong one is not.
+- `core/fat_tokens.py` is the one grammar: `TOKEN_RE`, `strip_fat_tokens`, `parse_use`. `core/regen.py`, `io/writers/paprika_zip.py` (and through it `cayenne_zip.py`) and REFINE's id check use it, so a stripped step is the words alone, never `flour|all`.
+- REFINE demotes, and logs, the uses the arithmetic cannot support (`check_mentions`): an amount that does not parse, every part of an ingredient whose parts add up to more than its line (5 % slack, same unit only), and `all` beside a part of the same ingredient. The Cayenne client applies the same checks again.
+
+### ✨ Added — `scripts/backfill_direction_amounts.py`
+- Re-tags a library imported before 9.5.0. One Gemini call per recipe (`gemini.tag_direction_mentions`) answers with quotes, each with a few words of context; `splice_mentions` places a token only where its quote is found verbatim in the raw step, so no word of a recipe can change, and a mention it cannot place unambiguously loses its chip, nothing else. Only `tokenized_directions` is written: ingredients, ids, conversions, embedding, categories and the cook's edits are untouched, and the write is conditional on `body_rev` and `derived_rev`, so an edit during the run wins. Stale recipes are left to the regeneration worker. Dry run by default; `--live` requires `--record`, and `--restore <record>` writes the old tokens back.
+
+### 🧪 Tests
+- `tests/unit/test_fat_tokens.py`: the grammar, the checks, the splice (the gnocchi, a repeated word, context, what is dropped), REFINE's demotion. `tests/unit/scripts/test_backfill_direction_amounts.py`: what the backfill tags, skips without calling the model, and reports. The refine prompt and schema snapshots move; the re-tagging prompt and schema join them. **The recorded refine goldens are not re-recorded** (no key in the session that built this): they still replay two-field tokens, which the client reads by its legacy rule. Re-record them with a key.
+
 ## [9.4.1] — 2026-10-02
 
 Cayenne Fix Roadmap F-203. Needs no migration.

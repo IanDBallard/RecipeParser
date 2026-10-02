@@ -11,16 +11,13 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from recipeparser.core.fat_tokens import TOKEN_RE, check_mentions
 from recipeparser.core.numbers import written_measures
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.gemini import refine_recipe_for_cayenne
 from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction
 
 log = logging.getLogger(__name__)
-
-# Fat Token regex — must match {{ing_01|fallback text}}
-_FAT_TOKEN_RE = re.compile(r"\{\{([^|]+)\|([^}]+)\}\}")
-
 
 def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
     """
@@ -29,7 +26,7 @@ def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
     """
     valid_ids = {ing.id for ing in refinement.structured_ingredients}
     for step in refinement.tokenized_directions:
-        for match in _FAT_TOKEN_RE.finditer(step.text):
+        for match in TOKEN_RE.finditer(step.text):
             token_id = match.group(1)
             if token_id not in valid_ids:
                 raise ValueError(
@@ -38,6 +35,18 @@ def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
                     + f" references unknown ingredient ID '{token_id}'. "
                     + f"Valid IDs: {sorted(valid_ids)}"
                 )
+
+
+def _check_mentions(refinement: CayenneRefinement) -> None:
+    """
+    Demote, in place, every direction mention whose use the arithmetic cannot support to ``none``
+    (``core.fat_tokens.check_mentions``), and log each. A wrong use is a model slip in one chip,
+    so it costs the chip its number, never the recipe.
+    """
+    checked, demotions = check_mentions(refinement.structured_ingredients, refinement.tokenized_directions)
+    for line in demotions:
+        log.warning("refine(): '%s': mention demoted to none: %s", refinement.title, line)
+    refinement.tokenized_directions = checked
 
 
 def _normalise_line_index(refinement: CayenneRefinement, raw: RecipeExtraction) -> None:
@@ -389,6 +398,7 @@ def refine(
         )
 
     _validate_fat_tokens(result)
+    _check_mentions(result)
     _normalise_line_index(result, raw)
     _check_conversions(result)
     _check_detection(result, raw, source_host)
