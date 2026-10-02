@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from recipeparser.core.clock import utc_timestamp
 from recipeparser.core.stages.categorize import filter_batch_result
-from recipeparser.core.taxonomy import root_of
+from recipeparser.core.taxonomy import parents_from_rows, root_of
 from recipeparser.gemini import categorize_batch
 
 log = logging.getLogger(__name__)
@@ -53,8 +53,12 @@ def resolve_new_axes(
 ) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
     """
     (axis -> [new tag names], tag name -> category id) for the ids in a job.
-    A level-1 row (no parent) is an axis with a single tag of its own name,
-    matching SupabaseCategorySource._build_axes.
+    A level-1 row (no parent) with no children is an axis with a single tag of
+    its own name, matching SupabaseCategorySource._build_axes. A level-1 row
+    with children is not offered (Cayenne Fix Roadmap F-205): the endpoint
+    expands a whole-axis request to the axis row and its subtree, and a tag on
+    the axis row means only "somewhere in this axis", which the library filter
+    already gives every tag beneath it. Ingest never offered it.
 
     The axis of a tag is its ROOT, not its immediate parent (fixed 2026-09-13,
     stage 7C). Before that this read `parent_id` once, so on `Cuisine > Asian >
@@ -71,6 +75,7 @@ def resolve_new_axes(
             fails loudly instead of last-write-wins picking a winner in silence.
     """
     by_id = {r["id"]: r for r in rows}
+    has_children = {r.get("parent_id") for r in rows if r.get("parent_id")}
     axes: Dict[str, List[str]] = {}
     ids: Dict[str, str] = {}
     for cid in category_ids:
@@ -79,6 +84,8 @@ def resolve_new_axes(
             continue
         name = (row.get("name") or "").strip()
         if not name:
+            continue
+        if not row.get("parent_id") and cid in has_children:
             continue
         if name in ids and ids[name] != cid:
             raise ValueError(
@@ -110,6 +117,7 @@ class _HeldJob:
     params: Dict[str, Any]
     new_axes: Dict[str, List[str]]
     tag_ids: Dict[str, str]
+    parents: Dict[str, str]
     total_batches: int
     skipped: List[Dict[str, Any]]
     skipped_count: int
@@ -264,6 +272,7 @@ class RecatWorker:
             params=params,
             new_axes=new_axes,
             tag_ids=tag_ids,
+            parents=parents_from_rows(cat_rows),
             offered=set(tag_ids),
             total_batches=max(1, math.ceil(total / self._batch_size)),
             skipped=list(job.get("skipped") or []),
@@ -298,8 +307,8 @@ class RecatWorker:
         last_exc: Optional[Exception] = None
         for attempt in (1, 2):
             try:
-                raw = self._categorize(batch, held.new_axes, self._client)
-                hits = filter_batch_result(raw, held.offered)
+                raw = self._categorize(batch, held.new_axes, self._client, parents=held.parents)
+                hits = filter_batch_result(raw, held.offered, held.new_axes, held.parents)
                 rows = [
                     {"id": str(uuid.uuid4()), "recipe_id": rid, "category_id": held.tag_ids[tag],
                      "user_id": held.user_id}

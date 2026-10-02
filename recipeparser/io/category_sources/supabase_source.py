@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional, Set
 import httpx
 
 from recipeparser.io.category_sources.base import CategorySource
-from recipeparser.core.taxonomy import axes_from_rows
+from recipeparser.core.taxonomy import axes_from_rows, parents_from_rows
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +88,14 @@ class SupabaseCategorySource(CategorySource):
             user_id,
         )
         return axes
+
+    def load_parents(self, user_id: str = "") -> Dict[str, str]:
+        """
+        ``{tag name: parent tag name}`` for the user's nested tags
+        (``core.taxonomy.parents_from_rows``).  ``{}`` when the fetch fails,
+        which costs only the pruning of a parent picked beside its child.
+        """
+        return parents_from_rows(self._fetch_categories(user_id))
 
     def load_category_ids(self, user_id: str = "") -> Dict[str, str]:
         """

@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.5.0] — 2026-10-02
+
+Cayenne Fix Roadmap F-205. Needs no migration.
+
+### 🐛 Fixed — a recipe is tagged by what it is, not by everything in it
+- Both tagging prompts asked only for tags that "describe" (refine) or "apply to" (bulk recategorise) a recipe, so the model answered by what appeared anywhere in it. Potato gnocchi was tagged Egg for the two eggs binding its dough, and "Perfect Minestrone" Chicken for its stock (the owner's library, 2026-10-02). The same reading overtags any axis: a technique for every step, a course for every way a dish could be served.
+- `gemini.TAGGING_RULES` is now shared by both prompts. A tag must be true of the dish as a whole. The test is whether a cook browsing that tag would expect to find the recipe there. Usually one tag per axis, none rather than a doubtful one, and the most specific. The rules name no axis, because the axes are the cook's own. The test cuts both ways: chicken stock makes a soup neither a chicken dish nor meat-free.
+- The model now sees the tree: a nested tag is listed as `"Thai" (under "Asian")`. `CategorySource.load_parents` supplies the shape that `load_axes` flattens. The file-based sources stay flat.
+- CATEGORIZE enforces what a prompt can only ask for (`categorize.axis_tags`). It drops a tag picked beside its own descendant, since the library filter already finds Thai under Asian, and keeps at most two tags an axis. Pruning runs before the cap. The bulk recategorise applies the same rules per axis.
+- A bulk recategorise no longer offers an axis that has children as its own tag. A whole-axis request expands to the axis row and its subtree, and a link to the axis row means only "somewhere in this axis". Ingest never offered it.
+- The refine prompt's categorisation section is numbered 5. It was a second "3".
+- The bulk recategorise prompt no longer tells the model "most recipes will match nothing". That is false for a whole axis, and the new rule ("prefer no tag to a doubtful one") replaces it.
+
+### ✨ Added — `scripts/retag_axis.py`
+- Re-tags one axis of a library under the new rules and replaces the axis's links, because a bulk recategorise only ever adds. Two steps. `--plan` asks the model (one call per 10 recipes) and writes every drop and add to a CSV, without writing any data. `--apply` writes exactly that CSV and asks no model. A recipe whose batch fails twice keeps every link. Links on other axes are never touched. Adds run before drops, so a run cut short leaves a recipe over-tagged, never untagged. The plan's drop lines are the undo. `recipe_categories` records no provenance, so a tag the cook chose is replaced too, and the plan names it.
+
+### 🧪 Tests
+- `tests/unit/test_tagging_scope.py`: both prompts carry the same rules, the rules name no axis, nested tags are shown under their parents, pruning before the cap, the batch filter per axis, and no axis row offered. `test_taxonomy.py`: `parents_from_rows` and `most_specific`, including a looped chain. `test_pipeline.py`: the tree reaches REFINE and CATEGORIZE, and a failed parents load keeps the tags. `test_recat_worker.py`: a whole-axis job end to end. `tests/unit/scripts/test_retag_axis.py`: the plan, the CSV, the apply order.
+- `tests/goldens/test_tagging_golden.py`: a golden set for the model's judgement across six axes. Gnocchi and a sponge are not Egg. Minestrone with chicken stock is neither Chicken nor Vegetarian. A seared braise is Braising, not Sautéing. A Thai green chicken curry is Chicken and Thai, not Asian. A bulk recategorise of Protein follows the same rules. Every case also asserts a tag the dish should get. **Not recorded yet:** it skips until someone with a real key runs `pytest tests/goldens/test_tagging_golden.py --record-gemini -n0` (six paid calls). The golden client learnt the categorize stage (`RECIPES:` is its key).
+- The existing refine recordings replay unchanged. They are keyed by the recipe text after `RAW RECIPE:`, which this does not touch. The prompt snapshots carry the new text.
+
 ## [9.4.1] — 2026-10-02
 
 Cayenne Fix Roadmap F-203. Needs no migration.

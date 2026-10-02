@@ -74,6 +74,24 @@ class CategorySource(ABC):
         """
         ...
 
+    def load_parents(self, user_id: str = "") -> Dict[str, str]:
+        """
+        Load ``{tag name: parent tag name}`` for tags nested below another tag.
+
+        ``load_axes`` flattens each axis, so this is the only place the tree's
+        shape survives: the prompts show a nested tag under its parent, and
+        CATEGORIZE keeps only the most specific of a tag and its ancestors.
+        A source with a flat taxonomy keeps this default.
+
+        Args:
+            user_id: The authenticated user's UUID.
+
+        Returns:
+            Dict mapping a nested tag's name to its parent's name; ``{}`` when
+            no tag is nested below another.
+        """
+        return {}
+
 
 class ImageStore(ABC):
     """Somewhere a recipe's hero image can be put, addressed by a public URL.

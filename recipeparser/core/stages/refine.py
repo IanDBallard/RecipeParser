@@ -337,6 +337,7 @@ def refine(
     *,
     source_host: Optional[str] = None,
     user_axes: Optional[Dict[str, List[str]]] = None,
+    parents: Optional[Dict[str, str]] = None,
     limiter: Optional[GlobalRateLimiter] = None,
 ) -> CayenneRefinement:
     """
@@ -358,6 +359,8 @@ def refine(
         user_axes:         Optional dict of axis_name → [tag, ...].
                            When None or empty, grid_categories will be {} in
                            the result.
+        parents:           ``{tag: parent tag}`` for nested tags
+                           (``CategorySource.load_parents``), shown in the prompt.
         limiter:           Handed to the Gemini call, whose retries each take a slot
                            (Fix Roadmap F-109). The caller takes the first request's.
                            None takes no slot.
@@ -379,6 +382,7 @@ def refine(
         client=client,
         source_host=source_host,
         user_axes=user_axes,
+        parents=parents,
         limiter=limiter,
     )
 

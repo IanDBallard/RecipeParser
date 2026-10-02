@@ -654,6 +654,32 @@ def extract_text_via_vision(doc, client) -> str:
     return "\n\n".join(page_texts)
 
 
+#: How a tag is judged, shared by the refine prompt and the bulk recategorise
+#: prompt so the two cannot drift (Cayenne Fix Roadmap F-205). It names no axis:
+#: the axes are the cook's own, and one rule has to serve every one of them.
+#: Before it, both prompts asked only for tags that "describe" or "apply to" a
+#: recipe, and the model answered by what appeared anywhere in it: gnocchi was
+#: tagged Egg for the eggs in its dough, minestrone Chicken for its stock.
+TAGGING_RULES = """\
+- A tag must be true of the dish as a whole, not of one ingredient in it or one step in making it.
+- The test for every tag: would a cook browsing that tag expect to find this recipe there? If not, leave it off.
+  * An ingredient that binds, enriches, seasons, garnishes, or makes the stock or sauce does not make
+    the dish about that ingredient: eggs in a dough, chicken stock in a soup, butter in a sauce.
+  * A step on the way does not name how the dish is cooked: browning meat before braising it,
+    boiling pasta before baking it.
+  * The same test leaves off a tag the whole dish fails: a soup made with chicken stock is not meat-free.
+- Usually one tag per axis. Choose a second only when the dish belongs equally under both.
+- Prefer no tag to a doubtful one. Many recipes match nothing on an axis; return [] for it.
+- A tag listed as "A" (under "B") is a kind of B. Choose the most specific tag that fits,
+  never together with a tag it is under."""
+
+
+def _format_tag(tag: str, parents: Optional[Dict[str, str]] = None) -> str:
+    """A tag as the prompts list it: quoted, with its parent when it is nested."""
+    parent = (parents or {}).get(tag)
+    return f'"{tag}" (under "{parent}")' if parent else f'"{tag}"'
+
+
 def _build_dynamic_grid_schema(user_axes: Dict[str, List[str]]) -> type:
     """
     Build a dynamic Pydantic model at runtime that extends CayenneRefinement
@@ -685,9 +711,10 @@ def _build_dynamic_grid_schema(user_axes: Dict[str, List[str]]) -> type:
             Field(
                 default_factory=list,
                 description=(
-                    f"Tags for the '{axis_name}' axis. "
-                    f"Choose 0-2 tags from this exact list: [{tags_str}]. "
-                    f"Return [] if none apply — do NOT invent tags outside this list."
+                    f"Tags for the '{axis_name}' axis, judged by the TAGGING RULES: "
+                    f"usually one, at most two, [] when none is true of the dish as a whole. "
+                    f"Choose only from this exact list: [{tags_str}]. "
+                    f"Do NOT invent tags outside this list."
                 ),
             ),
         )
@@ -704,8 +731,9 @@ def _build_dynamic_grid_schema(user_axes: Dict[str, List[str]]) -> type:
             Field(
                 default_factory=GridModel,
                 description=(
-                    "Multipolar categorization. For each axis, pick 0-2 matching tags "
-                    "from the provided list. Return [] for axes that don't apply."
+                    "Multipolar categorization. For each axis, pick the tags the TAGGING "
+                    "RULES allow from the provided list: usually one, at most two. "
+                    "Return [] for axes where none fits."
                 ),
             ),
         ),
@@ -714,19 +742,23 @@ def _build_dynamic_grid_schema(user_axes: Dict[str, List[str]]) -> type:
     return RefinementWithGrid
 
 
-def _format_axes_for_prompt(user_axes: Dict[str, List[str]]) -> str:
+def _format_axes_for_prompt(
+    user_axes: Dict[str, List[str]],
+    parents: Optional[Dict[str, str]] = None,
+) -> str:
     """Format user_axes into a human-readable prompt section."""
     if not user_axes:
         return ""
-    lines = ["", "3. CATEGORIZATION (grid_categories):"]
+    lines = ["", "5. CATEGORIZATION (grid_categories):"]
     lines.append(
-        "   Classify this recipe using the user's taxonomy axes below. "
-        "For each axis, select 0-2 tags that best describe the recipe. "
-        "Return [] for any axis that does not apply. "
+        "   Classify this recipe using the user's taxonomy axes below, by the TAGGING RULES. "
         "NEVER invent tags outside the provided lists."
     )
+    lines.append("   TAGGING RULES:")
+    lines.extend(f"   {line}" for line in TAGGING_RULES.splitlines())
+    lines.append("   AXES:")
     for axis_name, tags in user_axes.items():
-        tags_str = ", ".join(f'"{t}"' for t in tags)
+        tags_str = ", ".join(_format_tag(t, parents) for t in tags)
         lines.append(f"   - {axis_name}: [{tags_str}]")
     return "\n".join(lines)
 
@@ -735,13 +767,14 @@ def build_refine_prompt(
     raw_recipe: object,
     source_host: Optional[str],
     user_axes: Optional[Dict[str, List[str]]] = None,
+    parents: Optional[Dict[str, str]] = None,
 ) -> str:
     """The Pass-2 prompt: structured ingredients, fat tokens, the source system and categorisation.
 
     ``SOURCE HOST`` sits before ``RAW RECIPE:`` because the golden replay keys a refine call by the
     text after that marker (tests/goldens/golden_client.py).
     """
-    categorization_section = _format_axes_for_prompt(user_axes or {})
+    categorization_section = _format_axes_for_prompt(user_axes or {}, parents)
     return f"""
 You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
 
@@ -823,6 +856,7 @@ def refine_recipe_for_cayenne(
     source_host: Optional[str] = None,
     user_axes: Optional[Dict[str, List[str]]] = None,
     *,
+    parents: Optional[Dict[str, str]] = None,
     limiter: Optional["GlobalRateLimiter"] = None,
 ) -> Optional[CayenneRefinement]:
     """
@@ -838,13 +872,15 @@ def refine_recipe_for_cayenne(
                            only evidence outside the recipe text.
         user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
                            When None or empty, grid_categories will be {} in the result.
+        parents:           ``{tag: parent tag}`` for nested tags, so the prompt shows a
+                           tag under its parent. None shows every tag flat.
         limiter:           Takes a slot for each retry (F-109; see _call_with_retry). The
                            caller takes the first request's.
     """
     axes = user_axes or {}
     schema = _build_dynamic_grid_schema(axes)
 
-    prompt = build_refine_prompt(raw_recipe, source_host, axes)
+    prompt = build_refine_prompt(raw_recipe, source_host, axes, parents)
     try:
         # Use response_json_schema with additionalProperties stripped — Gemini API
         # rejects response_schema when Pydantic emits additionalProperties (Dict types).
@@ -918,6 +954,7 @@ class _BatchCategorization(BaseModel):
 def build_categorize_batch_prompt(
     recipes: List[Dict[str, Any]],
     new_axes: Dict[str, List[str]],
+    parents: Optional[Dict[str, str]] = None,
 ) -> str:
     """The bulk-recategorise prompt: several recipes against newly added tags only.
 
@@ -932,7 +969,9 @@ def build_categorize_batch_prompt(
     """
     from recipeparser.core.regen import raw_body_column  # noqa: PLC0415
 
-    axes_text = "\n".join(f"- {axis}: {', '.join(tags)}" for axis, tags in new_axes.items())
+    axes_text = "\n".join(
+        f"- {axis}: {', '.join(_format_tag(t, parents) for t in tags)}" for axis, tags in new_axes.items()
+    )
     recipes_text = "\n\n".join(
         f"RECIPE ID: {r['id']}\nTITLE: {r.get('title', '')}\n"
         "INGREDIENTS:\n" + "\n".join(f"  - {line}" for line in raw_body_column(r, "ingredient_lines")) + "\n"
@@ -943,11 +982,15 @@ def build_categorize_batch_prompt(
 You are a culinary classifier. The user has just added these tags to their taxonomy:
 {axes_text}
 
-For EACH recipe below, list which of the tags above apply. Rules:
+For EACH recipe below, list which of the tags above it belongs under. Rules:
 - Use ONLY tags from the list above, spelled exactly. Never invent a tag.
-- Return an empty list when none apply. Most recipes will match nothing.
+- Return an empty list when none fits.
 - Return one result per recipe id, in any order.
 
+TAGGING RULES:
+{TAGGING_RULES}
+
+RECIPES:
 {recipes_text}
 """
 
@@ -956,6 +999,7 @@ def categorize_batch(
     recipes: List[Dict[str, Any]],
     new_axes: Dict[str, List[str]],
     client,
+    parents: Optional[Dict[str, str]] = None,
 ) -> Dict[str, List[str]]:
     """
     Categorise several existing recipes against ONLY the newly added tags
@@ -963,8 +1007,8 @@ def categorize_batch(
     that.
 
     A well-formed reply with no matches is a normal, successful result: the
-    model is told most recipes will match nothing, so ``{}`` and empty tag lists
-    are expected.
+    model is told to prefer no tag to a doubtful one, so ``{}`` and empty tag
+    lists are expected.
 
     Raises:
         Exception: whatever the Gemini call raises, and ValueError when the
@@ -980,7 +1024,7 @@ def categorize_batch(
     response = _call_with_retry(
         client,
         model=GEMINI_MODEL,
-        contents=build_categorize_batch_prompt(recipes, new_axes),
+        contents=build_categorize_batch_prompt(recipes, new_axes, parents),
         config={
             "response_mime_type": "application/json",
             "response_json_schema": _schema_for_gemini(_BatchCategorization),

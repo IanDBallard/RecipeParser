@@ -167,6 +167,13 @@ class RecipePipeline:
         except Exception:
             log.exception("RecipePipeline: failed to load category axes — proceeding without categorisation.")
             user_axes = {}
+        # The tree's shape, for the prompt and for pruning a parent picked beside
+        # its child (F-205). Losing it costs only that pruning, not the tags.
+        try:
+            parents: Dict[str, str] = self._category_source.load_parents(user_id) if user_axes else {}
+        except Exception:
+            log.exception("RecipePipeline: failed to load category parents — tags will not be pruned.")
+            parents = {}
 
         # Transition FSM to RUNNING.
         self._controller.transition("start")
@@ -181,7 +188,7 @@ class RecipePipeline:
                     chunk.image_bytes, str(uuid.uuid4()), chunk.image_content_type
                 )
             stages = self._get_stages(chunk)
-            return self._process_chunk(chunk, stages, user_axes)
+            return self._process_chunk(chunk, stages, user_axes, parents)
 
         def _report_skip(chunk: Chunk, reason: str, index: int) -> None:
             """Tell the caller a chunk produced nothing, and never let that itself fail the run."""
@@ -291,6 +298,7 @@ class RecipePipeline:
         chunk: Chunk,
         stages: List[str],
         user_axes: Dict[str, List[str]],
+        parents: Optional[Dict[str, str]] = None,
     ) -> ChunkResult:
         """
         Execute the stage sequence for a single chunk.
@@ -391,6 +399,7 @@ class RecipePipeline:
                     client=self._client,
                     source_host=host_of(chunk.source_url) if chunk.source_url else None,
                     user_axes=user_axes,
+                    parents=parents,
                     limiter=self._limiter,  # for the retries inside gemini.py (F-109)
                 )
 
@@ -399,6 +408,7 @@ class RecipePipeline:
                 grid_cats = categorize(
                     recipe=refined,
                     user_axes=user_axes,
+                    parents=parents,
                 )
 
                 # EMBED
