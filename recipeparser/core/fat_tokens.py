@@ -77,90 +77,180 @@ def _token(ingredient_id: str, words: str, use: str) -> str:
     return "{{" + ingredient_id + "|" + words + "|" + use + "}}"
 
 
+# A token for an amount must wrap a quantity: a digit, a fraction, or a number word. The model has
+# been seen putting the amount on the ingredient's name instead ("Place the {{ing_01|butter|175 g}}"),
+# which a quantity-only chip would print as "Place the 175 g".
+QUANTITY_WORDS = re.compile(
+    r"\d|[¼½¾⅐-⅞]|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"half|quarter|third|thirds|dozen|couple)\b",
+    re.IGNORECASE,
+)
+# A quantity already in the text just before a token: "1 tablespoon of the ", "½ cup (60 g) ".
+QUANTITY_BEFORE = re.compile(
+    r"(?:\d|[¼½¾⅐-⅞]|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half)\b)"
+    r"\s*(?:[a-zA-Z.]+\s*){0,2}(?:\([^)]*\)\s*)?(?:of\s+)?(?:the\s+)?$",
+    re.IGNORECASE,
+)
+
+
+class _Mention(NamedTuple):
+    step: int
+    start: int
+    end: int
+    ingredient_id: str
+    words: str
+    raw: Optional[str]
+    before: str
+
+
+def _mentions(directions: Sequence[TokenizedDirection]) -> List[_Mention]:
+    found: List[_Mention] = []
+    for index, step in enumerate(directions):
+        for match in TOKEN_RE.finditer(step.text):
+            before = strip_fat_tokens(step.text[: match.start()])
+            found.append(_Mention(index, match.start(), match.end(), match.group(1), match.group(2),
+                                  match.group(3), before))
+    return found
+
+
 def check_mentions(
     ingredients: Sequence[StructuredIngredient],
     directions: Sequence[TokenizedDirection],
 ) -> Tuple[List[TokenizedDirection], List[str]]:
     """
-    Demote the uses the arithmetic cannot support to ``none``, so no mention claims a number it
-    cannot have. Returns the directions, rewritten where needed, and one line per demotion.
+    Correct the uses the text and the arithmetic cannot support, so no mention claims a number it
+    cannot have. Returns the directions, rewritten where needed, and one line per change. In order:
 
-    - an amount that does not parse;
+    - an amount that does not parse becomes ``none``;
+    - an amount on words that are not a quantity — the model put it on the ingredient's name —
+      becomes ``none`` when the text before already states a quantity ("1 tablespoon of the
+      {{oil}}"), ``all`` when it is the line's whole amount ("Place the {{butter}}", 175 g of 175 g),
+      and ``none`` otherwise;
     - every part (and remainder) of an ingredient whose parts, in its own unit, add up to more
-      than the line gives — one of them is wrong, and nothing says which;
-    - ``all`` beside a part or a remainder of the same ingredient.
+      than the line gives becomes ``none`` — one of them is wrong, and nothing says which;
+    - ``all`` beside a part or a remainder of the same ingredient becomes ``none``;
+    - only the first ``all`` of an ingredient keeps it: "wash the rice … drain the rice" is one
+      cup of rice, and printing it at every mention is noise.
 
     A legacy token is left alone: the client has its own rule for those. The client applies these
     same checks again (direction amounts design, D10); this is the import's half, and it logs.
     """
     by_id = {ing.id: ing for ing in ingredients}
-    uses: Dict[str, List[Use]] = {}
-    for step in directions:
-        for match in TOKEN_RE.finditer(step.text):
-            uses.setdefault(match.group(1), []).append(parse_use(match.group(3)))
+    mentions = _mentions(directions)
+    changes: List[str] = []
+    effective: List[Tuple[Use, Optional[str]]] = []  # the use, and the reason it changed
+
+    for m in mentions:
+        use = parse_use(m.raw)
+        ing = by_id.get(m.ingredient_id)
+        if use.kind == "invalid":
+            effective.append((Use("none"), f"amount {m.raw!r} does not parse"))
+        elif use.kind == "part" and not QUANTITY_WORDS.search(m.words):
+            whole = (
+                ing is not None and ing.amount is not None and _unit_key(use.unit) == _unit_key(ing.unit)
+                and abs((use.amount or 0) - ing.amount) <= ing.amount * (_PART_SLACK - 1)
+            )
+            if QUANTITY_BEFORE.search(m.before):
+                effective.append((Use("none"), "an amount on the name, and the text already states one"))
+            elif whole:
+                effective.append((Use("all"), "an amount on the name that is the line's whole amount"))
+            else:
+                effective.append((Use("none"), "an amount on the name, not on a quantity"))
+        else:
+            effective.append((use, None))
 
     over: Set[str] = set()
-    for ing_id, found in uses.items():
-        ing = by_id.get(ing_id)
-        parts = [u for u in found if u.kind == "part"]
-        if ing is None or ing.amount is None or not parts:
+    for ing_id, ing in by_id.items():
+        parts = [u for (u, _), m in zip(effective, mentions) if m.ingredient_id == ing_id and u.kind == "part"]
+        if ing.amount is None or not parts:
             continue
         if all(_unit_key(p.unit) == _unit_key(ing.unit) for p in parts):
             if sum(p.amount or 0 for p in parts) > ing.amount * _PART_SLACK:
                 over.add(ing_id)
+    shared = {
+        m.ingredient_id for (u, _), m in zip(effective, mentions) if u.kind in ("part", "rest")
+    }
 
-    demotions: List[str] = []
+    seen_all: Set[str] = set()
+    final: List[Optional[str]] = []
+    for (use, reason), m in zip(effective, mentions):
+        kind = use.kind
+        if kind in ("part", "rest") and m.ingredient_id in over:
+            kind, reason = "none", "its parts add up to more than the ingredient line"
+        elif kind == "all" and m.ingredient_id in shared:
+            kind, reason = "none", "'all' beside a part of the same ingredient"
+        elif kind == "all" and m.ingredient_id in seen_all:
+            kind, reason = "none", "the whole amount was already shown at an earlier mention"
+        if kind == "all":
+            seen_all.add(m.ingredient_id)
+        if reason is not None:
+            changes.append(f"{m.ingredient_id} {m.words!r}: {reason}")
+        final.append(m.raw if reason is None else kind)
 
-    def rewrite(match: "re.Match[str]") -> str:
-        ing_id, words, raw = match.group(1), match.group(2), match.group(3)
-        use = parse_use(raw)
-        found = uses.get(ing_id, [])
-        reason = None
-        if use.kind == "invalid":
-            reason = f"amount {raw!r} does not parse"
-        elif use.kind in ("part", "rest") and ing_id in over:
-            reason = "its parts add up to more than the ingredient line"
-        elif use.kind == "all" and any(u.kind in ("part", "rest") for u in found):
-            reason = "'all' beside a part of the same ingredient"
-        if reason is None:
-            return match.group(0)
-        demotions.append(f"{ing_id} {words!r}: {reason}")
-        return _token(ing_id, words, "none")
+    out: List[TokenizedDirection] = []
+    cursor = 0
+    for index, d in enumerate(directions):
+        pieces: List[str] = []
+        last = 0
+        for m in mentions[cursor:]:
+            if m.step != index:
+                break
+            pieces.append(d.text[last:m.start])
+            chosen = final[cursor]
+            keep = chosen == m.raw
+            pieces.append(d.text[m.start:m.end] if keep else _token(m.ingredient_id, m.words, chosen or "none"))
+            last = m.end
+            cursor += 1
+        pieces.append(d.text[last:])
+        out.append(TokenizedDirection(step=d.step, text="".join(pieces)))
+    return out, changes
 
-    checked = [TokenizedDirection(step=d.step, text=TOKEN_RE.sub(rewrite, d.text)) for d in directions]
-    return checked, demotions
+
+_FOLD = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', "–": "-", "—": "-", "\u00a0": " "})
 
 
-def _locate(text: str, cursor: int, quote: str, context: str) -> int:
+def _fold(text: str) -> str:
+    """One-for-one character folding, so positions in the folded text are positions in the text."""
+    return text.translate(_FOLD)
+
+
+def _locate(text: str, quote: str, context: str) -> List[int]:
     """
-    Where ``quote`` starts in ``text``, at or after ``cursor``, or -1. The context places it: the
-    first occurrence of the context whose quote lies past the cursor. Without a usable context only
-    an unambiguous quote is placed — "add 1/2 cup flour; add more flour" has two, and the wrong one
-    would put "none" on the flour the part already measured.
+    Where ``quote`` may start in ``text``: the context's occurrences first, each giving the quote's
+    place inside it; failing that, the quote's own occurrences. Curly quotes and dashes are folded
+    on both sides, so "they’ll" in the step matches "they'll" in the model's context.
     """
-    if context and quote in context:
-        offset = context.index(quote)
-        start = text.find(context)
-        while start >= 0:
-            if start + offset >= cursor:
-                return start + offset
-            start = text.find(context, start + 1)
-    at = text.find(quote, cursor)
-    if at >= 0 and text.find(quote, at + 1) < 0:
-        return at
-    return -1
+    folded, q, c = _fold(text), _fold(quote), _fold(context)
+    if c and q in c:
+        offset = c.index(q)
+        starts = [i + offset for i in _all(folded, c)]
+        if starts:
+            return starts
+    return _all(folded, q)
+
+
+def _all(text: str, needle: str) -> List[int]:
+    found, at = [], text.find(needle)
+    while needle and at >= 0:
+        found.append(at)
+        at = text.find(needle, at + 1)
+    return found
 
 
 def splice_mentions(
     steps: Sequence[str],
     mentions: Sequence[DirectionMention],
     valid_ids: Sequence[str],
+    step_numbers: Optional[Sequence[int]] = None,
 ) -> Tuple[List[TokenizedDirection], List[str]]:
     """
-    Tokenized directions built from the raw steps and the mentions a model found in them. The text
-    is the raw step's, always: a token is placed only where its quote is found verbatim, after the
-    previous token in the same step, so a model that misquotes loses that chip, never a word of the
-    recipe. Returns the directions and one line per mention that could not be placed.
+    Tokenized directions built from step texts and the mentions a model found in them. The text is
+    the steps', always: a token is placed only where its quote is found verbatim, so a model that
+    misquotes loses that chip, never a word of the recipe. Each mention is placed on its own — by
+    its context, else by an unambiguous quote — and the placements are then taken in text order,
+    so a model that lists mentions out of order or twice loses nothing; a repeat of a placement
+    already taken, or one that would overlap it, is dropped. Returns the directions and one line
+    per mention that could not be placed. ``step_numbers`` keeps a recipe's own numbering.
     """
     valid = set(valid_ids)
     by_step: Dict[int, List[DirectionMention]] = {}
@@ -177,19 +267,36 @@ def splice_mentions(
 
     out: List[TokenizedDirection] = []
     for index, text in enumerate(steps):
+        placed: List[Tuple[int, int, DirectionMention]] = []
+        taken: Set[int] = set()
+        for m in by_step.get(index + 1, []):
+            candidates = _locate(text, m.quote, m.context)
+            starts = [s for s in candidates if s not in taken]
+            if candidates and not starts:
+                continue  # the model listed a mention it had already listed
+            # One candidate is a placement; several are a guess, unless the context named them.
+            if len(starts) != 1 and not (starts and m.context and _fold(m.quote) in _fold(m.context)
+                                         and _fold(m.context) in _fold(text)):
+                dropped.append(f"step {m.step}: {m.quote!r} ({m.context!r}) not placed")
+                continue
+            start = starts[0]
+            end = start + len(m.quote)
+            if any(start < e and s < end for s, e, _ in placed):
+                dropped.append(f"step {m.step}: {m.quote!r} overlaps another mention")
+                continue
+            taken.add(start)
+            placed.append((start, end, m))
+        placed.sort(key=lambda p: p[0])
         pieces: List[str] = []
         cursor = 0
-        for m in by_step.get(index + 1, []):
-            at = _locate(text, cursor, m.quote, m.context)
-            if at < 0:
-                dropped.append(f"step {m.step}: {m.quote!r} ({m.context!r}) not placed after position {cursor}")
-                continue
+        for start, end, m in placed:
             use = m.use.strip()
-            pieces.append(text[cursor:at])
-            pieces.append(_token(m.ingredient_id, m.quote, use.lower() if use.lower() in _KEYWORDS else use))
-            cursor = at + len(m.quote)
+            pieces.append(text[cursor:start])
+            pieces.append(_token(m.ingredient_id, text[start:end], use.lower() if use.lower() in _KEYWORDS else use))
+            cursor = end
         pieces.append(text[cursor:])
-        out.append(TokenizedDirection(step=index + 1, text="".join(pieces)))
+        number = step_numbers[index] if step_numbers is not None else index + 1
+        out.append(TokenizedDirection(step=number, text="".join(pieces)))
     return out, dropped
 
 

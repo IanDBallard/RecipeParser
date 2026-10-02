@@ -48,7 +48,6 @@ def test_tags_a_legacy_recipe_and_keeps_every_word():
         "Add about {{ing_02|1/2 cup|0.5 cup}} flour; add more {{ing_02|flour|none}} until sticky.",
     ]
     assert [strip_fat_tokens(d.text) for d in result.directions] == STEPS
-    assert not result.text_changed
     assert result.before == LEGACY
 
 
@@ -57,9 +56,9 @@ def test_never_calls_the_model_for_a_row_it_skips():
     tagged = [{"step": 1, "text": "Drain the {{ing_01|ricotta|all}}."}]
     assert plan_row(_row(tokenized_directions=tagged), _tag(calls)).status == "already-tagged"
     assert plan_row(_row(body_rev=3), _tag(calls)).status == "stale"
-    assert plan_row(_row(direction_steps=[]), _tag(calls)).status == "empty"
+    assert plan_row(_row(tokenized_directions=[]), _tag(calls)).status == "empty"
     assert plan_row(_row(structured_ingredients=json.dumps(INGREDIENTS)), _tag(calls)).status == "malformed"
-    assert plan_row(_row(direction_steps=None), _tag(calls)).status == "malformed"
+    assert plan_row(_row(tokenized_directions=None), _tag(calls)).status == "malformed"
     assert calls == []
 
 
@@ -75,15 +74,25 @@ def test_a_model_failure_is_reported_not_raised():
     assert (result.status, result.error) == ("failed", "quota")
 
 
-def test_notes_when_the_old_tokens_were_not_the_raw_steps():
-    rephrased = [{"step": 1, "text": "Drain {{ing_01|ricotta}} well."}]
-    assert plan_row(_row(tokenized_directions=rephrased), _tag([])).text_changed
+def test_tags_the_text_the_kitchen_shows_not_the_noisy_raw_steps():
+    # The import cleaned "1 In a wok ... cook. stirring"; the raw column still carries it.
+    shown = [{"step": 3, "text": "In a wok, heat the {{ing_02|flour}}, stirring."}]
+    noisy = ["1 In a wok, heat the flour. stirring"]
+    seen: List[List[str]] = []
+
+    def tag(ingredients, steps):
+        seen.append(steps)
+        return [DirectionMention(step=1, quote="flour", ingredient_id="ing_02", use="all")]
+
+    result = plan_row(_row(tokenized_directions=shown, direction_steps=noisy), tag)
+    assert seen == [["In a wok, heat the flour, stirring."]]
+    assert [(d.step, d.text) for d in result.directions] == [(3, "In a wok, heat the {{ing_02|flour|all}}, stirring.")]
 
 
 def test_summary_counts():
     results = [plan_row(_row(), _tag([])), plan_row(_row(body_rev=5), _tag([]))]
-    statuses, dropped, demoted, changed = summarise(results)
-    assert (statuses["tagged"], statuses["stale"], dropped, demoted, changed) == (1, 1, 0, 0, 0)
+    statuses, dropped, corrected = summarise(results)
+    assert (statuses["tagged"], statuses["stale"], dropped, corrected) == (1, 1, 0, 0)
 
 
 class _Query:
