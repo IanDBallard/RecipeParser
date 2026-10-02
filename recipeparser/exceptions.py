@@ -50,6 +50,16 @@ class UrlFetchError(UnreadableInputError):
     """
 
 
+class SiteRefusedError(UrlFetchError):
+    """A page whose site refuses automated readers: a 401, 402, 403 or 451, or a
+    bot-protection challenge page, answered to the reader's direct fetch.
+
+    No retry from the server will get past it, so the message tells the person
+    what does: their own browser can read the page, and the import box takes
+    the recipe's text.
+    """
+
+
 class ExportError(RecipeParserError):
     """Raised when the Paprika export bundle cannot be written."""
 

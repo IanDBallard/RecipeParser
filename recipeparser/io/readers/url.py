@@ -47,6 +47,11 @@ log = logging.getLogger(__name__)
 _JINA_PREFIX = "https://r.jina.ai/"
 _REQUEST_TIMEOUT = 30  # seconds
 _MAX_REDIRECTS = 5
+# Statuses that mean "this site will not serve an automated reader": 402 is
+# pay-per-crawl (seriouseats.com answered it to the server, 2026-10-02, while
+# serving a browser), 451 is what Jina answers for a domain it will not read.
+_REFUSING_STATUSES = frozenset({401, 402, 403, 451})
+_PASTE_INSTEAD = "Open it in your browser, copy the recipe and paste its text in place of the link."
 _MAX_HTML_CHARS = 3_000_000
 
 PAGE_USER_AGENT = (
@@ -418,20 +423,28 @@ class UrlReader(RecipeReader):
             UrlFetchError: Jina failed — a non-2xx status, a timeout, any other
                 network failure, a page with no text, or a bot-protection
                 challenge page (Jina itself got challenged and rendered that
-                instead of the article) — and the direct fetch failed too. The
-                message is Jina's failure, as before the fallback existed; the
-                direct failure is logged. The message is a predicate about the
-                URL: the caller prefixes the URL itself.
+                instead of the article) — and the direct fetch failed too. When
+                the site itself refused the direct fetch (``SiteRefusedError``),
+                the message says so and suggests pasting the recipe's text, since
+                Jina's own status (a 451, say) names Jina's policy, not the
+                site's. Any other direct failure is logged and the message is
+                Jina's failure, as before the fallback existed. The message is a
+                predicate about the URL: the caller prefixes the URL itself.
         """
-        from recipeparser.exceptions import UrlFetchError
+        from recipeparser.exceptions import SiteRefusedError, UrlFetchError
 
         try:
             text = self._read_via_jina(source)
         except UrlFetchError as jina_error:
             # Best effort: whatever goes wrong in the fallback — a refusal, or a bug in
-            # parsing some site's HTML — the job reports Jina's failure, never a traceback's.
+            # parsing some site's HTML — the job reports a sentence, never a traceback's.
             try:
                 text = self._read_directly(source)
+            except SiteRefusedError as refusal:
+                log.warning(
+                    "UrlReader: %s refused both Jina (%s) and the direct fetch (%s)", source, jina_error, refusal
+                )
+                raise refusal from jina_error
             except Exception as direct_error:
                 log.warning("UrlReader: direct fetch of %s failed too: %r", source, direct_error)
                 raise jina_error from jina_error.__cause__
@@ -486,7 +499,7 @@ class UrlReader(RecipeReader):
         Redirects are followed by hand, at most ``_MAX_REDIRECTS``, so every hop
         passes the same private-address checks as the first.
         """
-        from recipeparser.exceptions import UrlFetchError
+        from recipeparser.exceptions import SiteRefusedError, UrlFetchError
 
         url = source
         for _ in range(_MAX_REDIRECTS + 1):
@@ -509,6 +522,8 @@ class UrlReader(RecipeReader):
         else:
             raise UrlFetchError("redirected too many times.")
 
+        if response.status_code in _REFUSING_STATUSES:
+            raise SiteRefusedError(f"refuses automated readers (HTTP {response.status_code}). {_PASTE_INSTEAD}")
         if not 200 <= response.status_code < 300:
             raise UrlFetchError(f"could not be fetched (HTTP {response.status_code}).")
         content_type = response.headers.get("content-type") or ""
@@ -516,7 +531,7 @@ class UrlReader(RecipeReader):
             raise UrlFetchError("is not a web page.")
         html = response.text[:_MAX_HTML_CHARS]
         if looks_like_html_challenge(html):
-            raise UrlFetchError("is blocked by the site's bot-protection challenge page.")
+            raise SiteRefusedError(f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}")
         text = page_text_from_html(html)
         if not text.strip():
             raise UrlFetchError("contains no readable text.")

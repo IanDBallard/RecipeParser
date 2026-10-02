@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.3.4] — 2026-10-02
+
+### 🐛 Fixed — a site that refuses automated readers says so, and what to do instead
+- When Jina fails and the site refuses the direct fetch too (HTTP 401, 402, 403 or 451, or a bot-protection challenge page), the job now says "… refuses automated readers (HTTP 402). Open it in your browser, copy the recipe and paste its text in place of the link." Before, it said only "could not be fetched (HTTP 451)." That status was Jina's policy, not the site's. seriouseats.com, 2026-10-02: Jina answered 451, and the site answered the server with a 402 (pay-per-crawl) while serving a browser normally.
+- The direct fetch raises the new `SiteRefusedError` (a `UrlFetchError`) for these cases. Any other direct failure still reports Jina's error, as in 9.3.3.
+
+### 🧪 Tests
+- `test_url_direct_fallback.py`: each refusing status, a challenge page, and a non-refusing direct failure (a 404) that still reports Jina's error. `test_api.py`: the whole sentence a job ends with, URL included.
+
 ## [9.3.3] — 2026-10-02
 
 ### 🐛 Fixed — a site Jina will not read is fetched directly
