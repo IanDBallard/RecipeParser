@@ -1,0 +1,17 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "d4382e8ee929458271cd1868b0696443478c392975f0917144a95f7799e5c89a",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\"\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\"\n    }\n  ]\n}"
+}

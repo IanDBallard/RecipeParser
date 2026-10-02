@@ -1,0 +1,17 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "c97bd38426a6e6351c2acb758d0cc7d6d5b3666888f97f3a8191f818b592abf0",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"garlic\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 0.4,\n      \"count_unit\": \"head\"\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"garlic\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 0.2,\n      \"count_unit\": \"head\"\n    }\n  ]\n}"
+}

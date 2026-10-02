@@ -1,0 +1,17 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "2a03abd9021eb8289be87e408c04f36ef01cd73ab47ce42a6c0653ea35c1ed29",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"egg\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": 2,\n      \"count_unit\": \"egg\"\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"egg\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"egg\"\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"egg\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": 2,\n      \"count_unit\": \"egg\"\n    }\n  ]\n}"
+}

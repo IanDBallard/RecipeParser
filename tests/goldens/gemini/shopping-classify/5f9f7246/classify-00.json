@@ -1,0 +1,17 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "37171b9b4b35d671442b21663a56a14e0e8b1c21bce5862ce932e50b7ee1beb2",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"salt\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null\n    }\n  ]\n}"
+}

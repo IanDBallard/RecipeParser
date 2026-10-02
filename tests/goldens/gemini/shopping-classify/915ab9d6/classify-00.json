@@ -1,0 +1,17 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "4c8396b4be28dd87905fc2b7ba49ce7f203b2620dcf0d363f5bdefef0c8c7839",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"spring onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 3,\n      \"count_unit\": \"spring onion\"\n    }\n  ]\n}"
+}
