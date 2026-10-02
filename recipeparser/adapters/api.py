@@ -11,6 +11,7 @@ Endpoints (canonical — Phase 6):
   POST /recipes/{recipe_id}/image/generate — return a generated picture in JPEG (200 + bytes, stores nothing)
   DELETE /recipes/{recipe_id}/image — clear it (200 + { image_url: null })
   POST /embed             — generate a 1536-dim embedding (returns 200 + {embedding})
+  POST /shopping/classify — label a Generate's ingredients (200 + {items})
   GET  /health            — liveness probe + the auth mode the app booted with
 
 Auth:
@@ -50,6 +51,7 @@ import recipeparser.gemini as _gemini_mod
 from recipeparser.adapters.job_sink import JobSink
 from recipeparser.adapters.shares_api import RecipientCheckLimiter
 from recipeparser.adapters.shares_api import build_router as _build_share_router
+from recipeparser.adapters.shopping_api import build_router as _build_shopping_router
 from recipeparser.config import MAX_UPLOAD_BYTES
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
@@ -1728,3 +1730,10 @@ _share_check_limiter = RecipientCheckLimiter()
 app.include_router(_build_share_router(
     _verify_supabase_jwt, lambda: _get_supabase_service_client(), _share_check_limiter,
 ))
+
+# ---------------------------------------------------------------------------
+# Shopping — POST /shopping/classify (shopping list design, Part 3 §2)
+# ---------------------------------------------------------------------------
+# The endpoint lives in shopping_api.py. The client factory is a lambda so a
+# test can replace _get_client, as the shares block does for Supabase.
+app.include_router(_build_shopping_router(_verify_supabase_jwt, lambda: _get_client()))
