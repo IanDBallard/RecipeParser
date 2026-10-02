@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from typing import List, Literal, Optional, Sequence
+from typing import List, Literal, Optional, Sequence, get_args
 
 from pydantic import BaseModel
 
@@ -23,18 +23,16 @@ from recipeparser.gemini import _call_with_retry, _schema_for_gemini
 
 log = logging.getLogger(__name__)
 
-#: The twelve aisle keys, in store order (shopping design, *Aisles*). Cayenne's
-#: `domain/aisles.ts` and Postgres's checks carry the same list; the response
-#: schema below enumerates it so the model cannot answer outside it.
-AISLES: tuple[str, ...] = (
-    "produce", "meat_fish", "dairy_eggs", "bakery", "dry_goods", "spices",
-    "condiments", "tins_jars", "frozen", "drinks", "household", "other",
-)
-
 Aisle = Literal[
     "produce", "meat_fish", "dairy_eggs", "bakery", "dry_goods", "spices",
     "condiments", "tins_jars", "frozen", "drinks", "household", "other",
 ]
+
+#: The twelve aisle keys, in store order (shopping design, *Aisles*). Cayenne's
+#: `domain/aisles.ts` and Postgres's checks carry the same list; the response
+#: schema below enumerates it so the model cannot answer outside it. Derived
+#: from the Literal so the schema and the prompt cannot desync.
+AISLES: tuple[str, ...] = get_args(Aisle)
 
 
 class ClassifyIngredient(BaseModel):
