@@ -129,6 +129,11 @@ def test_health_reports_each_workers_last_poll(monkeypatch):
         await stop.wait()
 
     monkeypatch.setenv("REGEN_WORKER_ENABLED", "1")
+    # The mode this test asserts, set here (Fix Roadmap F-153). api reads DISABLE_AUTH once, when
+    # it is first imported, and this file's setdefault above is too late when another file imports
+    # it first (test_recategorize_endpoint.py, test_shares_endpoints.py): the module then booted
+    # verifying, and this assertion depended on the order the files ran in.
+    monkeypatch.setattr(api, "_DISABLE_AUTH", True)
     with patch("recipeparser.adapters.regen_worker.run_workers", new=one_round), \
          patch.object(api, "_get_supabase_service_client", return_value=MagicMock()), \
          patch.object(api, "_get_client", return_value=MagicMock()):
