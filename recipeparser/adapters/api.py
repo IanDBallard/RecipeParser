@@ -28,7 +28,6 @@ Auth:
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import logging
 import os
 import re
@@ -39,7 +38,6 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Tuple
-from urllib.parse import urlparse
 
 import httpx
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
@@ -67,7 +65,9 @@ from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
+from recipeparser.io.readers.url import PAGE_USER_AGENT as _PAGE_USER_AGENT
 from recipeparser.io.readers.url import PageMeta, UrlReader, looks_like_badge, page_meta_from_html
+from recipeparser.io.readers.url import is_unsafe_fetch_target as _is_unsafe_fetch_target
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.supabase import write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
@@ -513,38 +513,6 @@ async def _upload_image_to_storage(image_url: str, recipe_id: str) -> Optional[s
     return await asyncio.to_thread(SupabaseImageStore().put, data, recipe_id, content_type)
 
 
-_PAGE_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/128.0 Safari/537.36"
-)
-
-
-def _is_unsafe_fetch_target(url: str) -> bool:
-    """True when ``url`` must not be GET-ed for its meta tags.
-
-    A recipe URL is user-submitted and this fetch runs server-side with no
-    further checks, so it is exactly the shape of an SSRF vector: refuse
-    anything that is not a plain http(s) request to a public host, before the
-    GET. No DNS resolution is performed — a hostname that only resolves to a
-    private address at request time is not caught here, but a bare IP literal
-    (the common probe, e.g. the cloud metadata address) and the obvious
-    hostnames are.
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        return True
-    host = (parsed.hostname or "").lower()
-    if not host:
-        return True
-    if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
-        return True
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
-
-
 async def _fetch_page_meta(url: str) -> PageMeta:
     """The page's own <meta> tags — its hero image and its description.
 
@@ -553,7 +521,7 @@ async def _fetch_page_meta(url: str) -> PageMeta:
     scraper's markdown is consulted. Any failure — unreachable, not HTML, a
     timeout — is a page without meta, never a failed job. A non-http(s)
     scheme, an empty host, or a host that is plainly local or private
-    (``_is_unsafe_fetch_target``) is refused before the GET, with no DNS
+    (``is_unsafe_fetch_target``) is refused before the GET, with no DNS
     resolution performed.
     """
     try:

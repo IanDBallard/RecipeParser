@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.3.3] — 2026-10-02
+
+### 🐛 Fixed — a site Jina will not read is fetched directly
+- `UrlReader` now falls back to fetching the page itself when Jina fails: an HTTP error, a timeout, a blank page or a bot-protection challenge. Jina answered HTTP 451 for every seriouseats.com URL, so each one failed as "could not be fetched (HTTP 451).", but the site serves the page to an ordinary browser GET.
+- The direct fetch sends the browser user-agent the page-meta fetch already used. It reads the page's schema.org Recipe JSON-LD (title, description, yield, times, ingredients, steps) and falls back to the page's article text if there is none. A bot-protection interstitial is refused, not read as a recipe.
+- When both fetches fail, the job still reports Jina's failure, exactly as before. The direct failure, and Jina's own explanation of a refusal (the response body, which was discarded before), are now logged.
+- The direct fetch refuses private addresses at every hop. That covers the host, every address its name resolves to, and every redirect, which is followed by hand. `is_unsafe_fetch_target` and the browser user-agent moved from `adapters/api.py` to `io/readers/url.py`, so both direct fetches share them. A DNS-rebinding server can still race the check, because requests resolves the name again when it connects.
+
+### 🧪 Tests
+- `tests/unit/readers/test_url_direct_fallback.py`: a Serious Eats-shaped JSON-LD page read after a Jina 451, the article-text fallback, `@graph` and string instructions, a redirect followed by hand, both fetches failing, a bug in the fallback, a direct challenge page, and private addresses (literal, by DNS, and through a redirect).
+
 ## [9.3.2] — 2026-10-01
 
 ### 🐛 Fixed — a recipe that runs onto the next page of a short PDF

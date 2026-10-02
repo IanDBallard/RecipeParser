@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recipeparser"
-version = "9.3.2"
+version = "9.3.3"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -106,6 +106,7 @@ select = ["E", "F", "I", "TID"]
 "tests/unit/readers/test_pdf_ocr_fallback.py" = ["TID"]
 "tests/unit/readers/test_page_meta.py" = ["TID"]
 "tests/unit/readers/test_book_images.py" = ["TID"]
+"tests/unit/readers/test_url_direct_fallback.py" = ["TID"]
 "tests/unit/readers/test_pdf_short_document.py" = ["TID"]
 # Reader goldens exercise recipeparser.io.readers directly by design (spec §6.1).
 "tests/goldens/test_readers_golden.py" = ["TID"]
