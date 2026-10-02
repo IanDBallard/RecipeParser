@@ -144,9 +144,16 @@ def _finalize_config(config: dict) -> dict:
         # Merge into any http_options the caller already set rather than
         # replacing it: an api_version pin, custom headers or a base_url
         # override would otherwise be dropped silently on the way to the SDK.
-        # The timeout is applied last on purpose — merging must not become a
-        # way to opt out of the bound this function exists to enforce.
-        "http_options": {**config.get("http_options", {}), "timeout": _HTTP_TIMEOUT_MS},
+        # The timeout is a CEILING: a caller may tighten it (the shopping
+        # classify call's 60 s), never lengthen it — min() applied last keeps
+        # merging from becoming a way to opt out of the bound.
+        "http_options": {
+            **config.get("http_options", {}),
+            "timeout": min(
+                config.get("http_options", {}).get("timeout", _HTTP_TIMEOUT_MS),
+                _HTTP_TIMEOUT_MS,
+            ),
+        },
         "thinking_config": {"thinking_budget": THINKING_BUDGET},
     }
 
