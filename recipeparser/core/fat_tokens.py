@@ -124,6 +124,17 @@ QUANTITY_BEFORE = re.compile(
 )
 
 
+# A quantity the text writes right before a whole-amount or remainder token: "Peel approximately 3
+# {{bananas}}", "add one of the {{whites}}", "2 cups of the {{flour}}". Tighter than QUANTITY_BEFORE:
+# the number must be followed only by up to two words, a parenthesis and "of the", so a number
+# ending an earlier sentence ("Preheat to 350. Add the flour") does not count.
+QUANTITY_JUST_BEFORE = re.compile(
+    r"(?:\d|[¼½¾⅐-⅞]|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b)"
+    r"(?:\s*[a-zA-Z]+\.?){0,2}\s*(?:\([^)]*\)\s*)?(?:of\s+)?(?:the\s+)?$",
+    re.IGNORECASE,
+)
+
+
 class _Mention(NamedTuple):
     step: int
     start: int
@@ -163,7 +174,9 @@ def check_mentions(
       than the line gives becomes ``none`` — one of them is wrong, and nothing says which;
     - ``all`` beside a part or a remainder of the same ingredient becomes ``none``;
     - only the first ``all`` of an ingredient keeps it: "wash the rice … drain the rice" is one
-      cup of rice, and printing it at every mention is noise.
+      cup of rice, and printing it at every mention is noise;
+    - ``all`` or ``rest`` right after a quantity the text writes ("Peel approximately 3 {{bananas}}")
+      becomes ``none``: the chip would print a second number beside the first.
 
     A legacy token is left alone: the client has its own rule for those. The client applies these
     same checks again (direction amounts design, D10); this is the import's half, and it logs.
@@ -216,6 +229,10 @@ def check_mentions(
             kind, reason = "none", "'all' beside a part of the same ingredient"
         elif kind == "all" and m.ingredient_id in seen_all:
             kind, reason = "none", "the whole amount was already shown at an earlier mention"
+        elif kind in ("all", "rest") and QUANTITY_JUST_BEFORE.search(m.before):
+            # The text already writes how much; the chip would print a second number beside it.
+            seen_all.add(m.ingredient_id)
+            kind, reason = "none", "the text already writes a quantity just before it"
         if kind == "all":
             seen_all.add(m.ingredient_id)
         if reason is not None:

@@ -279,3 +279,31 @@ class TestTheSecondSample:
     ])
     def test_is_not_a_quantity(self, words):
         assert not is_quantity(words)
+
+
+# The third live sample (after 9.6.1): a whole-amount token right after a quantity the text writes.
+class TestTheThirdSample:
+    BANANAS = StructuredIngredient(id="ing_04", amount=4, name="bananas", fallback_string="4 ripe bananas")
+    WHITES = StructuredIngredient(id="ing_09", amount=2, name="eggs", fallback_string="2 eggs")
+    FLOUR = StructuredIngredient(id="ing_01", amount=2, unit="cups", name="flour", fallback_string="2 cups flour")
+
+    def _check(self, *texts):
+        return [d.text for d in check_mentions([self.BANANAS, self.WHITES, self.FLOUR], _d(*texts))[0]]
+
+    def test_a_whole_amount_right_after_a_written_quantity_becomes_none(self):
+        assert self._check(
+            "Peel approximately 3 {{ing_04|bananas|all}} (325 grams peeled).",
+            "Pour in the {{ing_04|bananas|all}}.",
+        ) == [
+            "Peel approximately 3 {{ing_04|bananas|none}} (325 grams peeled).",
+            "Pour in the {{ing_04|bananas|none}}.",
+        ]
+
+    def test_a_remainder_right_after_a_number_word_becomes_none(self):
+        assert self._check("Add one of the {{ing_09|whites|rest}}.") == ["Add one of the {{ing_09|whites|none}}."]
+
+    @pytest.mark.parametrize("before", [
+        "Preheat the oven to 350. Add the ", "Bake for 20 minutes, then add the ", "Cook 2 minutes then add the ",
+    ])
+    def test_a_number_in_an_earlier_clause_does_not_count(self, before):
+        assert self._check(before + "{{ing_01|flour|all}}.") == [before + "{{ing_01|flour|all}}."]

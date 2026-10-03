@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.6.2] — 2026-10-03
+
+The third dry run of the direction-amounts backfill (after 9.6.1). Needs no migration.
+
+### 🐛 Fixed — no whole amount right after a quantity the text writes
+- `Peel approximately 3 {{ing_04|bananas|all}}` printed the line's total beside the source's own number: "Peel approximately 3 4 bananas". `check_mentions` now makes an `all` or `rest` token `none` when the text writes a quantity just before it ("3 ", "two ", "one of the ", "2 cups of the "), and counts it as the ingredient's first whole mention so a later `all` does not print the total instead. The match is tighter than the one for amounts on names: a number ending an earlier clause ("Preheat the oven to 350. Add the flour", "Bake for 20 minutes, then add the flour") does not count.
+
+### 🧪 Tests
+- `tests/unit/test_fat_tokens.py::TestTheThirdSample`: the bananas, a remainder after "one of the", and three earlier-clause numbers that must not count.
+
 ## [9.6.1] — 2026-10-03
 
 The second dry run of the direction-amounts backfill (after 9.5.1). Needs no migration.
