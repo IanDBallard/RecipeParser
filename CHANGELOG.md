@@ -5,25 +5,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.6.4] — 2026-10-03
+
+An empty axis is an answer. Needs no migration; merging to master deploys it (the
+deploy workflow runs on push and the VM takes the new image).
+
+### 🐛 Fixed — the model no longer reaches for the nearest ingredient to fill an axis
+- `TAGGING_RULES` already said to prefer no tag to a doubtful one, and the model still
+  tagged minestrone Vegetarian for want of anything else to put on that axis. Measured over
+  14 recipes through the real refine path, the failure was always the same move: it reaches
+  for the nearest thing the recipe mentions **only** when an axis would otherwise be empty —
+  gnocchi, a sponge and pancakes always took Egg, while chicken schnitzel and beef meatballs,
+  whose Protein axis already had an answer, never did. A new rule names that reach as the
+  mistake and says an empty axis is one of the commonest right answers. Both prompts carry it,
+  as they share the block. The score on the pinned `gemini-3.1-flash-lite` goes from 133/160
+  assertions to 147/160 over five runs of each case, and the golden set from three failures to
+  two. Fixed outright: pancakes no longer take Egg, French onion soup no longer takes Beef from
+  its stock, and a chicken-stock risotto is no longer called Vegetarian. Not fixed: the
+  minestrone stopped taking Chicken but claims Vegetarian instead in three runs of five, so the
+  stock class is 92.5% and not 100% — its golden case passes on the reply recorded here, and a
+  re-record may well fail it. That is the model's variance at temperature 0.1, not a regression.
+- Not fixed, and not fixable by wording at this tier: eggs worked into a dough or a batter
+  still make gnocchi and a Victoria sponge Egg recipes. The same prompts score 96/96 on
+  `gemini-3.8-flash`, so this is the model and not the rules; the owner ruled on 2026-10-03 to
+  keep the cheaper tier knowingly. `ARCHITECTURE.md` section 8 and the comment on
+  `GEMINI_MODEL` in `config.py` record what that costs, and the two golden cases are strict
+  xfails naming the model rather than weakened assertions.
+
+### 🧪 Tests
+- `tests/goldens/test_tagging_golden.py` re-recorded against the new rules, and each of the two
+  model-limited cases split from the tag the same dish must get, which stays a hard assertion —
+  so a model that answers nothing still fails the set. A module-scoped cache keeps a recording
+  at six paid calls despite the split. Three prompt snapshots updated.
+
+---
+---
+
 ## [9.6.3] — 2026-10-03
 
 The shopping classifier keeps functionally distinct products apart. Needs no migration; the container restart deploys it.
-
 ### 🐛 Fixed — a near-twin known food no longer swallows a distinct product
 - "Reuse a food from KNOWN FOODS when the ingredient is the same thing" could tempt Flash-Lite to collapse high-similarity distinct items: baking powder into a known "baking soda", evaporated milk into "sweetened condensed milk", flaky finishing salt into "salt". The classify prompt now carries the negative constraint by name — never equate functionally distinct products, even when a known food is close.
-
 ### 🧪 Tests
 - `tests/goldens/test_classify_golden.py::test_functionally_distinct_products_never_collapse`: the three pairs, each with its near-twin on KNOWN FOODS. The classify golden set is re-recorded with the new prompt; the prompt snapshot moves.
 After the live re-tag of the library (2026-10-03: 1,583 recipes written, 0 failed). Cayenne Fix Roadmap F-225 and F-220 (F-225 was filed as F-219 until that ID turned out taken). Needs no migration.
-
 ### 🐛 Fixed — an amount written without a space is an amount (F-225)
 - `parse_use` required a space between the number and the unit, so the model's `{{id|50ml|50ml}}` was corrected to `none` and the chip fell back to the source's words, unscaled. A unit glued to the number is now read; a fraction ("1/2 cup") still is not, since a use is a decimal. Cayenne's `parseUse` reads the same.
-
 ### 🐛 Fixed — the direction-amounts backfill writes and reports as it goes (F-220)
 - `scripts/backfill_direction_amounts.py` sent every recipe to Gemini, then wrote the database, the record and the log in one pass at the end: the live run sat silent for most of an hour, and a crash late in it would have thrown away every call. Each recipe is now written, its record line first and flushed, the moment its call returns; a progress line prints every 50 recipes (`--progress N`, 0 for none); stdout is line-buffered, so a redirected log shows it.
-
 ### 🧪 Tests
 - `test_fat_tokens.py`: `50ml` and `0.5cup` parse. `test_backfill_direction_amounts.py`: with one worker, the first recipe is in the database and the record before the second is sent, and progress prints.
+
 
 ## [9.6.2] — 2026-10-03
 

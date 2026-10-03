@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "1675439cb46bf9c1e8538b08f260810e21c03f0a1340e09f97d49a8c2a67ce9f",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"gnocchi\",\n      \"tags\": []\n    },\n    {\n      \"recipe_id\": \"sponge\",\n      \"tags\": []\n    },\n    {\n      \"recipe_id\": \"minestrone\",\n      \"tags\": [\n        \"Beans & Lentils\"\n      ]\n    },\n    {\n      \"recipe_id\": \"curry\",\n      \"tags\": [\n        \"Chicken\"\n      ]\n    }\n  ]\n}"
+}
