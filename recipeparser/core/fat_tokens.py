@@ -85,6 +85,37 @@ QUANTITY_WORDS = re.compile(
     r"half|quarter|third|thirds|dozen|couple)\b",
     re.IGNORECASE,
 )
+# The words an amount token may hold besides numbers: units, number words and the few words that
+# qualify a measure. Anything else — "1 cup freshly shelled (or frozen) peas" — means the model
+# wrapped the ingredient's name with its quantity, and a quantity-only chip would drop the name.
+# Cayenne's domain/directionMentions.ts holds the same list (QUANTITY_VOCABULARY); keep them alike.
+QUANTITY_VOCABULARY = frozenset("""
+    a an and or to of plus x about approximately approx around roughly scant generous heaped heaping
+    level rounded good large small medium extra
+    one two three four five six seven eight nine ten eleven twelve half halves quarter quarters third
+    thirds dozen couple
+    cup cups c tablespoon tablespoons tbsp tbsps tbs tbl tb teaspoon teaspoons tsp tsps t
+    tablespoonful tablespoonfuls teaspoonful teaspoonfuls spoon spoons spoonful spoonfuls
+    dessertspoon dessertspoons dsp cupful cupfuls teacup teacups gill gills
+    gram grams g gr gm kilogram kilograms kg kgs milligram milligrams mg
+    millilitre millilitres milliliter milliliters ml cl dl litre litres liter liters l
+    ounce ounces oz fl fluid pound pounds lb lbs pint pints pt quart quarts qt gallon gallons
+    pinch pinches dash dashes drop drops splash splashes knob knobs handful handfuls
+    packet packets package packages pkg envelope envelopes sachet sachets can cans tin tins jar jars
+    stick sticks clove cloves sprig sprigs slice slices piece pieces bunch bunches head heads
+    inch inches cm mm glass glasses bottle bottles bag bags box boxes
+""".split())
+_NUMBER_RE = re.compile(r"\d+(?:[.,/]\d+)?|[¼½¾⅐-⅞]")
+
+
+def is_quantity(words: str) -> bool:
+    """Whether ``words`` are a quantity and nothing more: "1/2 cup (60 g)", "two tablespoons", "120ml"."""
+    if not QUANTITY_WORDS.search(words):
+        return False
+    rest = _NUMBER_RE.sub(" ", re.sub(r"\([^)]*\)", " ", words)).lower()
+    return all(token in QUANTITY_VOCABULARY for token in re.findall(r"[a-z]+", rest))
+
+
 # A quantity already in the text just before a token: "1 tablespoon of the ", "½ cup (60 g) ".
 QUANTITY_BEFORE = re.compile(
     r"(?:\d|[¼½¾⅐-⅞]|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|half)\b)"
@@ -122,6 +153,8 @@ def check_mentions(
     cannot have. Returns the directions, rewritten where needed, and one line per change. In order:
 
     - an amount that does not parse becomes ``none``;
+    - an amount on words that hold a quantity and the name together ("1 cup freshly shelled peas")
+      becomes ``none``: the chip would print the quantity alone and lose the name;
     - an amount on words that are not a quantity — the model put it on the ingredient's name —
       becomes ``none`` when the text before already states a quantity ("1 tablespoon of the
       {{oil}}"), ``all`` when it is the line's whole amount ("Place the {{butter}}", 175 g of 175 g),
@@ -145,6 +178,8 @@ def check_mentions(
         ing = by_id.get(m.ingredient_id)
         if use.kind == "invalid":
             effective.append((Use("none"), f"amount {m.raw!r} does not parse"))
+        elif use.kind == "part" and QUANTITY_WORDS.search(m.words) and not is_quantity(m.words):
+            effective.append((Use("none"), "an amount on a quantity and the name together"))
         elif use.kind == "part" and not QUANTITY_WORDS.search(m.words):
             whole = (
                 ing is not None and ing.amount is not None and _unit_key(use.unit) == _unit_key(ing.unit)

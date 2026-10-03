@@ -3,7 +3,15 @@ import logging
 
 import pytest
 
-from recipeparser.core.fat_tokens import Use, check_mentions, is_tagged, parse_use, splice_mentions, strip_fat_tokens
+from recipeparser.core.fat_tokens import (
+    Use,
+    check_mentions,
+    is_quantity,
+    is_tagged,
+    parse_use,
+    splice_mentions,
+    strip_fat_tokens,
+)
 from recipeparser.models import DirectionMention, StructuredIngredient, TokenizedDirection
 
 FLOUR = StructuredIngredient(id="ing_02", amount=0.75, unit="cup", name="all-purpose flour",
@@ -246,3 +254,28 @@ class TestTheFirstSample:
     def test_keeps_the_recipes_own_step_numbers(self):
         directions, _ = splice_mentions(["Mix.", "Bake."], [], [], [3, 4])
         assert [d.step for d in directions] == [3, 4]
+
+
+# The second live sample (after 9.5.1): the model wrapped a quantity and the name together.
+class TestTheSecondSample:
+    PEAS = StructuredIngredient(id="ing_01", amount=1, unit="cup", name="peas",
+                                fallback_string="1 cup freshly shelled (or frozen) peas")
+
+    def test_an_amount_on_a_quantity_and_the_name_together_becomes_none(self):
+        directions = _d("Add {{ing_01|1 cup freshly shelled (or frozen) peas|1 cup}} to it.")
+        checked, changes = check_mentions([self.PEAS], directions)
+        assert checked[0].text == "Add {{ing_01|1 cup freshly shelled (or frozen) peas|none}} to it."
+        assert len(changes) == 1
+
+    @pytest.mark.parametrize("words", [
+        "1/2 cup (60 g)", "two tablespoons", "120ml", "40 grams", "1 packet", "about ½ cup",
+        "2 heaped tablespoons", "1 1/2 cups", "3", "half a cup", "2 to 3 tbsp",
+    ])
+    def test_is_a_quantity(self, words):
+        assert is_quantity(words)
+
+    @pytest.mark.parametrize("words", [
+        "1 cup freshly shelled (or frozen) peas", "2 large eggs", "butter", "175 g butter", "lemon peel",
+    ])
+    def test_is_not_a_quantity(self, words):
+        assert not is_quantity(words)

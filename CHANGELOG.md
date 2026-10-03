@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.6.1] — 2026-10-03
+
+The second dry run of the direction-amounts backfill (after 9.5.1). Needs no migration.
+
+### 🐛 Fixed — an amount on a quantity and the name together is no longer an amount
+- The model wrapped both in one amount token, `Add {{ing_01|1 cup freshly shelled (or frozen) peas|1 cup}}`, which the Cayenne kitchen prints as "Add 1 cup to it". `check_mentions` now requires an amount token's words to be a quantity and nothing more (`is_quantity`: numbers, units, number words and a few qualifiers such as "heaped" and "about", the same list Cayenne's client holds); a token with more becomes `none`, and the words show as written. The prompt gives the example.
+- The prompt names a rate ("1 teaspoon at a time", "2 per ball") as `none`.
+
+### 🧪 Tests
+- `tests/unit/test_fat_tokens.py::TestTheSecondSample`: the peas, and what is and is not a quantity. Prompt snapshots move.
+
 ## [9.6.0] — 2026-10-02
 
 Cayenne Fix Roadmap F-205. Needs no migration.

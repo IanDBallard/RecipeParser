@@ -771,15 +771,16 @@ _MENTION_USES = """   - Say how much of the ingredient each mention uses, as "us
          done", "the butter mixture") are none.
        * an amount - the direction itself writes a quantity for this mention. The words are ONLY
          that quantity as written ("1/2 cup (60 g)", "2", "two tablespoons"), never the
-         ingredient's name, and the use is the quantity as a decimal number and a unit: "0.5 cup",
-         "60 g", "2" for a count. If the direction names the ingredient without writing a
-         quantity beside it, the use is all, rest or none - never an amount, even when you know
-         the line's amount.
+         ingredient's name ("Add 1 cup peas": the words are "1 cup", not "1 cup peas"), and the
+         use is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
+         If the direction names the ingredient without writing a quantity beside it, the use is
+         all, rest or none - never an amount, even when you know the line's amount.
        * rest - what is left after amounts the directions stated earlier: "the remaining flour",
          "the rest of the sugar". The words are the ingredient's name.
        * none - the ingredient is named but no amount follows from the text: "add more flour
          until sticky", "a bit more", "season with salt", "salt to taste", "Salt it", a share
-         ("half the cider", "a third of the flour"), or a later mention of food already added.
+         ("half the cider", "a third of the flour"), a rate ("1 teaspoon at a time", "2 per
+         ball"), or a later mention of food already added.
    - When unsure, say "none". A missing number is safe; a wrong one is not.
    - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour"."""
 
