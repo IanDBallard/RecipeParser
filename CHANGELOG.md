@@ -11,13 +11,15 @@ Every recipe title is stored in title case, so a source that prints its titles i
 
 ### ✨ Changed — titles are stored in house title case
 - REFINE passes every title through `title_case`, before EMBED so the stored and embedded titles agree; a Cayenne-native Paprika restore, which skips REFINE, is title-cased in the same place it is rebuilt. A title the owner types in the app is never recased. This is a deliberate exception to verbatim ingestion's "stored exactly as its writer wrote it" (Cayenne, title-case titles ruling, 2026-10-03).
-- `title_case` now holds for any title, not only ALL-CAPS ones: it capitalises a word's first letter past leading punctuation ("(VEGAN)" → "(Vegan)"), capitalises the word after a colon, and in a title that has lowercase letters keeps a capitals word of up to three letters as an acronym ("BLT", "XO") and keeps "McDonald's", "MacArthur" and "eBay" as written. An ALL-CAPS title carries no such evidence, so only the acronym allowlist survives there.
+- `title_case` now holds for any title, not only ALL-CAPS ones: it capitalises a word's first letter past leading punctuation ("(VEGAN)" → "(Vegan)"), capitalises the word after a colon, and in a title that has lowercase letters keeps a capitals word of up to three letters standing on its own as an acronym ("BLT", "XO"); one inside a run of capitals is a shouted name ("CHOLAR DAL" → "Cholar Dal"). "McDonald's", "MacArthur" and "eBay" keep their shape. An ALL-CAPS title carries no such evidence, so only the acronym allowlist survives there.
+- Foreign particles ("con", "e", "von", "de", "à la", "mit"…) stay lowercase mid-title, unless the writer capitalised one in a mixed-case title ("Ma La Xiang Guo"). "LA" leaves the acronym allowlist: "à la" turned into "à LA".
+- An inner stop word of a hyphenated compound stays lowercase: "Sweet-and-Sour", not "Sweet-And-Sour". The `slow-and-low` test moves with it.
 
 ### 🔧 Added — `scripts/backfill_title_case.py`
 - Plans the change from the live rows and writes one SQL transaction that disables `recipes_own_body_rev` around the UPDATE, so retitling does not send the library to the regeneration worker; each UPDATE matches the title it was planned from. It ends in ROLLBACK unless `--commit`, with a verification SELECT.
 
 ### 🧪 Tests
-- `tests/test_utils.py`: the new rules. `tests/unit/stages/test_refine_title.py`: REFINE and the restore shim. `tests/unit/scripts/test_backfill_title_case.py`: the plan and the transaction. The stage goldens for `text-pages.pdf` and `gutenberg-multi.epub` move: their ALL-CAPS titles are now title-cased.
+- `tests/test_utils.py`: the new rules, each from a title in the live library's dry-run plan. `tests/unit/stages/test_refine_title.py`: REFINE and the restore shim. `tests/unit/scripts/test_backfill_title_case.py`: the plan and the transaction. The stage goldens for `text-pages.pdf` and `gutenberg-multi.epub` move: their ALL-CAPS titles are now title-cased.
 
 ## [9.6.3] — 2026-10-03
 

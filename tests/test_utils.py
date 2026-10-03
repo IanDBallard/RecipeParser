@@ -78,7 +78,8 @@ class TestTitleCase:
         assert result == "Stir-In Sauce"
 
     def test_multiple_hyphens(self):
-        assert title_case("slow-and-low BBQ ribs") == "Slow-And-Low BBQ Ribs"
+        # Inner stop words stay lowercase; the first and last parts are capitalised.
+        assert title_case("slow-and-low BBQ ribs") == "Slow-and-Low BBQ Ribs"
 
     # ------------------------------------------------------------------
     # Whitespace handling
@@ -168,3 +169,27 @@ class TestTitleCase:
 
     def test_hyphenated_parts_follow_the_mixed_case_rules(self):
         assert title_case("BBQ-glazed ribs") == "BBQ-Glazed Ribs"
+
+    def test_inner_stop_words_of_a_hyphenated_compound_stay_lowercase(self):
+        assert title_case("Sweet-and-sour Pork") == "Sweet-and-Sour Pork"
+        assert title_case("crossing-the-river choy sum") == "Crossing-the-River Choy Sum"
+
+    def test_la_is_a_word_not_los_angeles(self):
+        assert title_case("Scallops a la Plancha") == "Scallops a la Plancha"
+        assert title_case("PORK CHOPS A LA JAFFREY") == "Pork Chops a la Jaffrey"
+
+    def test_foreign_particles_stay_lowercase_mid_title(self):
+        assert title_case("Perfect Chilli con Carne") == "Perfect Chilli con Carne"
+        assert title_case("Spaghetti Aglio e Olio") == "Spaghetti Aglio e Olio"
+        assert title_case("NUSSTORTE VON HAMMERSTEIN") == "Nusstorte von Hammerstein"
+        assert title_case("EMPANADILLAS DE SARDINILLAS") == "Empanadillas de Sardinillas"
+
+    def test_a_particle_the_writer_capitalised_in_a_mixed_case_title_is_kept(self):
+        assert title_case("Ma La Xiang Guo") == "Ma La Xiang Guo"
+        assert title_case("Salad De Aguacate Y Tomate") == "Salad De Aguacate Y Tomate"
+
+    def test_a_short_caps_word_inside_a_caps_run_is_not_an_acronym(self):
+        assert title_case("QUARKKUCHEN MIT MANDARINEN Mandarin Orange Cheesecake") == (
+            "Quarkkuchen mit Mandarinen Mandarin Orange Cheesecake")
+        assert title_case("BENGALI CHOLAR DAL Creamy Dal") == "Bengali Cholar Dal Creamy Dal"
+        assert title_case("Noodle Soup (GAENG JUED WOON SEN)") == "Noodle Soup (Gaeng Jued Woon Sen)"
