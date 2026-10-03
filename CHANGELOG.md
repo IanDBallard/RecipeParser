@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [9.5.2] — 2026-10-02
+## [9.6.1] — 2026-10-03
 
 The second dry run of the direction-amounts backfill (after 9.5.1). Needs no migration.
 
@@ -15,6 +15,7 @@ The second dry run of the direction-amounts backfill (after 9.5.1). Needs no mig
 
 ### 🧪 Tests
 - `tests/unit/test_fat_tokens.py::TestTheSecondSample`: the peas, and what is and is not a quantity. Prompt snapshots move.
+
 ## [9.6.0] — 2026-10-02
 
 Cayenne Fix Roadmap F-205. Needs no migration.
