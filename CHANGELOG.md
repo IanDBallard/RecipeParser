@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [9.6.3] — 2026-10-03
 
+The shopping classifier keeps functionally distinct products apart. Needs no migration; the container restart deploys it.
+
+### 🐛 Fixed — a near-twin known food no longer swallows a distinct product
+- "Reuse a food from KNOWN FOODS when the ingredient is the same thing" could tempt Flash-Lite to collapse high-similarity distinct items: baking powder into a known "baking soda", evaporated milk into "sweetened condensed milk", flaky finishing salt into "salt". The classify prompt now carries the negative constraint by name — never equate functionally distinct products, even when a known food is close.
+
+### 🧪 Tests
+- `tests/goldens/test_classify_golden.py::test_functionally_distinct_products_never_collapse`: the three pairs, each with its near-twin on KNOWN FOODS. The classify golden set is re-recorded with the new prompt; the prompt snapshot moves.
 After the live re-tag of the library (2026-10-03: 1,583 recipes written, 0 failed). Cayenne Fix Roadmap F-225 and F-220 (F-225 was filed as F-219 until that ID turned out taken). Needs no migration.
 
 ### 🐛 Fixed — an amount written without a space is an amount (F-225)

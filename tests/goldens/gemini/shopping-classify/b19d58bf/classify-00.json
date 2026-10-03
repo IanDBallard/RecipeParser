@@ -12,6 +12,6 @@
       "thinking_budget": 0
     }
   },
-  "prompt_sha256": "c97bd38426a6e6351c2acb758d0cc7d6d5b3666888f97f3a8191f818b592abf0",
+  "prompt_sha256": "2774932f76651fa5df78c2f83e791fff2de3e54f84e7e89dc3149590bb718bf7",
   "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"garlic\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 0.4,\n      \"count_unit\": \"head\"\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"garlic\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 0.2,\n      \"count_unit\": \"head\"\n    }\n  ]\n}"
 }

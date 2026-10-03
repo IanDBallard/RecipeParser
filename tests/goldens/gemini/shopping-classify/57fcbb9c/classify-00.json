@@ -12,6 +12,6 @@
       "thinking_budget": 0
     }
   },
-  "prompt_sha256": "fb74f526f0e762f5d62e7768689450ee9356850d1d9a65cb1f8b36d741e42992",
+  "prompt_sha256": "75dcd15dc385a0f23fc0a95a37d88cd21a8b20d28a4627b452cc416ce7eb67ab",
   "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"chopped tomatoes\",\n      \"aisle\": \"tins_jars\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"tin\"\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"plain flour\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"crème fraîche\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null\n    }\n  ]\n}"
 }

@@ -12,6 +12,6 @@
       "thinking_budget": 0
     }
   },
-  "prompt_sha256": "d4382e8ee929458271cd1868b0696443478c392975f0917144a95f7799e5c89a",
+  "prompt_sha256": "36817165dca0fd40bfba06fefb994adf8762b647d221da5eaa47ff6d4601723c",
   "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\"\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\"\n    }\n  ]\n}"
 }

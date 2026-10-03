@@ -12,6 +12,6 @@
       "thinking_budget": 0
     }
   },
-  "prompt_sha256": "bf925bc5365bc2bbd8a7970d01ca578dfd425616f4dc4e29c87b933326078646",
+  "prompt_sha256": "9902cf0b277d614985a5e9061eb0a3d5050dd7ad323475b8376aa95080dfc629",
   "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null\n    }\n  ]\n}"
 }
