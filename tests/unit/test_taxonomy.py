@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import pytest
 
-from recipeparser.core.taxonomy import axes_from_rows, descendants_of, root_of
+from recipeparser.core.taxonomy import (
+    axes_from_rows,
+    descendants_of,
+    most_specific,
+    parents_from_rows,
+    root_of,
+)
 
 THREE_DEEP = [
     {"id": "A", "name": "Cuisine", "parent_id": None},
@@ -94,3 +100,58 @@ def test_build_axes_delegates_and_is_unchanged():
     source = SupabaseCategorySource.__new__(SupabaseCategorySource)
     assert source._build_axes(THREE_DEEP) == axes_from_rows(THREE_DEEP)
     assert source._build_axes(THREE_DEEP) == {"Cuisine": ["Asian", "Thai"], "Quick": ["Quick"]}
+
+
+class TestParentsFromRows:
+    """The tree's shape, put back beside the flattened axes (Cayenne F-205)."""
+
+    def test_a_nested_tag_names_its_parent(self):
+        assert parents_from_rows(THREE_DEEP) == {"Thai": "Asian"}
+
+    def test_a_tag_directly_under_its_axis_has_no_parent(self):
+        # The axis is never a tag offered beside its children, so it is not a parent to show.
+        assert "Asian" not in parents_from_rows(THREE_DEEP)
+
+    def test_every_level_of_a_four_deep_tree(self):
+        rows = THREE_DEEP + [{"id": "K", "name": "Isan", "parent_id": "L"}]
+        assert parents_from_rows(rows) == {"Thai": "Asian", "Isan": "Thai"}
+
+    def test_an_orphan_and_a_blank_name_are_skipped(self):
+        rows = THREE_DEEP + [
+            {"id": "O", "name": "Orphan", "parent_id": "gone"},
+            {"id": "B", "name": "  ", "parent_id": "F"},
+        ]
+        assert parents_from_rows(rows) == {"Thai": "Asian"}
+
+
+class TestMostSpecific:
+    PARENTS = {"Thai": "Asian", "Isan": "Thai"}
+
+    def test_a_parent_beside_its_child_is_dropped(self):
+        assert most_specific(["Asian", "Thai"], self.PARENTS) == ["Thai"]
+
+    def test_a_grandparent_is_dropped_too(self):
+        assert most_specific(["Isan", "Asian"], self.PARENTS) == ["Isan"]
+
+    def test_unrelated_tags_and_their_order_are_kept(self):
+        assert most_specific(["Italian", "Thai"], self.PARENTS) == ["Italian", "Thai"]
+
+    def test_duplicates_are_dropped(self):
+        assert most_specific(["Thai", "Thai"], self.PARENTS) == ["Thai"]
+
+    def test_a_parent_alone_is_kept(self):
+        assert most_specific(["Asian"], self.PARENTS) == ["Asian"]
+
+    def test_two_tags_on_a_loop_are_both_kept(self):
+        # A cross-device race can loop a chain; neither tag is strictly above the other.
+        assert most_specific(["A", "B"], {"A": "B", "B": "A"}) == ["A", "B"]
+
+
+def test_the_supabase_source_loads_parents_from_the_same_rows(monkeypatch):
+    from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
+
+    source = SupabaseCategorySource.__new__(SupabaseCategorySource)
+    monkeypatch.setattr(source, "_fetch_categories", lambda user_id: THREE_DEEP)
+    assert source.load_parents("u1") == {"Thai": "Asian"}
+    monkeypatch.setattr(source, "_fetch_categories", lambda user_id: [])
+    assert source.load_parents("u1") == {}

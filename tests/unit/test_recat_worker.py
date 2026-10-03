@@ -155,7 +155,7 @@ def test_no_pending_job():
 
 def test_job_runs_in_batches_and_inserts_additively():
     fake = _fake_with_job(["running"] * 5, _recipes(25), count=25)
-    cat = MagicMock(side_effect=lambda recipes, axes, client: {recipes[0]["id"]: ["Thai", "Nope"]})
+    cat = MagicMock(side_effect=lambda recipes, axes, client, parents=None: {recipes[0]["id"]: ["Thai", "Nope"]})
     assert _run_to_end(_worker(fake, cat), fake) == 4             # 3 batches, then the empty page
     assert cat.call_count == 3                                   # 10 + 10 + 5
     assert cat.call_args.args[1] == {"Cuisine": ["Thai"]}        # only the new tag offered
@@ -167,6 +167,20 @@ def test_job_runs_in_batches_and_inserts_additively():
     final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
     assert final["status"] == "done" and final["stage"] == "DONE" and final["progress_pct"] == 100
     assert final["recipe_count"] == 3
+
+
+def test_a_whole_axis_job_shows_the_tree_and_writes_only_the_most_specific_tag():
+    # Cayenne F-205: a nested tag reaches the model under its parent, and a parent
+    # picked beside its child is not written; the axis row itself is never offered.
+    fake = _fake_with_job(["running"] * 3, _recipes(1), count=1, category_ids=("ax1", "t1", "t2", "t3"))
+    fake.responses["categories"] = CATS + [{"id": "t3", "name": "Isan", "parent_id": "t2"}]
+    cat = MagicMock(side_effect=lambda recipes, axes, client, parents=None: {
+        recipes[0]["id"]: ["Cuisine", "Thai", "Isan"]})
+    _run_to_end(_worker(fake, cat), fake)
+    assert cat.call_args.args[1] == {"Cuisine": ["Italian", "Thai", "Isan"]}
+    assert cat.call_args.kwargs["parents"] == {"Isan": "Thai"}
+    rows = _ops(fake, "recipe_categories")[0][0][1][0]
+    assert [r["category_id"] for r in rows] == ["t3"]
 
 
 def test_cancel_between_batches_finishes_the_job_as_cancelled():
