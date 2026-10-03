@@ -133,3 +133,38 @@ class TestTitleCase:
     def test_stop_word_only_title(self):
         # A title that is just a stop word — must still be capitalised (first == last)
         assert title_case("a") == "A"
+
+    # ------------------------------------------------------------------
+    # Every stored title passes through title_case (title-case titles ruling)
+    # ------------------------------------------------------------------
+
+    def test_word_led_by_punctuation_capitalises_its_first_letter(self):
+        assert title_case("CHICKEN CURRY (VEGAN)") == "Chicken Curry (Vegan)"
+        assert title_case('"BEST EVER" BROWNIES') == '"Best Ever" Brownies'
+
+    def test_word_after_a_colon_is_capitalised(self):
+        assert title_case("TACOS: THE BEST") == "Tacos: The Best"
+        assert title_case("tacos: a love story") == "Tacos: A Love Story"
+
+    def test_short_caps_word_in_a_mixed_case_title_is_an_acronym(self):
+        assert title_case("BLT sandwich") == "BLT Sandwich"
+        assert title_case("Pork with XO sauce") == "Pork with XO Sauce"
+
+    def test_long_caps_word_in_a_mixed_case_title_is_recased(self):
+        assert title_case("BEST EVER chocolate cake") == "Best Ever Chocolate Cake"
+
+    def test_caps_stop_word_in_a_mixed_case_title_is_not_an_acronym(self):
+        assert title_case("Chicken IN a Pot") == "Chicken in a Pot"
+
+    def test_short_caps_word_in_an_all_caps_title_is_recased(self):
+        assert title_case("HOT POT") == "Hot Pot"
+
+    def test_mc_and_mac_names_keep_their_inner_capital(self):
+        assert title_case("McDonald's-style fries") == "McDonald's-Style Fries"
+        assert title_case("Chicken MacArthur") == "Chicken MacArthur"
+
+    def test_lowercase_led_brand_keeps_its_shape(self):
+        assert title_case("eBay find: lemon bars") == "eBay Find: Lemon Bars"
+
+    def test_hyphenated_parts_follow_the_mixed_case_rules(self):
+        assert title_case("BBQ-glazed ribs") == "BBQ-Glazed Ribs"
