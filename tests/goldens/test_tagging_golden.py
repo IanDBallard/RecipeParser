@@ -14,6 +14,17 @@ the categorisation prompt text, with:
     pytest tests/goldens/test_tagging_golden.py --record-gemini -n0
 (a real GOOGLE_API_KEY in the shell; the suite's default dummy key refuses).
 Six paid calls.
+
+KNOWN FAILING on the pinned model, recorded 2026-10-03: three of these six fail
+on gemini-3.1-flash-lite (gnocchi and the sponge take Egg, the minestrone takes
+Vegetarian). It is the model and not the wording -- the same prompts score 96/96
+on gemini-3.8-flash -- and the owner ruled on 2026-10-03 to keep the cheaper tier
+(Cayenne Fix Roadmap F-205; config.py says what that costs). The assertions are
+left as they are, asserting what the tags should be, rather than relaxed to match
+what this model does. Their disposition is still open: either they are marked
+expected failures naming the model, so the file keeps pinning the prompt and
+turns green by itself on an upgrade, or the set stays unrecorded and asserts
+nothing. Do not "fix" them by weakening an assertion.
 """
 from __future__ import annotations
 

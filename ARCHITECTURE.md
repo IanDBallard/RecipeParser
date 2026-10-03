@@ -510,6 +510,15 @@ def run(args):
 
 If the category source returns an empty tree (no categories configured), the engine's categorizer falls back to `["Uncategorized"]` for all recipes. This is logged as a warning, not an error.
 
+### What the pinned model can and cannot judge
+
+`gemini.TAGGING_RULES` — shared by the refine prompt's categorisation section and by `build_categorize_batch_prompt` (#88) — asks for a tag that is true of the dish as a whole. Measured on 2026-10-03 through the real refine path, over 14 recipes whose right answer is uncontroversial with several runs each (the numbers are in Cayenne's Fix Roadmap, F-205), the pinned `gemini-3.1-flash-lite` obeys those rules **only where an axis has a legitimate answer**:
+
+- Reliable: a technique over a preliminary step (searing before a braise, boiling before a bake) and every positive control — 100% across runs.
+- Unreliable: an axis that would otherwise be empty. Gnocchi, a Victoria sponge and pancakes always take Egg; French onion soup takes Beef from its stock; a risotto made with chicken stock takes Vegetarian. Chicken schnitzel and beef meatballs never take Egg, because Protein already has an answer.
+
+The same prompt scores 96/96 on `gemini-3.8-flash` and 89/96 on `gemini-3.5-flash`, so this is a capability limit rather than a prompt defect, and no wording tried on flash-lite fixed the two egg cases. The owner ruled on 2026-10-03 to stay on flash-lite, because `GEMINI_MODEL` drives every call in this service and not only tagging. Three things follow for this codebase. `tests/goldens/test_tagging_golden.py` cannot pass as written on the pinned model. `scripts/retag_axis.py` must not be run as a blind per-axis replace on an affected axis, since it would drop a cook's own links and write the same overtags back. And `gemini-3.5-flash-lite` is not an upgrade path: it returned no usable refinement in 42 of 42 runs. When re-measuring, note that the refine call samples at temperature 0.1, so a single observation of a tagging case is not a measurement.
+
 ## 9. Output Writers
 
 Writers consume an `ExtractionResult` and produce a file on disk. They are the adapter's responsibility to invoke after the engine completes.
