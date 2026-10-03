@@ -42,8 +42,9 @@ import csv
 import json
 import os
 import sys
+import time
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -183,7 +184,11 @@ def main() -> int:
     ap.add_argument("--restore", type=Path, help="Write this record's tokenized_directions back; nothing else.")
     ap.add_argument("--force", action="store_true", help="Re-tag recipes whose tokens already carry a use.")
     ap.add_argument("--verbose", action="store_true", help="Print every re-tagged recipe's new steps.")
+    ap.add_argument("--progress", type=int, default=50, help="Print a progress line every N recipes (0: none).")
     args = ap.parse_args()
+    # Redirected to a file, stdout is block-buffered and a long run's log stays empty; flush per line.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
     if args.live and not args.restore and not args.record:
         raise SystemExit("--live needs --record: the record is the only way back.")
 
@@ -214,46 +219,60 @@ def main() -> int:
         elif args.limit is None or sent < args.limit:
             todo.append(row)
             sent += 1
-    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-        results.extend(pool.map(lambda r: plan_row(r, tag, force=args.force), todo))
-
     writer = None
     record_fh = None
     if args.live:
         record_fh = args.record.open("w", newline="", encoding="utf-8")
         writer = csv.writer(record_fh)
         writer.writerow(["id", "title", "tokenized_directions"])
+        record_fh.flush()
 
-    written, raced, failed_writes = 0, 0, 0
-    for r in results:
+    counts = {"written": 0, "raced": 0, "failed_writes": 0, "done": 0}
+    started = time.monotonic()
+
+    def finish(r: RowResult) -> None:
+        """Report, record and write one recipe the moment its call returns (F-220)."""
+        results.append(r)
+        counts["done"] += 1
         if r.status == "failed":
             print(f"  FAILED  {r.id}  {r.title!r}: {r.error}")
-        if r.status != "tagged":
-            continue
-        if args.verbose:
-            print(f"\n  {r.title!r}  ({r.id})")
-            for d in r.directions:
-                print(f"    {d.step}. {d.text}")
-            for line in r.dropped:
-                print(f"    dropped: {line}")
-            for line in r.demoted:
-                print(f"    corrected: {line}")
-        if not args.live:
-            continue
-        assert writer is not None
-        writer.writerow([r.id, r.title, json.dumps(r.before)])
-        record_fh.flush()  # type: ignore[union-attr]
-        try:
-            if write_row(sb, by_id[r.id], r.directions):
-                written += 1
-            else:
-                raced += 1
-                print(f"  MOVED   {r.id}  {r.title!r}: edited during the run; left for the regeneration worker")
-        except Exception as exc:  # noqa: BLE001
-            failed_writes += 1
-            print(f"  FAILED to write {r.id} {r.title!r}: {exc}")
+        elif r.status == "tagged":
+            if args.verbose:
+                print(f"\n  {r.title!r}  ({r.id})")
+                for d in r.directions:
+                    print(f"    {d.step}. {d.text}")
+                for line in r.dropped:
+                    print(f"    dropped: {line}")
+                for line in r.demoted:
+                    print(f"    corrected: {line}")
+            if args.live:
+                assert writer is not None and record_fh is not None
+                # The record line is written, and flushed, before the row: the record is the way back.
+                writer.writerow([r.id, r.title, json.dumps(r.before)])
+                record_fh.flush()
+                try:
+                    if write_row(sb, by_id[r.id], r.directions):
+                        counts["written"] += 1
+                    else:
+                        counts["raced"] += 1
+                        print(f"  MOVED   {r.id}  {r.title!r}: edited during the run; left for the regeneration worker")
+                except Exception as exc:  # noqa: BLE001
+                    counts["failed_writes"] += 1
+                    print(f"  FAILED to write {r.id} {r.title!r}: {exc}")
+        if args.progress and (counts["done"] % args.progress == 0 or counts["done"] == len(todo)):
+            minutes = (time.monotonic() - started) / 60
+            print(f"progress: {counts['done']}/{len(todo)} sent to Gemini, {counts['written']} written, "
+                  f"{minutes:.1f} min")
+
+    # Each recipe is handled as its call returns, so a crash loses only the calls in flight, and the
+    # log shows the run moving (F-220: the first live run sat silent for most of an hour).
+    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        futures = [pool.submit(plan_row, r, tag, args.force) for r in todo]
+        for future in as_completed(futures):
+            finish(future.result())
     if record_fh:
         record_fh.close()
+    written, raced, failed_writes = counts["written"], counts["raced"], counts["failed_writes"]
 
     statuses, dropped, corrected = summarise(results)
     print(f"\n{len(rows)} recipes read")

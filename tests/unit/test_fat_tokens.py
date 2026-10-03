@@ -40,6 +40,8 @@ def _d(*texts):
     ("0.5 cup", Use("part", 0.5, "cup")),
     ("60 g", Use("part", 60.0, "g")),
     ("2", Use("part", 2.0, None)),
+    ("50ml", Use("part", 50.0, "ml")),
+    ("0.5cup", Use("part", 0.5, "cup")),
     ("1/2 cup", Use("invalid")),
     ("0 cup", Use("invalid")),
     ("some", Use("invalid")),
