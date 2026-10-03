@@ -3,14 +3,28 @@
   '''
   
   You are a culinary classifier. The user has just added these tags to their taxonomy:
-  - Cuisine: American, British, French, Italian
-  - Meal Type: Breakfast, Dessert, Dinner, Bread
+  - Cuisine: "American", "British", "French", "Italian"
+  - Meal Type: "Breakfast", "Dessert", "Dinner", "Bread"
   
-  For EACH recipe below, list which of the tags above apply. Rules:
+  For EACH recipe below, list which of the tags above it belongs under. Rules:
   - Use ONLY tags from the list above, spelled exactly. Never invent a tag.
-  - Return an empty list when none apply. Most recipes will match nothing.
+  - Return an empty list when none fits.
   - Return one result per recipe id, in any order.
   
+  TAGGING RULES:
+  - A tag must be true of the dish as a whole, not of one ingredient in it or one step in making it.
+  - The test for every tag: would a cook browsing that tag expect to find this recipe there? If not, leave it off.
+    * An ingredient that binds, enriches, seasons, garnishes, or makes the stock or sauce does not make
+      the dish about that ingredient: eggs in a dough, chicken stock in a soup, butter in a sauce.
+    * A step on the way does not name how the dish is cooked: browning meat before braising it,
+      boiling pasta before baking it.
+    * The same test leaves off a tag the whole dish fails: a soup made with chicken stock is not meat-free.
+  - Usually one tag per axis. Choose a second only when the dish belongs equally under both.
+  - Prefer no tag to a doubtful one. Many recipes match nothing on an axis; return [] for it.
+  - A tag listed as "A" (under "B") is a kind of B. Choose the most specific tag that fits,
+    never together with a tag it is under.
+  
+  RECIPES:
   RECIPE ID: r1
   TITLE: Lasagne
   INGREDIENTS:
@@ -265,8 +279,21 @@
        the SOURCE HOST exactly as given. One short quote.
      - Leave both null when nothing above applies.
   
-  3. CATEGORIZATION (grid_categories):
-     Classify this recipe using the user's taxonomy axes below. For each axis, select 0-2 tags that best describe the recipe. Return [] for any axis that does not apply. NEVER invent tags outside the provided lists.
+  5. CATEGORIZATION (grid_categories):
+     Classify this recipe using the user's taxonomy axes below, by the TAGGING RULES. NEVER invent tags outside the provided lists.
+     TAGGING RULES:
+     - A tag must be true of the dish as a whole, not of one ingredient in it or one step in making it.
+     - The test for every tag: would a cook browsing that tag expect to find this recipe there? If not, leave it off.
+       * An ingredient that binds, enriches, seasons, garnishes, or makes the stock or sauce does not make
+         the dish about that ingredient: eggs in a dough, chicken stock in a soup, butter in a sauce.
+       * A step on the way does not name how the dish is cooked: browning meat before braising it,
+         boiling pasta before baking it.
+       * The same test leaves off a tag the whole dish fails: a soup made with chicken stock is not meat-free.
+     - Usually one tag per axis. Choose a second only when the dish belongs equally under both.
+     - Prefer no tag to a doubtful one. Many recipes match nothing on an axis; return [] for it.
+     - A tag listed as "A" (under "B") is a kind of B. Choose the most specific tag that fits,
+       never together with a tag it is under.
+     AXES:
      - Cuisine: ["American", "British", "French", "Italian"]
      - Meal Type: ["Breakfast", "Dessert", "Dinner", "Bread"]
   SOURCE HOST: taste.com.au
@@ -369,8 +396,21 @@
        the SOURCE HOST exactly as given. One short quote.
      - Leave both null when nothing above applies.
   
-  3. CATEGORIZATION (grid_categories):
-     Classify this recipe using the user's taxonomy axes below. For each axis, select 0-2 tags that best describe the recipe. Return [] for any axis that does not apply. NEVER invent tags outside the provided lists.
+  5. CATEGORIZATION (grid_categories):
+     Classify this recipe using the user's taxonomy axes below, by the TAGGING RULES. NEVER invent tags outside the provided lists.
+     TAGGING RULES:
+     - A tag must be true of the dish as a whole, not of one ingredient in it or one step in making it.
+     - The test for every tag: would a cook browsing that tag expect to find this recipe there? If not, leave it off.
+       * An ingredient that binds, enriches, seasons, garnishes, or makes the stock or sauce does not make
+         the dish about that ingredient: eggs in a dough, chicken stock in a soup, butter in a sauce.
+       * A step on the way does not name how the dish is cooked: browning meat before braising it,
+         boiling pasta before baking it.
+       * The same test leaves off a tag the whole dish fails: a soup made with chicken stock is not meat-free.
+     - Usually one tag per axis. Choose a second only when the dish belongs equally under both.
+     - Prefer no tag to a doubtful one. Many recipes match nothing on an axis; return [] for it.
+     - A tag listed as "A" (under "B") is a kind of B. Choose the most specific tag that fits,
+       never together with a tag it is under.
+     AXES:
      - Cuisine: ["American", "British", "French", "Italian"]
      - Meal Type: ["Breakfast", "Dessert", "Dinner", "Bread"]
   SOURCE HOST: none
@@ -888,7 +928,7 @@
       'GridCategories': dict({
         'properties': dict({
           'Cuisine': dict({
-            'description': 'Tags for the \'Cuisine\' axis. Choose 0-2 tags from this exact list: ["American", "British", "French", "Italian"]. Return [] if none apply — do NOT invent tags outside this list.',
+            'description': 'Tags for the \'Cuisine\' axis, judged by the TAGGING RULES: usually one, at most two, [] when none is true of the dish as a whole. Choose only from this exact list: ["American", "British", "French", "Italian"]. Do NOT invent tags outside this list.',
             'items': dict({
               'type': 'string',
             }),
@@ -896,7 +936,7 @@
             'type': 'array',
           }),
           'Meal Type': dict({
-            'description': 'Tags for the \'Meal Type\' axis. Choose 0-2 tags from this exact list: ["Breakfast", "Dessert", "Dinner", "Bread"]. Return [] if none apply — do NOT invent tags outside this list.',
+            'description': 'Tags for the \'Meal Type\' axis, judged by the TAGGING RULES: usually one, at most two, [] when none is true of the dish as a whole. Choose only from this exact list: ["Breakfast", "Dessert", "Dinner", "Bread"]. Do NOT invent tags outside this list.',
             'items': dict({
               'type': 'string',
             }),
@@ -1056,7 +1096,7 @@
       }),
       'grid_categories': dict({
         '$ref': '#/$defs/GridCategories',
-        'description': "Multipolar categorization. For each axis, pick 0-2 matching tags from the provided list. Return [] for axes that don't apply.",
+        'description': 'Multipolar categorization. For each axis, pick the tags the TAGGING RULES allow from the provided list: usually one, at most two. Return [] for axes where none fits.',
       }),
       'source_uom_system_detected': dict({
         'anyOf': list([

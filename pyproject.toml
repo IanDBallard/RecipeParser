@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recipeparser"
-version = "9.5.2"
+version = "9.6.0"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -121,6 +121,10 @@ select = ["E", "F", "I", "TID"]
 "tests/goldens/test_image_recovery_golden.py" = ["TID"]
 # This test verifies the unmatched archive round-trips through PaprikaReader by design.
 "tests/unit/scripts/test_extract_unmatched_paprika.py" = ["TID"]
+# The taxonomy tests check the Supabase source delegates to core.taxonomy, by design.
+"tests/unit/test_taxonomy.py" = ["TID"]
+# The tagging-scope tests hold the recategorise worker's offer to the ingest's (Cayenne F-205).
+"tests/unit/test_tagging_scope.py" = ["TID"]
 # Picture generation test has long assertion lines that cannot easily be split.
 "tests/unit/test_picture_gen.py" = ["E501"]
 

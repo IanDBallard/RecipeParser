@@ -123,3 +123,53 @@ def descendants_of(category_id: str, rows: Sequence[Mapping[str, Any]]) -> List[
         out.append(current)
         queue.extend(children.get(current, []))
     return out
+
+
+def parents_from_rows(rows: Sequence[Mapping[str, Any]]) -> Dict[str, str]:
+    """
+    ``{tag name: parent tag name}`` for every tag nested below another tag.
+
+    A tag directly under its axis has no entry: the axis is not a tag the model
+    can choose beside it (``axes_from_rows`` offers an axis only when it has no
+    children).  The flattened axes hide the tree from the model, and this is
+    what puts it back: the prompts show ``Thai`` as under ``Asian``, and
+    ``most_specific`` drops ``Asian`` when the model picks both, since the
+    library filter already finds Thai under Asian (Cayenne Fix Roadmap F-205).
+
+    Names identify categories: the unique ``(user_id, name)`` index makes a
+    duplicate unrepresentable (D6).
+    """
+    by_id = _index(rows)
+    parents: Dict[str, str] = {}
+    for row in rows:
+        name = (row.get("name") or "").strip()
+        parent = by_id.get(row.get("parent_id") or "")
+        if not name or parent is None or not parent.get("parent_id"):
+            continue
+        parent_name = (parent.get("name") or "").strip()
+        if parent_name:
+            parents[name] = parent_name
+    return parents
+
+
+def most_specific(tags: Sequence[str], parents: Mapping[str, str]) -> List[str]:
+    """
+    ``tags`` without any tag that is an ancestor of another tag in it, order kept.
+
+    Cycle-safe: a parent chain that loops (a cross-device race the client
+    reports as an invalid hierarchy) stops at the first repeat, and two tags
+    on one loop are each other's ancestor, so neither is dropped.
+    """
+    chosen = list(dict.fromkeys(tags))
+
+    def chain(tag: str) -> Set[str]:
+        seen: Set[str] = set()
+        current = parents.get(tag)
+        while current and current not in seen:
+            seen.add(current)
+            current = parents.get(current)
+        return seen
+
+    above = {tag: chain(tag) for tag in chosen}
+    # Strictly above: on a loop two tags are each other's ancestor, and neither is dropped.
+    return [t for t in chosen if not any(t in above[u] and u not in above[t] for u in chosen if u != t)]

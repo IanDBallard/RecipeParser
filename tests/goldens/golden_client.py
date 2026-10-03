@@ -38,6 +38,8 @@ _STAGE_RULES: Tuple[Tuple[str, str], ...] = (
     # classify must precede table too: its prompt lists the "bakery" aisle,
     # which contains table's "baker" marker.
     ("classify", "grocery shopping classifier"),
+    # categorize too: its tagging rules are free text and must never reach table.
+    ("categorize", "culinary classifier"),
     ("table", "baker"),
 )
 
@@ -48,6 +50,7 @@ _BODY_MARKERS = {
     "table": ("Text:",),
     "refine": ("RAW RECIPE:",),
     "classify": ("KNOWN FOODS:",),
+    "categorize": ("RECIPES:",),
     "toc-parse": (),
     "toc-classify": (),
     "vision": (),

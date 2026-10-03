@@ -394,7 +394,7 @@ def test_on_result_fires_per_recipe_and_on_skip_names_the_failed_chunk():
     with patch.object(
         RecipePipeline,
         "_process_chunk",
-        side_effect=lambda chunk, stages, axes: (
+        side_effect=lambda chunk, stages, axes, parents=None: (
             ChunkResult([_make_ingest_response("Good One")], []) if chunk.text == "good" else _raise(RuntimeError("boom"))
         ),
     ):
@@ -421,7 +421,7 @@ def test_a_raising_on_result_does_not_abort_the_run():
     with patch.object(
         RecipePipeline,
         "_process_chunk",
-        side_effect=lambda chunk, stages, axes: ChunkResult([_make_ingest_response(chunk.text)], []),
+        side_effect=lambda chunk, stages, axes, parents=None: ChunkResult([_make_ingest_response(chunk.text)], []),
     ):
         returned = pipeline.run(chunks, on_result=lambda _r: (_ for _ in ()).throw(RuntimeError("write failed")))
 
@@ -444,7 +444,7 @@ def test_on_skip_reports_submission_position_not_completion_order():
     ]
     skips_seen: List[tuple] = []
 
-    def _side_effect(chunk, stages, axes):
+    def _side_effect(chunk, stages, axes, parents=None):
         if chunk.text == "bad-1":
             raise RuntimeError("boom")
         # Slow successes finish after the fast failure, so completion order
@@ -894,3 +894,49 @@ def test_a_rewritten_title_is_reported_even_when_a_later_stage_fails_the_chunk()
     assert results == []
     assert ("ingredient lines did not match the source: Carbonara", 0) in skips_seen
     assert ("RuntimeError: refine boom", 0) in skips_seen
+
+
+# ---------------------------------------------------------------------------
+# Test: the tree reaches REFINE and CATEGORIZE (Cayenne Fix Roadmap F-205)
+# ---------------------------------------------------------------------------
+
+
+class _NestedCategorySource(CategorySource):
+    def __init__(self, parents_error: bool = False) -> None:
+        self.parents_error = parents_error
+
+    def load_axes(self, user_id: str = "") -> Dict[str, List[str]]:
+        return {"Cuisine": ["Asian", "Italian", "Thai"]}
+
+    def load_category_ids(self, user_id: str = "") -> Dict[str, str]:
+        return {}
+
+    def load_parents(self, user_id: str = "") -> Dict[str, str]:
+        if self.parents_error:
+            raise RuntimeError("categories unreachable")
+        return {"Thai": "Asian"}
+
+
+def _run_nested(source: CategorySource):
+    GlobalRateLimiter().reset()
+    pipeline = RecipePipeline(client=MagicMock(), controller=PipelineController(), category_source=source)
+    refined = _make_refinement("Green Curry")
+    refined.grid_categories = {"Cuisine": ["Asian", "Thai"]}
+    chunk = Chunk(text="Green curry ...", input_type=InputType.URL)
+    with patch(_PATCH_EXTRACT, return_value=Extraction([_named("Green Curry", None)], [])), \
+         patch(_PATCH_REFINE, return_value=refined) as refine, \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        results = pipeline.run([chunk])
+    return refine, results
+
+
+def test_the_tree_reaches_refine_and_a_parent_beside_its_child_is_not_kept():
+    refine, results = _run_nested(_NestedCategorySource())
+    assert refine.call_args.kwargs["parents"] == {"Thai": "Asian"}
+    assert results[0].grid_categories == {"Cuisine": ["Thai"]}
+
+
+def test_a_failed_parents_load_keeps_the_tags_unpruned():
+    refine, results = _run_nested(_NestedCategorySource(parents_error=True))
+    assert refine.call_args.kwargs["parents"] == {}
+    assert results[0].grid_categories == {"Cuisine": ["Asian", "Thai"]}

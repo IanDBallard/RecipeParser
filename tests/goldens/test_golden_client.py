@@ -98,6 +98,18 @@ class TestSniffStage:
         assert body.lstrip().startswith('["onion"]')
         assert '"1 onion"' in body
 
+    def test_sniffs_categorize(self):
+        from recipeparser.gemini import build_categorize_batch_prompt
+
+        prompt = build_categorize_batch_prompt(
+            [{"id": "r1", "title": "Potato Gnocchi", "ingredient_lines": ["2 eggs"], "direction_steps": []}],
+            {"Protein": ["Egg"]},
+        )
+        assert gc.sniff_stage(prompt) == "categorize"
+        # Keyed by the recipes: the rules above the marker can change freely.
+        body = gc.prompt_body(prompt, "categorize")
+        assert body.lstrip().startswith("RECIPE ID: r1")
+
     def test_an_unrecognised_prompt_fails_loudly(self):
         with pytest.raises(gc.UnknownPromptError):
             gc.sniff_stage("Write me a poem about soup.")
