@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Dict, List
 
 from recipeparser.core.fat_tokens import strip_fat_tokens
@@ -195,12 +196,16 @@ def test_main_refuses_live_without_a_record(monkeypatch):
 
 
 def test_main_writes_each_recipe_as_its_call_returns(monkeypatch, tmp_path, capsys):
-    # F-220: with one worker, the first recipe is in the database and the record before the second is sent.
+    # F-220: the first recipe is written while the second is still at Gemini, not when the run ends. The
+    # worker may pick up the second before the first is written, so the second call waits for that write.
     db = _FakeDb([_row(user_id="u1"), _row(id="r2", user_id="u1")])
     record = tmp_path / "before.csv"
     seen: List[int] = []
 
     def tagger(ingredients, steps, client):
+        deadline = time.monotonic() + 5
+        while seen and not db.writes and time.monotonic() < deadline:
+            time.sleep(0.01)
         seen.append(len(db.writes))
         return MENTIONS
 
