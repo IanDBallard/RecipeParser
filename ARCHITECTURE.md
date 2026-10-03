@@ -514,10 +514,10 @@ If the category source returns an empty tree (no categories configured), the eng
 
 `gemini.TAGGING_RULES` — shared by the refine prompt's categorisation section and by `build_categorize_batch_prompt` (#88) — asks for a tag that is true of the dish as a whole. Measured on 2026-10-03 through the real refine path, over 14 recipes whose right answer is uncontroversial with five runs each (the numbers are in Cayenne's Fix Roadmap, F-205), the pinned `gemini-3.1-flash-lite` obeys those rules **only where an axis has a legitimate answer**. The fault is one move: it reaches for the nearest thing the recipe mentions when an axis would otherwise be empty. Chicken schnitzel and beef meatballs never take Egg, because Protein is already answered; gnocchi and a Victoria sponge always do.
 
-9.6.3 names that move as the mistake and says an empty axis is one of the commonest right answers, which took the set from 133/160 assertions to 147/160. What that leaves:
+9.6.4 names that move as the mistake and says an empty axis is one of the commonest right answers, which took the set from 133/160 assertions to 147/160. What that leaves:
 
 - Reliable (100% across runs): a technique over a preliminary step — searing before a braise, boiling before a bake — and every positive control, including a dish that really is about eggs.
-- Fixed by 9.6.3: pancakes no longer take Egg, French onion soup no longer takes Beef from its stock, and a chicken-stock risotto is no longer called Vegetarian.
+- Fixed by 9.6.4: pancakes no longer take Egg, French onion soup no longer takes Beef from its stock, and a chicken-stock risotto is no longer called Vegetarian.
 - Still wrong, and not fixable by wording at this tier: eggs worked into a dough or a batter make gnocchi and the sponge Egg recipes, in every run.
 - Unstable: the minestrone stopped taking Chicken for good, but claims Vegetarian in its place in three runs of five.
 

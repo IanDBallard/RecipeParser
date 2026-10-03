@@ -24,7 +24,7 @@ costs). Each of those two cases is split from the tag the same dish *must* get,
 which stays a hard assertion, so a model that answers nothing still fails here.
 Strict is the point: if a re-record ever makes one pass, the suite says so.
 
-The rest hold on the reply recorded here. Read the minestrone with care: 9.6.3's
+The rest hold on the reply recorded here. Read the minestrone with care: 9.6.4's
 empty-axis rule stopped it taking Chicken, but over five runs it claimed
 Vegetarian instead in three of them, so that case passes on this recording and a
 re-record may fail it. If it does, that is the model's variance at temperature
@@ -187,7 +187,7 @@ def test_eggs_in_a_cake_do_not_make_it_an_egg_dish(tags):
 
 
 def test_chicken_stock_makes_a_soup_neither_chicken_nor_vegetarian(tags):
-    # The least stable case in the set. 9.6.3's empty-axis rule stopped the Chicken tag for
+    # The least stable case in the set. 9.6.4's empty-axis rule stopped the Chicken tag for
     # good, but the Vegetarian claim held in only two runs of five; this recording is one of
     # the two. See the module docstring before calling a re-record failure a regression.
     minestrone = tags("minestrone", MINESTRONE)

@@ -62,10 +62,10 @@ HERO_INJECT_MAX_STUB_CHARS: int = 120
 # This tier is kept knowingly, and it costs tagging accuracy (Cayenne Fix
 # Roadmap F-205, ruled 2026-10-03). Measured over 14 recipes through the real
 # refine path, five runs each: these rules score 147/160 here (133/160 before
-# 9.6.3's empty-axis rule), against 89/96 on gemini-3.5-flash and 96/96 on
+# 9.6.4's empty-axis rule), against 89/96 on gemini-3.5-flash and 96/96 on
 # gemini-3.8-flash. The failure is always the same move -- the model reaches for
 # the nearest ingredient when an axis would otherwise be empty -- and what
-# survives 9.6.3 is gnocchi and cakes taking Egg for eggs in the mixture, plus a
+# survives 9.6.4 is gnocchi and cakes taking Egg for eggs in the mixture, plus a
 # chicken-stock minestrone calling itself Vegetarian in three runs of five.
 # Prompt wording cannot close it at this tier: four other wordings were tried and
 # each cost a case that had been passing. ARCHITECTURE.md (section 8) has the
