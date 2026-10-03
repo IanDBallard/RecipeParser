@@ -12,6 +12,6 @@
       "thinking_budget": 0
     }
   },
-  "prompt_sha256": "9f4f476fb89b0c51713e1e74d6438fa0efb1ef6c9a8c6af723e0ac76752c18bd",
+  "prompt_sha256": "1675439cb46bf9c1e8538b08f260810e21c03f0a1340e09f97d49a8c2a67ce9f",
   "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"gnocchi\",\n      \"tags\": []\n    },\n    {\n      \"recipe_id\": \"sponge\",\n      \"tags\": []\n    },\n    {\n      \"recipe_id\": \"minestrone\",\n      \"tags\": [\n        \"Beans & Lentils\"\n      ]\n    },\n    {\n      \"recipe_id\": \"curry\",\n      \"tags\": [\n        \"Chicken\"\n      ]\n    }\n  ]\n}"
 }
