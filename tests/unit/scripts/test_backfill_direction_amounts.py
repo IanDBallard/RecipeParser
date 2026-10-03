@@ -192,3 +192,21 @@ def test_main_refuses_live_without_a_record(monkeypatch):
     import pytest
     with pytest.raises(SystemExit):
         _run(monkeypatch, _FakeDb([_row()]), ["--user-id", "u1", "--live"])
+
+
+def test_main_writes_each_recipe_as_its_call_returns(monkeypatch, tmp_path, capsys):
+    # F-220: with one worker, the first recipe is in the database and the record before the second is sent.
+    db = _FakeDb([_row(user_id="u1"), _row(id="r2", user_id="u1")])
+    record = tmp_path / "before.csv"
+    seen: List[int] = []
+
+    def tagger(ingredients, steps, client):
+        seen.append(len(db.writes))
+        return MENTIONS
+
+    argv = ["--user-id", "u1", "--live", "--record", str(record), "--workers", "1", "--progress", "1"]
+    assert _run(monkeypatch, db, argv, tagger=tagger) == 0
+    assert seen == [0, 1]
+    assert record.read_text().count("\n") == 3
+    out = capsys.readouterr().out
+    assert "progress: 1/2 sent to Gemini, 1 written" in out and "progress: 2/2 sent to Gemini, 2 written" in out

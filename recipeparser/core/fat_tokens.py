@@ -21,7 +21,7 @@ from recipeparser.models import DirectionMention, StructuredIngredient, Tokenize
 log = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r"\{\{([^|}]+)\|([^|}]+)(?:\|([^|}]*))?\}\}")
-_PART_RE = re.compile(r"^(\d+(?:\.\d+)?)(?:\s+(\S.*))?$")
+_PART_RE = re.compile(r"^(\d+(?:\.\d+)?)(?:\s*([^\d\s./].*))?$")  # "50ml" too (F-225); never "1/2 cup"
 _KEYWORDS = ("all", "rest", "none")
 # Parts may exceed the line by this much before they are called wrong: "about" is everywhere.
 _PART_SLACK = 1.05
