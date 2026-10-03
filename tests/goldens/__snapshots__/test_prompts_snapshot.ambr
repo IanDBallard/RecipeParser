@@ -42,6 +42,7 @@
   - "food" names what a shopper buys, singular and lower case ("egg", not "Eggs").
   - Reuse a food from KNOWN FOODS when the ingredient is the same thing, spelled exactly as the known food is.
   - Keep a variety only when it changes what is bought: "red onion" stays "red onion"; "diced onion" is "onion"; "free-range eggs" is "egg".
+  - Never equate functionally distinct products, even when a KNOWN FOOD is close: baking soda is not baking powder, sweetened condensed milk is not evaporated milk, table salt is not flaky finishing salt.
   - "aisle" is the store aisle the food is found in, one of: produce, meat_fish, dairy_eggs, bakery, dry_goods, spices, condiments, tins_jars, frozen, drinks, household, other.
   - "pantry" is true for what a typical home kitchen keeps in stock (salt, oil, flour, dried spices).
   - "count" is how many whole units a shopper buys for this ingredient (2.2 onion, 0.3 head garlic, 1 tin). When "count" is set, "count_unit" names what is counted: the food itself, singular ("onion", "egg"), or how it is bought ("tin", "head", "bunch") - never a cooking measure ("cup", "tbsp"). Use null for both "count" and "count_unit" when the food is bought by weight or volume (flour, milk, mince).

@@ -1,0 +1,17 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "219e1c361fbdf295aa8a8316986d4e88a1cde00395aca1ee25e75132fe7ec828",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"baking powder\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"evaporated milk\",\n      \"aisle\": \"tins_jars\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"flaky sea salt\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null\n    }\n  ]\n}"
+}

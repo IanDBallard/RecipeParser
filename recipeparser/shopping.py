@@ -73,6 +73,9 @@ Rules:
 exactly as the known food is.
 - Keep a variety only when it changes what is bought: "red onion" stays \
 "red onion"; "diced onion" is "onion"; "free-range eggs" is "egg".
+- Never equate functionally distinct products, even when a KNOWN FOOD is \
+close: baking soda is not baking powder, sweetened condensed milk is not \
+evaporated milk, table salt is not flaky finishing salt.
 - "aisle" is the store aisle the food is found in, one of: {aisles}.
 - "pantry" is true for what a typical home kitchen keeps in stock (salt, oil, \
 flour, dried spices).

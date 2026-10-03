@@ -12,6 +12,6 @@
       "thinking_budget": 0
     }
   },
-  "prompt_sha256": "37171b9b4b35d671442b21663a56a14e0e8b1c21bce5862ce932e50b7ee1beb2",
+  "prompt_sha256": "f39ac8184043874a574d428d111708b88379599b66cd2556bb012b2a36f9cf4a",
   "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"salt\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null\n    }\n  ]\n}"
 }

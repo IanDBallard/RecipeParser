@@ -91,6 +91,20 @@ def test_a_variety_that_changes_the_buy_stays(golden_client):
     assert items["b"].food == "onion"
 
 
+def test_functionally_distinct_products_never_collapse(golden_client):
+    """A near-twin on KNOWN FOODS must not swallow a chemically or functionally
+    different product (the owner's guardrail, 2026-10-03): leavening, canned
+    milks and finishing salt are the classic collapses."""
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "1 tsp baking powder", "baking powder", 1.0, "tsp"),
+        ing("b", "1 cup evaporated milk", "evaporated milk", 1.0, "cup"),
+        ing("c", "flaky sea salt, to finish", "flaky sea salt"),
+    ], ["baking soda", "sweetened condensed milk", "salt"]))
+    assert items["a"].food == "baking powder"
+    assert items["b"].food == "evaporated milk"
+    assert items["c"].food != "salt"
+
+
 def test_a_tin_and_the_aisles(golden_client):
     items = by_key(classify_ingredients(golden_client(FIXTURE), [
         ing("a", "1 x 400g tin chopped tomatoes", "chopped tomatoes", 1.0, "tin"),
