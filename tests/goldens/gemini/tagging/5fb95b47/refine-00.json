@@ -1,0 +1,17 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.1,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "464bec9632555f981639cd18533602778c832c86ac30b8fc43e71ec64c89046b",
+  "response_text": "{\n  \"title\": \"Potato Gnocchi\",\n  \"base_servings\": 4,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"amount\": 1.0,\n      \"unit\": \"kg\",\n      \"name\": \"floury potatoes\",\n      \"fallback_string\": \"1 kg floury potatoes\",\n      \"converted_amount\": 1000.0,\n      \"converted_unit\": \"g\",\n      \"is_ai_converted\": false,\n      \"state\": \"solid\",\n      \"line_index\": 0\n    },\n    {\n      \"id\": \"ing_02\",\n      \"amount\": 2.0,\n      \"unit\": null,\n      \"name\": \"eggs\",\n      \"fallback_string\": \"2 eggs\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false,\n      \"state\": null,\n      \"line_index\": 1\n    },\n    {\n      \"id\": \"ing_03\",\n      \"amount\": 250.0,\n      \"unit\": \"g\",\n      \"name\": \"plain flour\",\n      \"fallback_string\": \"250 g plain flour\",\n      \"converted_amount\": 500.0,\n      \"converted_unit\": \"ml\",\n      \"is_ai_converted\": true,\n      \"state\": \"solid\",\n      \"line_index\": 2\n    },\n    {\n      \"id\": \"ing_04\",\n      \"amount\": 1.0,\n      \"unit\": \"tsp\",\n      \"name\": \"salt\",\n      \"fallback_string\": \"1 tsp salt\",\n      \"converted_amount\": 5.0,\n      \"converted_unit\": \"ml\",\n      \"is_ai_converted\": true,\n      \"state\": \"solid\",\n      \"line_index\": 3\n    },\n    {\n      \"id\": \"ing_05\",\n      \"amount\": null,\n      \"unit\": null,\n      \"name\": \"nutmeg\",\n      \"fallback_string\": \"Pinch of nutmeg\",\n      \"converted_amount\": null,\n      \"converted_unit\": null,\n      \"is_ai_converted\": false,\n      \"state\": null,\n      \"line_index\": 4\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Boil the {{ing_01|potatoes|all}} in their skins until tender, then peel and rice them.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Mix in the {{ing_02|eggs|all}}, {{ing_03|flour|all}}, {{ing_04|salt|all}} and {{ing_05|nutmeg|all}} to a soft dough.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Roll into ropes, cut into 2 cm pieces and mark with a fork.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"Boil in batches until they float, about 2 minutes.\"\n    }\n  ],\n  \"grid_categories\": {\n    \"Cuisine\": [\"Italian\"],\n    \"Protein\": [\"Egg\"],\n    \"Course\": [\"Main\"],\n    \"Diet\": [\"Vegetarian\"],\n    \"Preparation Method\": [\"Pasta & Noodles\"],\n    \"Technique\": [\"Simmering & Boiling\"]\n  },\n  \"source_uom_system_detected\": \"UK\",\n  \"source_uom_system_evidence\": \"plain flour\"\n}"
+}

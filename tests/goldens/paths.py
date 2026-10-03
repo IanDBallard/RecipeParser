@@ -25,7 +25,7 @@ CORPUS_FIXTURES: tuple[str, ...] = (
 
 #: Gemini fixtures that are not corpus files: their prompts are built in the
 #: test itself, not read from a document. The classify golden set is the first.
-PROMPT_FIXTURES: tuple[str, ...] = ("shopping-classify",)
+PROMPT_FIXTURES: tuple[str, ...] = ("shopping-classify", "tagging")
 
 
 def corpus_path(name: str) -> Path:
