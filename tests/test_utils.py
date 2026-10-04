@@ -193,3 +193,52 @@ class TestTitleCase:
             "Quarkkuchen mit Mandarinen Mandarin Orange Cheesecake")
         assert title_case("BENGALI CHOLAR DAL Creamy Dal") == "Bengali Cholar Dal Creamy Dal"
         assert title_case("Noodle Soup (GAENG JUED WOON SEN)") == "Noodle Soup (Gaeng Jued Woon Sen)"
+
+
+class TestTitleCaseLiveLibraryEdges:
+    """Six faults the owner's backfill plan of 2026-10-04 showed, each from a live title."""
+
+    def test_an_accented_first_letter_is_capitalised(self):
+        assert title_case("Salted caramel & coffee éclairs") == "Salted Caramel & Coffee Éclairs"
+
+    def test_a_french_elision_keeps_its_article_lowercase(self):
+        assert title_case("Choucroute Garnie à l'Alsacienne (Alsatian Braised Sauerkraut)") == (
+            "Choucroute Garnie à l'Alsacienne (Alsatian Braised Sauerkraut)"
+        )
+
+    def test_an_elision_that_opens_the_title_is_capitalised(self):
+        assert title_case("l'oignon soup") == "L'Oignon Soup"
+
+    def test_the_word_after_an_em_dash_starts_a_phrase(self):
+        assert title_case("Tandoori chicken—my version") == "Tandoori Chicken—My Version"
+        assert title_case("Duck—stuffed and roasted") == "Duck—Stuffed and Roasted"
+
+    def test_a_brands_inner_capital_is_kept(self):
+        assert title_case("Epic New York Cheesecake From BraveTart") == "Epic New York Cheesecake from BraveTart"
+
+    def test_the_word_after_a_spaced_dash_starts_a_phrase(self):
+        assert title_case("Butterscotch Blondies - the best") == "Butterscotch Blondies - The Best"
+
+    def test_hindi_and_german_particles_stay_lowercase(self):
+        assert title_case("Khare masale ka gosht (meat with whole spices)") == (
+            "Khare Masale ka Gosht (Meat with Whole Spices)"
+        )
+        assert title_case("Kala chana aur aloo (black chickpeas with potatoes)") == (
+            "Kala Chana aur Aloo (Black Chickpeas with Potatoes)"
+        )
+        assert title_case("KÄSEKUCHEN OHNE BODEN Crustless Quark Cheesecake") == (
+            "Käsekuchen ohne Boden Crustless Quark Cheesecake"
+        )
+
+    def test_a_particle_inside_a_hyphenated_name_stays_lowercase(self):
+        assert title_case("Gajar-ka-halva") == "Gajar-ka-Halva"
+        assert title_case("Potato patties (aloo-ki-tikiya)") == "Potato Patties (Aloo-ki-Tikiya)"
+
+    def test_gf_and_df_are_acronyms(self):
+        assert title_case("Fudgy Gluten Free Brownies - gf and df") == "Fudgy Gluten Free Brownies - GF and DF"
+
+    def test_a_capitalised_word_opening_brackets_stays_capitalised(self):
+        assert title_case("Verdens Beste Kake (The World’s Best Cake)") == "Verdens Beste Kake (The World’s Best Cake)"
+
+    def test_a_lowercase_word_opening_brackets_stays_lowercase(self):
+        assert title_case("Baris (or vadees) with eggplant") == "Baris (or Vadees) with Eggplant"
