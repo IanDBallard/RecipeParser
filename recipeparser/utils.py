@@ -73,34 +73,73 @@ def title_case(text: str) -> str:
     result: list[str] = []
 
     for i, word in enumerate(words):
-        starts_clause = i == 0 or words[i - 1].endswith(":")
+        # A clause starts the title, follows a colon, or follows a dash standing on its own
+        # ("Blondies - the best"); the word after a dash glued to it is handled below.
+        starts_clause = i == 0 or words[i - 1].endswith(":") or words[i - 1] in _DASHES
         is_last = i == len(words) - 1
         # A short capitals word is an acronym only on its own: inside a run of capitals
         # ("CHOLAR DAL Creamy Dal") it is part of a shouted name.
         acronym_ok = has_lowercase and not (i > 0 and caps[i - 1]) and not (not is_last and caps[i + 1])
 
-        # Hyphenated compounds: the first and last parts are capitalised, an inner stop
-        # word stays lowercase ("sweet-and-sour" → "Sweet-and-Sour", "stir-in" → "Stir-In").
-        if "-" in word:
-            parts = word.split("-")
-            result.append("-".join(
-                part.lower() if 0 < j < len(parts) - 1 and _core(part)[1].lower() in _STOP_WORDS
-                else _cap_word(part, acronym_ok)
-                for j, part in enumerate(parts)
+        # An em or en dash glued between words ("chicken—my version") opens a phrase.
+        segments = re.split(r"([\u2013\u2014])", word)
+        out = []
+        for k, segment in enumerate(segments):
+            if segment in ("\u2013", "\u2014") or segment == "":
+                out.append(segment)
+                continue
+            out.append(_case_word(
+                segment,
+                starts_clause=starts_clause if k == 0 else True,
+                is_last=is_last and k == len(segments) - 1,
+                acronym_ok=acronym_ok,
+                has_lowercase=has_lowercase,
             ))
-            continue
-
-        core = _core(word)[1]
-        if not (starts_clause or is_last) and core.lower() in _STOP_WORDS:
-            result.append(word.lower())
-        elif not (starts_clause or is_last) and core.lower() in _PARTICLES:
-            # The writer's own capital on a particle in a mixed-case title stands ("Ma La").
-            kept = has_lowercase and core[:1].isupper() and core[1:] == core[1:].lower()
-            result.append(word if kept else word.lower())
-        else:
-            result.append(_cap_word(word, acronym_ok))
+        result.append("".join(out))
 
     return " ".join(result)
+
+
+# A dash standing alone between words separates a subtitle: the word after it starts a phrase.
+_DASHES: frozenset[str] = frozenset({"-", "\u2013", "\u2014"})
+
+# A French or Italian elided article or preposition glued to its noun: "l'Alsacienne",
+# "d'Agneau", "dell'Orto". The article stays lowercase mid-title and the noun is capitalised.
+_ELISION_RE = re.compile(r"^(l|d|qu|dell|all|nell|sull|dall)(['\u2019])(.+)$", re.IGNORECASE)
+
+
+def _case_word(word: str, *, starts_clause: bool, is_last: bool, acronym_ok: bool, has_lowercase: bool) -> str:
+    """Case one space-separated word of a title (see title_case for the rules)."""
+    lead, core, trail = _core(word)
+    elision = _ELISION_RE.match(core)
+    if elision:
+        article, apostrophe, noun = elision.groups()
+        article = article.capitalize() if starts_clause else article.lower()
+        return lead + article + apostrophe + _cap_word(noun, acronym_ok) + trail
+
+    # Hyphenated compounds: the first and last parts are capitalised, an inner stop word or
+    # particle stays lowercase ("sweet-and-sour" → "Sweet-and-Sour", "gajar-ka-halva" →
+    # "Gajar-ka-Halva", "stir-in" → "Stir-In").
+    if "-" in word and word not in _DASHES:
+        parts = word.split("-")
+        return "-".join(
+            part.lower() if 0 < j < len(parts) - 1 and _core(part)[1].lower() in _STOP_WORDS | _PARTICLES
+            else _cap_word(part, acronym_ok)
+            for j, part in enumerate(parts)
+        )
+
+    # The writer's capital on the first word inside brackets stands in a mixed-case title
+    # ("(The World's Best Cake)"); a lowercase one stays lowercase ("(or vadees)").
+    opens_bracket = lead.endswith("(")
+    if not (starts_clause or is_last) and core.lower() in _STOP_WORDS:
+        if opens_bracket and has_lowercase and core[:1].isupper() and core[1:] == core[1:].lower():
+            return word
+        return word.lower()
+    if not (starts_clause or is_last) and core.lower() in _PARTICLES:
+        # The writer's own capital on a particle in a mixed-case title stands ("Ma La").
+        kept = has_lowercase and core[:1].isupper() and core[1:] == core[1:].lower()
+        return word if kept else word.lower()
+    return _cap_word(word, acronym_ok)
 
 
 # Explicit allowlist of all-caps tokens that should be preserved as-is.
@@ -110,6 +149,8 @@ def title_case(text: str) -> str:
 _PRESERVED_ACRONYMS: frozenset[str] = frozenset({
     # Culinary
     "BBQ", "MSG", "OJ",
+    # Dietary ("GF and DF": gluten-free, dairy-free)
+    "GF", "DF",
     # Geographic ("LA" is not here: "à la" is far commoner in a recipe title)
     "NYC", "SF", "DC", "UK", "US", "EU",
     # Units / measurements
@@ -121,16 +162,19 @@ _PRESERVED_ACRONYMS: frozenset[str] = frozenset({
 # capitalised in a mixed-case title is kept: "Ma La" is a name, not "with the".
 _PARTICLES: frozenset[str] = frozenset({
     "à", "al", "alla", "au", "aux", "con", "da", "de", "del", "della", "der", "des", "di",
-    "du", "e", "el", "en", "et", "la", "le", "mit", "und", "van", "von", "y",
+    "du", "e", "el", "en", "et", "la", "le", "mit", "ohne", "und", "van", "von", "y",
+    # Hindi and Urdu "of" and "and" ("Khare Masale ka Gosht", "Kala Chana aur Aloo")
+    "ka", "ke", "ki", "aur",
 })
 
-# Words whose inner capital is deliberate: "McDonald's", "MacArthur", "eBay", "iPhone".
-_KEEP_SHAPE_RE = re.compile(r"^(?:Ma?c[A-Z][a-z']+|[a-z][A-Z][a-z']+)$")
+# Words whose inner capital is deliberate: "McDonald's", "MacArthur", "eBay", "iPhone", "BraveTart".
+_KEEP_SHAPE_RE = re.compile(r"^(?:Ma?c[A-Z][a-z']+|[a-z][A-Z][a-z']+|[A-Z][a-z]{2,}(?:[A-Z][a-z']{2,})+)$")
 
 
 def _core(word: str) -> tuple[str, str, str]:
     """Split *word* into its leading punctuation, its letters and digits, and its trailing punctuation."""
-    match = re.fullmatch(r"([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)", word)
+    # Letters are any script's ("éclairs" begins with a letter, not punctuation).
+    match = re.fullmatch(r"([\W_]*)(.*?)([\W_]*)", word)
     assert match is not None  # every string matches
     lead, core, trail = match.groups()
     return lead, core, trail

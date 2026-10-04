@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.7.2] — 2026-10-04
+
+`title_case` handles the edge cases that a dry run of the title-case backfill found in the live library. Of the 597 titles that backfill plans to change, 17 now come out differently from 9.7.1, all on purpose; the other 580 are unchanged. Needs no migration; the container restart deploys it. Re-run the backfill plan after the deploy.
+
+### 🐛 Fixed — `title_case` edge cases
+- Accented letters count as letters: "éclairs" becomes "Éclairs", not "éClairs".
+- French and Italian elisions keep their shape: "à l'Alsacienne" stays as it is, and at the start of a title "l'oignon" becomes "L'Oignon".
+- The word after a dash starts a clause, glued or spaced: "Tandoori Chicken—My Version", "Blondies - The Best".
+- A deliberate inner capital in a camel-case name is kept: "BraveTart". Each part needs at least two lowercase letters, so "cHoCoLaTe ChIp" still normalises.
+- Hindi, Urdu and German particles stay lowercase mid-title: "Khare Masale ka Gosht", "Kala Chana aur Aloo", "Käsekuchen ohne Boden", and inside a hyphenated compound: "Gajar-ka-Halva", "Aloo-ki-Tikiya".
+- "GF" and "DF" are preserved acronyms.
+- In a mixed-case title, a capitalised stop word straight after "(" is kept: "(The World’s Best Cake)".
+
+### 🧪 Tests
+- `tests/test_utils.py::TestTitleCaseLiveLibraryEdges`: one test per example above, taken from the live library.
+
 ## [9.7.1] — 2026-10-04
 
 Every stored recipe has unique, non-empty ingredient ids, so the kitchen never refuses to open one over a model slip (Cayenne Fix Roadmap F-194). Needs no migration; the container restart deploys it.
