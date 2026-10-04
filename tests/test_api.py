@@ -508,7 +508,9 @@ class TestPostJobsFile:
     def test_docx_is_a_422_naming_the_extension(self, client: TestClient) -> None:
         resp = self._upload(client, "menu.docx", b"PK\x03\x04", "application/octet-stream")
         assert resp.status_code == 422
-        assert resp.json()["detail"] == "Cayenne can't read .docx files yet."
+        assert resp.json()["detail"] == (
+            "Cayenne can't read .docx files yet. Save it as a PDF, or copy the recipe's text and paste it here."
+        )
 
     def test_a_body_over_the_ceiling_is_a_413_with_the_sentence(self, client: TestClient) -> None:
         # The ceiling is patched down so the test does not build fifty megabytes; the sentence
@@ -522,7 +524,9 @@ class TestPostJobsFile:
         with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
             resp = self._upload(client, "menu.docx", b"\x00" * 17, "application/octet-stream")
         assert resp.status_code == 422
-        assert resp.json()["detail"] == "Cayenne can't read .docx files yet."
+        assert resp.json()["detail"] == (
+            "Cayenne can't read .docx files yet. Save it as a PDF, or copy the recipe's text and paste it here."
+        )
 
     def test_a_body_at_the_ceiling_is_accepted(self, client: TestClient) -> None:
         with _patch_pipeline_and_writer()[0], \

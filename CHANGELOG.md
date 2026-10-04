@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.7.3] — 2026-10-04
+
+A refused document says what to do instead (Cayenne Fix Roadmap F-253). Needs no migration; the container restart deploys it.
+
+### 🐛 Fixed — the document refusal is no longer a dead end
+- A `.docx` dropped on Add Recipe was refused with "Cayenne can't read .docx files yet." and nothing more. A word-processor or plain-text document (`.docx`, `.doc`, `.odt`, `.rtf`, `.pages`, `.txt`, or one of their content types when the file has no extension) now adds the two ways in that work today: "Save it as a PDF, or copy the recipe's text and paste it here."
+- Any other unreadable type keeps the plain sentence ("Cayenne can't read .zip files yet.").
+
+### 🧪 Tests
+- `tests/unit/test_select_reader.py`: each document extension, a document known by its content type alone, and a non-document type keeping the plain sentence; the `.docx` assertions here and in `tests/test_api.py` take the new sentence.
+
 ## [9.7.2] — 2026-10-04
 
 `title_case` handles the edge cases that a dry run of the title-case backfill found in the live library. Of the 597 titles that backfill plans to change, 17 now come out differently from 9.7.1, all on purpose; the other 580 are unchanged. Needs no migration; the container restart deploys it. Re-run the backfill plan after the deploy.
