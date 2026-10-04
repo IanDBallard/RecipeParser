@@ -9,7 +9,7 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from recipeparser.core.fat_tokens import TOKEN_RE, check_mentions
 from recipeparser.core.numbers import written_measures
@@ -19,6 +19,52 @@ from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtract
 from recipeparser.utils import title_case
 
 log = logging.getLogger(__name__)
+
+_ID_NUMBER = re.compile(r"^ing_(\d+)$")
+
+
+def _ensure_unique_ids(refinement: CayenneRefinement) -> None:
+    """
+    Make every ingredient id unique and non-empty, in place (Cayenne Fix Roadmap F-194).
+
+    Ids are unique only because the prompt asks for them, and Cayenne refuses to open a recipe
+    whose ids repeat or are blank: the id is the kitchen's loop key. The id is a key, not a
+    position, so nothing is renumbered that need not be. A blank id, or a repeat that no Fat
+    Token names, takes the next free ``ing_NN`` with a warning. A repeat that a token names is
+    ambiguous (renumbering would guess which ingredient the token meant), so it raises into the
+    chunk's error boundary rather than storing a recipe the kitchen cannot open.
+    """
+    referenced = {
+        match.group(1)
+        for step in refinement.tokenized_directions
+        for match in TOKEN_RE.finditer(step.text)
+    }
+    ids = [ing.id for ing in refinement.structured_ingredients]
+    ambiguous = sorted({i for i in ids if ids.count(i) > 1 and i in referenced})
+    if ambiguous:
+        raise ValueError(
+            f"refine(): '{refinement.title}': ingredient ID(s) {ambiguous} appear more than once "
+            "and a Fat Token names them, so which ingredient a token means is unknown."
+        )
+    taken = set(ids)
+    numbers = [int(m.group(1)) for i in taken if (m := _ID_NUMBER.match(i))]
+    next_number = max(numbers, default=0) + 1
+    seen: Set[str] = set()
+    renamed: List[str] = []
+    for ing in refinement.structured_ingredients:
+        if ing.id.strip() and ing.id not in seen:
+            seen.add(ing.id)
+            continue
+        while f"ing_{next_number:02d}" in taken:
+            next_number += 1
+        fresh = f"ing_{next_number:02d}"
+        renamed.append(f"'{ing.id}' -> '{fresh}'" if ing.id.strip() else f"blank -> '{fresh}'")
+        taken.add(fresh)
+        seen.add(fresh)
+        ing.id = fresh
+    if renamed:
+        log.warning("refine(): '%s': ingredient IDs made unique: %s", refinement.title, "; ".join(renamed))
+
 
 def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
     """
@@ -406,6 +452,7 @@ def refine(
     # source that prints its titles in capitals must not shout in the library. Before EMBED, so
     # the stored title and the embedded one agree.
     result.title = title_case(result.title)
+    _ensure_unique_ids(result)
     _validate_fat_tokens(result)
     _check_mentions(result)
     _normalise_line_index(result, raw)
