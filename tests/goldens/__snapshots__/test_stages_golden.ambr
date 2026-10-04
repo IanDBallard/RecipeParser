@@ -1174,7 +1174,7 @@
               'unit': None,
             }),
           ]),
-          'title': 'FINE SPICED WINE',
+          'title': 'Fine Spiced Wine',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -1276,7 +1276,7 @@
               'unit': None,
             }),
           ]),
-          'title': 'HONEY REFRESHER FOR TRAVELERS',
+          'title': 'Honey Refresher for Travelers',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -1408,7 +1408,7 @@
               'unit': 'quarts',
             }),
           ]),
-          'title': 'ROMAN VERMOUTH',
+          'title': 'Roman Vermouth',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -1497,7 +1497,7 @@
               'unit': None,
             }),
           ]),
-          'title': 'ROSE WINE',
+          'title': 'Rose Wine',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -2915,7 +2915,7 @@
               'unit': None,
             }),
           ]),
-          'title': 'BARLEY BROTH, PAP, PORRIDGE, GRUEL TISANA SIVE CREMORE',
+          'title': 'Barley Broth, Pap, Porridge, Gruel Tisana Sive Cremore',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -3237,7 +3237,7 @@
               'unit': None,
             }),
           ]),
-          'title': 'ANOTHER TISANA TISANA TARICHA',
+          'title': 'Another Tisana Tisana Taricha',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -3378,7 +3378,7 @@
               'unit': None,
             }),
           ]),
-          'title': '?MOVEABLE? APPETIZERS GUSTUM VERSATILE',
+          'title': '?Moveable? Appetizers Gustum Versatile',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -3447,7 +3447,7 @@
               'unit': None,
             }),
           ]),
-          'title': 'FRIED BULBS',
+          'title': 'Fried Bulbs',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -3547,7 +3547,7 @@
               'unit': None,
             }),
           ]),
-          'title': 'MORELS',
+          'title': 'Morels',
           'tokenized_directions': list([
             dict({
               'step': 1,
@@ -3663,7 +3663,7 @@
               'unit': None,
             }),
           ]),
-          'title': 'FOR MORELS',
+          'title': 'For Morels',
           'tokenized_directions': list([
             dict({
               'step': 1,

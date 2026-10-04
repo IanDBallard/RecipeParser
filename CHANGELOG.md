@@ -5,41 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [9.6.4] — 2026-10-03
+## [9.7.0] — 2026-10-03
 
-An empty axis is an answer. Needs no migration; merging to master deploys it (the
-deploy workflow runs on push and the VM takes the new image).
+Every recipe title is stored in title case, so a source that prints its titles in capitals no longer shouts in the library. Needs no migration; the container restart deploys it. The library's existing titles are brought into line by `scripts/backfill_title_case.py`, run once after the deploy.
 
-### 🐛 Fixed — the model no longer reaches for the nearest ingredient to fill an axis
-- `TAGGING_RULES` already said to prefer no tag to a doubtful one, and the model still
-  tagged minestrone Vegetarian for want of anything else to put on that axis. Measured over
-  14 recipes through the real refine path, the failure was always the same move: it reaches
-  for the nearest thing the recipe mentions **only** when an axis would otherwise be empty —
-  gnocchi, a sponge and pancakes always took Egg, while chicken schnitzel and beef meatballs,
-  whose Protein axis already had an answer, never did. A new rule names that reach as the
-  mistake and says an empty axis is one of the commonest right answers. Both prompts carry it,
-  as they share the block. The score on the pinned `gemini-3.1-flash-lite` goes from 133/160
-  assertions to 147/160 over five runs of each case, and the golden set from three failures to
-  two. Fixed outright: pancakes no longer take Egg, French onion soup no longer takes Beef from
-  its stock, and a chicken-stock risotto is no longer called Vegetarian. Not fixed: the
-  minestrone stopped taking Chicken but claims Vegetarian instead in three runs of five, so the
-  stock class is 92.5% and not 100% — its golden case passes on the reply recorded here, and a
-  re-record may well fail it. That is the model's variance at temperature 0.1, not a regression.
-- Not fixed, and not fixable by wording at this tier: eggs worked into a dough or a batter
-  still make gnocchi and a Victoria sponge Egg recipes. The same prompts score 96/96 on
-  `gemini-3.8-flash`, so this is the model and not the rules; the owner ruled on 2026-10-03 to
-  keep the cheaper tier knowingly. `ARCHITECTURE.md` section 8 and the comment on
-  `GEMINI_MODEL` in `config.py` record what that costs, and the two golden cases are strict
-  xfails naming the model rather than weakened assertions.
+### ✨ Changed — titles are stored in house title case
+- REFINE passes every title through `title_case`, before EMBED so the stored and embedded titles agree; a Cayenne-native Paprika restore, which skips REFINE, is title-cased in the same place it is rebuilt. A title the owner types in the app is never recased. This is a deliberate exception to verbatim ingestion's "stored exactly as its writer wrote it" (Cayenne, title-case titles ruling, 2026-10-03).
+- `title_case` now holds for any title, not only ALL-CAPS ones: it capitalises a word's first letter past leading punctuation ("(VEGAN)" → "(Vegan)"), capitalises the word after a colon, and in a title that has lowercase letters keeps a capitals word of up to three letters standing on its own as an acronym ("BLT", "XO"); one inside a run of capitals is a shouted name ("CHOLAR DAL" → "Cholar Dal"). "McDonald's", "MacArthur" and "eBay" keep their shape. An ALL-CAPS title carries no such evidence, so only the acronym allowlist survives there.
+- Foreign particles ("con", "e", "von", "de", "à la", "mit"…) stay lowercase mid-title, unless the writer capitalised one in a mixed-case title ("Ma La Xiang Guo"). "LA" leaves the acronym allowlist: "à la" turned into "à LA".
+- An inner stop word of a hyphenated compound stays lowercase: "Sweet-and-Sour", not "Sweet-And-Sour". The `slow-and-low` test moves with it.
+
+### 🔧 Added — `scripts/backfill_title_case.py`
+- Plans the change from the live rows and writes one SQL transaction that disables `recipes_own_body_rev` around the UPDATE, so retitling does not send the library to the regeneration worker; each UPDATE matches the title it was planned from. It ends in ROLLBACK unless `--commit`, with a verification SELECT.
 
 ### 🧪 Tests
-- `tests/goldens/test_tagging_golden.py` re-recorded against the new rules, and each of the two
-  model-limited cases split from the tag the same dish must get, which stays a hard assertion —
-  so a model that answers nothing still fails the set. A module-scoped cache keeps a recording
-  at six paid calls despite the split. Three prompt snapshots updated.
-
----
----
+- `tests/test_utils.py`: the new rules, each from a title in the live library's dry-run plan. `tests/unit/stages/test_refine_title.py`: REFINE and the restore shim. `tests/unit/scripts/test_backfill_title_case.py`: the plan and the transaction. The stage goldens for `text-pages.pdf` and `gutenberg-multi.epub` move: their ALL-CAPS titles are now title-cased.
 
 ## [9.6.3] — 2026-10-03
 

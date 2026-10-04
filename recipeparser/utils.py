@@ -27,13 +27,28 @@ def title_case(text: str) -> str:
     """
     Convert *text* to culinary title case.
 
+    Every recipe title is stored in this form (the title-case titles ruling,
+    2026-10-03), so the rules must hold for any title, not only ALL-CAPS ones.
+
     Rules:
     - Every word is capitalised except stop words (articles, short prepositions,
       coordinating conjunctions) that appear in the *middle* of the title.
-    - The **first** and **last** word are always capitalised.
+    - The **first** and **last** word, and the word after a colon, are always
+      capitalised.
+    - A word's first *letter* is capitalised, past any leading punctuation
+      ("(VEGAN)" → "(Vegan)").
     - Hyphenated compounds capitalise each part independently
       (e.g. "pan-fried" → "Pan-Fried").
-    - Preserves existing all-caps abbreviations (e.g. "BBQ", "NYC").
+    - Preserves the allowlisted abbreviations (e.g. "BBQ", "NYC") in any title.
+    - In a title that has lowercase letters, an all-caps word of up to three
+      letters standing on its own is an acronym and is kept ("BLT", "XO"); one
+      inside a run of capitals is part of a shouted name ("CHOLAR DAL"). An
+      ALL-CAPS title carries no such evidence, so only the allowlist survives.
+    - A word shaped like "McDonald's", "MacArthur" or "eBay" keeps its shape.
+    - Foreign particles ("con", "e", "von", "à la") stay lowercase mid-title,
+      unless the writer capitalised one in a mixed-case title ("Ma La").
+    - Inner stop words of a hyphenated compound stay lowercase
+      ("Sweet-and-Sour").
     - Strips leading/trailing whitespace and collapses internal runs of
       whitespace to a single space.
 
@@ -43,42 +58,47 @@ def title_case(text: str) -> str:
         title_case("mac and cheese")           → "Mac and Cheese"
         title_case("the best pan-fried steak") → "The Best Pan-Fried Steak"
         title_case("BBQ ribs with coleslaw")   → "BBQ Ribs with Coleslaw"
+        title_case("BLT sandwich")             → "BLT Sandwich"
     """
     if not text or not text.strip():
         return text
 
     # Normalise whitespace
     text = re.sub(r"\s+", " ", text.strip())
+    has_lowercase = any(c.islower() for c in text)
 
     # Split on spaces, preserving each token
     words = text.split(" ")
+    caps = [_is_caps(_core(w)[1]) for w in words]
     result: list[str] = []
 
     for i, word in enumerate(words):
-        if not word:
-            continue
-
-        is_first = i == 0
+        starts_clause = i == 0 or words[i - 1].endswith(":")
         is_last = i == len(words) - 1
+        # A short capitals word is an acronym only on its own: inside a run of capitals
+        # ("CHOLAR DAL Creamy Dal") it is part of a shouted name.
+        acronym_ok = has_lowercase and not (i > 0 and caps[i - 1]) and not (not is_last and caps[i + 1])
 
-        # Handle hyphenated compounds: capitalise every part unconditionally.
-        # Stop-word rules do not apply inside a hyphenated compound — each
-        # segment is treated as a meaningful word (e.g. "slow-and-low" →
-        # "Slow-And-Low", "stir-in" → "Stir-In").
+        # Hyphenated compounds: the first and last parts are capitalised, an inner stop
+        # word stays lowercase ("sweet-and-sour" → "Sweet-and-Sour", "stir-in" → "Stir-In").
         if "-" in word:
             parts = word.split("-")
-            result.append("-".join(_cap_word(part) for part in parts))
+            result.append("-".join(
+                part.lower() if 0 < j < len(parts) - 1 and _core(part)[1].lower() in _STOP_WORDS
+                else _cap_word(part, acronym_ok)
+                for j, part in enumerate(parts)
+            ))
             continue
 
-        word_lower = word.lower()
-
-        # Always capitalise first and last word
-        if is_first or is_last:
-            result.append(_cap_word(word))
-        elif word_lower in _STOP_WORDS:
-            result.append(word_lower)
+        core = _core(word)[1]
+        if not (starts_clause or is_last) and core.lower() in _STOP_WORDS:
+            result.append(word.lower())
+        elif not (starts_clause or is_last) and core.lower() in _PARTICLES:
+            # The writer's own capital on a particle in a mixed-case title stands ("Ma La").
+            kept = has_lowercase and core[:1].isupper() and core[1:] == core[1:].lower()
+            result.append(word if kept else word.lower())
         else:
-            result.append(_cap_word(word))
+            result.append(_cap_word(word, acronym_ok))
 
     return " ".join(result)
 
@@ -90,34 +110,71 @@ def title_case(text: str) -> str:
 _PRESERVED_ACRONYMS: frozenset[str] = frozenset({
     # Culinary
     "BBQ", "MSG", "OJ",
-    # Geographic
-    "NYC", "LA", "SF", "DC", "UK", "US", "EU",
+    # Geographic ("LA" is not here: "à la" is far commoner in a recipe title)
+    "NYC", "SF", "DC", "UK", "US", "EU",
     # Units / measurements
     "TV",
 })
 
+# Foreign articles and prepositions that stay lowercase mid-title ("Chilli con Carne",
+# "Aglio e Olio", "Nusstorte von Hammerstein"). Unlike an English stop word, one the writer
+# capitalised in a mixed-case title is kept: "Ma La" is a name, not "with the".
+_PARTICLES: frozenset[str] = frozenset({
+    "à", "al", "alla", "au", "aux", "con", "da", "de", "del", "della", "der", "des", "di",
+    "du", "e", "el", "en", "et", "la", "le", "mit", "und", "van", "von", "y",
+})
 
-def _cap_word(word: str) -> str:
+# Words whose inner capital is deliberate: "McDonald's", "MacArthur", "eBay", "iPhone".
+_KEEP_SHAPE_RE = re.compile(r"^(?:Ma?c[A-Z][a-z']+|[a-z][A-Z][a-z']+)$")
+
+
+def _core(word: str) -> tuple[str, str, str]:
+    """Split *word* into its leading punctuation, its letters and digits, and its trailing punctuation."""
+    match = re.fullmatch(r"([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)", word)
+    assert match is not None  # every string matches
+    lead, core, trail = match.groups()
+    return lead, core, trail
+
+
+def _is_caps(core: str) -> bool:
+    """A word of two or more letters written wholly in capitals."""
+    return len(core) >= 2 and core.isupper()
+
+
+def _cap_word(word: str, acronym_ok: bool = False) -> str:
     """
-    Capitalise the first letter of *word*, lowercasing the rest.
+    Capitalise the first letter of *word*, lowercasing the rest. Leading and
+    trailing punctuation is kept as it is.
 
-    Exception: tokens that appear in ``_PRESERVED_ACRONYMS`` are returned
-    unchanged regardless of their input casing.
+    Exceptions: tokens in ``_PRESERVED_ACRONYMS`` are returned in capitals
+    regardless of their input casing; when *acronym_ok* (a mixed-case title,
+    and the word is not inside a run of capitals), a word of up to three
+    capitals that is not a stop word or particle, and a ``_KEEP_SHAPE_RE``
+    word, are returned unchanged.
 
     Examples::
 
         _cap_word("BBQ")       → "BBQ"      (in allowlist)
-        _cap_word("NYC")       → "NYC"      (in allowlist)
         _cap_word("THE")       → "The"      (not in allowlist)
-        _cap_word("COOKIES")   → "Cookies"
-        _cap_word("CHOCOLATE") → "Chocolate"
+        _cap_word("(VEGAN)")   → "(Vegan)"
+        _cap_word("BLT", True) → "BLT"      (acronym in a mixed-case title)
         _cap_word("flour")     → "Flour"
     """
     if not word:
         return word
-    if word.upper() in _PRESERVED_ACRONYMS:
-        return word.upper()  # normalise to canonical all-caps form
-    return word[0].upper() + word[1:].lower()
+    lead, core, trail = _core(word)
+    if core.upper() in _PRESERVED_ACRONYMS:
+        core = core.upper()  # normalise to canonical all-caps form
+    elif _KEEP_SHAPE_RE.match(core) or (
+        acronym_ok
+        and _is_caps(core)
+        and len(core) <= 3
+        and core.lower() not in _STOP_WORDS | _PARTICLES
+    ):
+        pass
+    else:
+        core = core[:1].upper() + core[1:].lower()
+    return lead + core + trail
 
 
 @contextlib.contextmanager

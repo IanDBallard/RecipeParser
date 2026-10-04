@@ -34,6 +34,7 @@ from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse, Photo
+from recipeparser.utils import title_case
 
 log = logging.getLogger(__name__)
 
@@ -538,9 +539,11 @@ def _pre_parsed_to_refinement(
     Both ``CayenneRecipe`` and ``IngestResponse`` expose the four fields used
     here (``title``, ``base_servings``, ``structured_ingredients``,
     ``tokenized_directions``), so the shim works for either type.
+
+    The title is title-cased here as REFINE does for every other input: a restore skips REFINE.
     """
     return CayenneRefinement(
-        title=pr.title,
+        title=title_case(pr.title),
         base_servings=pr.base_servings,
         structured_ingredients=pr.structured_ingredients,
         tokenized_directions=pr.tokenized_directions,

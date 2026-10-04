@@ -16,6 +16,7 @@ from recipeparser.core.numbers import written_measures
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.gemini import refine_recipe_for_cayenne
 from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction
+from recipeparser.utils import title_case
 
 log = logging.getLogger(__name__)
 
@@ -401,6 +402,10 @@ def refine(
             "The refinement call failed — check logs for details."
         )
 
+    # Every title is stored in house title case (the title-case titles ruling, 2026-10-03): a
+    # source that prints its titles in capitals must not shout in the library. Before EMBED, so
+    # the stored title and the embedded one agree.
+    result.title = title_case(result.title)
     _validate_fat_tokens(result)
     _check_mentions(result)
     _normalise_line_index(result, raw)

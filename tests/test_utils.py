@@ -78,7 +78,8 @@ class TestTitleCase:
         assert result == "Stir-In Sauce"
 
     def test_multiple_hyphens(self):
-        assert title_case("slow-and-low BBQ ribs") == "Slow-And-Low BBQ Ribs"
+        # Inner stop words stay lowercase; the first and last parts are capitalised.
+        assert title_case("slow-and-low BBQ ribs") == "Slow-and-Low BBQ Ribs"
 
     # ------------------------------------------------------------------
     # Whitespace handling
@@ -133,3 +134,62 @@ class TestTitleCase:
     def test_stop_word_only_title(self):
         # A title that is just a stop word — must still be capitalised (first == last)
         assert title_case("a") == "A"
+
+    # ------------------------------------------------------------------
+    # Every stored title passes through title_case (title-case titles ruling)
+    # ------------------------------------------------------------------
+
+    def test_word_led_by_punctuation_capitalises_its_first_letter(self):
+        assert title_case("CHICKEN CURRY (VEGAN)") == "Chicken Curry (Vegan)"
+        assert title_case('"BEST EVER" BROWNIES') == '"Best Ever" Brownies'
+
+    def test_word_after_a_colon_is_capitalised(self):
+        assert title_case("TACOS: THE BEST") == "Tacos: The Best"
+        assert title_case("tacos: a love story") == "Tacos: A Love Story"
+
+    def test_short_caps_word_in_a_mixed_case_title_is_an_acronym(self):
+        assert title_case("BLT sandwich") == "BLT Sandwich"
+        assert title_case("Pork with XO sauce") == "Pork with XO Sauce"
+
+    def test_long_caps_word_in_a_mixed_case_title_is_recased(self):
+        assert title_case("BEST EVER chocolate cake") == "Best Ever Chocolate Cake"
+
+    def test_caps_stop_word_in_a_mixed_case_title_is_not_an_acronym(self):
+        assert title_case("Chicken IN a Pot") == "Chicken in a Pot"
+
+    def test_short_caps_word_in_an_all_caps_title_is_recased(self):
+        assert title_case("HOT POT") == "Hot Pot"
+
+    def test_mc_and_mac_names_keep_their_inner_capital(self):
+        assert title_case("McDonald's-style fries") == "McDonald's-Style Fries"
+        assert title_case("Chicken MacArthur") == "Chicken MacArthur"
+
+    def test_lowercase_led_brand_keeps_its_shape(self):
+        assert title_case("eBay find: lemon bars") == "eBay Find: Lemon Bars"
+
+    def test_hyphenated_parts_follow_the_mixed_case_rules(self):
+        assert title_case("BBQ-glazed ribs") == "BBQ-Glazed Ribs"
+
+    def test_inner_stop_words_of_a_hyphenated_compound_stay_lowercase(self):
+        assert title_case("Sweet-and-sour Pork") == "Sweet-and-Sour Pork"
+        assert title_case("crossing-the-river choy sum") == "Crossing-the-River Choy Sum"
+
+    def test_la_is_a_word_not_los_angeles(self):
+        assert title_case("Scallops a la Plancha") == "Scallops a la Plancha"
+        assert title_case("PORK CHOPS A LA JAFFREY") == "Pork Chops a la Jaffrey"
+
+    def test_foreign_particles_stay_lowercase_mid_title(self):
+        assert title_case("Perfect Chilli con Carne") == "Perfect Chilli con Carne"
+        assert title_case("Spaghetti Aglio e Olio") == "Spaghetti Aglio e Olio"
+        assert title_case("NUSSTORTE VON HAMMERSTEIN") == "Nusstorte von Hammerstein"
+        assert title_case("EMPANADILLAS DE SARDINILLAS") == "Empanadillas de Sardinillas"
+
+    def test_a_particle_the_writer_capitalised_in_a_mixed_case_title_is_kept(self):
+        assert title_case("Ma La Xiang Guo") == "Ma La Xiang Guo"
+        assert title_case("Salad De Aguacate Y Tomate") == "Salad De Aguacate Y Tomate"
+
+    def test_a_short_caps_word_inside_a_caps_run_is_not_an_acronym(self):
+        assert title_case("QUARKKUCHEN MIT MANDARINEN Mandarin Orange Cheesecake") == (
+            "Quarkkuchen mit Mandarinen Mandarin Orange Cheesecake")
+        assert title_case("BENGALI CHOLAR DAL Creamy Dal") == "Bengali Cholar Dal Creamy Dal"
+        assert title_case("Noodle Soup (GAENG JUED WOON SEN)") == "Noodle Soup (Gaeng Jued Woon Sen)"
