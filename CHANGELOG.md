@@ -24,22 +24,18 @@ Every recipe title is stored in title case, so a source that prints its titles i
 ## [9.6.3] — 2026-10-03
 
 The shopping classifier keeps functionally distinct products apart. Needs no migration; the container restart deploys it.
-
 ### 🐛 Fixed — a near-twin known food no longer swallows a distinct product
 - "Reuse a food from KNOWN FOODS when the ingredient is the same thing" could tempt Flash-Lite to collapse high-similarity distinct items: baking powder into a known "baking soda", evaporated milk into "sweetened condensed milk", flaky finishing salt into "salt". The classify prompt now carries the negative constraint by name — never equate functionally distinct products, even when a known food is close.
-
 ### 🧪 Tests
 - `tests/goldens/test_classify_golden.py::test_functionally_distinct_products_never_collapse`: the three pairs, each with its near-twin on KNOWN FOODS. The classify golden set is re-recorded with the new prompt; the prompt snapshot moves.
 After the live re-tag of the library (2026-10-03: 1,583 recipes written, 0 failed). Cayenne Fix Roadmap F-225 and F-220 (F-225 was filed as F-219 until that ID turned out taken). Needs no migration.
-
 ### 🐛 Fixed — an amount written without a space is an amount (F-225)
 - `parse_use` required a space between the number and the unit, so the model's `{{id|50ml|50ml}}` was corrected to `none` and the chip fell back to the source's words, unscaled. A unit glued to the number is now read; a fraction ("1/2 cup") still is not, since a use is a decimal. Cayenne's `parseUse` reads the same.
-
 ### 🐛 Fixed — the direction-amounts backfill writes and reports as it goes (F-220)
 - `scripts/backfill_direction_amounts.py` sent every recipe to Gemini, then wrote the database, the record and the log in one pass at the end: the live run sat silent for most of an hour, and a crash late in it would have thrown away every call. Each recipe is now written, its record line first and flushed, the moment its call returns; a progress line prints every 50 recipes (`--progress N`, 0 for none); stdout is line-buffered, so a redirected log shows it.
-
 ### 🧪 Tests
 - `test_fat_tokens.py`: `50ml` and `0.5cup` parse. `test_backfill_direction_amounts.py`: with one worker, the first recipe is in the database and the record before the second is sent, and progress prints.
+
 
 ## [9.6.2] — 2026-10-03
 

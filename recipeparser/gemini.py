@@ -669,7 +669,12 @@ TAGGING_RULES = """\
     boiling pasta before baking it.
   * The same test leaves off a tag the whole dish fails: a soup made with chicken stock is not meat-free.
 - Usually one tag per axis. Choose a second only when the dish belongs equally under both.
-- Prefer no tag to a doubtful one. Many recipes match nothing on an axis; return [] for it.
+- An axis with no good answer stays empty, and an empty axis is one of the commonest right
+  answers. Here is the mistake to watch for in yourself: an axis looks unanswered, so you reach
+  for the nearest thing the recipe mentions and tag that. If the only candidate you can find on
+  an axis is something the dish merely contains, or merely does on the way, then there is no
+  answer on that axis and you return [] for it. Leaving it empty is the right answer, not a
+  failure to find one.
 - A tag listed as "A" (under "B") is a kind of B. Choose the most specific tag that fits,
   never together with a tag it is under."""
 

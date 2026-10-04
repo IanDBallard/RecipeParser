@@ -58,6 +58,19 @@ HERO_INJECT_MAX_STUB_CHARS: int = 120
 # TOC and vision-OCR call. gemini-2.5-flash retires 2026-10-16; this points
 # at its GA successor. Override with GEMINI_MODEL to test another model
 # without a code change.
+#
+# This tier is kept knowingly, and it costs tagging accuracy (Cayenne Fix
+# Roadmap F-205, ruled 2026-10-03). Measured over 14 recipes through the real
+# refine path, five runs each: these rules score 147/160 here (133/160 before
+# 9.6.4's empty-axis rule), against 89/96 on gemini-3.5-flash and 96/96 on
+# gemini-3.8-flash. The failure is always the same move -- the model reaches for
+# the nearest ingredient when an axis would otherwise be empty -- and what
+# survives 9.6.4 is gnocchi and cakes taking Egg for eggs in the mixture, plus a
+# chicken-stock minestrone calling itself Vegetarian in three runs of five.
+# Prompt wording cannot close it at this tier: four other wordings were tried and
+# each cost a case that had been passing. ARCHITECTURE.md (section 8) has the
+# detail. Do NOT move this to gemini-3.5-flash-lite: it returned no usable
+# refinement in 42 of 42 runs.
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 # The embedding model behind /embed and the recipe-embedding pipeline stage.

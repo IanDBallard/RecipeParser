@@ -14,6 +14,22 @@ the categorisation prompt text, with:
     pytest tests/goldens/test_tagging_golden.py --record-gemini -n0
 (a real GOOGLE_API_KEY in the shell; the suite's default dummy key refuses).
 Six paid calls.
+
+Two of these cases cannot pass on the pinned model, and are marked strict xfail
+rather than weakened: gnocchi and the sponge are both tagged Egg for eggs worked
+into a dough or a batter. It is the model and not the wording -- these same
+prompts score 96/96 on gemini-3.8-flash -- and the owner ruled on 2026-10-03 to
+keep the cheaper tier (Cayenne Fix Roadmap F-205; config.py says what that
+costs). Each of those two cases is split from the tag the same dish *must* get,
+which stays a hard assertion, so a model that answers nothing still fails here.
+Strict is the point: if a re-record ever makes one pass, the suite says so.
+
+The rest hold on the reply recorded here. Read the minestrone with care: 9.6.4's
+empty-axis rule stopped it taking Chicken, but over five runs it claimed
+Vegetarian instead in three of them, so that case passes on this recording and a
+re-record may fail it. If it does, that is the model's variance at temperature
+0.1 and not a regression in the rules -- check it against a measurement of
+several runs before treating it as one.
 """
 from __future__ import annotations
 
@@ -24,9 +40,21 @@ import pytest
 from recipeparser.core.stages.categorize import categorize
 from recipeparser.gemini import categorize_batch, refine_recipe_for_cayenne
 from recipeparser.models import RecipeExtraction
+from tests.goldens.golden_client import GoldenClient
 from tests.goldens.paths import GEMINI_DIR
 
 FIXTURE = "tagging"
+
+#: Why two of these cases are expected to fail on the pinned model. A case split in
+#: two — what the dish must be tagged, and what it must not — keeps the first half a
+#: hard assertion, so a model that stops tagging anything still fails the set.
+MODEL_LIMIT = (
+    "gemini-3.1-flash-lite tags Egg for eggs worked into a dough or a batter: it reaches for the "
+    "nearest candidate when an axis would otherwise be empty. Measured 2026-10-03 and ruled a "
+    "cost worth paying for the cheaper tier (Cayenne Fix Roadmap F-205). The same prompt passes "
+    "this on gemini-3.8-flash, so an XPASS here means the model got better: delete the marker and "
+    "restore the case. Never weaken the assertion to match what a model does."
+)
 
 AXES: Dict[str, List[str]] = {
     "Cuisine": ["Asian", "British", "French", "Indian", "Italian", "Thai"],
@@ -114,45 +142,73 @@ GREEN_CURRY = RecipeExtraction(
 )
 
 
-def _tags(golden_client, raw: RecipeExtraction) -> Dict[str, List[str]]:
-    """The tags an ingest would write: the model's answer through CATEGORIZE."""
-    refined = refine_recipe_for_cayenne(raw, golden_client(FIXTURE), user_axes=AXES, parents=PARENTS)
-    assert refined is not None
-    return categorize(refined, AXES, PARENTS)
+@pytest.fixture(scope="module")
+def tags(request):
+    """The tags an ingest would write, one refine call per recipe however many cases read it.
+
+    Module-scoped and cached on purpose: a case split into "what it must be tagged" and
+    "what it must not" would otherwise make two paid calls for one recipe when recording,
+    and the two halves would then judge two different answers. The client is built here
+    rather than taken from the ``golden_client`` factory because that fixture is
+    function-scoped; a fresh client per recipe keeps each body's reply at ordinal 0.
+    """
+    record = bool(request.config.getoption("--record-gemini"))
+    answers: Dict[str, Dict[str, List[str]]] = {}
+
+    def _for(name: str, raw: RecipeExtraction) -> Dict[str, List[str]]:
+        if name not in answers:
+            client = GoldenClient(fixture_id=FIXTURE, root=GEMINI_DIR, record=record)
+            refined = refine_recipe_for_cayenne(raw, client, user_axes=AXES, parents=PARENTS)
+            assert refined is not None
+            answers[name] = categorize(refined, AXES, PARENTS)
+        return answers[name]
+
+    return _for
 
 
-def test_eggs_in_a_dough_do_not_make_gnocchi_an_egg_dish(golden_client):
-    tags = _tags(golden_client, GNOCCHI)
-    assert "Egg" not in tags.get("Protein", [])
-    assert "Italian" in tags.get("Cuisine", [])
+def test_gnocchi_is_tagged_the_italian_pasta_dish_it_is(tags):
+    # The half of the gnocchi case that holds on the pinned model: the split below must not
+    # let a model that tags nothing at all pass this set.
+    assert "Italian" in tags("gnocchi", GNOCCHI).get("Cuisine", [])
 
 
-def test_eggs_in_a_cake_do_not_make_it_an_egg_dish(golden_client):
-    tags = _tags(golden_client, SPONGE)
-    assert "Egg" not in tags.get("Protein", [])
-    assert "Cakes" in tags.get("Preparation Method", [])
+@pytest.mark.xfail(strict=True, reason=MODEL_LIMIT)
+def test_eggs_in_a_dough_do_not_make_gnocchi_an_egg_dish(tags):
+    assert "Egg" not in tags("gnocchi", GNOCCHI).get("Protein", [])
 
 
-def test_chicken_stock_makes_a_soup_neither_chicken_nor_vegetarian(golden_client):
-    tags = _tags(golden_client, MINESTRONE)
-    assert "Chicken" not in tags.get("Protein", [])
-    assert not set(tags.get("Diet", [])) & {"Vegetarian", "Vegan"}
-    assert "Soups" in tags.get("Preparation Method", [])
+def test_a_sponge_is_tagged_a_cake(tags):
+    assert "Cakes" in tags("sponge", SPONGE).get("Preparation Method", [])
 
 
-def test_searing_before_a_braise_does_not_name_the_technique(golden_client):
-    tags = _tags(golden_client, BRAISE)
-    assert "Searing & Sautéing" not in tags.get("Technique", [])
-    assert "Braising" in tags.get("Technique", [])
-    assert "Beef" in tags.get("Protein", [])
+@pytest.mark.xfail(strict=True, reason=MODEL_LIMIT)
+def test_eggs_in_a_cake_do_not_make_it_an_egg_dish(tags):
+    assert "Egg" not in tags("sponge", SPONGE).get("Protein", [])
 
 
-def test_a_dish_built_on_chicken_is_tagged_chicken_and_thai_not_asian(golden_client):
+def test_chicken_stock_makes_a_soup_neither_chicken_nor_vegetarian(tags):
+    # The least stable case in the set. 9.6.4's empty-axis rule stopped the Chicken tag for
+    # good, but the Vegetarian claim held in only two runs of five; this recording is one of
+    # the two. See the module docstring before calling a re-record failure a regression.
+    minestrone = tags("minestrone", MINESTRONE)
+    assert "Chicken" not in minestrone.get("Protein", [])
+    assert not set(minestrone.get("Diet", [])) & {"Vegetarian", "Vegan"}
+    assert "Soups" in minestrone.get("Preparation Method", [])
+
+
+def test_searing_before_a_braise_does_not_name_the_technique(tags):
+    braise = tags("braise", BRAISE)
+    assert "Searing & Sautéing" not in braise.get("Technique", [])
+    assert "Braising" in braise.get("Technique", [])
+    assert "Beef" in braise.get("Protein", [])
+
+
+def test_a_dish_built_on_chicken_is_tagged_chicken_and_thai_not_asian(tags):
     # The positive control: the rules must not stop a main ingredient being tagged.
-    tags = _tags(golden_client, GREEN_CURRY)
-    assert "Chicken" in tags.get("Protein", [])
-    assert "Thai" in tags.get("Cuisine", [])
-    assert "Asian" not in tags.get("Cuisine", [])
+    curry = tags("curry", GREEN_CURRY)
+    assert "Chicken" in curry.get("Protein", [])
+    assert "Thai" in curry.get("Cuisine", [])
+    assert "Asian" not in curry.get("Cuisine", [])
 
 
 def _row(rid: str, raw: RecipeExtraction) -> dict:
