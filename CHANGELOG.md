@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.7.1] — 2026-10-04
+
+Every stored recipe has unique, non-empty ingredient ids, so the kitchen never refuses to open one over a model slip (Cayenne Fix Roadmap F-194). Needs no migration; the container restart deploys it.
+
+### 🐛 Fixed — ingredient ids are unique at REFINE
+- Ids were unique only because the refine prompt asks for them, and Cayenne refuses a recipe whose ids repeat or are blank, since the id is the kitchen's loop key. `refine()` now checks them, before the Fat Token check, for ingest and regeneration alike.
+- A blank id, or a repeat that no Fat Token names, takes the next free `ing_NN` with a warning; nothing that is already unique is renumbered, because the id is a key, not a position.
+- A repeat that a token names is ambiguous, so it raises into the chunk's error boundary instead of storing a recipe the kitchen cannot open.
+
+### 🧪 Tests
+- `tests/unit/stages/test_refine_ingredient_ids.py`: unique and non-sequential ids pass untouched; a repeat and a blank are renumbered without colliding; a referenced repeat is refused.
+
 ## [9.7.0] — 2026-10-03
 
 Every recipe title is stored in title case, so a source that prints its titles in capitals no longer shouts in the library. Needs no migration; the container restart deploys it. The library's existing titles are brought into line by `scripts/backfill_title_case.py`, run once after the deploy.
