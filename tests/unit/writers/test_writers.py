@@ -26,7 +26,7 @@ from recipeparser.io.readers.paprika import PaprikaReader
 from recipeparser.io.writers.cayenne_zip import CayenneZipWriter
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.writers.paprika_zip import PaprikaWriter
-from recipeparser.io.writers.supabase import write_recipe_to_supabase
+from recipeparser.io.writers.supabase import write_recipe_categories, write_recipe_to_supabase
 from recipeparser.models import IngestResponse, StructuredIngredient, TokenizedDirection
 
 # ---------------------------------------------------------------------------
@@ -305,6 +305,52 @@ class TestTheSupabaseWriterInsertsRecipeCategories:
 # ---------------------------------------------------------------------------
 # Test 3 — PaprikaWriter produces a valid ZIP with Fat Tokens stripped
 # ---------------------------------------------------------------------------
+
+class TestTheTagLinksWrittenAfterTheRecipe:
+    """Cayenne Fix Roadmap F-246: TAG tags a recipe after it is in the table, so its links
+    are written on their own, to the row id the recipe was written as."""
+
+    def test_only_the_links_are_written_and_a_refused_one_is_reported(self, monkeypatch):
+        monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.co")
+        monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "fake-service-key")
+        # httpx.post is mocked below; nothing leaves this process.
+        monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
+        posted: List[tuple] = []
+
+        def post(url, *, headers, json, timeout, params=None):
+            posted.append((url.rsplit("/", 1)[-1], json))
+            resp = MagicMock()
+            if any(r["category_id"] == "cat-gone" for r in json):
+                resp.status_code = 409
+                resp.text = 'violates foreign key constraint "recipe_categories_category_id_fkey"'
+            else:
+                resp.status_code = 201
+            return resp
+
+        refused: List[dict] = []
+        with patch("recipeparser.io.writers.supabase.httpx.post", side_effect=post):
+            write_recipe_categories(
+                "row-1", "user-uuid-1", {"Cuisine": ["Thai"], "Speed": ["Quick"]},
+                {"Thai": "cat-thai", "Quick": "cat-gone"}, on_link_refused=refused.append,
+            )
+
+        assert {table for table, _ in posted} == {"recipe_categories"}
+        rows = [r for _, batch in posted for r in batch]
+        assert rows and all(r["recipe_id"] == "row-1" and r["user_id"] == "user-uuid-1" for r in rows)
+        assert [r["category_id"] for r in refused] == ["cat-gone"]
+
+    def test_no_tags_writes_nothing_and_needs_no_credentials(self, monkeypatch):
+        monkeypatch.delenv("SUPABASE_URL", raising=False)
+        with patch("recipeparser.io.writers.supabase.httpx.post") as post:
+            write_recipe_categories("row-1", "user-uuid-1", {}, {"Thai": "cat-thai"})
+            write_recipe_categories("row-1", "user-uuid-1", {"Cuisine": ["Thai"]}, {})
+        post.assert_not_called()
+
+    def test_live_writes_are_refused_under_pytest(self, monkeypatch):
+        monkeypatch.delenv("ALLOW_LIVE_WRITES_IN_TESTS", raising=False)
+        with pytest.raises(RuntimeError, match="Live writes blocked"):
+            write_recipe_categories("row-1", "user-uuid-1", {"Cuisine": ["Thai"]}, {"Thai": "cat-thai"})
+
 
 class TestPaprikaWriterProducesValidZip:
     """PaprikaWriter must produce a valid .paprikarecipes ZIP with no Fat Tokens."""

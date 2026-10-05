@@ -28,11 +28,12 @@ from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.stages.assemble import assemble
-from recipeparser.core.stages.categorize import categorize
 from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
+from recipeparser.core.stages.tag import TAG_BATCH_SIZE, TagFailure, tag_batch
 from recipeparser.core.ports import CategorySource, ImageStore
+from recipeparser.gemini import categorize_batch
 from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse, Photo
 from recipeparser.utils import title_case
 
@@ -88,6 +89,7 @@ class RecipePipeline:
         concurrency: int = MAX_CONCURRENT_API_CALLS,
         rpm: Optional[int] = None,
         image_store: Optional[ImageStore] = None,
+        categorize_fn: Optional[Callable[..., Dict[str, List[str]]]] = None,
     ) -> None:
         """
         Args:
@@ -100,12 +102,15 @@ class RecipePipeline:
             image_store:        Optional ImageStore for chunks that carry raw
                                 image bytes.  Without one those bytes are
                                 dropped, which is what shipped before.
+            categorize_fn:      The TAG stage's model call, ``gemini.categorize_batch``
+                                by default; a test passes a fake.
         """
         self._client = client
         self._controller = controller
         self._category_source = category_source
         self._cap = max(1, concurrency)
         self._image_store = image_store
+        self._categorize_fn = categorize_fn or categorize_batch
         # Initialise (or retrieve) the process-level rate limiter.
         if rpm is not None:
             self._limiter = GlobalRateLimiter(rpm=rpm)
@@ -124,6 +129,8 @@ class RecipePipeline:
         *,
         on_result: Optional[Callable[[IngestResponse], None]] = None,
         on_skip: Optional[Callable[[Chunk, str, int], None]] = None,
+        on_tags: Optional[Callable[[IngestResponse], None]] = None,
+        on_tag_failed: Optional[Callable[[TagFailure], None]] = None,
     ) -> List[IngestResponse]:
         """
         Process all chunks and return successfully assembled IngestResponse objects.
@@ -149,6 +156,17 @@ class RecipePipeline:
                          has.  A chunk that simply contained no recipe is not
                          a skip.  A recipe EXTRACT dropped as rewritten is
                          reported the same way, with the reason naming it.
+            on_tags:     Optional callback fired once per tagged recipe, from this
+                         thread, after TAG has written its ``grid_categories`` and
+                         ``categories`` onto it.  The recipe was already handed to
+                         ``on_result``, untagged (Fix Roadmap F-246, design D1).
+            on_tag_failed: Optional callback fired once per axis whose TAG call
+                         failed twice for a batch (design D8).
+
+        Tagging: REFINE no longer categorises.  Each finished recipe that went
+        through REFINE is queued; every ``TAG_BATCH_SIZE`` of them are tagged one
+        axis per call, and the rest when the run ends, including on cancel, so no
+        written recipe is left untagged.  The returned objects carry their tags.
 
         Returns:
             All successfully processed IngestResponse objects.  Chunks that
@@ -189,7 +207,34 @@ class RecipePipeline:
                     chunk.image_bytes, str(uuid.uuid4()), chunk.image_content_type
                 )
             stages = self._get_stages(chunk)
-            return self._process_chunk(chunk, stages, user_axes, parents)
+            return self._process_chunk(chunk, stages)
+
+        tag_queue: List[IngestResponse] = []
+
+        def _categorize(rows: List[Dict[str, Any]], axes: Dict[str, List[str]]) -> Dict[str, List[str]]:
+            self._limiter.wait_then_record_start()
+            return self._categorize_fn(rows, axes, self._client, parents=parents, limiter=self._limiter)
+
+        def _flush_tags() -> None:
+            """Tag what is queued (design D1) and hand each recipe on; never fail the run."""
+            batch = list(tag_queue)
+            tag_queue.clear()
+            if not batch or not user_axes:
+                return
+            self._controller.notify_stage_change("CATEGORIZING")
+            failures = tag_batch(batch, user_axes, parents, _categorize)
+            for recipe in batch:
+                if on_tags is not None:
+                    try:
+                        on_tags(recipe)
+                    except Exception:
+                        log.exception("RecipePipeline: on_tags callback failed for one recipe.")
+            for failure in failures:
+                if on_tag_failed is not None:
+                    try:
+                        on_tag_failed(failure)
+                    except Exception:
+                        log.exception("RecipePipeline: on_tag_failed callback failed.")
 
         def _report_skip(chunk: Chunk, reason: str, index: int) -> None:
             """Tell the caller a chunk produced nothing, and never let that itself fail the run."""
@@ -231,8 +276,10 @@ class RecipePipeline:
                     # gemini._call_with_retry's HTTP timeout.
                     outcome = future.result()
                     all_results.extend(outcome.results)
-                    if on_result is not None:
-                        for result in outcome.results:
+                    # A Cayenne restore carries its own categories and never passes REFINE.
+                    needs_tags = "REFINE" in self._get_stages(chunk)
+                    for result in outcome.results:
+                        if on_result is not None:
                             try:
                                 on_result(result)
                             except Exception:
@@ -243,6 +290,11 @@ class RecipePipeline:
                                 # than losing that row and saying so — which _report_skip does.
                                 log.exception("RecipePipeline: on_result callback failed for one recipe.")
                                 _report_skip(chunk, "result callback failed", index)
+                                continue  # not written, so nothing to tag
+                        if needs_tags:
+                            tag_queue.append(result)
+                    if len(tag_queue) >= TAG_BATCH_SIZE:
+                        _flush_tags()
                     for reason in outcome.skipped:
                         _report_skip(chunk, reason, index)
                 except Exception as exc:
@@ -260,6 +312,9 @@ class RecipePipeline:
                         except Exception:
                             log.exception("RecipePipeline: on_progress callback failed — re-raising (§11.4).")
                             raise
+
+        # What is left in the queue, after the last chunk or a cancel (design D1).
+        _flush_tags()
 
         # Transition FSM back to IDLE on normal completion.
         self._controller.transition("done")
@@ -281,14 +336,15 @@ class RecipePipeline:
         Routing table (§4.2 / §7.3 of PIPELINE_REFACTOR.md):
           PAPRIKA_CAYENNE + embedding  → ['ASSEMBLE']
           PAPRIKA_CAYENNE no embedding → ['EMBED', 'ASSEMBLE']
-          All other InputTypes         → ['EXTRACT', 'REFINE', 'CATEGORIZE', 'EMBED', 'ASSEMBLE']
+          All other InputTypes         → ['EXTRACT', 'REFINE', 'EMBED', 'ASSEMBLE', 'TAG']
+          (TAG is not per chunk: it runs over every ten finished recipes, in run())
         """
         if chunk.input_type == InputType.PAPRIKA_CAYENNE:
             if chunk.pre_parsed_embedding is not None:
                 return ["ASSEMBLE"]          # $0 — skip all Gemini calls
-            return ["EMBED", "ASSEMBLE"]     # Only embed, skip extract/refine/categorize
+            return ["EMBED", "ASSEMBLE"]     # Only embed: skip extract, refine and tag
         # URL, PDF, EPUB, IMAGE, PAPRIKA_LEGACY — full pipeline
-        return ["EXTRACT", "REFINE", "CATEGORIZE", "EMBED", "ASSEMBLE"]
+        return ["EXTRACT", "REFINE", "EMBED", "ASSEMBLE", "TAG"]
 
     # ──────────────────────────────────────────────────────────────────────────
     # Per-chunk processing
@@ -298,8 +354,6 @@ class RecipePipeline:
         self,
         chunk: Chunk,
         stages: List[str],
-        user_axes: Dict[str, List[str]],
-        parents: Optional[Dict[str, str]] = None,
     ) -> ChunkResult:
         """
         Execute the stage sequence for a single chunk.
@@ -399,18 +453,10 @@ class RecipePipeline:
                     raw=raw,
                     client=self._client,
                     source_host=host_of(chunk.source_url) if chunk.source_url else None,
-                    user_axes=user_axes,
-                    parents=parents,
                     limiter=self._limiter,  # for the retries inside gemini.py (F-109)
                 )
 
-                # CATEGORIZE (result is already embedded in refined via refine())
-                self._controller.notify_stage_change("CATEGORIZING")
-                grid_cats = categorize(
-                    recipe=refined,
-                    user_axes=user_axes,
-                    parents=parents,
-                )
+                # Tags come later, from the TAG stage over every ten finished recipes (F-246).
 
                 # EMBED
                 self._controller.notify_stage_change("EMBEDDING")
@@ -434,7 +480,7 @@ class RecipePipeline:
                     embedding=embedding,
                     source_url=chunk.source_url,
                     image_url=image_url,
-                    grid_categories=grid_cats,
+                    grid_categories={},
                     prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
                     cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
                     meta=chunk.meta,

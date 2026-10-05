@@ -13,7 +13,6 @@ from google.genai import errors as genai_errors
 from recipeparser import gemini, toc
 from recipeparser.models import RecipeExtraction
 from tests.goldens import golden_client as gc
-from tests.goldens.conftest import FIXED_AXES
 from tests.goldens.golden_client import GoldenClient, MissingRecordingError
 
 
@@ -54,7 +53,7 @@ class TestSniffStage:
         raw = RecipeExtraction(name="X", ingredients=["1 cup flour"], directions=["Mix."])
         contents = _sent_prompt(
             monkeypatch,
-            lambda c: gemini.refine_recipe_for_cayenne(raw, c, user_axes=FIXED_AXES),
+            lambda c: gemini.refine_recipe_for_cayenne(raw, c),
         )
         assert gc.sniff_stage(contents) == "refine"
 
@@ -127,7 +126,7 @@ class TestPromptBody:
     def test_refine_body_is_the_raw_recipe_repr(self, monkeypatch):
         raw = RecipeExtraction(name="X", ingredients=["1 cup flour"], directions=["Mix."])
         contents = _sent_prompt(
-            monkeypatch, lambda c: gemini.refine_recipe_for_cayenne(raw, c, user_axes=FIXED_AXES)
+            monkeypatch, lambda c: gemini.refine_recipe_for_cayenne(raw, c)
         )
         assert gc.prompt_body(contents, "refine").strip() == str(raw)
 

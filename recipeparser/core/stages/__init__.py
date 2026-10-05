@@ -9,9 +9,9 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here
 (enforced by ruff TID rules).
 """
 from recipeparser.core.stages.assemble import assemble
-from recipeparser.core.stages.categorize import categorize
 from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
+from recipeparser.core.stages.tag import tag_batch
 
-__all__ = ["extract", "refine", "categorize", "embed", "assemble"]
+__all__ = ["extract", "refine", "embed", "assemble", "tag_batch"]

@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from recipeparser.adapters.job_sink import SKIPPED_LIST_CAP, JobSink
 from recipeparser.core.models import Chunk, InputType
+from recipeparser.core.stages.tag import TagFailure
 
 
 def _sink(**kwargs: Any) -> JobSink:
@@ -289,3 +290,84 @@ def test_a_refused_link_is_not_a_skipped_section():
     assert sink.recipe_count == 1
     assert payload["skipped_count"] == 0 and payload["skipped"] == []
     assert sink.refused_link_count == 2
+
+
+# The TAG stage's links (Cayenne Fix Roadmap F-246): they arrive after the recipe is written.
+
+class _Tagged:
+    def __init__(self, title: str, grid: Dict[str, List[str]]) -> None:
+        self.title = title
+        self.grid_categories = grid
+
+
+def _tag_sink(write_links, row_id: Optional[str] = "row-1") -> JobSink:
+    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
+        if row_id is None:
+            raise RuntimeError("insert rejected")
+        return row_id
+
+    return JobSink(
+        job_id="job-1", user_id="user-1", category_ids={"Italian": "cat-it"},
+        write=_write, now=lambda: "fixed-ts", write_links=write_links,
+    )
+
+
+def test_tags_are_written_to_the_row_the_recipe_was_written_as():
+    calls: List[tuple] = []
+    sink = _tag_sink(lambda rid, uid, grid, ids, on_link_refused=None: calls.append((rid, uid, grid, ids)))
+    recipe = _Tagged("Gnocchi", {})
+    sink.on_result(recipe)
+    recipe.grid_categories = {"Cuisine": ["Italian"]}
+    sink.on_tags(recipe)
+    assert calls == [("row-1", "user-1", {"Cuisine": ["Italian"]}, {"Italian": "cat-it"})]
+
+
+def test_a_recipe_that_was_never_written_gets_no_tags():
+    calls: List[tuple] = []
+    sink = _tag_sink(lambda *a, **k: calls.append(a), row_id=None)
+    recipe = _Tagged("Gnocchi", {"Cuisine": ["Italian"]})
+    sink.on_result(recipe)
+    sink.on_tags(recipe)
+    assert calls == []
+
+
+def test_a_recipe_tagged_nothing_writes_nothing():
+    calls: List[tuple] = []
+    sink = _tag_sink(lambda *a, **k: calls.append(a))
+    recipe = _Tagged("Toast", {})
+    sink.on_result(recipe)
+    sink.on_tags(recipe)
+    assert calls == []
+
+
+def test_a_refused_tag_link_is_counted_on_the_job():
+    def _write_links(rid, uid, grid, ids, on_link_refused=None):
+        on_link_refused({"category_id": "cat-it", "reason": "409 foreign key"})
+
+    sink = _tag_sink(_write_links)
+    recipe = _Tagged("Gnocchi", {"Cuisine": ["Italian"]})
+    sink.on_result(recipe)
+    sink.on_tags(recipe)
+    assert sink.refused_link_count == 1
+    assert sink.refused_links == [{"label": "Gnocchi", "category_id": "cat-it", "reason": "409 foreign key"}]
+
+
+def test_a_failed_tag_write_is_logged_not_raised():
+    def _boom(*a, **k):
+        raise RuntimeError("network down")
+
+    sink = _tag_sink(_boom)
+    recipe = _Tagged("Gnocchi", {"Cuisine": ["Italian"]})
+    sink.on_result(recipe)
+    sink.on_tags(recipe)  # must not raise
+    assert sink.recipe_count == 1
+
+
+def test_an_axis_that_could_not_be_asked_counts_each_recipe_it_left_untagged():
+    sink = _tag_sink(lambda *a, **k: None)
+    sink.on_tag_failed(TagFailure("Protein", ["Gnocchi", "Sponge"], "503 unavailable"))
+    assert sink.refused_link_count == 2
+    assert sink.refused_links == [
+        {"label": "Gnocchi", "axis": "Protein", "reason": "503 unavailable"},
+        {"label": "Sponge", "axis": "Protein", "reason": "503 unavailable"},
+    ]

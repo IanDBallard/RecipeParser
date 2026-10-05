@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -110,6 +110,8 @@ def _make_pipeline(
         category_source=_FakeCategorySource(),
         rpm=9999,  # effectively unlimited for unit tests
         image_store=image_store,
+        # TAG's model call: no tags, so tests about other stages see none (F-246).
+        categorize_fn=lambda rows, axes, client, parents=None, limiter=None: {},
     )
 
 
@@ -117,7 +119,7 @@ def _make_pipeline(
 # Test: _get_stages routing
 # ---------------------------------------------------------------------------
 
-FULL_PIPELINE = ["EXTRACT", "REFINE", "CATEGORIZE", "EMBED", "ASSEMBLE"]
+FULL_PIPELINE = ["EXTRACT", "REFINE", "EMBED", "ASSEMBLE", "TAG"]
 
 
 class TestGetStages:
@@ -168,7 +170,6 @@ class TestGetStages:
 # Patch targets for all stage functions used inside RecipePipeline._process_chunk
 _PATCH_EXTRACT = "recipeparser.core.pipeline.extract"
 _PATCH_REFINE = "recipeparser.core.pipeline.refine"
-_PATCH_CATEGORIZE = "recipeparser.core.pipeline.categorize"
 _PATCH_EMBED = "recipeparser.core.pipeline.embed"
 _PATCH_ASSEMBLE = "recipeparser.core.pipeline.assemble"
 
@@ -394,7 +395,7 @@ def test_on_result_fires_per_recipe_and_on_skip_names_the_failed_chunk():
     with patch.object(
         RecipePipeline,
         "_process_chunk",
-        side_effect=lambda chunk, stages, axes, parents=None: (
+        side_effect=lambda chunk, stages: (
             ChunkResult([_make_ingest_response("Good One")], []) if chunk.text == "good" else _raise(RuntimeError("boom"))
         ),
     ):
@@ -421,7 +422,7 @@ def test_a_raising_on_result_does_not_abort_the_run():
     with patch.object(
         RecipePipeline,
         "_process_chunk",
-        side_effect=lambda chunk, stages, axes, parents=None: ChunkResult([_make_ingest_response(chunk.text)], []),
+        side_effect=lambda chunk, stages: ChunkResult([_make_ingest_response(chunk.text)], []),
     ):
         returned = pipeline.run(chunks, on_result=lambda _r: (_ for _ in ()).throw(RuntimeError("write failed")))
 
@@ -444,7 +445,7 @@ def test_on_skip_reports_submission_position_not_completion_order():
     ]
     skips_seen: List[tuple] = []
 
-    def _side_effect(chunk, stages, axes, parents=None):
+    def _side_effect(chunk, stages):
         if chunk.text == "bad-1":
             raise RuntimeError("boom")
         # Slow successes finish after the fast failure, so completion order
@@ -575,7 +576,6 @@ def test_a_legacy_paprika_chunks_meta_reaches_assemble():
         RecipeExtraction(name="Pie", ingredients=["x"], directions=["y"])
     ], [])), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Pie")), \
-         patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING), \
          patch(_PATCH_ASSEMBLE, side_effect=_assemble_capturing_meta):
         pipeline.run([chunk])
@@ -695,7 +695,6 @@ def test_pipeline_resolves_the_chunk_citation_with_the_models_stated_source():
         )
     ], [])), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Tomato Soup")), \
-         patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
         [result] = pipeline.run([chunk])
 
@@ -717,7 +716,6 @@ def test_refine_is_called_with_the_chunks_source_host():
         RecipeExtraction(name="Scones", ingredients=["x"], directions=["y"]),
     ], [])), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Scones")) as mock_refine, \
-         patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
         pipeline.run([chunk])
 
@@ -732,7 +730,6 @@ def test_refine_is_called_with_no_host_when_the_chunk_has_no_source_url():
         RecipeExtraction(name="Scones", ingredients=["x"], directions=["y"]),
     ], [])), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Scones")) as mock_refine, \
-         patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
         pipeline.run([chunk])
 
@@ -749,7 +746,6 @@ def test_refine_is_handed_the_limiter_for_its_retries():
         RecipeExtraction(name="Scones", ingredients=["x"], directions=["y"]),
     ], [])), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Scones")) as mock_refine, \
-         patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
         pipeline.run([chunk])
 
@@ -806,7 +802,6 @@ def _run_book_chunk(chunk: Chunk, extractions, store: Optional[ImageStore] = Non
     pipeline = _make_pipeline(image_store=store)
     with patch(_PATCH_EXTRACT, return_value=Extraction(extractions, [])), \
          patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)), \
-         patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
         return sorted(pipeline.run([chunk]), key=lambda r: r.title)
 
@@ -875,7 +870,6 @@ def test_a_rewritten_recipe_is_reported_by_name_and_its_neighbours_kept():
     with patch(_PATCH_EXTRACT, return_value=Extraction(
             [RecipeExtraction(name="Kept", ingredients=["x"], directions=["y"])], ["Carbonara"])), \
          patch(_PATCH_REFINE, return_value=_make_refinement("Kept")), \
-         patch(_PATCH_CATEGORIZE, return_value={}), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
         results = pipeline.run([chunk], on_skip=lambda c, reason, index: skips_seen.append((reason, index)))
     assert [r.title for r in results] == ["Kept"]
@@ -897,7 +891,7 @@ def test_a_rewritten_title_is_reported_even_when_a_later_stage_fails_the_chunk()
 
 
 # ---------------------------------------------------------------------------
-# Test: the tree reaches REFINE and CATEGORIZE (Cayenne Fix Roadmap F-205)
+# Test: the TAG stage (Cayenne Fix Roadmap F-246)
 # ---------------------------------------------------------------------------
 
 
@@ -906,7 +900,7 @@ class _NestedCategorySource(CategorySource):
         self.parents_error = parents_error
 
     def load_axes(self, user_id: str = "") -> Dict[str, List[str]]:
-        return {"Cuisine": ["Asian", "Italian", "Thai"]}
+        return {"Cuisine": ["Asian", "Italian", "Thai"], "Protein": ["Chicken", "Egg"]}
 
     def load_category_ids(self, user_id: str = "") -> Dict[str, str]:
         return {}
@@ -917,26 +911,137 @@ class _NestedCategorySource(CategorySource):
         return {"Thai": "Asian"}
 
 
-def _run_nested(source: CategorySource):
+class _FakeTagger:
+    """Stands in for gemini.categorize_batch: records each call, answers per axis."""
+
+    def __init__(self, answers: Dict[str, List[str]], fail_axes: Tuple[str, ...] = ()) -> None:
+        self.answers = answers
+        self.fail_axes = fail_axes
+        self.calls: List[Tuple[List[str], Dict[str, List[str]], Optional[Dict[str, str]]]] = []
+
+    def __call__(self, rows, axes, client, parents=None, limiter=None):
+        self.calls.append(([r["title"] for r in rows], dict(axes), parents))
+        axis = next(iter(axes))
+        if axis in self.fail_axes:
+            raise RuntimeError(f"{axis} unavailable")
+        return {r["id"]: list(self.answers.get(axis, [])) for r in rows}
+
+
+def _tag_run(n: int, *, source: Optional[CategorySource] = None, tagger: Optional[_FakeTagger] = None,
+             controller: Optional[PipelineController] = None, **run_kwargs):
+    """``n`` URL chunks of one recipe each, through the pipeline with TAG faked."""
     GlobalRateLimiter().reset()
-    pipeline = RecipePipeline(client=MagicMock(), controller=PipelineController(), category_source=source)
-    refined = _make_refinement("Green Curry")
-    refined.grid_categories = {"Cuisine": ["Asian", "Thai"]}
-    chunk = Chunk(text="Green curry ...", input_type=InputType.URL)
-    with patch(_PATCH_EXTRACT, return_value=Extraction([_named("Green Curry", None)], [])), \
-         patch(_PATCH_REFINE, return_value=refined) as refine, \
+    tagger = tagger or _FakeTagger({"Cuisine": ["Asian", "Thai"], "Protein": ["Chicken"]})
+    pipeline = RecipePipeline(
+        client=MagicMock(), controller=controller or PipelineController(),
+        category_source=source or _NestedCategorySource(), rpm=9999, categorize_fn=tagger, concurrency=1,
+    )
+    chunks = [Chunk(text=f"recipe {i}", input_type=InputType.URL) for i in range(n)]
+    with patch(_PATCH_EXTRACT, side_effect=lambda chunk_text, **_: Extraction([_named(chunk_text, None)], [])), \
+         patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)), \
          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
-        results = pipeline.run([chunk])
-    return refine, results
+        results = pipeline.run(chunks, **run_kwargs)
+    return results, tagger
 
 
-def test_the_tree_reaches_refine_and_a_parent_beside_its_child_is_not_kept():
-    refine, results = _run_nested(_NestedCategorySource())
-    assert refine.call_args.kwargs["parents"] == {"Thai": "Asian"}
-    assert results[0].grid_categories == {"Cuisine": ["Thai"]}
+def test_refine_is_asked_for_no_tags():
+    GlobalRateLimiter().reset()
+    pipeline = RecipePipeline(client=MagicMock(), controller=PipelineController(),
+                              category_source=_NestedCategorySource(), categorize_fn=_FakeTagger({}))
+    with patch(_PATCH_EXTRACT, return_value=Extraction([_named("Green Curry", None)], [])), \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Green Curry")) as refine, \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        pipeline.run([Chunk(text="Green curry ...", input_type=InputType.URL)])
+    assert "user_axes" not in refine.call_args.kwargs
+    assert "parents" not in refine.call_args.kwargs
+
+
+def test_each_axis_is_asked_on_its_own_and_the_tree_prunes_a_parent_beside_its_child():
+    results, tagger = _tag_run(1)
+    assert [axes for _titles, axes, _p in tagger.calls] == [
+        {"Cuisine": ["Asian", "Italian", "Thai"]}, {"Protein": ["Chicken", "Egg"]},
+    ]
+    assert all(p == {"Thai": "Asian"} for _t, _a, p in tagger.calls)
+    assert results[0].grid_categories == {"Cuisine": ["Thai"], "Protein": ["Chicken"]}
+    assert results[0].categories == ["Thai", "Chicken"]
 
 
 def test_a_failed_parents_load_keeps_the_tags_unpruned():
-    refine, results = _run_nested(_NestedCategorySource(parents_error=True))
-    assert refine.call_args.kwargs["parents"] == {}
-    assert results[0].grid_categories == {"Cuisine": ["Asian", "Thai"]}
+    results, _ = _tag_run(1, source=_NestedCategorySource(parents_error=True))
+    assert results[0].grid_categories == {"Cuisine": ["Asian", "Thai"], "Protein": ["Chicken"]}
+
+
+def test_recipes_are_tagged_ten_at_a_time_and_the_rest_at_the_end():
+    tagged: List[str] = []
+    results, tagger = _tag_run(23, on_tags=lambda r: tagged.append(r.title))
+    batch_sizes = [len(titles) for titles, axes, _p in tagger.calls if "Cuisine" in axes]
+    assert batch_sizes == [10, 10, 3]
+    assert len(tagged) == 23
+    assert all(r.grid_categories for r in results)
+
+
+def test_every_recipe_is_handed_to_on_result_before_its_tags():
+    order: List[str] = []
+    _tag_run(2, on_result=lambda r: order.append(f"result {r.title}"),
+             on_tags=lambda r: order.append(f"tags {r.title}"))
+    assert order.index("result recipe 0") < order.index("tags recipe 0")
+    assert order.index("result recipe 1") < order.index("tags recipe 1")
+
+
+def test_a_recipe_whose_write_failed_is_not_tagged():
+    def _write(r):
+        if r.title == "recipe 0":
+            raise RuntimeError("insert refused")
+    tagged: List[str] = []
+    _tag_run(2, on_result=_write, on_tags=lambda r: tagged.append(r.title))
+    assert tagged == ["recipe 1"]
+
+
+def test_a_failed_axis_costs_only_that_axis_and_is_reported():
+    failures = []
+    results, tagger = _tag_run(1, tagger=_FakeTagger({"Cuisine": ["Italian"]}, fail_axes=("Protein",)),
+                               on_tag_failed=failures.append)
+    assert results[0].grid_categories == {"Cuisine": ["Italian"]}
+    assert [(f.axis, f.titles) for f in failures] == [("Protein", ["recipe 0"])]
+    assert "Protein unavailable" in failures[0].reason
+    # tried twice before giving up (design D8)
+    assert sum(1 for _t, axes, _p in tagger.calls if "Protein" in axes) == 2
+
+
+def test_a_cancelled_run_still_tags_what_it_wrote():
+    controller = PipelineController()
+    written: List[str] = []
+    tagged: List[str] = []
+
+    def _on_result(r):
+        written.append(r.title)
+        if len(written) == 3:
+            controller.request_cancel()
+
+    _tag_run(12, controller=controller, on_result=_on_result, on_tags=lambda r: tagged.append(r.title))
+    assert 0 < len(written) < 12
+    assert sorted(tagged) == sorted(written)
+
+
+def test_a_cayenne_restore_is_never_queued_for_tags():
+    GlobalRateLimiter().reset()
+    tagger = _FakeTagger({"Cuisine": ["Italian"]})
+    pipeline = RecipePipeline(client=MagicMock(), controller=PipelineController(),
+                              category_source=_NestedCategorySource(), categorize_fn=tagger)
+    restored = _make_ingest_response("Restored")
+    restored.grid_categories = {"Cuisine": ["Thai"]}
+    chunk = Chunk(text="", input_type=InputType.PAPRIKA_CAYENNE, pre_parsed=restored,
+                  pre_parsed_embedding=FAKE_EMBEDDING)
+    with patch(_PATCH_ASSEMBLE, return_value=restored):
+        results = pipeline.run([chunk])
+    assert tagger.calls == []
+    assert results[0].grid_categories == {"Cuisine": ["Thai"]}
+
+
+def test_no_axes_means_no_tag_calls():
+    class _NoAxes(_NestedCategorySource):
+        def load_axes(self, user_id: str = "") -> Dict[str, List[str]]:
+            return {}
+    results, tagger = _tag_run(3, source=_NoAxes())
+    assert tagger.calls == []
+    assert all(r.grid_categories == {} for r in results)

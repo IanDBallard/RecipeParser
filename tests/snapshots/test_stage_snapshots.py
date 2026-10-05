@@ -108,21 +108,6 @@ def test_refine_output_shape(snapshot: SnapshotAssertion) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Snapshot: categorize stage output shape
-# ---------------------------------------------------------------------------
-
-def test_categorize_output_shape(snapshot: SnapshotAssertion) -> None:
-    """Lock in the Dict[str, List[str]] shape returned by categorize()."""
-    from recipeparser.core.stages.categorize import categorize
-
-    refinement = _make_refinement()
-    user_axes = {"Cuisine": ["Italian", "French"], "Meal Type": ["Dessert", "Breakfast"]}
-    result = categorize(refinement, user_axes=user_axes)
-
-    assert result == snapshot
-
-
-# ---------------------------------------------------------------------------
 # Snapshot: embed stage output shape
 # ---------------------------------------------------------------------------
 

@@ -182,16 +182,20 @@ class GoldenClient:
     reply before returning it.
     """
 
-    def __init__(self, fixture_id: str, root: Path, record: bool = False) -> None:
+    def __init__(self, fixture_id: str, root: Path, record: bool = False, record_missing: bool = False) -> None:
         self.fixture_id = fixture_id
         self.root = Path(root)
         self.record = bool(record)
+        #: Replay what exists and record only what is missing, so adding a call
+        #: (the TAG stage's, Cayenne Fix Roadmap F-246) does not re-pay for every
+        #: reply already recorded beside it.
+        self.record_missing = bool(record_missing) and not self.record
         self.models = _GoldenModels(self)
         self._ordinals: Dict[tuple, int] = {}
         self._lock = threading.Lock()
         self._real: Any = None
 
-        if self.record:
+        if self.record or self.record_missing:
             key = os.environ.get("GOOGLE_API_KEY", "").strip()
             if not key or key == "dummy-key-for-tests":
                 raise RuntimeError(
@@ -247,6 +251,12 @@ class GoldenClient:
         ordinal = self._next_ordinal(stage, body)
         directory, filename = record_key(stage, body, ordinal)
         path = self._fixture_dir / directory / filename
+
+        if not path.exists() and self.record_missing:
+            response = self._real.models.generate_content(model=model, contents=contents, config=config)
+            text = getattr(response, "text", "") or ""
+            self._write(path, stage, ordinal, model, config, contents, text)
+            return GoldenResponse(text=text)
 
         if not path.exists():
             raise MissingRecordingError(

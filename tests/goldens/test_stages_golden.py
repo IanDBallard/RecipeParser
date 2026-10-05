@@ -11,16 +11,15 @@ from syrupy.assertion import SnapshotAssertion
 
 from recipeparser import gemini
 from recipeparser.core.models import InputType
-from recipeparser.core.stages.categorize import categorize
 from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.io.readers.epub import EpubReader
 from recipeparser.io.readers.paprika import PaprikaReader
 from recipeparser.io.readers.pdf import extract_text_from_pdf
-from tests.goldens.conftest import FIXED_AXES, read_pdf_by_page
+from tests.goldens.conftest import read_pdf_by_page
 from tests.goldens.paths import corpus_path
 
-#: Every fixture that reaches the extract/refine/categorize path, and how its
+#: Every fixture that reaches the extract/refine path, and how its
 #: chunks are produced.  scanned.pdf is absent: it never gets past preflight,
 #: so its Gemini coverage is the vision test below.
 STAGE_FIXTURES = (
@@ -98,13 +97,11 @@ def test_stage_golden(fixture, golden_client, snapshot: SnapshotAssertion, monke
             refined = refine(
                 raw=raw,
                 client=client,
-                user_axes=FIXED_AXES,
             )
             rendered.append(
                 {
                     "raw": raw.model_dump(),
                     "refined": refined.model_dump(),
-                    "categories": categorize(recipe=refined, user_axes=FIXED_AXES),
                 }
             )
 
@@ -112,16 +109,12 @@ def test_stage_golden(fixture, golden_client, snapshot: SnapshotAssertion, monke
     # outside the axes or a recipe that refined to nothing is a real defect
     # wherever it appears, and these assertions are what keep the entries
     # beyond the detail cap honestly covered rather than merely executed.
-    valid_axes = {axis: set(tags) for axis, tags in FIXED_AXES.items()}
     for entry in rendered:
         assert entry["refined"]["structured_ingredients"], (
             f"{entry['raw']['name']!r} refined to no ingredients"
         )
-        for axis, tags in entry["refined"]["grid_categories"].items():
-            assert axis in valid_axes, f"{entry['raw']['name']!r} invented axis {axis!r}"
-            assert set(tags) <= valid_axes[axis], (
-                f"{entry['raw']['name']!r} has tags outside {axis!r}: {tags}"
-            )
+        # REFINE asks for no tags since F-246; the TAG stage has its own goldens.
+        assert entry["refined"]["grid_categories"] == {}, f"{entry['raw']['name']!r} carried tags out of REFINE"
 
     # The snapshot carries every recipe's name but only the first few in full.
     #
@@ -184,18 +177,16 @@ def test_the_bakers_table_is_normalised_before_extraction(golden_client):
 @pytest.mark.filterwarnings(
     r"ignore:prompt_sha256 mismatch for .*refine-\d+\.json:UserWarning"
 )
-def test_every_refined_recipe_keeps_its_grid_inside_the_axes(golden_client, monkeypatch):
-    """Clean-grid stripping: a tag outside FIXED_AXES must never survive."""
-    valid = {axis: set(tags) for axis, tags in FIXED_AXES.items()}
+def test_refine_carries_no_tags_even_from_a_recording_that_has_them(golden_client, monkeypatch):
+    """F-246: REFINE asks for no tags, and drops any a reply carries.
+
+    These recordings predate the change and still hold grid_categories, so they
+    prove the drop: the TAG stage, not REFINE, is the only source of tags.
+    """
     client = golden_client("dual-units.epub")
     for chunk in EpubReader().read(str(corpus_path("dual-units.epub"))):
         for raw in extract(chunk_text=chunk.text, client=client).recipes:
-            refined = refine(
-                raw=raw, client=client, user_axes=FIXED_AXES,
-            )
-            for axis, tags in refined.grid_categories.items():
-                assert axis in valid
-                assert set(tags) <= valid[axis]
+            assert refine(raw=raw, client=client).grid_categories == {}
 
 
 @pytest.mark.filterwarnings(
@@ -231,7 +222,6 @@ def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
             refined = refine(
                 raw=raw,
                 client=client,
-                user_axes=FIXED_AXES,
             )
             lines = [i.fallback_string for i in refined.structured_ingredients]
             lines += [d.text for d in refined.tokenized_directions]
@@ -263,7 +253,7 @@ def test_an_australian_recipe_is_detected_as_au_on_its_own_evidence(golden_clien
     ).recipes
     assert [raw.name for raw in raws] == ["Lamington Slice"]
 
-    refined = refine(raw=raws[0], client=client, user_axes=FIXED_AXES)
+    refined = refine(raw=raws[0], client=client)
 
     assert refined.source_uom_system_detected == "AU"
     assert refined.source_uom_system_evidence
@@ -292,7 +282,7 @@ def test_an_imperial_recipe_is_stored_as_written_and_detected_as_imperial(golden
         "1 stone potatoes", "2 drams saffron",
     ]
 
-    refined = refine(raw=raws[0], client=client, user_axes=FIXED_AXES)
+    refined = refine(raw=raws[0], client=client)
 
     assert refined.source_uom_system_detected == "Imperial"
     assert refined.source_uom_system_evidence

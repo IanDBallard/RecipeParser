@@ -210,6 +210,42 @@ def _write_category_junctions(
     return refused
 
 
+def write_recipe_categories(
+    recipe_id: str,
+    user_id: str,
+    grid_categories: Dict[str, List[str]],
+    category_ids: Dict[str, str],
+    on_link_refused: Optional[Callable[[RefusedLink], None]] = None,
+) -> None:
+    """
+    Write ``recipe_categories`` links for a recipe already written: the import's
+    TAG stage tags every ten recipes after they are in the table (Cayenne Fix
+    Roadmap F-246). Best-effort exactly as the links written with a recipe are:
+    a refused row costs only its own link and is reported through
+    ``on_link_refused``; a duplicate pair is ignored.
+    """
+    if not grid_categories or not category_ids:
+        return
+    if live_writes_blocked():
+        raise RuntimeError(
+            "Live writes blocked: this process is under pytest and "
+            "ALLOW_LIVE_WRITES_IN_TESTS is not set to '1' — refusing to write "
+            "to a real Supabase project. See recipeparser.config.live_writes_blocked."
+        )
+    supabase_url, service_key = _get_creds()
+    refused = _write_category_junctions(
+        recipe_id=recipe_id,
+        user_id=user_id,
+        grid_categories=grid_categories,
+        category_ids=category_ids,
+        supabase_url=supabase_url,
+        service_key=service_key,
+    )
+    if on_link_refused is not None:
+        for link in refused:
+            on_link_refused(link)
+
+
 def write_recipe_to_supabase(
     recipe: IngestResponse,
     user_id: str,

@@ -72,7 +72,6 @@ def _worker(fake, refine_fn=None, embed_fn=None, clock=None):
         fake, gemini_client=MagicMock(),
         refine_fn=refine_fn or MagicMock(return_value=_refinement()),
         embed_fn=embed_fn or MagicMock(return_value=[0.5] * 3),
-        axes_loader=lambda user_id: {"Cuisine": ["Italian"]},
         batch=5, concurrency=1, **extra,
     )
 
@@ -97,7 +96,7 @@ def test_success_writes_back_with_guard():
     kwargs = refine_fn.call_args.kwargs
     assert kwargs["source_host"] == "taste.com.au"
     assert "uom_system" not in kwargs and "measure_preference" not in kwargs
-    assert kwargs["user_axes"] == {"Cuisine": ["Italian"]}
+    assert "user_axes" not in kwargs  # REFINE no longer tags, and a regen keeps the recipe's tags (F-246)
     assert refine_fn.call_args.args[0].ingredients == ["1 cup flour"]
     assert not any(q.table == "profiles" for q in fake.queries)
     # write-back guarded by id AND body_rev
