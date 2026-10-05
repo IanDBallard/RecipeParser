@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 5,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "2a701dea7e563b0bf7ea895ab73a481e6a32050b5d23420a20f988b020ddce18",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"recipe-1\",\n      \"tags\": [\n        \"Simmering & Boiling\"\n      ]\n    }\n  ]\n}"
+}

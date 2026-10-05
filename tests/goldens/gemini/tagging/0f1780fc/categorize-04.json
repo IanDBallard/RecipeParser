@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 4,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "606ea140ed9160ee3573927aafc11da90dc0aeb19a5493d715fd5f4cfa109e28",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"recipe-1\",\n      \"tags\": [\n        \"Braises, Stews & Curries\"\n      ]\n    }\n  ]\n}"
+}
