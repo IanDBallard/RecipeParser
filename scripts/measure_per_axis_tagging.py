@@ -8,7 +8,9 @@ a single-recipe import tags it, and all fourteen in batches of ten, as a book do
 Re-run it when the model or the tagging prompt changes. Paid calls: 84 per run alone,
 12 per run batched, on the cheapest tier. Needs a real GOOGLE_API_KEY:
 
-    python scripts/measure_per_axis_tagging.py [runs]
+    python scripts/measure_per_axis_tagging.py [runs] [batch size]
+
+Given a batch size, it runs only the batched shape, at that size.
 """
 
 from __future__ import annotations
@@ -324,9 +326,10 @@ def score(recipes: List[R]):
 
 def main() -> None:
     runs = int(sys.argv[1]) if len(sys.argv) > 1 else 1
+    size = int(sys.argv[2]) if len(sys.argv) > 2 else TAG_BATCH_SIZE
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
     cat = lambda rows, axes: categorize_batch(rows, axes, client, parents=PARENTS)  # noqa: E731
-    for shape in ("alone", "batched"):
+    for shape in ("batched",) if len(sys.argv) > 2 else ("alone", "batched"):
         grand_p = grand_t = 0
         for run in range(runs):
             recipes = sample()
@@ -335,8 +338,8 @@ def main() -> None:
                 for r in recipes:
                     fails += tag_batch([r], AXES, PARENTS, cat)
             else:
-                for i in range(0, len(recipes), TAG_BATCH_SIZE):
-                    fails += tag_batch(recipes[i : i + TAG_BATCH_SIZE], AXES, PARENTS, cat)
+                for i in range(0, len(recipes), size):
+                    fails += tag_batch(recipes[i : i + size], AXES, PARENTS, cat)
             p, t, failed = score(recipes)
             grand_p += p
             grand_t += t
