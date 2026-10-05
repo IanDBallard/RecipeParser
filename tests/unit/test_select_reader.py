@@ -147,12 +147,36 @@ class TestSelectReaderSentence:
     def test_names_the_extension(self):
         with pytest.raises(ValueError) as excinfo:
             _select_reader("menu.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-        assert str(excinfo.value) == "Cayenne can't read .docx files yet."
+        assert str(excinfo.value) == (
+            "Cayenne can't read .docx files yet. Save it as a PDF, or copy the recipe's text and paste it here."
+        )
 
     def test_lower_cases_the_extension(self):
         with pytest.raises(ValueError) as excinfo:
             _select_reader("MENU.DOCX", "application/octet-stream")
-        assert str(excinfo.value) == "Cayenne can't read .docx files yet."
+        assert str(excinfo.value).startswith("Cayenne can't read .docx files yet.")
+
+    @pytest.mark.parametrize("name", ["menu.doc", "menu.odt", "menu.rtf", "menu.pages", "menu.txt"])
+    def test_a_document_says_what_to_do_instead(self, name):
+        """Cayenne F-253: a refused document names the two ways in that work today."""
+        ext = name[name.index("."):]
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader(name, "application/octet-stream")
+        assert str(excinfo.value) == (
+            f"Cayenne can't read {ext} files yet. Save it as a PDF, or copy the recipe's text and paste it here."
+        )
+
+    def test_a_document_with_no_extension_is_known_by_its_type(self):
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader("upload", "application/msword")
+        assert str(excinfo.value) == (
+            "Cayenne can't read this file yet. Save it as a PDF, or copy the recipe's text and paste it here."
+        )
+
+    def test_any_other_type_keeps_the_plain_sentence(self):
+        with pytest.raises(ValueError) as excinfo:
+            _select_reader("archive.zip", "application/zip")
+        assert str(excinfo.value) == "Cayenne can't read .zip files yet."
 
     def test_no_extension(self):
         with pytest.raises(ValueError) as excinfo:
@@ -172,7 +196,9 @@ class TestSelectReaderExtensionWins:
     def test_extension_wins_over_mislabeled_image_content_type(self):
         with pytest.raises(ValueError) as excinfo:
             _select_reader("menu.docx", "image/jpeg")
-        assert str(excinfo.value) == "Cayenne can't read .docx files yet."
+        assert str(excinfo.value) == (
+            "Cayenne can't read .docx files yet. Save it as a PDF, or copy the recipe's text and paste it here."
+        )
 
     def test_content_type_decides_with_no_extension(self):
         assert _select_reader("blob", "application/pdf") == "pdf"

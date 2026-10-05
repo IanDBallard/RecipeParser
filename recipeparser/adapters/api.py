@@ -870,6 +870,18 @@ _IMAGE_SUFFIX_BY_TYPE = {
     "image/jpg": ".jpg",
     "image/png": ".png",
 }
+# A word-processor or plain-text document: nothing here reads one, but the cook has two ways
+# in that work today, so the refusal names them rather than stopping (Cayenne F-253).
+_DOCUMENT_EXTENSIONS = (".docx", ".doc", ".odt", ".rtf", ".pages", ".txt")
+_DOCUMENT_CONTENT_TYPES = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+    "application/vnd.oasis.opendocument.text",
+    "application/rtf",
+    "text/rtf",
+    "text/plain",
+)
+_DOCUMENT_INSTEAD = "Save it as a PDF, or copy the recipe's text and paste it here."
 _HEIC_SENTENCE = "Cayenne can't read HEIC photos yet. Share it as a JPEG instead."
 _WEBP_SENTENCE = "Cayenne can't read WebP photos yet. Share it as a JPEG instead."
 
@@ -920,6 +932,8 @@ def _select_reader(filename: str, content_type: str) -> str:
             raise ValueError(_WEBP_SENTENCE)
         if ext in _IMAGE_EXTENSIONS:
             return "image"
+        if ext in _DOCUMENT_EXTENSIONS:
+            raise ValueError(f"Cayenne can't read {ext} files yet. {_DOCUMENT_INSTEAD}")
         raise ValueError(f"Cayenne can't read {ext} files yet.")
     # 2 — no extension at all: the content type is the only clue left.
     if content_type == "application/pdf":
@@ -932,6 +946,8 @@ def _select_reader(filename: str, content_type: str) -> str:
         raise ValueError(_WEBP_SENTENCE)
     if content_type in _IMAGE_CONTENT_TYPES:
         return "image"
+    if content_type in _DOCUMENT_CONTENT_TYPES:
+        raise ValueError(f"Cayenne can't read this file yet. {_DOCUMENT_INSTEAD}")
     raise ValueError("Cayenne can't read this file yet.")
 
 
