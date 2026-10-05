@@ -3,6 +3,7 @@
     {
       "base_servings": 6,
       "categories": [
+        "British",
         "Dessert"
       ],
       "cook_max_minutes": 20,
@@ -23,6 +24,9 @@
         "sha256": "23289d33644b3acb1f911e15c6a0394c8254c03dea8bb336528706d22ae1eca6"
       },
       "grid_categories": {
+        "Cuisine": [
+          "British"
+        ],
         "Meal Type": [
           "Dessert"
         ]

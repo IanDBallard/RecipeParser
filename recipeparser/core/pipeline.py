@@ -21,7 +21,7 @@ import mimetypes
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, List, NamedTuple, Optional
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from recipeparser.core.citation import Citation, host_of, resolve_citation
 from recipeparser.core.fsm import PipelineController
@@ -209,7 +209,9 @@ class RecipePipeline:
             stages = self._get_stages(chunk)
             return self._process_chunk(chunk, stages)
 
-        tag_queue: List[IngestResponse] = []
+        # (chunk position, position in the chunk, recipe): chunks finish in any order, and a
+        # batch is tagged in source order so the same import asks the same prompt (F-246).
+        tag_queue: List[Tuple[int, int, IngestResponse]] = []
 
         def _categorize(rows: List[Dict[str, Any]], axes: Dict[str, List[str]]) -> Dict[str, List[str]]:
             self._limiter.wait_then_record_start()
@@ -217,7 +219,7 @@ class RecipePipeline:
 
         def _flush_tags() -> None:
             """Tag what is queued (design D1) and hand each recipe on; never fail the run."""
-            batch = list(tag_queue)
+            batch = [recipe for _i, _j, recipe in sorted(tag_queue, key=lambda q: (q[0], q[1]))]
             tag_queue.clear()
             if not batch or not user_axes:
                 return
@@ -278,7 +280,7 @@ class RecipePipeline:
                     all_results.extend(outcome.results)
                     # A Cayenne restore carries its own categories and never passes REFINE.
                     needs_tags = "REFINE" in self._get_stages(chunk)
-                    for result in outcome.results:
+                    for position, result in enumerate(outcome.results):
                         if on_result is not None:
                             try:
                                 on_result(result)
@@ -292,7 +294,7 @@ class RecipePipeline:
                                 _report_skip(chunk, "result callback failed", index)
                                 continue  # not written, so nothing to tag
                         if needs_tags:
-                            tag_queue.append(result)
+                            tag_queue.append((index, position, result))
                     if len(tag_queue) >= TAG_BATCH_SIZE:
                         _flush_tags()
                     for reason in outcome.skipped:

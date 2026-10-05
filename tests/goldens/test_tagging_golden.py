@@ -23,14 +23,16 @@ only the calls that have no reply yet.
 
 Before F-246 two of these cases could not pass on the pinned model: gnocchi and
 the sponge were both tagged Egg for eggs worked into a dough or a batter when
-REFINE offered every axis in one request. Asked one axis at a time the same model
-scored 105/105 on the 14-recipe sample (2026-10-03). The strict xfail markers stay
-until a recording shows otherwise; strict is the point: if a recording makes one
-pass, the suite says so, and the marker comes off rather than the assertion
-softening.
+REFINE offered every axis in one request, and they were strict xfails naming the
+model. Asked one axis at a time the same model leaves Protein empty for both: the
+recording of 2026-10-05 passed them, and the markers came off. Each case is still
+split from the tag the same dish *must* get, so a model that tags nothing fails.
 
-Read the minestrone with care: over five runs of the old prompt it claimed
-Vegetarian in three, so a re-record may fail it. If it does, that is the model's
+Read the minestrone with care: over five runs of the old import it claimed
+Vegetarian in three. One axis per call it held in every run measured on
+2026-10-05, but stock-based soups batched ten to a call beside vegetarian dishes
+did take Vegetarian, which is why the TAG stage batches by five; a re-record may
+still fail it. If it does, that is the model's
 variance and not a regression in the rules -- check it against a measurement of
 several runs before treating it as one.
 """
@@ -47,17 +49,6 @@ from tests.goldens.golden_client import GoldenClient
 from tests.goldens.paths import GEMINI_DIR
 
 FIXTURE = "tagging"
-
-#: Why two of these cases are expected to fail on the pinned model. A case split in
-#: two — what the dish must be tagged, and what it must not — keeps the first half a
-#: hard assertion, so a model that stops tagging anything still fails the set.
-MODEL_LIMIT = (
-    "gemini-3.1-flash-lite tags Egg for eggs worked into a dough or a batter: it reaches for the "
-    "nearest candidate when an axis would otherwise be empty. Measured 2026-10-03 and ruled a "
-    "cost worth paying for the cheaper tier (Cayenne Fix Roadmap F-205). The same prompt passes "
-    "this on gemini-3.8-flash, so an XPASS here means the model got better: delete the marker and "
-    "restore the case. Never weaken the assertion to match what a model does."
-)
 
 AXES: Dict[str, List[str]] = {
     "Cuisine": ["Asian", "British", "French", "Indian", "Italian", "Thai"],
@@ -186,12 +177,11 @@ def tags(request):
 
 
 def test_gnocchi_is_tagged_the_italian_pasta_dish_it_is(tags):
-    # The half of the gnocchi case that holds on the pinned model: the split below must not
-    # let a model that tags nothing at all pass this set.
+    # The positive half of the gnocchi case: the split below must not let a model that tags
+    # nothing at all pass this set.
     assert "Italian" in tags("gnocchi", GNOCCHI).get("Cuisine", [])
 
 
-@pytest.mark.xfail(strict=True, reason=MODEL_LIMIT)
 def test_eggs_in_a_dough_do_not_make_gnocchi_an_egg_dish(tags):
     assert "Egg" not in tags("gnocchi", GNOCCHI).get("Protein", [])
 
@@ -200,15 +190,14 @@ def test_a_sponge_is_tagged_a_cake(tags):
     assert "Cakes" in tags("sponge", SPONGE).get("Preparation Method", [])
 
 
-@pytest.mark.xfail(strict=True, reason=MODEL_LIMIT)
 def test_eggs_in_a_cake_do_not_make_it_an_egg_dish(tags):
     assert "Egg" not in tags("sponge", SPONGE).get("Protein", [])
 
 
 def test_chicken_stock_makes_a_soup_neither_chicken_nor_vegetarian(tags):
-    # The least stable case in the set. 9.6.4's empty-axis rule stopped the Chicken tag for
-    # good, but the Vegetarian claim held in only two runs of five; this recording is one of
-    # the two. See the module docstring before calling a re-record failure a regression.
+    # The least stable case under the old import, which claimed Vegetarian in three runs of
+    # five. Asked one axis at a time it held in every measured run (2026-10-05), but see the
+    # module docstring before calling a re-record failure a regression.
     minestrone = tags("minestrone", MINESTRONE)
     assert "Chicken" not in minestrone.get("Protein", [])
     assert not set(minestrone.get("Diet", [])) & {"Vegetarian", "Vegan"}

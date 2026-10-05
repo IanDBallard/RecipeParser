@@ -980,6 +980,35 @@ def test_recipes_are_tagged_five_at_a_time_and_the_rest_at_the_end():
     assert all(r.grid_categories for r in results)
 
 
+def test_a_batch_is_tagged_in_source_order_whatever_order_its_chunks_finish():
+    # The same import must ask the same prompt (recorded goldens replay by it): chunk 0
+    # finishes last here, and is still the batch's first recipe.
+    GlobalRateLimiter().reset()
+    tagger = _FakeTagger({"Cuisine": ["Italian"]})
+    later_done = threading.Event()
+    finished: List[str] = []
+
+    def extract(chunk_text, **_):
+        if chunk_text == "recipe 0":
+            later_done.wait(timeout=5)
+        finished.append(chunk_text)
+        if len(finished) == 2:
+            later_done.set()
+        return Extraction([_named(chunk_text, None)], [])
+
+    pipeline = RecipePipeline(
+        client=MagicMock(), controller=PipelineController(), category_source=_NestedCategorySource(),
+        rpm=9999, categorize_fn=tagger, concurrency=3,
+    )
+    chunks = [Chunk(text=f"recipe {i}", input_type=InputType.URL) for i in range(3)]
+    with patch(_PATCH_EXTRACT, side_effect=extract), \
+         patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        pipeline.run(chunks)
+    assert finished[-1] == "recipe 0"
+    assert tagger.calls[0][0] == ["recipe 0", "recipe 1", "recipe 2"]
+
+
 def test_every_recipe_is_handed_to_on_result_before_its_tags():
     order: List[str] = []
     _tag_run(2, on_result=lambda r: order.append(f"result {r.title}"),
