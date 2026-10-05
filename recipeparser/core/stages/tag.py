@@ -1,12 +1,12 @@
 """
 recipeparser/core/stages/tag.py — TAG stage (Cayenne Fix Roadmap F-246).
 
-Tags finished recipes one axis per Gemini call, ten recipes per call: the shape
+Tags finished recipes one axis per Gemini call, five recipes per call: the shape
 ``scripts/retag_axis.py`` uses, which scored 105/105 on the 14-recipe sample on
 2026-10-03 where REFINE, offered every axis in one request, tagged potato gnocchi
 and a Victoria sponge ``Egg`` in every run. The variable is how many axes one
 request offers. REFINE no longer categorises; the pipeline queues each finished
-recipe and runs this over every ten (design
+recipe and runs this over every five (design
 ``docs/superpowers/specs/2026-10-05-per-axis-tagging-at-import-design.md`` in
 the Cayenne repository).
 
@@ -21,8 +21,10 @@ from recipeparser.models import IngestResponse
 
 log = logging.getLogger(__name__)
 
-#: Recipes per call, as the retag and the bulk recategorise batch them (spec 6.2).
-TAG_BATCH_SIZE = 10
+#: Recipes per call. Ten, the retag's size, let a batch of vegetarian dishes carry
+#: two stock-based soups into Vegetarian in two runs of three (measured 2026-10-05,
+#: 95/99); five scored 99/99, as did one recipe per call, at half the calls of one.
+TAG_BATCH_SIZE = 5
 
 #: ``(rows, {axis: tags}) -> {row id: tags}``; ``gemini.categorize_batch`` with
 #: its client, parents and limiter bound by the caller.

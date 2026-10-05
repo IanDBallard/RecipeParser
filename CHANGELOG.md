@@ -11,10 +11,13 @@ The import tags one axis per call (Cayenne Fix Roadmap F-246, design `docs/super
 
 ### 🐛 Fixed — the import tags the way the retag does
 - REFINE offered every axis in one request, and on the pinned `gemini-3.1-flash-lite` it filled an axis that should stay empty with the nearest ingredient: potato gnocchi and a Victoria sponge came back `Egg` in every run. `scripts/retag_axis.py`, asking one axis per call, scored 105/105 on the same sample. REFINE no longer tags: its prompt loses the categorisation section and its schema the `grid_categories` field, and a reply that carries tags anyway is cleared.
-- A new **TAG** stage (`core/stages/tag.py`) tags finished recipes ten at a time, one `categorize_batch` call per axis, with the retag's prompt word for word at temperature 0.0, reading the title and the verbatim ingredient lines and steps. Recipes are queued as they are written and tagged every ten, with the rest when the run ends, cancelled or not. A Cayenne restore is never queued; a recipe whose write failed is not tagged.
+- A new **TAG** stage (`core/stages/tag.py`) tags finished recipes five at a time, one `categorize_batch` call per axis, with the retag's prompt word for word at temperature 0.0, reading the title and the verbatim ingredient lines and steps. Recipes are queued as they are written and tagged every five, with the rest when the run ends, cancelled or not. A Cayenne restore is never queued; a recipe whose write failed is not tagged.
 - An axis whose call fails twice leaves only that axis empty for that batch; the job counts each recipe it left untagged with its refused links (`JobSink.on_tag_failed`). Tags are written to rows already in the table by the new `write_recipe_categories`, best-effort like the links written with a recipe.
 - The desktop CLI's Paprika export carries TAG's tags: the stage writes them onto the recipes before the run returns.
 - The regen worker no longer loads the taxonomy to hand REFINE axes whose answer it then discarded.
+
+### 📏 Measured — why five recipes a call, not ten
+- `scripts/measure_per_axis_tagging.py` (new) runs a fourteen-recipe sample rebuilt from F-205's record (the 2026-10-03 harness is lost, so this is not comparable with its 105/105). Three runs each: one recipe per call 99/99; ten per call 95/99, French onion soup and a chicken-stock risotto tagged `Vegetarian` in two runs of three when batched beside five vegetarian dishes; five per call 99/99. At five the two soups also had different neighbours, so the neighbours may account for part of the difference. The spec's ten (D1) becomes five, and `scripts/retag_axis.py` batches by five to match. The egg cases passed in every shape and every run.
 
 ### ✨ Added
 - `scripts/retag_axis.py --since <ISO timestamp>` plans only recipes created after it (design D3). It needs a zone and narrows only a `--plan`.
@@ -22,7 +25,7 @@ The import tags one axis per call (Cayenne Fix Roadmap F-246, design `docs/super
 
 ### 🧪 Tests
 - `tests/unit/stages/test_tag.py`: one axis per call, the verbatim rows, answers replacing what a recipe carried, a second try rescuing an axis, a twice-failed axis costing only itself.
-- `tests/unit/test_pipeline.py`: ten at a time with the rest at the end, `on_result` before tags, no tags for a failed write or a restore, a cancelled run still tagging what it wrote, no calls without axes.
+- `tests/unit/test_pipeline.py`: five at a time with the rest at the end, `on_result` before tags, no tags for a failed write or a restore, a cancelled run still tagging what it wrote, no calls without axes.
 - `tests/unit/test_job_sink.py`, `tests/unit/writers/test_writers.py`, `tests/unit/scripts/test_retag_axis.py`: the tag links and their refusals, `write_recipe_categories`, `--since`.
 - The tagging golden set runs through the TAG stage, each recipe alone as a single-recipe import tags it. The e2e goldens carry the TAG stage's recorded replies. REFINE's recordings are kept: their key is the raw recipe, which did not change, and any tags in them are cleared.
 - Prompt and stage snapshots lose the refine prompt's categorisation section, the schema field and the stage goldens' categories.

@@ -219,7 +219,7 @@ def write_recipe_categories(
 ) -> None:
     """
     Write ``recipe_categories`` links for a recipe already written: the import's
-    TAG stage tags every ten recipes after they are in the table (Cayenne Fix
+    TAG stage tags every five recipes after they are in the table (Cayenne Fix
     Roadmap F-246). Best-effort exactly as the links written with a recipe are:
     a refused row costs only its own link and is reported through
     ``on_link_refused``; a duplicate pair is ignored.

@@ -337,7 +337,7 @@ class RecipePipeline:
           PAPRIKA_CAYENNE + embedding  → ['ASSEMBLE']
           PAPRIKA_CAYENNE no embedding → ['EMBED', 'ASSEMBLE']
           All other InputTypes         → ['EXTRACT', 'REFINE', 'EMBED', 'ASSEMBLE', 'TAG']
-          (TAG is not per chunk: it runs over every ten finished recipes, in run())
+          (TAG is not per chunk: it runs over every TAG_BATCH_SIZE finished recipes, in run())
         """
         if chunk.input_type == InputType.PAPRIKA_CAYENNE:
             if chunk.pre_parsed_embedding is not None:
@@ -456,7 +456,7 @@ class RecipePipeline:
                     limiter=self._limiter,  # for the retries inside gemini.py (F-109)
                 )
 
-                # Tags come later, from the TAG stage over every ten finished recipes (F-246).
+                # Tags come later, from the TAG stage over every TAG_BATCH_SIZE finished recipes (F-246).
 
                 # EMBED
                 self._controller.notify_stage_change("EMBEDDING")

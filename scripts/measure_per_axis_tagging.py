@@ -4,7 +4,7 @@ The 2026-10-03 harness behind the retag's 105/105 was a throwaway and is lost. T
 rebuilds a sample from F-205's record of it -- the egg, stock and technique failure
 classes plus positive controls, using the dishes it names -- so its score is not
 directly comparable with 105/105. It runs both import shapes: each recipe alone, as
-a single-recipe import tags it, and all fourteen in batches of ten, as a book does.
+a single-recipe import tags it, and all fourteen in batches of TAG_BATCH_SIZE, as a book does.
 Re-run it when the model or the tagging prompt changes. Paid calls: 84 per run alone,
 12 per run batched, on the cheapest tier. Needs a real GOOGLE_API_KEY:
 

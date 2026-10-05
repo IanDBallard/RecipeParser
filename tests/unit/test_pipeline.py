@@ -971,11 +971,11 @@ def test_a_failed_parents_load_keeps_the_tags_unpruned():
     assert results[0].grid_categories == {"Cuisine": ["Asian", "Thai"], "Protein": ["Chicken"]}
 
 
-def test_recipes_are_tagged_ten_at_a_time_and_the_rest_at_the_end():
+def test_recipes_are_tagged_five_at_a_time_and_the_rest_at_the_end():
     tagged: List[str] = []
     results, tagger = _tag_run(23, on_tags=lambda r: tagged.append(r.title))
     batch_sizes = [len(titles) for titles, axes, _p in tagger.calls if "Cuisine" in axes]
-    assert batch_sizes == [10, 10, 3]
+    assert batch_sizes == [5, 5, 5, 5, 3]
     assert len(tagged) == 23
     assert all(r.grid_categories for r in results)
 

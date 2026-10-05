@@ -36,8 +36,9 @@ class _Answers:
         return self.by_axis.get(axis, {})
 
 
-def test_ten_recipes_to_a_call():
-    assert TAG_BATCH_SIZE == 10
+def test_five_recipes_to_a_call():
+    # Ten carried stock-based soups into Vegetarian beside vegetarian neighbours (2026-10-05).
+    assert TAG_BATCH_SIZE == 5
 
 
 def test_each_axis_is_asked_alone_over_every_recipe():

@@ -125,9 +125,9 @@ class TestPlanRetag:
             sizes.append(len(batch))
             return {}
 
-        recipes = [{"id": f"r{i}", "title": "", "ingredient_lines": [], "direction_steps": []} for i in range(25)]
+        recipes = [{"id": f"r{i}", "title": "", "ingredient_lines": [], "direction_steps": []} for i in range(23)]
         plan_retag(recipes, [], offer, count)
-        assert sizes == [10, 10, 5]
+        assert sizes == [5, 5, 5, 5, 3]  # five, as the import tags (F-246)
 
 
 class TestThePlanFile:

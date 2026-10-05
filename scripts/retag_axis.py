@@ -17,7 +17,7 @@ Two steps, so what is written is exactly what was read:
     python scripts/retag_axis.py --user-id <uuid> --apply protein.csv
 
 Step 1 reads SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and GOOGLE_API_KEY, and
-makes one model call per 10 recipes (about 160 for a 1,600-recipe library).
+makes one model call per 5 recipes (about 320 for a 1,600-recipe library).
 Step 2 needs only the Supabase pair.
 
 Every recipe the user owns is put to the model against the axis's tags, exactly
@@ -64,7 +64,9 @@ from recipeparser.core.taxonomy import descendants_of, parents_from_rows  # noqa
 log = logging.getLogger("retag-axis")
 
 PAGE = 500
-BATCH_SIZE = 10
+#: Five, as the import's TAG stage: ten let vegetarian neighbours carry stock-based soups
+#: into Vegetarian (Cayenne Fix Roadmap F-246, measured 2026-10-05).
+BATCH_SIZE = 5
 PLAN_COLUMNS = ["action", "user_id", "recipe_id", "title", "tag", "category_id"]
 
 
