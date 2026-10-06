@@ -88,13 +88,14 @@ class TestBuildersMatchTheCallSites:
         )
         assert sent == gemini.build_table_prompt(PLACEHOLDER_BODY)
 
-    @pytest.mark.parametrize("axes", [{}, FIXED_AXES])
-    def test_refine(self, monkeypatch, axes):
-        sent = _sent_contents(
-            monkeypatch,
-            lambda c: gemini.refine_recipe_for_cayenne(PLACEHOLDER_RECIPE, c, user_axes=axes),
-        )
-        assert sent == gemini.build_refine_prompt(PLACEHOLDER_RECIPE, None, axes)
+    def test_refine(self, monkeypatch):
+        sent = _sent_contents(monkeypatch, lambda c: gemini.refine_recipe_for_cayenne(PLACEHOLDER_RECIPE, c))
+        assert sent == gemini.build_refine_prompt(PLACEHOLDER_RECIPE, None)
+
+    def test_categorize_batch(self, monkeypatch):
+        rows = [{"id": "r1", "title": "Lasagne", "ingredient_lines": ["pasta"], "direction_steps": ["Bake."]}]
+        sent = _sent_contents(monkeypatch, lambda c: gemini.categorize_batch(rows, {"Cuisine": ["Italian"]}, c))
+        assert sent == gemini.build_categorize_batch_prompt(rows, {"Cuisine": ["Italian"]})
 
     def test_toc_parse(self, monkeypatch):
         chunks = ["Contents", "Soups .... 3", "Puddings .... 41"]
@@ -139,14 +140,19 @@ class TestPromptSnapshots:
     def test_table_prompt(self, snapshot: SnapshotAssertion):
         assert gemini.build_table_prompt(PLACEHOLDER_BODY) == snapshot
 
-    def test_refine_prompt_without_axes(self, snapshot: SnapshotAssertion):
-        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, None, {}) == snapshot
-
-    def test_refine_prompt_with_axes(self, snapshot: SnapshotAssertion):
-        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, None, FIXED_AXES) == snapshot
+    def test_refine_prompt(self, snapshot: SnapshotAssertion):
+        # It asks for no tags since Cayenne Fix Roadmap F-246: the TAG stage does.
+        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, None) == snapshot
 
     def test_refine_prompt_with_a_host(self, snapshot: SnapshotAssertion):
-        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "taste.com.au", FIXED_AXES) == snapshot
+        assert gemini.build_refine_prompt(PLACEHOLDER_RECIPE, "taste.com.au") == snapshot
+
+    def test_categorize_batch_prompt_for_one_axis(self, snapshot: SnapshotAssertion):
+        # The shape the import's TAG stage sends: one axis per call (F-246).
+        assert gemini.build_categorize_batch_prompt(
+            [{"id": "recipe-1", "title": "Lasagne", "ingredient_lines": ["pasta"], "direction_steps": ["Bake."]}],
+            {"Cuisine": FIXED_AXES["Cuisine"]},
+        ) == snapshot
 
     def test_direction_mentions_prompt(self, snapshot: SnapshotAssertion):
         assert gemini.build_mentions_prompt(PLACEHOLDER_STRUCTURED, list(PLACEHOLDER_RECIPE.directions)) == snapshot
@@ -174,11 +180,8 @@ class TestSchemaSnapshots:
         assert gemini._schema_for_gemini(RecipeList) == snapshot
 
     def test_cayenne_refinement_schema(self, snapshot: SnapshotAssertion):
-        assert gemini._schema_for_gemini(CayenneRefinement) == snapshot
-
-    def test_dynamic_grid_schema(self, snapshot: SnapshotAssertion):
-        model = gemini._build_dynamic_grid_schema(FIXED_AXES)
-        assert gemini._schema_for_gemini(model) == snapshot
+        # What REFINE sends, which offers no field for tags (F-246).
+        assert gemini.refine_json_schema() == snapshot
 
     def test_direction_mentions_schema(self, snapshot: SnapshotAssertion):
         assert gemini._schema_for_gemini(DirectionMentions) == snapshot
@@ -199,6 +202,3 @@ class TestSchemaSnapshots:
         rendered = json.dumps(gemini._schema_for_gemini(model))
         assert "additionalProperties" not in rendered
 
-    def test_the_dynamic_grid_schema_carries_no_additional_properties(self):
-        model = gemini._build_dynamic_grid_schema(FIXED_AXES)
-        assert "additionalProperties" not in json.dumps(gemini._schema_for_gemini(model))

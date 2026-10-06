@@ -21,7 +21,6 @@ from recipeparser.core.citation import host_of
 from recipeparser.core.regen import build_extraction, build_update
 from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.refine import refine
-from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +41,6 @@ class RegenWorker:
         *,
         refine_fn: Callable[..., Any] = refine,
         embed_fn: Callable[..., List[float]] = embed,
-        axes_loader: Optional[Callable[[str], Dict[str, List[str]]]] = None,
         batch: int = 5,
         concurrency: int = 2,
         clock: Callable[[], float] = time.monotonic,
@@ -51,7 +49,6 @@ class RegenWorker:
         self._client = gemini_client
         self._refine = refine_fn
         self._embed = embed_fn
-        self._axes = axes_loader or (lambda uid: SupabaseCategorySource().load_axes(uid))
         self._batch = max(1, batch)
         self._concurrency = max(1, concurrency)
         self._clock = clock
@@ -84,7 +81,6 @@ class RegenWorker:
                 build_extraction(row),
                 self._client,
                 source_host=host_of(row["source_url"]) if row.get("source_url") else None,
-                user_axes=self._axes(row["user_id"]),
             )
             vector = self._embed(recipe=refinement, client=self._client)
             payload = build_update(refinement, vector, read_rev)

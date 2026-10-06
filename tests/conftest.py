@@ -22,6 +22,13 @@ def pytest_addoption(parser):
         help="Call the real Gemini API and record replies under tests/goldens/gemini/.",
     )
     parser.addoption(
+        "--record-gemini-missing",
+        action="store_true",
+        default=False,
+        help="Replay every recorded reply and call the real Gemini API only for one that is missing "
+        "(a new call, e.g. the TAG stage's per-axis calls, F-246), recording it.",
+    )
+    parser.addoption(
         "--update-goldens",
         action="store_true",
         default=False,
@@ -37,6 +44,11 @@ _SERIAL_ONLY = (
         "--record-gemini",
         "GlobalRateLimiter is a per-process singleton, so N xdist workers would "
         "issue N x the intended RPM against the real Gemini quota",
+    ),
+    (
+        "record_gemini_missing",
+        "--record-gemini-missing",
+        "it records real calls, for the same reason as --record-gemini",
     ),
     (
         "update_goldens",

@@ -39,6 +39,45 @@
   
   '''
 # ---
+# name: TestPromptSnapshots.test_categorize_batch_prompt_for_one_axis
+  '''
+  
+  You are a culinary classifier. The user has just added these tags to their taxonomy:
+  - Cuisine: "American", "British", "French", "Italian"
+  
+  For EACH recipe below, list which of the tags above it belongs under. Rules:
+  - Use ONLY tags from the list above, spelled exactly. Never invent a tag.
+  - Return an empty list when none fits.
+  - Return one result per recipe id, in any order.
+  
+  TAGGING RULES:
+  - A tag must be true of the dish as a whole, not of one ingredient in it or one step in making it.
+  - The test for every tag: would a cook browsing that tag expect to find this recipe there? If not, leave it off.
+    * An ingredient that binds, enriches, seasons, garnishes, or makes the stock or sauce does not make
+      the dish about that ingredient: eggs in a dough, chicken stock in a soup, butter in a sauce.
+    * A step on the way does not name how the dish is cooked: browning meat before braising it,
+      boiling pasta before baking it.
+    * The same test leaves off a tag the whole dish fails: a soup made with chicken stock is not meat-free.
+  - Usually one tag per axis. Choose a second only when the dish belongs equally under both.
+  - An axis with no good answer stays empty, and an empty axis is one of the commonest right
+    answers. Here is the mistake to watch for in yourself: an axis looks unanswered, so you reach
+    for the nearest thing the recipe mentions and tag that. If the only candidate you can find on
+    an axis is something the dish merely contains, or merely does on the way, then there is no
+    answer on that axis and you return [] for it. Leaving it empty is the right answer, not a
+    failure to find one.
+  - A tag listed as "A" (under "B") is a kind of B. Choose the most specific tag that fits,
+    never together with a tag it is under.
+  
+  RECIPES:
+  RECIPE ID: recipe-1
+  TITLE: Lasagne
+  INGREDIENTS:
+    - pasta
+  DIRECTIONS:
+    1. Bake.
+  
+  '''
+# ---
 # name: TestPromptSnapshots.test_classify_prompt
   '''
   You are a grocery shopping classifier. For each ingredient below, say what a shopper buys for it.
@@ -192,6 +231,106 @@
   
   '''
 # ---
+# name: TestPromptSnapshots.test_refine_prompt
+  '''
+  
+  You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
+  
+  RULES:
+  1. STRUCTURED INGREDIENTS:
+     - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
+     - Extract numeric "amount", "unit" (null if unitless), and "name".
+     - "fallback_string" is the original full line, unchanged.
+     - "line_index" is the 0-based position of the source line in the RAW RECIPE
+       ingredients list. Every ingredient line gets exactly one entry with its
+       index. A section header line (e.g. "For the sauce:") gets no entry.
+     - STATE: for every ingredient with an amount and a volume or weight unit, say whether it is
+       "liquid" - pourable as the recipe uses it: water, milk, cream, stock, oil, wine, juice,
+       vinegar, honey, syrup, melted butter - or "solid" - everything else, including flour,
+       sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
+       null when the line has no amount or its unit is neither a volume nor a weight.
+       Use the state when you compute the conversion below.
+     - DUAL MEASURES: when a line states two measures ("1 cup (240 g) flour", "250g/2 cups flour",
+       "1 ounce (about 1/3 packed cup) grated pecorino"), the FIRST measure the writer gives is
+       "amount" and "unit". When the second is the other kind (a weight beside a volume, or a volume
+       beside a weight), put it in "converted_amount" and "converted_unit" exactly as the line writes
+       it and set "is_ai_converted" to false. When both are the same kind ("1 pound (450g)"), the
+       second is not structured: apply the CONVERSION rule below.
+     - CONVERSION: for a line with one measure, give the equivalent in the OTHER measure, in grams or
+       millilitres only: a weight for a volume ("1 cup" flour -> 120, "g"), a volume for a weight
+       ("150 g" flour -> 300, "ml"). Never answer in cups, spoons, ounces or pints. Put it in
+       "converted_amount" and "converted_unit" and set "is_ai_converted" to true. Leave
+       "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
+       states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
+       "a pinch").
+       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
+     - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
+     - amount: the numeric quantity. Use null - never 0 - when the source states no
+       amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
+       measurement of nothing.
+  
+  2. TOKENIZED DIRECTIONS:
+     - Rewrite each direction with Fat Tokens: {{ingredient_id|words|use}}. Copy the direction
+       exactly; replacing every token with its words must give back the direction as written.
+     - Say how much of the ingredient each mention uses, as "use":
+         * all  - the whole amount the ingredient line gives goes in here, at once. Only the FIRST
+           time it does: later mentions of the same food ("drain the rice", "until the rice is
+           done", "the butter mixture") are none.
+         * an amount - the direction itself writes a quantity for this mention. The words are ONLY
+           that quantity as written ("1/2 cup (60 g)", "2", "two tablespoons"), never the
+           ingredient's name ("Add 1 cup peas": the words are "1 cup", not "1 cup peas"), and the
+           use is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
+           If the direction names the ingredient without writing a quantity beside it, the use is
+           all, rest or none - never an amount, even when you know the line's amount.
+         * rest - what is left after amounts the directions stated earlier: "the remaining flour",
+           "the rest of the sugar". The words are the ingredient's name.
+         * none - the ingredient is named but no amount follows from the text: "add more flour
+           until sticky", "a bit more", "season with salt", "salt to taste", "Salt it", a share
+           ("half the cider", "a third of the flour"), a rate ("1 teaspoon at a time", "2 per
+           ball"), or a later mention of food already added.
+     - When unsure, say "none". A missing number is safe; a wrong one is not.
+     - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour".
+     - Examples:
+         "Whisk together the flour and salt" -> "Whisk together the {{ing_01|flour|all}} and {{ing_03|salt|all}}"
+         "Add about 1/2 cup (60 g) flour" -> "Add about {{ing_02|1/2 cup (60 g)|0.5 cup}} flour"
+         "Add the remaining flour" -> "Add the remaining {{ing_02|flour|rest}}"
+         "Add more flour until sticky" -> "Add more {{ing_02|flour|none}} until sticky"
+  
+  3. PHASES:
+     - If the raw recipe groups its ingredients or directions into phases,
+       stages, or days (a bold heading entry such as "**Phase 1**", "**Day 1**",
+       "**Soaker**"), keep every one of those headings as its own entry, in
+       place, in both lists.
+     - A heading is not an ingredient: give it no amount, no unit, and no fat
+       tokens. Carry the heading text through as the entry's fallback_string
+       (ingredients) or text (directions).
+     - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
+       be able to tell where one session ends and the next begins.
+  
+  4. SOURCE SYSTEM:
+     - "source_uom_system_detected": the measuring system the writer used, exactly one of "US",
+       "UK", "EU", "AU", "Imperial", judged only from evidence in the RAW RECIPE or the SOURCE HOST:
+         * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
+           is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
+           pint is Imperial;
+         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
+         * a statement about the measures ("Australian standard measures", "US cup measures");
+         * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
+           Metric's);
+         * spelling and ingredient names only one country uses ("caster sugar", "plain flour" and
+           "double cream" are UK; "all-purpose flour" and "heavy cream" are US).
+       Grams printed beside cups are not evidence: American writers print them too.
+     - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
+       the SOURCE HOST exactly as given. One short quote.
+     - Leave both null when nothing above applies.
+  
+  SOURCE HOST: none
+  
+  RAW RECIPE:
+  name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
+  
+  '''
+# ---
 # name: TestPromptSnapshots.test_refine_prompt_with_a_host
   '''
   
@@ -285,251 +424,7 @@
        the SOURCE HOST exactly as given. One short quote.
      - Leave both null when nothing above applies.
   
-  5. CATEGORIZATION (grid_categories):
-     Classify this recipe using the user's taxonomy axes below, by the TAGGING RULES. NEVER invent tags outside the provided lists.
-     TAGGING RULES:
-     - A tag must be true of the dish as a whole, not of one ingredient in it or one step in making it.
-     - The test for every tag: would a cook browsing that tag expect to find this recipe there? If not, leave it off.
-       * An ingredient that binds, enriches, seasons, garnishes, or makes the stock or sauce does not make
-         the dish about that ingredient: eggs in a dough, chicken stock in a soup, butter in a sauce.
-       * A step on the way does not name how the dish is cooked: browning meat before braising it,
-         boiling pasta before baking it.
-       * The same test leaves off a tag the whole dish fails: a soup made with chicken stock is not meat-free.
-     - Usually one tag per axis. Choose a second only when the dish belongs equally under both.
-     - An axis with no good answer stays empty, and an empty axis is one of the commonest right
-       answers. Here is the mistake to watch for in yourself: an axis looks unanswered, so you reach
-       for the nearest thing the recipe mentions and tag that. If the only candidate you can find on
-       an axis is something the dish merely contains, or merely does on the way, then there is no
-       answer on that axis and you return [] for it. Leaving it empty is the right answer, not a
-       failure to find one.
-     - A tag listed as "A" (under "B") is a kind of B. Choose the most specific tag that fits,
-       never together with a tag it is under.
-     AXES:
-     - Cuisine: ["American", "British", "French", "Italian"]
-     - Meal Type: ["Breakfast", "Dessert", "Dinner", "Bread"]
   SOURCE HOST: taste.com.au
-  
-  RAW RECIPE:
-  name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_refine_prompt_with_axes
-  '''
-  
-  You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
-  
-  RULES:
-  1. STRUCTURED INGREDIENTS:
-     - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
-     - Extract numeric "amount", "unit" (null if unitless), and "name".
-     - "fallback_string" is the original full line, unchanged.
-     - "line_index" is the 0-based position of the source line in the RAW RECIPE
-       ingredients list. Every ingredient line gets exactly one entry with its
-       index. A section header line (e.g. "For the sauce:") gets no entry.
-     - STATE: for every ingredient with an amount and a volume or weight unit, say whether it is
-       "liquid" - pourable as the recipe uses it: water, milk, cream, stock, oil, wine, juice,
-       vinegar, honey, syrup, melted butter - or "solid" - everything else, including flour,
-       sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
-       null when the line has no amount or its unit is neither a volume nor a weight.
-       Use the state when you compute the conversion below.
-     - DUAL MEASURES: when a line states two measures ("1 cup (240 g) flour", "250g/2 cups flour",
-       "1 ounce (about 1/3 packed cup) grated pecorino"), the FIRST measure the writer gives is
-       "amount" and "unit". When the second is the other kind (a weight beside a volume, or a volume
-       beside a weight), put it in "converted_amount" and "converted_unit" exactly as the line writes
-       it and set "is_ai_converted" to false. When both are the same kind ("1 pound (450g)"), the
-       second is not structured: apply the CONVERSION rule below.
-     - CONVERSION: for a line with one measure, give the equivalent in the OTHER measure, in grams or
-       millilitres only: a weight for a volume ("1 cup" flour -> 120, "g"), a volume for a weight
-       ("150 g" flour -> 300, "ml"). Never answer in cups, spoons, ounces or pints. Put it in
-       "converted_amount" and "converted_unit" and set "is_ai_converted" to true. Leave
-       "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
-       states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
-       "a pinch").
-       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
-     - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
-     - amount: the numeric quantity. Use null - never 0 - when the source states no
-       amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
-       measurement of nothing.
-  
-  2. TOKENIZED DIRECTIONS:
-     - Rewrite each direction with Fat Tokens: {{ingredient_id|words|use}}. Copy the direction
-       exactly; replacing every token with its words must give back the direction as written.
-     - Say how much of the ingredient each mention uses, as "use":
-         * all  - the whole amount the ingredient line gives goes in here, at once. Only the FIRST
-           time it does: later mentions of the same food ("drain the rice", "until the rice is
-           done", "the butter mixture") are none.
-         * an amount - the direction itself writes a quantity for this mention. The words are ONLY
-           that quantity as written ("1/2 cup (60 g)", "2", "two tablespoons"), never the
-           ingredient's name ("Add 1 cup peas": the words are "1 cup", not "1 cup peas"), and the
-           use is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
-           If the direction names the ingredient without writing a quantity beside it, the use is
-           all, rest or none - never an amount, even when you know the line's amount.
-         * rest - what is left after amounts the directions stated earlier: "the remaining flour",
-           "the rest of the sugar". The words are the ingredient's name.
-         * none - the ingredient is named but no amount follows from the text: "add more flour
-           until sticky", "a bit more", "season with salt", "salt to taste", "Salt it", a share
-           ("half the cider", "a third of the flour"), a rate ("1 teaspoon at a time", "2 per
-           ball"), or a later mention of food already added.
-     - When unsure, say "none". A missing number is safe; a wrong one is not.
-     - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour".
-     - Examples:
-         "Whisk together the flour and salt" -> "Whisk together the {{ing_01|flour|all}} and {{ing_03|salt|all}}"
-         "Add about 1/2 cup (60 g) flour" -> "Add about {{ing_02|1/2 cup (60 g)|0.5 cup}} flour"
-         "Add the remaining flour" -> "Add the remaining {{ing_02|flour|rest}}"
-         "Add more flour until sticky" -> "Add more {{ing_02|flour|none}} until sticky"
-  
-  3. PHASES:
-     - If the raw recipe groups its ingredients or directions into phases,
-       stages, or days (a bold heading entry such as "**Phase 1**", "**Day 1**",
-       "**Soaker**"), keep every one of those headings as its own entry, in
-       place, in both lists.
-     - A heading is not an ingredient: give it no amount, no unit, and no fat
-       tokens. Carry the heading text through as the entry's fallback_string
-       (ingredients) or text (directions).
-     - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
-       be able to tell where one session ends and the next begins.
-  
-  4. SOURCE SYSTEM:
-     - "source_uom_system_detected": the measuring system the writer used, exactly one of "US",
-       "UK", "EU", "AU", "Imperial", judged only from evidence in the RAW RECIPE or the SOURCE HOST:
-         * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
-           is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
-           pint is Imperial;
-         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
-         * a statement about the measures ("Australian standard measures", "US cup measures");
-         * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
-           Metric's);
-         * spelling and ingredient names only one country uses ("caster sugar", "plain flour" and
-           "double cream" are UK; "all-purpose flour" and "heavy cream" are US).
-       Grams printed beside cups are not evidence: American writers print them too.
-     - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
-       the SOURCE HOST exactly as given. One short quote.
-     - Leave both null when nothing above applies.
-  
-  5. CATEGORIZATION (grid_categories):
-     Classify this recipe using the user's taxonomy axes below, by the TAGGING RULES. NEVER invent tags outside the provided lists.
-     TAGGING RULES:
-     - A tag must be true of the dish as a whole, not of one ingredient in it or one step in making it.
-     - The test for every tag: would a cook browsing that tag expect to find this recipe there? If not, leave it off.
-       * An ingredient that binds, enriches, seasons, garnishes, or makes the stock or sauce does not make
-         the dish about that ingredient: eggs in a dough, chicken stock in a soup, butter in a sauce.
-       * A step on the way does not name how the dish is cooked: browning meat before braising it,
-         boiling pasta before baking it.
-       * The same test leaves off a tag the whole dish fails: a soup made with chicken stock is not meat-free.
-     - Usually one tag per axis. Choose a second only when the dish belongs equally under both.
-     - An axis with no good answer stays empty, and an empty axis is one of the commonest right
-       answers. Here is the mistake to watch for in yourself: an axis looks unanswered, so you reach
-       for the nearest thing the recipe mentions and tag that. If the only candidate you can find on
-       an axis is something the dish merely contains, or merely does on the way, then there is no
-       answer on that axis and you return [] for it. Leaving it empty is the right answer, not a
-       failure to find one.
-     - A tag listed as "A" (under "B") is a kind of B. Choose the most specific tag that fits,
-       never together with a tag it is under.
-     AXES:
-     - Cuisine: ["American", "British", "French", "Italian"]
-     - Meal Type: ["Breakfast", "Dessert", "Dinner", "Bread"]
-  SOURCE HOST: none
-  
-  RAW RECIPE:
-  name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_refine_prompt_without_axes
-  '''
-  
-  You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
-  
-  RULES:
-  1. STRUCTURED INGREDIENTS:
-     - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
-     - Extract numeric "amount", "unit" (null if unitless), and "name".
-     - "fallback_string" is the original full line, unchanged.
-     - "line_index" is the 0-based position of the source line in the RAW RECIPE
-       ingredients list. Every ingredient line gets exactly one entry with its
-       index. A section header line (e.g. "For the sauce:") gets no entry.
-     - STATE: for every ingredient with an amount and a volume or weight unit, say whether it is
-       "liquid" - pourable as the recipe uses it: water, milk, cream, stock, oil, wine, juice,
-       vinegar, honey, syrup, melted butter - or "solid" - everything else, including flour,
-       sugar, salt, cold butter, chopped vegetables and meat. Put it in "state". Leave "state"
-       null when the line has no amount or its unit is neither a volume nor a weight.
-       Use the state when you compute the conversion below.
-     - DUAL MEASURES: when a line states two measures ("1 cup (240 g) flour", "250g/2 cups flour",
-       "1 ounce (about 1/3 packed cup) grated pecorino"), the FIRST measure the writer gives is
-       "amount" and "unit". When the second is the other kind (a weight beside a volume, or a volume
-       beside a weight), put it in "converted_amount" and "converted_unit" exactly as the line writes
-       it and set "is_ai_converted" to false. When both are the same kind ("1 pound (450g)"), the
-       second is not structured: apply the CONVERSION rule below.
-     - CONVERSION: for a line with one measure, give the equivalent in the OTHER measure, in grams or
-       millilitres only: a weight for a volume ("1 cup" flour -> 120, "g"), a volume for a weight
-       ("150 g" flour -> 300, "ml"). Never answer in cups, spoons, ounces or pints. Put it in
-       "converted_amount" and "converted_unit" and set "is_ai_converted" to true. Leave
-       "converted_amount" and "converted_unit" null and "is_ai_converted" false when the line
-       states no amount ("salt to taste") or its unit is neither a volume nor a weight ("3 eggs",
-       "a pinch").
-       Sizes for older British measures: gill = 142 ml (a US gill = 118 ml); teacup = 142 ml; breakfast cup = 227 ml; dessertspoon = 10 ml; stone = 14 lb; dram = 1/16 oz (a weight).
-     - Never change a number or a unit the line writes: "amount" and "unit" are the line's own.
-     - amount: the numeric quantity. Use null - never 0 - when the source states no
-       amount ("salt to taste", "a pinch of nutmeg"). A zero would be read as a real
-       measurement of nothing.
-  
-  2. TOKENIZED DIRECTIONS:
-     - Rewrite each direction with Fat Tokens: {{ingredient_id|words|use}}. Copy the direction
-       exactly; replacing every token with its words must give back the direction as written.
-     - Say how much of the ingredient each mention uses, as "use":
-         * all  - the whole amount the ingredient line gives goes in here, at once. Only the FIRST
-           time it does: later mentions of the same food ("drain the rice", "until the rice is
-           done", "the butter mixture") are none.
-         * an amount - the direction itself writes a quantity for this mention. The words are ONLY
-           that quantity as written ("1/2 cup (60 g)", "2", "two tablespoons"), never the
-           ingredient's name ("Add 1 cup peas": the words are "1 cup", not "1 cup peas"), and the
-           use is the quantity as a decimal number and a unit: "0.5 cup", "60 g", "2" for a count.
-           If the direction names the ingredient without writing a quantity beside it, the use is
-           all, rest or none - never an amount, even when you know the line's amount.
-         * rest - what is left after amounts the directions stated earlier: "the remaining flour",
-           "the rest of the sugar". The words are the ingredient's name.
-         * none - the ingredient is named but no amount follows from the text: "add more flour
-           until sticky", "a bit more", "season with salt", "salt to taste", "Salt it", a share
-           ("half the cider", "a third of the flour"), a rate ("1 teaspoon at a time", "2 per
-           ball"), or a later mention of food already added.
-     - When unsure, say "none". A missing number is safe; a wrong one is not.
-     - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour".
-     - Examples:
-         "Whisk together the flour and salt" -> "Whisk together the {{ing_01|flour|all}} and {{ing_03|salt|all}}"
-         "Add about 1/2 cup (60 g) flour" -> "Add about {{ing_02|1/2 cup (60 g)|0.5 cup}} flour"
-         "Add the remaining flour" -> "Add the remaining {{ing_02|flour|rest}}"
-         "Add more flour until sticky" -> "Add more {{ing_02|flour|none}} until sticky"
-  
-  3. PHASES:
-     - If the raw recipe groups its ingredients or directions into phases,
-       stages, or days (a bold heading entry such as "**Phase 1**", "**Day 1**",
-       "**Soaker**"), keep every one of those headings as its own entry, in
-       place, in both lists.
-     - A heading is not an ingredient: give it no amount, no unit, and no fat
-       tokens. Carry the heading text through as the entry's fallback_string
-       (ingredients) or text (directions).
-     - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
-       be able to tell where one session ends and the next begins.
-  
-  4. SOURCE SYSTEM:
-     - "source_uom_system_detected": the measuring system the writer used, exactly one of "US",
-       "UK", "EU", "AU", "Imperial", judged only from evidence in the RAW RECIPE or the SOURCE HOST:
-         * a size the recipe states for a unit: "1 cup (240 ml)" or "(237 ml)" is US; "1 cup (250 ml)"
-           is a metric cup (UK, EU or AU); "1 tbsp (20 ml)" is AU; "1 pint (568 ml)" or a 20 fl oz
-           pint is Imperial;
-         * the pre-metric British measures: "breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial; "dessertspoon" alone is not evidence (modern UK and Australian recipes still use it);
-         * a statement about the measures ("Australian standard measures", "US cup measures");
-         * the SOURCE HOST: .co.uk is UK, .com.au is AU, .co.nz is UK (New Zealand's measures are UK
-           Metric's);
-         * spelling and ingredient names only one country uses ("caster sugar", "plain flour" and
-           "double cream" are UK; "all-purpose flour" and "heavy cream" are US).
-       Grams printed beside cups are not evidence: American writers print them too.
-     - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
-       the SOURCE HOST exactly as given. One short quote.
-     - Leave both null when nothing above applies.
-  
-  SOURCE HOST: none
   
   RAW RECIPE:
   name='Placeholder Cake' photo_filename='cake.jpg' servings='8' prep_time='20 mins' cook_time='35 mins' ingredients=['2 cups/250g plain flour', '1 cup sugar'] directions=['Mix everything.', 'Bake until done.'] notes=None categories=['EPUB Imports']
@@ -735,11 +630,6 @@
         ]),
         'title': 'Base Servings',
       }),
-      'grid_categories': dict({
-        'description': "Multipolar categorization result. Keys are axis names (e.g. 'Cuisine'), values are lists of 0-2 matching tags from that axis. Return [] for any axis that does not apply — never hallucinate tags.",
-        'title': 'Grid Categories',
-        'type': 'object',
-      }),
       'source_uom_system_detected': dict({
         'anyOf': list([
           dict({
@@ -935,237 +825,6 @@
       }),
     }),
     'title': 'DirectionMentions',
-    'type': 'object',
-  })
-# ---
-# name: TestSchemaSnapshots.test_dynamic_grid_schema
-  dict({
-    '$defs': dict({
-      'GridCategories': dict({
-        'properties': dict({
-          'Cuisine': dict({
-            'description': 'Tags for the \'Cuisine\' axis, judged by the TAGGING RULES: usually one, at most two, [] when none is true of the dish as a whole. Choose only from this exact list: ["American", "British", "French", "Italian"]. Do NOT invent tags outside this list.',
-            'items': dict({
-              'type': 'string',
-            }),
-            'title': 'Cuisine',
-            'type': 'array',
-          }),
-          'Meal Type': dict({
-            'description': 'Tags for the \'Meal Type\' axis, judged by the TAGGING RULES: usually one, at most two, [] when none is true of the dish as a whole. Choose only from this exact list: ["Breakfast", "Dessert", "Dinner", "Bread"]. Do NOT invent tags outside this list.',
-            'items': dict({
-              'type': 'string',
-            }),
-            'title': 'Meal Type',
-            'type': 'array',
-          }),
-        }),
-        'title': 'GridCategories',
-        'type': 'object',
-      }),
-      'StructuredIngredient': dict({
-        'properties': dict({
-          'amount': dict({
-            'anyOf': list([
-              dict({
-                'type': 'number',
-              }),
-              dict({
-                'type': 'null',
-              }),
-            ]),
-            'default': None,
-            'description': "Numeric quantity, e.g. 1.5. null when the source states no amount ('salt to taste').",
-            'title': 'Amount',
-          }),
-          'converted_amount': dict({
-            'anyOf': list([
-              dict({
-                'type': 'number',
-              }),
-              dict({
-                'type': 'null',
-              }),
-            ]),
-            'default': None,
-            'description': "The OTHER measure's amount: the writer's own second measure, or the AI's in grams or millilitres.",
-            'title': 'Converted Amount',
-          }),
-          'converted_unit': dict({
-            'anyOf': list([
-              dict({
-                'type': 'string',
-              }),
-              dict({
-                'type': 'null',
-              }),
-            ]),
-            'default': None,
-            'description': 'The OTHER measure\'s unit: the writer\'s own, else "g" or "ml".',
-            'title': 'Converted Unit',
-          }),
-          'fallback_string': dict({
-            'description': 'Full original string, e.g., "1 1/2 cups flour".',
-            'title': 'Fallback String',
-            'type': 'string',
-          }),
-          'id': dict({
-            'description': 'Unique ID for cross-linking, e.g., "ing_01"',
-            'title': 'Id',
-            'type': 'string',
-          }),
-          'is_ai_converted': dict({
-            'default': False,
-            'description': "True if the AI calculated the conversion; false for the writer's own second measure.",
-            'title': 'Is Ai Converted',
-            'type': 'boolean',
-          }),
-          'line_index': dict({
-            'anyOf': list([
-              dict({
-                'type': 'integer',
-              }),
-              dict({
-                'type': 'null',
-              }),
-            ]),
-            'default': None,
-            'description': '0-based index of the raw ingredient line this entry was parsed from. Every ingredient line yields exactly one entry; section-header lines yield none. null only when the entry is not tied to a single line.',
-            'title': 'Line Index',
-          }),
-          'name': dict({
-            'description': 'Core name, e.g., "flour".',
-            'title': 'Name',
-            'type': 'string',
-          }),
-          'state': dict({
-            'anyOf': list([
-              dict({
-                'enum': list([
-                  'liquid',
-                  'solid',
-                ]),
-                'type': 'string',
-              }),
-              dict({
-                'type': 'null',
-              }),
-            ]),
-            'default': None,
-            'description': 'Whether the ingredient is pourable as the recipe uses it (liquid) or not (solid). Stated before the conversion is computed, because the conversion depends on it (cookbook locales D13). null when the line has no amount or no volume/weight unit.',
-            'title': 'State',
-          }),
-          'unit': dict({
-            'anyOf': list([
-              dict({
-                'type': 'string',
-              }),
-              dict({
-                'type': 'null',
-              }),
-            ]),
-            'default': None,
-            'description': 'Unit of measure, e.g., "cups".',
-            'title': 'Unit',
-          }),
-        }),
-        'required': list([
-          'id',
-          'name',
-          'fallback_string',
-        ]),
-        'title': 'StructuredIngredient',
-        'type': 'object',
-      }),
-      'TokenizedDirection': dict({
-        'properties': dict({
-          'step': dict({
-            'description': '1-based step number.',
-            'title': 'Step',
-            'type': 'integer',
-          }),
-          'text': dict({
-            'description': "Direction text with Fat Tokens {{id|words|use}}: words exactly as written, use one of all, rest, none, or an amount such as '0.5 cup'.",
-            'title': 'Text',
-            'type': 'string',
-          }),
-        }),
-        'required': list([
-          'step',
-          'text',
-        ]),
-        'title': 'TokenizedDirection',
-        'type': 'object',
-      }),
-    }),
-    'properties': dict({
-      'base_servings': dict({
-        'anyOf': list([
-          dict({
-            'type': 'integer',
-          }),
-          dict({
-            'type': 'null',
-          }),
-        ]),
-        'title': 'Base Servings',
-      }),
-      'grid_categories': dict({
-        '$ref': '#/$defs/GridCategories',
-        'description': 'Multipolar categorization. For each axis, pick the tags the TAGGING RULES allow from the provided list: usually one, at most two. Return [] for axes where none fits.',
-      }),
-      'source_uom_system_detected': dict({
-        'anyOf': list([
-          dict({
-            'type': 'string',
-          }),
-          dict({
-            'type': 'null',
-          }),
-        ]),
-        'default': None,
-        'description': 'The measuring system the writer used: one of "US", "UK", "EU", "AU", "Imperial", judged only from evidence in the recipe or its source host. null when there is no evidence.',
-        'title': 'Source Uom System Detected',
-      }),
-      'source_uom_system_evidence': dict({
-        'anyOf': list([
-          dict({
-            'type': 'string',
-          }),
-          dict({
-            'type': 'null',
-          }),
-        ]),
-        'default': None,
-        'description': 'The words that judgement rests on, quoted exactly from the recipe, or the source host exactly as given.',
-        'title': 'Source Uom System Evidence',
-      }),
-      'structured_ingredients': dict({
-        'items': dict({
-          '$ref': '#/$defs/StructuredIngredient',
-        }),
-        'title': 'Structured Ingredients',
-        'type': 'array',
-      }),
-      'title': dict({
-        'title': 'Title',
-        'type': 'string',
-      }),
-      'tokenized_directions': dict({
-        'items': dict({
-          '$ref': '#/$defs/TokenizedDirection',
-        }),
-        'title': 'Tokenized Directions',
-        'type': 'array',
-      }),
-    }),
-    'required': list([
-      'title',
-      'base_servings',
-      'structured_ingredients',
-      'tokenized_directions',
-    ]),
-    'title': 'CayenneRefinementWithGrid',
     'type': 'object',
   })
 # ---

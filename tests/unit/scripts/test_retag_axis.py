@@ -5,7 +5,17 @@ from typing import Any, Dict, List
 
 import pytest
 
-from scripts.retag_axis import Change, apply_plan, axis_offer, plan_retag, read_plan, write_plan
+from scripts.retag_axis import (
+    Change,
+    apply_plan,
+    axis_offer,
+    created_after,
+    main,
+    parse_since,
+    plan_retag,
+    read_plan,
+    write_plan,
+)
 
 ROWS = [
     {"id": "p", "name": "Protein", "parent_id": None},
@@ -115,9 +125,9 @@ class TestPlanRetag:
             sizes.append(len(batch))
             return {}
 
-        recipes = [{"id": f"r{i}", "title": "", "ingredient_lines": [], "direction_steps": []} for i in range(25)]
+        recipes = [{"id": f"r{i}", "title": "", "ingredient_lines": [], "direction_steps": []} for i in range(23)]
         plan_retag(recipes, [], offer, count)
-        assert sizes == [10, 10, 5]
+        assert sizes == [5, 5, 5, 5, 3]  # five, as the import tags (F-246)
 
 
 class TestThePlanFile:
@@ -187,3 +197,37 @@ def test_apply_reports_a_failed_write_and_carries_on():
     sb = _Recorder(fail_on={("drop", "g", "eg")})
     assert apply_plan(sb, "u1", changes) == (0, 1, 1)
     assert sb.writes == [("drop", "k", "eg")]
+
+
+class TestSince:
+    """--since (Cayenne Fix Roadmap F-246, design D3): re-tag only what was imported after a cutoff."""
+
+    def test_a_zoned_timestamp_is_read_as_utc(self):
+        assert parse_since("2026-10-03T21:00:00Z").isoformat() == "2026-10-03T21:00:00+00:00"
+        assert parse_since("2026-10-04T07:00:00+10:00").isoformat() == "2026-10-03T21:00:00+00:00"
+
+    def test_a_naive_or_garbled_timestamp_is_refused(self):
+        with pytest.raises(ValueError, match="no time zone"):
+            parse_since("2026-10-03T21:00:00")
+        with pytest.raises(ValueError, match="not an ISO 8601"):
+            parse_since("last Friday")
+
+    def test_only_recipes_created_after_the_cutoff_are_kept(self):
+        rows = [
+            {"id": "before", "created_at": "2026-10-03T20:59:59+00:00"},
+            {"id": "at", "created_at": "2026-10-03T21:00:00+00:00"},
+            {"id": "after", "created_at": "2026-10-03T21:00:01.123456+00:00"},
+            {"id": "zulu", "created_at": "2026-10-05T08:00:00Z"},
+            {"id": "none", "created_at": None},
+        ]
+        kept = created_after(rows, parse_since("2026-10-03T21:00:00Z"))
+        assert [r["id"] for r in kept] == ["after", "zulu"]
+
+    def test_since_only_narrows_a_plan(self):
+        with pytest.raises(SystemExit, match="only narrows a --plan"):
+            main(["--user-id", "u", "--apply", "x.csv", "--since", "2026-10-03T21:00:00Z"])
+
+    def test_a_bad_since_stops_before_any_connection(self, monkeypatch):
+        monkeypatch.setattr("scripts.retag_axis._supabase", lambda: pytest.fail("connected before checking --since"))
+        with pytest.raises(SystemExit, match="no time zone"):
+            main(["--user-id", "u", "--axis", "Protein", "--plan", "p.csv", "--since", "2026-10-03"])

@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "8c757499eee86e586635d0fd6b897dc54b46608b703fba763c770f1c28994d29",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"recipe-1\",\n      \"tags\": [\n        \"British\"\n      ]\n    }\n  ]\n}"
+}

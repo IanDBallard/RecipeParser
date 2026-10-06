@@ -3,14 +3,6 @@
   dict({
     'detail': list([
       dict({
-        'categories': dict({
-          'Cuisine': list([
-            'British',
-          ]),
-          'Meal Type': list([
-            'Dessert',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -36,12 +28,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-              'British',
-            ]),
-            'Meal Type': list([
-              'Dessert',
-            ]),
           }),
           'source_uom_system_detected': 'AU',
           'source_uom_system_evidence': '1 tbsp (20 ml)',
@@ -115,14 +101,6 @@
   dict({
     'detail': list([
       dict({
-        'categories': dict({
-          'Cuisine': list([
-            'British',
-          ]),
-          'Meal Type': list([
-            'Bread',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': '14 mins',
@@ -152,12 +130,6 @@
         'refined': dict({
           'base_servings': 8,
           'grid_categories': dict({
-            'Cuisine': list([
-              'British',
-            ]),
-            'Meal Type': list([
-              'Bread',
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -245,14 +217,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-          'Cuisine': list([
-            'British',
-          ]),
-          'Meal Type': list([
-            'Dessert',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': '40 mins',
@@ -281,12 +245,6 @@
         'refined': dict({
           'base_servings': 12,
           'grid_categories': dict({
-            'Cuisine': list([
-              'British',
-            ]),
-            'Meal Type': list([
-              'Dessert',
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -373,8 +331,6 @@
   dict({
     'detail': list([
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -414,10 +370,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -649,11 +601,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-          'Meal Type': list([
-            'Dessert',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -699,11 +646,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-              'Dessert',
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -1007,8 +949,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -1045,10 +985,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -1204,8 +1140,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -1231,10 +1165,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -1290,12 +1220,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-          'Cuisine': list([
-            'Italian',
-            'French',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -1325,12 +1249,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-              'Italian',
-              'French',
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -1422,8 +1340,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -1452,10 +1368,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -2035,11 +1947,6 @@
   dict({
     'detail': list([
       dict({
-        'categories': dict({
-          'Cuisine': list([
-            'British',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -2071,11 +1978,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-              'British',
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': 'Imperial',
           'source_uom_system_evidence': '1 stone potatoes',
@@ -2221,11 +2123,6 @@
   dict({
     'detail': list([
       dict({
-        'categories': dict({
-          'Meal Type': list([
-            'Dessert',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -2255,11 +2152,6 @@
         'refined': dict({
           'base_servings': 6,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-              'Dessert',
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -2349,11 +2241,6 @@
   dict({
     'detail': list([
       dict({
-        'categories': dict({
-          'Meal Type': list([
-            'Bread',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': '40 mins',
@@ -2389,11 +2276,6 @@
         'refined': dict({
           'base_servings': 10,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-              'Bread',
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -2537,11 +2419,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-          'Meal Type': list([
-            'Bread',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': '35 mins',
@@ -2570,11 +2447,6 @@
         'refined': dict({
           'base_servings': 12,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-              'Bread',
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -2669,8 +2541,6 @@
   dict({
     'detail': list([
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -2714,10 +2584,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -2949,11 +2815,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-          'Meal Type': list([
-            'Dinner',
-          ]),
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -2999,11 +2860,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-              'Dinner',
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -3267,8 +3123,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -3297,10 +3151,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -3388,8 +3238,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -3414,10 +3262,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -3461,8 +3305,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -3490,10 +3332,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
@@ -3565,8 +3403,6 @@
         }),
       }),
       dict({
-        'categories': dict({
-        }),
         'raw': dict({
           'byline': None,
           'cook_time': None,
@@ -3594,10 +3430,6 @@
         'refined': dict({
           'base_servings': None,
           'grid_categories': dict({
-            'Cuisine': list([
-            ]),
-            'Meal Type': list([
-            ]),
           }),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,

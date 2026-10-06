@@ -1,5 +1,5 @@
-"""The tagging golden set (Cayenne Fix Roadmap F-205): does the model follow the
-TAGGING RULES on recipes that broke the old prompts?
+"""The tagging golden set (Cayenne Fix Roadmap F-205, F-246): does the model follow
+the TAGGING RULES on recipes that broke the old prompts?
 
 The owner's library had potato gnocchi tagged Egg for the eggs in its dough and
 minestrone tagged Chicken for its stock. Each case below asserts that kind of tag
@@ -8,27 +8,32 @@ nothing cannot pass. The taxonomy spans six axes on purpose: the rules name no
 axis and have to serve every one. Assertions are narrow: only the tag the case
 exists for, not the whole answer, which is the model's judgement to make.
 
+Since F-246 an import tags in its own TAG stage, one axis per call, and these
+cases go through it: each recipe alone, as a single-recipe import tags it, so six
+calls per recipe. REFINE no longer tags. The verbatim lines the TAG stage reads
+are the extraction's own here, as REFINE copies them.
+
 Recorded replies replay from tests/goldens/gemini/tagging/. Until they are
 recorded the set skips. Record, and re-record after any change to the rules or
 the categorisation prompt text, with:
     pytest tests/goldens/test_tagging_golden.py --record-gemini -n0
 (a real GOOGLE_API_KEY in the shell; the suite's default dummy key refuses).
-Six paid calls.
+Thirty-one paid calls, on the cheapest tier. ``--record-gemini-missing`` records
+only the calls that have no reply yet.
 
-Two of these cases cannot pass on the pinned model, and are marked strict xfail
-rather than weakened: gnocchi and the sponge are both tagged Egg for eggs worked
-into a dough or a batter. It is the model and not the wording -- these same
-prompts score 96/96 on gemini-3.8-flash -- and the owner ruled on 2026-10-03 to
-keep the cheaper tier (Cayenne Fix Roadmap F-205; config.py says what that
-costs). Each of those two cases is split from the tag the same dish *must* get,
-which stays a hard assertion, so a model that answers nothing still fails here.
-Strict is the point: if a re-record ever makes one pass, the suite says so.
+Before F-246 two of these cases could not pass on the pinned model: gnocchi and
+the sponge were both tagged Egg for eggs worked into a dough or a batter when
+REFINE offered every axis in one request, and they were strict xfails naming the
+model. Asked one axis at a time the same model leaves Protein empty for both: the
+recording of 2026-10-05 passed them, and the markers came off. Each case is still
+split from the tag the same dish *must* get, so a model that tags nothing fails.
 
-The rest hold on the reply recorded here. Read the minestrone with care: 9.6.4's
-empty-axis rule stopped it taking Chicken, but over five runs it claimed
-Vegetarian instead in three of them, so that case passes on this recording and a
-re-record may fail it. If it does, that is the model's variance at temperature
-0.1 and not a regression in the rules -- check it against a measurement of
+Read the minestrone with care: over five runs of the old import it claimed
+Vegetarian in three. One axis per call it held in every run measured on
+2026-10-05, but stock-based soups batched ten to a call beside vegetarian dishes
+did take Vegetarian, which is why the TAG stage batches by five; a re-record may
+still fail it. If it does, that is the model's
+variance and not a regression in the rules -- check it against a measurement of
 several runs before treating it as one.
 """
 from __future__ import annotations
@@ -37,24 +42,13 @@ from typing import Dict, List
 
 import pytest
 
-from recipeparser.core.stages.categorize import categorize
-from recipeparser.gemini import categorize_batch, refine_recipe_for_cayenne
+from recipeparser.core.stages.tag import tag_batch
+from recipeparser.gemini import categorize_batch
 from recipeparser.models import RecipeExtraction
 from tests.goldens.golden_client import GoldenClient
 from tests.goldens.paths import GEMINI_DIR
 
 FIXTURE = "tagging"
-
-#: Why two of these cases are expected to fail on the pinned model. A case split in
-#: two — what the dish must be tagged, and what it must not — keeps the first half a
-#: hard assertion, so a model that stops tagging anything still fails the set.
-MODEL_LIMIT = (
-    "gemini-3.1-flash-lite tags Egg for eggs worked into a dough or a batter: it reaches for the "
-    "nearest candidate when an axis would otherwise be empty. Measured 2026-10-03 and ruled a "
-    "cost worth paying for the cheaper tier (Cayenne Fix Roadmap F-205). The same prompt passes "
-    "this on gemini-3.8-flash, so an XPASS here means the model got better: delete the marker and "
-    "restore the case. Never weaken the assertion to match what a model does."
-)
 
 AXES: Dict[str, List[str]] = {
     "Cuisine": ["Asian", "British", "French", "Indian", "Italian", "Thai"],
@@ -142,37 +136,52 @@ GREEN_CURRY = RecipeExtraction(
 )
 
 
+class _Finished:
+    """The fields the TAG stage reads from a finished recipe, and the two it writes."""
+
+    def __init__(self, raw: RecipeExtraction) -> None:
+        self.title = raw.name
+        self.ingredient_lines = list(raw.ingredients)
+        self.direction_steps = list(raw.directions)
+        self.grid_categories: Dict[str, List[str]] = {}
+        self.categories: List[str] = []
+
+
 @pytest.fixture(scope="module")
 def tags(request):
-    """The tags an ingest would write, one refine call per recipe however many cases read it.
+    """The tags an ingest would write, one TAG pass per recipe however many cases read it.
 
     Module-scoped and cached on purpose: a case split into "what it must be tagged" and
-    "what it must not" would otherwise make two paid calls for one recipe when recording,
-    and the two halves would then judge two different answers. The client is built here
-    rather than taken from the ``golden_client`` factory because that fixture is
+    "what it must not" would otherwise pay twice for one recipe when recording, and the
+    two halves would then judge two different answers. The client is built here rather
+    than taken from the ``golden_client`` factory because that fixture is
     function-scoped; a fresh client per recipe keeps each body's reply at ordinal 0.
     """
     record = bool(request.config.getoption("--record-gemini"))
+    record_missing = bool(request.config.getoption("--record-gemini-missing"))
     answers: Dict[str, Dict[str, List[str]]] = {}
 
     def _for(name: str, raw: RecipeExtraction) -> Dict[str, List[str]]:
         if name not in answers:
-            client = GoldenClient(fixture_id=FIXTURE, root=GEMINI_DIR, record=record)
-            refined = refine_recipe_for_cayenne(raw, client, user_axes=AXES, parents=PARENTS)
-            assert refined is not None
-            answers[name] = categorize(refined, AXES, PARENTS)
+            client = GoldenClient(fixture_id=FIXTURE, root=GEMINI_DIR, record=record, record_missing=record_missing)
+            recipe = _Finished(raw)
+            failures = tag_batch(
+                [recipe], AXES, PARENTS,
+                lambda rows, axes: categorize_batch(rows, axes, client, parents=PARENTS),
+            )
+            assert failures == []
+            answers[name] = recipe.grid_categories
         return answers[name]
 
     return _for
 
 
 def test_gnocchi_is_tagged_the_italian_pasta_dish_it_is(tags):
-    # The half of the gnocchi case that holds on the pinned model: the split below must not
-    # let a model that tags nothing at all pass this set.
+    # The positive half of the gnocchi case: the split below must not let a model that tags
+    # nothing at all pass this set.
     assert "Italian" in tags("gnocchi", GNOCCHI).get("Cuisine", [])
 
 
-@pytest.mark.xfail(strict=True, reason=MODEL_LIMIT)
 def test_eggs_in_a_dough_do_not_make_gnocchi_an_egg_dish(tags):
     assert "Egg" not in tags("gnocchi", GNOCCHI).get("Protein", [])
 
@@ -181,15 +190,14 @@ def test_a_sponge_is_tagged_a_cake(tags):
     assert "Cakes" in tags("sponge", SPONGE).get("Preparation Method", [])
 
 
-@pytest.mark.xfail(strict=True, reason=MODEL_LIMIT)
 def test_eggs_in_a_cake_do_not_make_it_an_egg_dish(tags):
     assert "Egg" not in tags("sponge", SPONGE).get("Protein", [])
 
 
 def test_chicken_stock_makes_a_soup_neither_chicken_nor_vegetarian(tags):
-    # The least stable case in the set. 9.6.4's empty-axis rule stopped the Chicken tag for
-    # good, but the Vegetarian claim held in only two runs of five; this recording is one of
-    # the two. See the module docstring before calling a re-record failure a regression.
+    # The least stable case under the old import, which claimed Vegetarian in three runs of
+    # five. Asked one axis at a time it held in every measured run (2026-10-05), but see the
+    # module docstring before calling a re-record failure a regression.
     minestrone = tags("minestrone", MINESTRONE)
     assert "Chicken" not in minestrone.get("Protein", [])
     assert not set(minestrone.get("Diet", [])) & {"Vegetarian", "Vegan"}

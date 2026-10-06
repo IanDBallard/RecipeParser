@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 5,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "926fabaa32136b5ef4cc55820db6a190d97350ad45dc94f7c140b67fe4c1a6fa",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"recipe-1\",\n      \"tags\": [\n        \"Braising\"\n      ]\n    }\n  ]\n}"
+}

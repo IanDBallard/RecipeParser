@@ -1,10 +1,10 @@
 """
-recipeparser/core/stages/categorize.py — CATEGORIZE stage.
+recipeparser/core/stages/categorize.py — the rules every tagging answer is held to.
 
-Extracts grid_categories from a CayenneRefinement.  This is NOT a separate
-Gemini call — categorization is performed inside the REFINE stage (Pass 2)
-as part of refine_recipe_for_cayenne().  This stage simply reads the result
-and filters it against the user's defined axes.
+``axis_tags`` and ``filter_batch_result`` make a model's answer safe to write, for
+the import's TAG stage (``core/stages/tag.py``), the bulk recategorise and the
+retag script alike. Until Cayenne Fix Roadmap F-246 a ``categorize()`` here read
+REFINE's ``grid_categories``; REFINE no longer categorises.
 
 No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
@@ -12,7 +12,6 @@ import logging
 from typing import Dict, List, Mapping, Optional, Sequence, Set, TypeVar
 
 from recipeparser.core.taxonomy import most_specific
-from recipeparser.models import CayenneRefinement
 
 log = logging.getLogger(__name__)
 
@@ -69,50 +68,4 @@ def filter_batch_result(
             kept = [t for valid in axes.values() for t in axis_tags(kept, valid, parents)]
         if kept:
             clean[recipe_id] = kept
-    return clean
-
-
-def categorize(
-    recipe: CayenneRefinement,
-    user_axes: Dict[str, List[str]],
-    parents: Optional[Mapping[str, str]] = None,
-) -> Dict[str, List[str]]:
-    """
-    Extract and validate the grid_categories from a refined recipe.
-
-    The actual categorization was performed by Gemini inside the REFINE stage.
-    This function reads ``recipe.grid_categories``, filters out any tags that
-    are not in the user's defined axes (defensive guard against hallucination),
-    holds each axis to ``axis_tags`` (no tag beside its own descendant, at most
-    ``MAX_TAGS_PER_AXIS``), and returns the clean result.
-
-    Args:
-        recipe:     A ``CayenneRefinement`` produced by the REFINE stage.
-        user_axes:  Dict mapping axis name → list of valid tag strings.
-                    e.g. {"Cuisine": ["Italian", "Mexican"], "Protein": ["Chicken"]}
-                    When empty, returns {} immediately (no-op).
-        parents:    ``{tag: parent tag}`` for nested tags (``CategorySource.load_parents``).
-                    None or empty prunes nothing.
-
-    Returns:
-        A ``Dict[str, List[str]]`` of axis → selected tags.
-        Returns ``{}`` if ``user_axes`` is empty or no categories were assigned.
-    """
-    if not user_axes:
-        log.debug("categorize(): user_axes is empty — skipping categorization.")
-        return {}
-
-    raw_grid = recipe.grid_categories or {}
-
-    clean: Dict[str, List[str]] = {}
-    for axis_name, valid_tags in user_axes.items():
-        filtered = axis_tags(raw_grid.get(axis_name, []), valid_tags, parents)
-        if filtered:
-            clean[axis_name] = filtered
-
-    log.info(
-        "categorize(): %d axis/axes assigned from %d available.",
-        len(clean),
-        len(user_axes),
-    )
     return clean

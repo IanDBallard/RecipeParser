@@ -129,6 +129,7 @@
       "base_servings": 8,
       "categories": [
         "British",
+        "Breakfast",
         "Bread"
       ],
       "cook_max_minutes": 14,
@@ -152,6 +153,7 @@
           "British"
         ],
         "Meal Type": [
+          "Breakfast",
           "Bread"
         ]
       },

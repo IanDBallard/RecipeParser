@@ -13,7 +13,7 @@ import time
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, TypeVar
 
 from google.genai import errors as genai_errors
-from pydantic import BaseModel, Field, ValidationError, create_model
+from pydantic import BaseModel, Field, ValidationError
 
 from recipeparser.config import (
     BACKOFF_BASE_SECS,
@@ -654,8 +654,9 @@ def extract_text_via_vision(doc, client) -> str:
     return "\n\n".join(page_texts)
 
 
-#: How a tag is judged, shared by the refine prompt and the bulk recategorise
-#: prompt so the two cannot drift (Cayenne Fix Roadmap F-205). It names no axis:
+#: How a tag is judged, in the one prompt every tagging path uses: the bulk
+#: recategorise, the retag script and, since F-246, the import's TAG stage
+#: (Cayenne Fix Roadmap F-205). It names no axis:
 #: the axes are the cook's own, and one rule has to serve every one of them.
 #: Before it, both prompts asked only for tags that "describe" or "apply to" a
 #: recipe, and the model answered by what appeared anywhere in it: gnocchi was
@@ -685,89 +686,6 @@ def _format_tag(tag: str, parents: Optional[Dict[str, str]] = None) -> str:
     return f'"{tag}" (under "{parent}")' if parent else f'"{tag}"'
 
 
-def _build_dynamic_grid_schema(user_axes: Dict[str, List[str]]) -> type:
-    """
-    Build a dynamic Pydantic model at runtime that extends CayenneRefinement
-    with a ``grid_categories`` field whose per-axis sub-fields are constrained
-    to the exact tags the user has defined.
-
-    Each axis becomes a field typed ``List[str]`` with a description that lists
-    the valid tags.  The LLM is instructed (via field description) to return []
-    for axes that don't apply — enforcing the Zero-Tag Mandate.
-
-    Args:
-        user_axes: Dict mapping axis name → list of valid tag strings.
-                   e.g. {"Cuisine": ["Italian", "Mexican"], "Protein": ["Chicken"]}
-
-    Returns:
-        A dynamically-created Pydantic model class that Gemini can use as a
-        response_schema.  When user_axes is empty, returns CayenneRefinement
-        unchanged (no categorization fields added).
-    """
-    if not user_axes:
-        return CayenneRefinement
-
-    # Build per-axis sub-model fields: each axis → List[str] with valid tags in description
-    axis_fields: Dict[str, tuple] = {}
-    for axis_name, tags in user_axes.items():
-        tags_str = ", ".join(f'"{t}"' for t in tags)
-        axis_fields[axis_name] = (
-            List[str],
-            Field(
-                default_factory=list,
-                description=(
-                    f"Tags for the '{axis_name}' axis, judged by the TAGGING RULES: "
-                    f"usually one, at most two, [] when none is true of the dish as a whole. "
-                    f"Choose only from this exact list: [{tags_str}]. "
-                    f"Do NOT invent tags outside this list."
-                ),
-            ),
-        )
-
-    # Create the per-axis grid sub-model
-    GridModel = create_model("GridCategories", **axis_fields)
-
-    # Extend CayenneRefinement with the typed grid_categories field
-    RefinementWithGrid = create_model(
-        "CayenneRefinementWithGrid",
-        __base__=CayenneRefinement,
-        grid_categories=(
-            GridModel,
-            Field(
-                default_factory=GridModel,
-                description=(
-                    "Multipolar categorization. For each axis, pick the tags the TAGGING "
-                    "RULES allow from the provided list: usually one, at most two. "
-                    "Return [] for axes where none fits."
-                ),
-            ),
-        ),
-    )
-
-    return RefinementWithGrid
-
-
-def _format_axes_for_prompt(
-    user_axes: Dict[str, List[str]],
-    parents: Optional[Dict[str, str]] = None,
-) -> str:
-    """Format user_axes into a human-readable prompt section."""
-    if not user_axes:
-        return ""
-    lines = ["", "5. CATEGORIZATION (grid_categories):"]
-    lines.append(
-        "   Classify this recipe using the user's taxonomy axes below, by the TAGGING RULES. "
-        "NEVER invent tags outside the provided lists."
-    )
-    lines.append("   TAGGING RULES:")
-    lines.extend(f"   {line}" for line in TAGGING_RULES.splitlines())
-    lines.append("   AXES:")
-    for axis_name, tags in user_axes.items():
-        tags_str = ", ".join(_format_tag(t, parents) for t in tags)
-        lines.append(f"   - {axis_name}: [{tags_str}]")
-    return "\n".join(lines)
-
-
 # How much of an ingredient one mention in the directions uses (Cayenne's direction amounts
 # design). One text, shared by REFINE's rule 2 and the re-tagging pass, so the two cannot drift.
 _MENTION_USES = """   - Say how much of the ingredient each mention uses, as "use":
@@ -793,15 +711,14 @@ _MENTION_USES = """   - Say how much of the ingredient each mention uses, as "us
 def build_refine_prompt(
     raw_recipe: object,
     source_host: Optional[str],
-    user_axes: Optional[Dict[str, List[str]]] = None,
-    parents: Optional[Dict[str, str]] = None,
 ) -> str:
-    """The Pass-2 prompt: structured ingredients, fat tokens, the source system and categorisation.
+    """The Pass-2 prompt: structured ingredients, fat tokens and the source system.
+
+    It asks for no tags: the TAG stage tags one axis per call (Cayenne Fix Roadmap F-246).
 
     ``SOURCE HOST`` sits before ``RAW RECIPE:`` because the golden replay keys a refine call by the
     text after that marker (tests/goldens/golden_client.py).
     """
-    categorization_section = _format_axes_for_prompt(user_axes or {}, parents)
     return f"""
 You are a culinary data refiner. Transform this raw recipe into the structured Cayenne format.
 
@@ -875,7 +792,7 @@ RULES:
    - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
      the SOURCE HOST exactly as given. One short quote.
    - Leave both null when nothing above applies.
-{categorization_section}
+
 SOURCE HOST: {source_host or "none"}
 
 RAW RECIPE:
@@ -883,41 +800,45 @@ RAW RECIPE:
 """
 
 
+def refine_json_schema() -> dict:
+    """
+    The schema REFINE's reply is held to: CayenneRefinement's, with additionalProperties
+    stripped (the Gemini API rejects response_schema when Pydantic emits them for Dict
+    types) and without ``grid_categories``, whose description asked the model to
+    classify against axes the prompt no longer gives it (Cayenne Fix Roadmap F-246).
+    """
+    json_schema = _schema_for_gemini(CayenneRefinement)
+    json_schema["properties"].pop("grid_categories", None)
+    return json_schema
+
+
 def refine_recipe_for_cayenne(
     raw_recipe: object,
     client,
     source_host: Optional[str] = None,
-    user_axes: Optional[Dict[str, List[str]]] = None,
     *,
-    parents: Optional[Dict[str, str]] = None,
     limiter: Optional["GlobalRateLimiter"] = None,
 ) -> Optional[CayenneRefinement]:
     """
     Post-processing pass to convert raw text recipe into high-fidelity Cayenne data.
 
-    Combines Fat Token generation, UOM conversion, and multipolar categorization
-    into a single LLM call (Pass 2).
+    Combines Fat Token generation and UOM conversion into a single LLM call
+    (Pass 2). It no longer categorises: offered every axis at once, the model
+    filled an empty axis with the nearest ingredient (Cayenne Fix Roadmap F-246),
+    so the TAG stage asks one axis per call.
 
     Args:
         raw_recipe:        The raw RecipeExtraction object from Pass 1.
         client:            Initialised Gemini client.
         source_host:       The recipe's source host (core.citation.host_of), or None — the prompt's
                            only evidence outside the recipe text.
-        user_axes:         Optional dict of axis_name → [tag, ...] for categorization.
-                           When None or empty, grid_categories will be {} in the result.
-        parents:           ``{tag: parent tag}`` for nested tags, so the prompt shows a
-                           tag under its parent. None shows every tag flat.
         limiter:           Takes a slot for each retry (F-109; see _call_with_retry). The
                            caller takes the first request's.
     """
-    axes = user_axes or {}
-    schema = _build_dynamic_grid_schema(axes)
-
-    prompt = build_refine_prompt(raw_recipe, source_host, axes, parents)
+    schema = CayenneRefinement
+    prompt = build_refine_prompt(raw_recipe, source_host)
     try:
-        # Use response_json_schema with additionalProperties stripped — Gemini API
-        # rejects response_schema when Pydantic emits additionalProperties (Dict types).
-        json_schema = _schema_for_gemini(schema)
+        json_schema = refine_json_schema()
         response = _call_with_retry(
             client,
             model=GEMINI_MODEL,
@@ -935,39 +856,9 @@ def refine_recipe_for_cayenne(
             log.error("Cayenne refinement failed: Gemini returned empty response")
             return None
         raw_data = json.loads(response.text)
-        result = schema.model_validate(raw_data)
-
-        # When a dynamic schema was used, grid_categories is a nested sub-model.
-        # Normalize it back to a plain Dict[str, List[str]] on the CayenneRefinement.
-        if axes and result is not None:
-            raw_grid = result.grid_categories
-            if hasattr(raw_grid, "model_dump"):
-                # It's a Pydantic sub-model — convert to plain dict
-                normalized: Dict[str, List[str]] = {
-                    k: v for k, v in raw_grid.model_dump().items()
-                    if isinstance(v, list)
-                }
-            elif isinstance(raw_grid, dict):
-                normalized = raw_grid
-            else:
-                normalized = {}
-
-            # Re-validate: strip any tags not in the user's defined lists
-            clean_grid: Dict[str, List[str]] = {}
-            for axis_name, selected_tags in normalized.items():
-                valid_tags = set(axes.get(axis_name, []))
-                clean_grid[axis_name] = [t for t in selected_tags if t in valid_tags]
-
-            # Return a proper CayenneRefinement with the cleaned grid
-            return CayenneRefinement(
-                title=result.title,
-                base_servings=result.base_servings,
-                structured_ingredients=result.structured_ingredients,
-                tokenized_directions=result.tokenized_directions,
-                grid_categories=clean_grid,
-                source_uom_system_detected=result.source_uom_system_detected,
-                source_uom_system_evidence=result.source_uom_system_evidence,
-            )
+        # REFINE asks for no tags (F-246); a reply that carries some anyway, or a
+        # recording made before the change, must not leak them past the TAG stage.
+        result = schema.model_validate(raw_data).model_copy(update={"grid_categories": {}})
 
         return result
     except Exception as e:
@@ -1097,11 +988,15 @@ def categorize_batch(
     new_axes: Dict[str, List[str]],
     client,
     parents: Optional[Dict[str, str]] = None,
+    limiter: Optional["GlobalRateLimiter"] = None,
 ) -> Dict[str, List[str]]:
     """
-    Categorise several existing recipes against ONLY the newly added tags
-    (spec 6.2).  Returns recipe_id -> tags.  Never used at ingest; REFINE does
-    that.
+    Categorise several recipes against the tags offered (spec 6.2).  Returns
+    recipe_id -> tags.  Used by the bulk recategorise, ``scripts/retag_axis.py``
+    and, since Cayenne Fix Roadmap F-246, the import's TAG stage, which offers
+    one axis per call: the shape that scored 105/105 on 2026-10-03.  The prompt
+    is the measured one, word for word, including its "just added" opening.
+    ``limiter`` takes a slot for each retry, as REFINE's does (F-109).
 
     A well-formed reply with no matches is a normal, successful result: the
     model is told to prefer no tag to a doubtful one, so ``{}`` and empty tag
@@ -1128,6 +1023,7 @@ def categorize_batch(
             "temperature": 0.0,
         },
         what="categorize_batch",
+        limiter=limiter,
     )
     if not response.text or not response.text.strip():
         raise ValueError("categorize_batch: Gemini returned an empty response.")

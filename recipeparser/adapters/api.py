@@ -1011,6 +1011,8 @@ async def _run_ingestion_job(
                 user_id=user_id,
                 on_result=sink.on_result,
                 on_skip=sink.on_skip,
+                on_tags=sink.on_tags,
+                on_tag_failed=sink.on_tag_failed,
             )
         )
         logger.info(

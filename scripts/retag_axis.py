@@ -17,7 +17,7 @@ Two steps, so what is written is exactly what was read:
     python scripts/retag_axis.py --user-id <uuid> --apply protein.csv
 
 Step 1 reads SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and GOOGLE_API_KEY, and
-makes one model call per 10 recipes (about 160 for a 1,600-recipe library).
+makes one model call per 5 recipes (about 320 for a 1,600-recipe library).
 Step 2 needs only the Supabase pair.
 
 Every recipe the user owns is put to the model against the axis's tags, exactly
@@ -26,6 +26,14 @@ recipe's links within the axis: a link the answer does not repeat is dropped, a
 tag it adds is added, links on other axes are never touched. A link to the axis
 row itself is in scope and is dropped, since an axis is no longer offered as a
 tag. A recipe whose batch fails twice keeps every link it had.
+
+``--since <ISO timestamp>`` plans only recipes created after it (Cayenne Fix
+Roadmap F-246, design D3): the recipes imported after the 2026-10-03 clean-up,
+which REFINE tagged with every axis in one request, without touching the rest of
+the library.
+
+    python scripts/retag_axis.py --user-id <uuid> --axis Protein \
+        --since 2026-10-03T21:00:00Z --plan protein-since.csv
 
 recipe_categories records no provenance, so a tag the cook chose is replaced
 like any other; the plan names every drop, so those few can be seen and kept
@@ -41,6 +49,7 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -55,7 +64,9 @@ from recipeparser.core.taxonomy import descendants_of, parents_from_rows  # noqa
 log = logging.getLogger("retag-axis")
 
 PAGE = 500
-BATCH_SIZE = 10
+#: Five, as the import's TAG stage: ten let vegetarian neighbours carry stock-based soups
+#: into Vegetarian (Cayenne Fix Roadmap F-246, measured 2026-10-05).
+BATCH_SIZE = 5
 PLAN_COLUMNS = ["action", "user_id", "recipe_id", "title", "tag", "category_id"]
 
 
@@ -94,6 +105,33 @@ def axis_offer(rows: Sequence[Mapping[str, Any]], axis_name: str) -> Offer:
     axes, tag_ids = resolve_new_axes([dict(r) for r in rows], scope)
     names = {r["id"]: (r.get("name") or "").strip() for r in rows if r.get("id") in set(scope)}
     return Offer(axes=axes, tag_ids=tag_ids, parents=parents_from_rows(rows), scope=set(scope), names=names)
+
+
+def parse_since(value: str) -> datetime:
+    """An ISO 8601 timestamp with a zone ("...Z" or "+00:00"). Refuses a naive one: a cutoff
+    read in the wrong zone would plan hours of recipes too many or too few."""
+    try:
+        when = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(f"--since {value!r} is not an ISO 8601 timestamp.") from None
+    if when.tzinfo is None:
+        raise ValueError(f"--since {value!r} has no time zone; add Z for UTC.")
+    return when.astimezone(timezone.utc)
+
+
+def created_after(recipes: Sequence[Mapping[str, Any]], since: datetime) -> List[Mapping[str, Any]]:
+    """The recipes whose ``created_at`` is after ``since``. A row without one is left out."""
+    kept: List[Mapping[str, Any]] = []
+    for r in recipes:
+        raw = r.get("created_at")
+        if not raw:
+            continue
+        created = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if created > since:
+            kept.append(r)
+    return kept
 
 
 def plan_retag(
@@ -215,7 +253,7 @@ def _gemini() -> Any:
     return genai.Client(api_key=key)
 
 
-def _plan(sb: Any, user_id: str, axis: str, path: str) -> int:
+def _plan(sb: Any, user_id: str, axis: str, path: str, since: Optional[datetime] = None) -> int:
     from recipeparser.gemini import categorize_batch  # noqa: PLC0415
 
     client = _gemini()
@@ -224,8 +262,12 @@ def _plan(sb: Any, user_id: str, axis: str, path: str) -> int:
         offer = axis_offer(rows, axis)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
-    recipes = _paged(lambda: sb.table("recipes").select("id,title,ingredient_lines,direction_steps")
+    recipes = _paged(lambda: sb.table("recipes").select("id,title,ingredient_lines,direction_steps,created_at")
                      .eq("user_id", user_id))
+    if since is not None:
+        everything = len(recipes)
+        recipes = created_after(recipes, since)
+        log.info("--since %s: %d of %d recipes.", since.isoformat(), len(recipes), everything)
     links = _paged(lambda: sb.table("recipe_categories").select("id,recipe_id,category_id")
                    .in_("category_id", sorted(offer.scope)))
     log.info("%s: %d tags, %d recipes, %d links on the axis. One model call per %d recipes.",
@@ -263,13 +305,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     step = parser.add_mutually_exclusive_group(required=True)
     step.add_argument("--plan", help="Ask the model and write every change to this CSV. Writes no data.")
     step.add_argument("--apply", help="Write the changes in this CSV, made by --plan. Asks no model.")
+    parser.add_argument("--since", help="With --plan: only recipes created after this ISO timestamp (e.g. ...Z).")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if args.plan and not args.axis:
         raise SystemExit("--plan needs --axis.")
+    if args.since and not args.plan:
+        raise SystemExit("--since only narrows a --plan.")
+    try:
+        since = parse_since(args.since) if args.since else None
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
     sb = _supabase()
-    return _plan(sb, args.user_id, args.axis, args.plan) if args.plan else _apply(sb, args.user_id, args.apply)
+    if args.plan:
+        return _plan(sb, args.user_id, args.axis, args.plan, since)
+    return _apply(sb, args.user_id, args.apply)
 
 
 if __name__ == "__main__":

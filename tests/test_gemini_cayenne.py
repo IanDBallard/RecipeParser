@@ -104,18 +104,21 @@ def test_refine_prompt_carries_the_host_and_no_reader_context():
     assert "SOURCE HOST: none" in build_refine_prompt(raw, None)
 
 
-def test_the_rebuilt_refinement_keeps_the_detection(monkeypatch):
-    # gemini.py rebuilds the refinement when axes are present; the detection must survive it.
+def test_the_refinement_keeps_the_detection_and_carries_no_tags(monkeypatch):
+    # REFINE no longer tags (Cayenne Fix Roadmap F-246): a reply that still names some is
+    # cleared, and the rest of it, the detection included, survives the clearing.
     expected = CayenneRefinement(
         title="Cake", base_servings=4,
         structured_ingredients=[StructuredIngredient(id="ing_01", amount=1.0, unit="cup", name="milk", fallback_string="1 cup (250 ml) milk")],
         tokenized_directions=[TokenizedDirection(step=1, text="Use {{ing_01|milk}}.")],
         source_uom_system_detected="AU", source_uom_system_evidence="1 cup (250 ml)",
+        grid_categories={"Cuisine": ["Italian"]},
     )
     client = MagicMock()
     client.models.generate_content.return_value = MagicMock(text=expected.model_dump_json())
-    result = refine_recipe_for_cayenne("raw", client, user_axes={"Cuisine": ["Italian"]})
+    result = refine_recipe_for_cayenne("raw", client)
     assert (result.source_uom_system_detected, result.source_uom_system_evidence) == ("AU", "1 cup (250 ml)")
+    assert result.grid_categories == {}
 
 
 def test_structured_ingredient_carries_an_optional_state():

@@ -17,10 +17,10 @@ from recipeparser.adapters.recat_worker import resolve_new_axes
 from recipeparser.core.stages.categorize import (
     MAX_TAGS_PER_AXIS,
     axis_tags,
-    categorize,
     filter_batch_result,
 )
-from recipeparser.models import CayenneRefinement
+from recipeparser.core.stages.tag import tag_batch
+from recipeparser.models import IngestResponse
 
 ROWS = [
     {"id": "c", "name": "Cuisine", "parent_id": None},
@@ -36,11 +36,11 @@ AXES: Dict[str, List[str]] = {"Cuisine": ["Asian", "Italian", "Thai"], "Protein"
 PARENTS = {"Thai": "Asian"}
 
 
-def _refined(grid: Dict[str, List[str]]) -> CayenneRefinement:
-    return CayenneRefinement(
-        title="T", base_servings=2, structured_ingredients=[], tokenized_directions=[],
-        grid_categories=grid,
-    )
+def _tagged(answer: Dict[str, List[str]], parents=None) -> Dict[str, List[str]]:
+    """One recipe through TAG, the model answering ``answer[axis]`` for each axis."""
+    recipe = IngestResponse(title="T", structured_ingredients=[], tokenized_directions=[], embedding=[])
+    tag_batch([recipe], AXES, parents, lambda rows, axes: {"recipe-1": answer.get(next(iter(axes)), [])})
+    return recipe.grid_categories
 
 
 class TestAxisTags:
@@ -56,18 +56,19 @@ class TestAxisTags:
         assert axis_tags(["Asian", "Thai", "Italian"], AXES["Cuisine"], PARENTS) == ["Thai", "Italian"]
 
 
-class TestCategorize:
+class TestTagBatchScope:
     def test_a_parent_beside_its_child_is_not_written(self):
-        out = categorize(_refined({"Cuisine": ["Asian", "Thai"]}), AXES, PARENTS)
-        assert out == {"Cuisine": ["Thai"]}
+        assert _tagged({"Cuisine": ["Asian", "Thai"]}, PARENTS) == {"Cuisine": ["Thai"]}
 
     def test_without_parents_nothing_is_pruned(self):
-        out = categorize(_refined({"Cuisine": ["Asian", "Thai"]}), AXES)
-        assert out == {"Cuisine": ["Asian", "Thai"]}
+        assert _tagged({"Cuisine": ["Asian", "Thai"]}) == {"Cuisine": ["Asian", "Thai"]}
 
     def test_a_third_tag_on_an_axis_is_not_written(self):
-        out = categorize(_refined({"Cuisine": ["Italian", "Asian", "Thai"]}), AXES)
-        assert out == {"Cuisine": ["Italian", "Asian"]}
+        assert _tagged({"Cuisine": ["Italian", "Asian", "Thai"]}) == {"Cuisine": ["Italian", "Asian"]}
+
+    def test_a_tag_from_another_axis_is_not_written(self):
+        # One axis per call: a tag the call did not offer is dropped, whatever the model says.
+        assert _tagged({"Cuisine": ["Italian", "Egg"]}) == {"Cuisine": ["Italian"]}
 
 
 class TestFilterBatchResult:
@@ -97,15 +98,17 @@ class TestResolveNewAxes:
 
 
 class TestThePrompts:
-    def test_both_prompts_carry_the_same_rules(self):
-        refine = gemini.build_refine_prompt("RAW", None, AXES, PARENTS)
+    def test_the_tagging_prompt_carries_the_rules_and_refine_asks_for_no_tags(self):
+        # F-246: REFINE no longer categorises; every tagging path uses the batch prompt.
+        refine = gemini.build_refine_prompt("RAW", None)
         batch = gemini.build_categorize_batch_prompt(
             [{"id": "r1", "title": "Gnocchi", "ingredient_lines": ["2 eggs"], "direction_steps": ["Mix."]}],
             AXES, PARENTS,
         )
         for line in gemini.TAGGING_RULES.splitlines():
-            assert line in refine
             assert line in batch
+        assert "TAGGING RULES" not in refine
+        assert "grid_categories" not in refine
 
     def test_the_rules_name_no_axis(self):
         # The axes are the cook's own; one rule serves every one of them.
@@ -113,13 +116,11 @@ class TestThePrompts:
             assert axis not in gemini.TAGGING_RULES
 
     def test_a_nested_tag_is_shown_under_its_parent(self):
-        refine = gemini.build_refine_prompt("RAW", None, AXES, PARENTS)
-        assert '- Cuisine: ["Asian", "Italian", "Thai" (under "Asian")]' in refine
         batch = gemini.build_categorize_batch_prompt([], AXES, PARENTS)
         assert '- Cuisine: "Asian", "Italian", "Thai" (under "Asian")' in batch
 
     def test_without_parents_every_tag_is_flat(self):
-        assert '- Cuisine: ["Asian", "Italian", "Thai"]' in gemini.build_refine_prompt("RAW", None, AXES)
+        assert '- Cuisine: "Asian", "Italian", "Thai"' in gemini.build_categorize_batch_prompt([], AXES)
 
     def test_the_batch_recipes_follow_their_marker(self):
         # The golden client keys a categorize reply by what follows RECIPES:.

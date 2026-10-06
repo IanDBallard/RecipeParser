@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 1,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "5c8e019ffa6a38007474f155cff2a003a31287ca7e9dfd0c4a8b1677e3cf61e0",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"recipe-1\",\n      \"tags\": [\n        \"Beans & Lentils\"\n      ]\n    }\n  ]\n}"
+}

@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "22e2041d311ccb8edd8d19660ab6d357f80a81d63289fe305567e43a8f2ed6ae",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"recipe-1\",\n      \"tags\": [\n        \"American\"\n      ]\n    },\n    {\n      \"recipe_id\": \"recipe-2\",\n      \"tags\": [\n        \"French\"\n      ]\n    }\n  ]\n}"
+}

@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 1,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "59050813c5a53fdd0a3fe8e1555071d4226e1878e6f6acccc0901dc1c1d590ce",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"recipe-1\",\n      \"tags\": [\n        \"Beef\"\n      ]\n    }\n  ]\n}"
+}

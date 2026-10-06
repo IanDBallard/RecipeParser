@@ -88,4 +88,4 @@ def test_input_type_image_routes_through_the_full_pipeline():
     from recipeparser.core.pipeline import RecipePipeline
 
     stages = RecipePipeline._get_stages(MagicMock(), Chunk(text="x", input_type=InputType.IMAGE))
-    assert stages == ["EXTRACT", "REFINE", "CATEGORIZE", "EMBED", "ASSEMBLE"]
+    assert stages == ["EXTRACT", "REFINE", "EMBED", "ASSEMBLE", "TAG"]

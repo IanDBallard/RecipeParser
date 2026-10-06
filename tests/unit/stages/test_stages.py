@@ -226,45 +226,6 @@ class TestRefine:
 
 
 # ---------------------------------------------------------------------------
-# Gate 3 — categorize
-# ---------------------------------------------------------------------------
-
-class TestCategorize:
-    """categorize() is a pure function — no mocking needed."""
-
-    def test_returns_empty_dict_when_no_user_axes(self) -> None:
-        from recipeparser.core.stages.categorize import categorize
-        refinement = _make_refinement()
-        result = categorize(refinement, user_axes={})
-        assert result == {}
-
-    def test_filters_to_valid_tags_only(self) -> None:
-        from recipeparser.core.stages.categorize import categorize
-        refinement = _make_refinement()
-        # grid_categories has {"Cuisine": ["Italian"], "Meal Type": ["Dessert"]}
-        # user_axes only allows "Pasta" for Cuisine — "Italian" is not valid
-        user_axes = {"Cuisine": ["French", "Pasta"], "Meal Type": ["Dessert", "Breakfast"]}
-        result = categorize(refinement, user_axes=user_axes)
-        assert "Cuisine" not in result  # "Italian" filtered out
-        assert result.get("Meal Type") == ["Dessert"]
-
-    def test_returns_matching_tags_for_valid_axis(self) -> None:
-        from recipeparser.core.stages.categorize import categorize
-        refinement = _make_refinement()
-        user_axes = {"Cuisine": ["Italian", "French"], "Meal Type": ["Dessert"]}
-        result = categorize(refinement, user_axes=user_axes)
-        assert result["Cuisine"] == ["Italian"]
-        assert result["Meal Type"] == ["Dessert"]
-
-    def test_ignores_axes_not_in_grid_categories(self) -> None:
-        from recipeparser.core.stages.categorize import categorize
-        refinement = _make_refinement()
-        user_axes = {"Protein": ["Chicken", "Beef"]}  # not in grid_categories
-        result = categorize(refinement, user_axes=user_axes)
-        assert result == {}
-
-
-# ---------------------------------------------------------------------------
 # Gate 4 — embed
 # ---------------------------------------------------------------------------
 

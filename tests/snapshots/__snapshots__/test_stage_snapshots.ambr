@@ -69,16 +69,6 @@
     ]),
   })
 # ---
-# name: test_categorize_output_shape
-  dict({
-    'Cuisine': list([
-      'Italian',
-    ]),
-    'Meal Type': list([
-      'Dessert',
-    ]),
-  })
-# ---
 # name: test_embed_output_shape
   dict({
     'all_floats': True,

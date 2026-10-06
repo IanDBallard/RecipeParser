@@ -11,7 +11,8 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from recipeparser.core.clock import utc_timestamp
 from recipeparser.core.models import Chunk
-from recipeparser.io.writers.supabase import write_recipe_to_supabase
+from recipeparser.core.stages.tag import TagFailure
+from recipeparser.io.writers.supabase import write_recipe_categories, write_recipe_to_supabase
 from recipeparser.models import IngestResponse
 
 log = logging.getLogger(__name__)
@@ -36,12 +37,17 @@ class JobSink:
         category_ids: Dict[str, str],
         write: WriteFn = write_recipe_to_supabase,
         now: Callable[[], str] = utc_timestamp,
+        write_links: WriteFn = write_recipe_categories,
     ) -> None:
         self._job_id = job_id
         self._user_id = user_id
         self._category_ids = category_ids
         self._write = write
+        self._write_links = write_links
         self._now = now
+        # The row id each written recipe got, keyed by the object, so TAG's links
+        # (which arrive after the recipe, Fix Roadmap F-246) reach the right row.
+        self._row_ids: Dict[int, str] = {}
         self.recipe_count = 0
         self.skipped_count = 0
         self.skipped: List[Dict[str, Any]] = []
@@ -85,7 +91,7 @@ class JobSink:
             )
 
         try:
-            self._write(
+            rid = self._write(
                 recipe, self._user_id,
                 category_ids=self._category_ids, on_link_refused=_link_refused,
             )
@@ -100,9 +106,46 @@ class JobSink:
             self._record_skip(getattr(recipe, "title", None), f"write failed: {exc}", -1)
             return
         self.recipe_count += 1
+        if isinstance(rid, str):
+            self._row_ids[id(recipe)] = rid
         key = getattr(recipe, "source_key", None)
         if key:
             self._source_keys.add(key)
+
+    def on_tags(self, recipe: IngestResponse) -> None:
+        """Write the links TAG gave a recipe already written (F-246). Never raises."""
+        rid = self._row_ids.get(id(recipe))
+        if rid is None or not recipe.grid_categories:
+            return
+        title = recipe.title
+
+        def _link_refused(link: Dict[str, str]) -> None:
+            self.refused_link_count += 1
+            if len(self.refused_links) < SKIPPED_LIST_CAP:
+                self.refused_links.append({"label": title, **link})
+            log.warning(
+                "Job %s: recipe %r was tagged, but its link to category %s was refused: %s",
+                self._job_id, title, link.get("category_id"), link.get("reason"),
+            )
+
+        try:
+            self._write_links(
+                rid, self._user_id, recipe.grid_categories, self._category_ids,
+                on_link_refused=_link_refused,
+            )
+        except Exception:
+            log.exception("Job %s: the tags for recipe %r could not be written.", self._job_id, title)
+
+    def on_tag_failed(self, failure: TagFailure) -> None:
+        """An axis TAG could not ask for a batch (F-246, design D8): counted with the refused links."""
+        for title in failure.titles:
+            self.refused_link_count += 1
+            if len(self.refused_links) < SKIPPED_LIST_CAP:
+                self.refused_links.append({"label": title, "axis": failure.axis, "reason": failure.reason})
+        log.warning(
+            "Job %s: the %r axis could not be tagged for %d recipe(s): %s",
+            self._job_id, failure.axis, len(failure.titles), failure.reason,
+        )
 
     def on_skip(self, chunk: Chunk, reason: str, index: int) -> None:
         """Record a chunk that produced nothing because something failed.

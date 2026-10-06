@@ -1,0 +1,17 @@
+{
+  "stage": "categorize",
+  "ordinal": 1,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "temperature": 0.0,
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_budget": 0
+    }
+  },
+  "prompt_sha256": "09c13cf84e8f845d8e300e805d33fe14f8163bded5b331294700a135ab1891ca",
+  "response_text": "{\n  \"results\": [\n    {\n      \"recipe_id\": \"recipe-1\",\n      \"tags\": [\n        \"Dessert\"\n      ]\n    }\n  ]\n}"
+}

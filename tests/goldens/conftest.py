@@ -36,8 +36,8 @@ def read_pdf_by_page(path: str) -> List[Chunk]:
 
 @pytest.fixture
 def record_gemini(request) -> bool:
-    """True when the run was started with --record-gemini."""
-    return bool(request.config.getoption("--record-gemini"))
+    """True when the run was started with --record-gemini or --record-gemini-missing."""
+    return bool(request.config.getoption("--record-gemini") or request.config.getoption("--record-gemini-missing"))
 
 
 @pytest.fixture
@@ -50,8 +50,9 @@ def update_goldens(request) -> bool:
 def golden_client(request) -> Callable[[str], GoldenClient]:
     """Factory: golden_client("dual-units.epub") -> GoldenClient for that fixture."""
     record = bool(request.config.getoption("--record-gemini"))
+    record_missing = bool(request.config.getoption("--record-gemini-missing"))
 
     def _make(fixture_id: str, root: Path = GEMINI_DIR) -> GoldenClient:
-        return GoldenClient(fixture_id=fixture_id, root=root, record=record)
+        return GoldenClient(fixture_id=fixture_id, root=root, record=record, record_missing=record_missing)
 
     return _make
