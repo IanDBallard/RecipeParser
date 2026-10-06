@@ -17,7 +17,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from recipeparser.config import THINKING_BUDGET
+from recipeparser.config import THINKING_LEVEL
 from recipeparser.gemini import _call_with_retry, _finalize_config, _log_usage_metadata
 
 
@@ -30,28 +30,37 @@ def _client(*replies, side_effect=None):
     return client
 
 
-def test_thinking_budget_defaults_to_zero():
-    """Regression guard: THINKING_BUDGET must default to 0 unless the
-    GEMINI_THINKING_BUDGET env var overrides it (not set in this test run)."""
-    assert THINKING_BUDGET == 0
+def test_thinking_level_defaults_to_minimal():
+    """Regression guard: THINKING_LEVEL must default to 'minimal' unless the
+    GEMINI_THINKING_LEVEL env var overrides it (not set in this test run)."""
+    assert THINKING_LEVEL == "minimal"
 
 
-def test_finalize_config_sets_thinking_budget_alongside_the_timeout():
-    config = _finalize_config({"temperature": 0.1})
+def test_finalize_config_sets_thinking_level_alongside_the_timeout():
+    config = _finalize_config({"response_mime_type": "application/json"})
 
-    assert config["thinking_config"]["thinking_budget"] == THINKING_BUDGET
+    assert config["thinking_config"]["thinking_level"] == THINKING_LEVEL
     assert config["http_options"]["timeout"] > 0
-    # The caller's own keys must survive untouched.
-    assert config["temperature"] == 0.1
+    # The caller's valid keys must survive untouched.
+    assert config["response_mime_type"] == "application/json"
 
 
-def test_call_with_retry_sends_the_thinking_budget_to_generate_content():
+def test_finalize_config_strips_deprecated_parameters():
+    config = _finalize_config({"temperature": 0.1, "top_p": 0.9, "top_k": 40, "thinking_budget": 0})
+
+    assert "temperature" not in config
+    assert "top_p" not in config
+    assert "top_k" not in config
+    assert "thinking_budget" not in config
+
+
+def test_call_with_retry_sends_the_thinking_level_to_generate_content():
     client = _client(SimpleNamespace(text="ok", candidates=[]))
 
     _call_with_retry(client, model="some-model", contents="hi", config={})
 
     _, kwargs = client.models.generate_content.call_args
-    assert kwargs["config"]["thinking_config"]["thinking_budget"] == 0
+    assert kwargs["config"]["thinking_config"]["thinking_level"] == "minimal"
 
 
 def test_log_usage_metadata_logs_the_real_token_counts(caplog):

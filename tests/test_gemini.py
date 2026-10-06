@@ -183,7 +183,7 @@ class TestNormaliseBakerTable:
         call_kwargs = client.models.generate_content.call_args
         assert sentinel in call_kwargs.kwargs["contents"]
 
-    def test_temperature_zero(self):
+    def test_temperature_not_passed(self):
         mock_response = MagicMock()
         mock_response.text = NORMALISED_CHUNK
         client = make_mock_client(return_value=mock_response)
@@ -191,7 +191,7 @@ class TestNormaliseBakerTable:
         normalise_baker_table(FORKISH_STYLE_CHUNK, client)
 
         call_kwargs = client.models.generate_content.call_args
-        assert call_kwargs.kwargs["config"]["temperature"] == 0
+        assert "temperature" not in call_kwargs.kwargs["config"]
 
     def test_trigger_then_normalise_then_extract_integration(self):
         """End-to-end mocked flow: detect table → normalise → extract."""
@@ -271,7 +271,7 @@ class TestExtractRecipes:
         assert call_kwargs.kwargs["model"] == GEMINI_MODEL
         config = call_kwargs.kwargs["config"]
         assert config["response_mime_type"] == "application/json"
-        assert config["temperature"] == 0.1
+        assert "temperature" not in config
 
     def test_response_json_schema_used_not_response_schema(self):
         """Regression test for Bug 2: must use response_json_schema, not response_schema."""
@@ -530,8 +530,8 @@ class TestExtractTextViaVision:
         prompt_str = contents[1] if isinstance(contents, list) else str(contents)
         assert "transcribe" in prompt_str.lower() or "ocr" in prompt_str.lower()
 
-    def test_temperature_zero_for_ocr(self):
-        """OCR should use temperature=0 for deterministic output."""
+    def test_no_temperature_for_ocr(self):
+        """OCR should not pass deprecated temperature."""
         from recipeparser.gemini import extract_text_via_vision
         doc = self._make_doc(page_count=1)
         client = self._make_vision_client(["text"])
@@ -539,7 +539,7 @@ class TestExtractTextViaVision:
         extract_text_via_vision(doc, client)
 
         call_kwargs = client.models.generate_content.call_args.kwargs
-        assert call_kwargs["config"]["temperature"] == 0
+        assert "temperature" not in call_kwargs["config"]
 
     # ------------------------------------------------------------------
     # Partial failure — some pages succeed, some fail

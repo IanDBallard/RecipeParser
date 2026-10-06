@@ -34,7 +34,7 @@ def test_timeout_reaches_generate_content_in_milliseconds_not_seconds():
     catch a seconds/milliseconds mix-up, so assert the exact magnitude."""
     client = _client(SimpleNamespace(text="ok", candidates=[]))
 
-    _call_with_retry(client, model="gemini-2.5-flash", contents="hi", config={"temperature": 0})
+    _call_with_retry(client, model="gemini-2.5-flash", contents="hi", config={})
 
     assert client.models.generate_content.call_count == 1
     _, kwargs = client.models.generate_content.call_args
@@ -52,7 +52,7 @@ def test_timeout_does_not_mutate_or_drop_the_callers_config():
     client = _client(SimpleNamespace(text="ok", candidates=[]))
     original_config = {
         "response_mime_type": "application/json",
-        "temperature": 0.1,
+        "max_output_tokens": 500,
     }
 
     _call_with_retry(client, model="gemini-2.5-flash", contents="hi", config=original_config)
@@ -60,7 +60,7 @@ def test_timeout_does_not_mutate_or_drop_the_callers_config():
     _, kwargs = client.models.generate_content.call_args
     sent_config = kwargs["config"]
     assert sent_config["response_mime_type"] == "application/json"
-    assert sent_config["temperature"] == 0.1
+    assert sent_config["max_output_tokens"] == 500
     # The caller's own dict must not have been mutated in place.
     assert "http_options" not in original_config
 

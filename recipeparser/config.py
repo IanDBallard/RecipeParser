@@ -95,9 +95,10 @@ CLASSIFY_TIMEOUT_SECS: int = 60
 # Every call this package makes is a bounded extraction, refinement or
 # classification task with one correct JSON (or plain-text) answer, not
 # open-ended reasoning — thinking tokens buy nothing here and bill at the
-# output rate. Disabled by default; set GEMINI_THINKING_BUDGET to a positive
-# token count to re-enable it for a specific investigation.
-THINKING_BUDGET: int = int(os.environ.get("GEMINI_THINKING_BUDGET", "0"))
+# output rate. Defaults to "minimal" for Gemini 3; override with
+# GEMINI_THINKING_LEVEL ('minimal', 'low', 'medium', 'high') to re-enable
+# thinking for a specific investigation.
+THINKING_LEVEL: str = os.environ.get("GEMINI_THINKING_LEVEL", "minimal")
 
 # Per-call HTTP timeout passed to generate_content (seconds).
 HTTP_TIMEOUT_SECS: int = 180
