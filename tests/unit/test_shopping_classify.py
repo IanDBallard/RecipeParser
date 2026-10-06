@@ -89,13 +89,13 @@ class TestChecks:
         assert [i.key for i in items] == ["r1:i1", "r1:i2"]
         assert len(client.calls) == 1
 
-    def test_the_call_uses_the_model_schema_and_temperature(self):
+    def test_the_call_uses_the_model_and_schema(self):
         client = ScriptedClient([GOOD])
         classify_ingredients(client, ING, [])
         call = client.calls[0]
         from recipeparser.config import GEMINI_MODEL
         assert call["model"] == GEMINI_MODEL
-        assert call["config"]["temperature"] == 0.1
+        assert "temperature" not in call["config"]
         assert call["config"]["response_mime_type"] == "application/json"
         assert "response_json_schema" in call["config"]
         assert call["config"]["http_options"] == {"timeout": 60_000}

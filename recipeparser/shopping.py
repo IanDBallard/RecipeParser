@@ -145,7 +145,6 @@ def _once(client, prompt: str) -> List[ClassifiedItem]:
         config={
             "response_mime_type": "application/json",
             "response_json_schema": _schema_for_gemini(ClassifyReply),
-            "temperature": 0.1,
             "http_options": {"timeout": CLASSIFY_TIMEOUT_SECS * 1000},
         },
         what="Shopping classify",

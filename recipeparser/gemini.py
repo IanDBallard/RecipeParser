@@ -24,7 +24,7 @@ from recipeparser.config import (
     MAX_PARSE_RETRIES,
     MAX_RETRIES,
     PARSE_RETRY_DELAY_SECS,
-    THINKING_BUDGET,
+    THINKING_LEVEL,
 )
 from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import CayenneRefinement, DirectionMention, DirectionMentions, RecipeList, StructuredIngredient
@@ -124,23 +124,29 @@ _HTTP_TIMEOUT_MS = HTTP_TIMEOUT_SECS * 1000
 
 
 def _finalize_config(config: dict) -> dict:
-    """Return a copy of ``config`` with the per-call HTTP timeout and the
-    thinking budget applied.
+    """Return a copy of ``config`` with the per-call HTTP timeout and thinking
+    level applied, stripping deprecated parameters (temperature, top_p, top_k,
+    thinking_budget).
 
     Passed per-call (not at client construction) because ``_call_with_retry``
     only ever receives an already-constructed ``client`` — this is the one
     place in the call path that can attach them, and ``generate_content``
     validates a plain ``config`` dict into ``GenerateContentConfig``, whose
     ``http_options.timeout`` bounds the underlying HTTP request and whose
-    ``thinking_config.thinking_budget`` bounds reasoning-token spend.
+    ``thinking_config.thinking_level`` bounds reasoning tokens.
 
     Every call this module makes is a bounded extraction, refinement, or
     classification task with one correct answer, not open-ended reasoning, so
-    THINKING_BUDGET defaults to 0 — thinking tokens bill at the output rate
+    THINKING_LEVEL defaults to 'minimal' — thinking tokens bill at the output rate
     and buy nothing here.
     """
+    sanitized = {
+        k: v
+        for k, v in config.items()
+        if k not in ("temperature", "top_p", "top_k", "thinking_budget")
+    }
     return {
-        **config,
+        **sanitized,
         # Merge into any http_options the caller already set rather than
         # replacing it: an api_version pin, custom headers or a base_url
         # override would otherwise be dropped silently on the way to the SDK.
@@ -148,7 +154,7 @@ def _finalize_config(config: dict) -> dict:
         # classify call's 60 s), never lengthen it — min() applied last keeps
         # merging from becoming a way to opt out of the bound.
         "http_options": {
-            **config.get("http_options", {}),
+            **sanitized.get("http_options", {}),
             # A falsy caller timeout (0, or an explicit None) must still become
             # a real bound: `.get(..., default)` only supplies the default when
             # the key is absent, so a caller-set 0 would reach min() as 0 (an
@@ -156,11 +162,11 @@ def _finalize_config(config: dict) -> dict:
             # min() as None and raise TypeError against _HTTP_TIMEOUT_MS. `or`
             # catches both before min() ever sees them.
             "timeout": min(
-                config.get("http_options", {}).get("timeout") or _HTTP_TIMEOUT_MS,
+                sanitized.get("http_options", {}).get("timeout") or _HTTP_TIMEOUT_MS,
                 _HTTP_TIMEOUT_MS,
             ),
         },
-        "thinking_config": {"thinking_budget": THINKING_BUDGET},
+        "thinking_config": {"thinking_level": THINKING_LEVEL},
     }
 
 
@@ -170,7 +176,7 @@ def _log_usage_metadata(response: object, what: str) -> None:
     Nothing in this module previously looked at ``usage_metadata``, so every
     cost estimate for the ingestion pipeline was a guess from prompt length
     alone. This puts the real per-call numbers — including any thinking
-    tokens, when THINKING_BUDGET allows them — into the log instead.
+    tokens, when THINKING_LEVEL allows them — into the log instead.
     """
     usage = getattr(response, "usage_metadata", None)
     if usage is None:
@@ -333,7 +339,7 @@ def verify_connectivity(client) -> bool:
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents="Reply with the single word OK.",
-            config=_finalize_config({"max_output_tokens": 5, "temperature": 0}),
+            config=_finalize_config({"max_output_tokens": 5}),
         )
         _log_usage_metadata(response, "Connectivity check")
         log.info("Gemini connectivity check passed (response: %s).", response.text.strip())
@@ -427,7 +433,7 @@ def normalise_baker_table(text_chunk: str, client, *, limiter: Optional["GlobalR
             client,
             model=GEMINI_MODEL,
             contents=prompt,
-            config={"temperature": 0},
+            config={},
             what="Table normalisation",
             limiter=limiter,
         )
@@ -497,7 +503,6 @@ def extract_recipe_from_text(
         config={
             "response_mime_type": "application/json",
             "response_json_schema": _schema_for_gemini(RecipeList),
-            "temperature": 0.1,
         },
         what="Gemini plain-text extraction",
         limiter=limiter,
@@ -578,7 +583,6 @@ def extract_recipes(
         config={
             "response_mime_type": "application/json",
             "response_json_schema": _schema_for_gemini(RecipeList),
-            "temperature": 0.1,
         },
         what="Gemini extraction",
         limiter=limiter,
@@ -628,7 +632,7 @@ def extract_text_via_vision(doc, client) -> str:
                     genai_types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
                     VISION_PROMPT,
                 ],
-                config={"temperature": 0},
+                config={},
                 what=f"Vision OCR page {page_num + 1}/{doc.page_count}",
             )
             page_text = (response.text or "").strip()
@@ -846,7 +850,6 @@ def refine_recipe_for_cayenne(
             config={
                 "response_mime_type": "application/json",
                 "response_json_schema": json_schema,
-                "temperature": 0.1,
             },
             what="Cayenne refinement",
             limiter=limiter,
@@ -920,7 +923,6 @@ def tag_direction_mentions(
         config={
             "response_mime_type": "application/json",
             "response_json_schema": _schema_for_gemini(DirectionMentions),
-            "temperature": 0.1,
         },
         what="Direction mentions",
         limiter=limiter,
@@ -1020,7 +1022,6 @@ def categorize_batch(
         config={
             "response_mime_type": "application/json",
             "response_json_schema": _schema_for_gemini(_BatchCategorization),
-            "temperature": 0.0,
         },
         what="categorize_batch",
         limiter=limiter,

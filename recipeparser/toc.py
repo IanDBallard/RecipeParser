@@ -196,7 +196,6 @@ def _parse_toc_from_text_fallback(
             config={
                 "response_mime_type": "application/json",
                 "response_schema": TocList,
-                "temperature": 0,
             },
             what="TOC parsing",
         )
@@ -249,7 +248,6 @@ def _classify_toc_recipe_indices(
             config={
                 "response_mime_type": "application/json",
                 "response_schema": TocRecipeClassification,
-                "temperature": 0,
             },
             what="Recipe-name classification",
         )

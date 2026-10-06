@@ -160,7 +160,7 @@ Notes: {recipe.notes or ""}
             client,
             model=GEMINI_MODEL,
             contents=prompt,
-            config={"temperature": 0},
+            config={},
             what="Categorisation",
         )
         text = response.text.strip()
