@@ -21,8 +21,11 @@ import uuid
 from collections import deque
 from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
+
+from recipeparser.adapters.idempotency import HEADER as IDEMPOTENCY_HEADER
+from recipeparser.adapters.idempotency import IdempotencyCache
 
 log = logging.getLogger(__name__)
 
@@ -117,6 +120,7 @@ def build_router(
     verify: Callable[..., Dict[str, Any]],
     service_client: Callable[[], Any],
     limiter: RecipientCheckLimiter,
+    idempotency: IdempotencyCache,
 ) -> APIRouter:
     """The five sharing endpoints. ``verify`` is the auth dependency; ``service_client`` returns the
     service-role client or None when the server has none."""
@@ -177,7 +181,8 @@ def build_router(
         return RecipientResponse(email=email)
 
     @router.post("/shares", response_model=ShareCreated, status_code=status.HTTP_201_CREATED)
-    def create_share(body: ShareRequest, user: Dict[str, Any] = Depends(verify)) -> ShareCreated:
+    def create_share(body: ShareRequest, user: Dict[str, Any] = Depends(verify),
+                     idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER)) -> ShareCreated:
         """Create a share of the caller's recipes. The recipient is checked again: the account
         may have gone since *Next*. 404, naming no id, if any recipe is not the caller's."""
         ids = list(dict.fromkeys(str(i) for i in body.recipe_ids))
@@ -191,18 +196,23 @@ def build_router(
         if not sender_email:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                                 detail="Your account has no email address to share from.")
-        sb = _client()
-        email, recipient = _recipient(sb, user, body.email)
-        # `invalid`: the checks above and the function's own are written twice. Should they
-        # drift, its refusal of an argument is the caller's 422, not an outage's 503 (F-175).
-        share_id = _rpc(sb, "create_recipe_share", {
-            "p_sender": user["sub"], "p_sender_email": sender_email,
-            "p_recipient": recipient, "p_recipient_email": email, "p_recipe_ids": ids,
-        }, invalid=SHARE_REFUSED)
-        if not share_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=RECIPES_NOT_FOUND)
-        log.info("Share %s created (%d recipe(s)).", share_id, len(ids))
-        return ShareCreated(share_id=str(share_id))
+        with idempotency.once(user["sub"], idempotency_key) as slot:
+            # Before the lookup: a replay must not spend one of the sender's twenty checks.
+            if slot.replay is not None:
+                return ShareCreated(**slot.replay)
+            sb = _client()
+            email, recipient = _recipient(sb, user, body.email)
+            # `invalid`: the checks above and the function's own are written twice. Should they
+            # drift, its refusal of an argument is the caller's 422, not an outage's 503 (F-175).
+            share_id = _rpc(sb, "create_recipe_share", {
+                "p_sender": user["sub"], "p_sender_email": sender_email,
+                "p_recipient": recipient, "p_recipient_email": email, "p_recipe_ids": ids,
+            }, invalid=SHARE_REFUSED)
+            if not share_id:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=RECIPES_NOT_FOUND)
+            log.info("Share %s created (%d recipe(s)).", share_id, len(ids))
+            slot.done({"share_id": str(share_id)})
+            return ShareCreated(share_id=str(share_id))
 
     @router.post("/shares/{share_id}/accept", response_model=AcceptResponse, status_code=status.HTTP_202_ACCEPTED)
     def accept_share(share_id: uuid.UUID, body: Optional[AcceptRequest] = None,

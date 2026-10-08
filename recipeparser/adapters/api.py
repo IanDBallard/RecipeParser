@@ -41,13 +41,15 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Tuple
 
 import httpx
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google.genai import errors as genai_errors
 from pydantic import BaseModel, Field
 
 import recipeparser.gemini as _gemini_mod
+from recipeparser.adapters.idempotency import HEADER as _IDEMPOTENCY_HEADER
+from recipeparser.adapters.idempotency import IdempotencyCache
 from recipeparser.adapters.job_sink import JobSink
 from recipeparser.adapters.shares_api import RecipientCheckLimiter
 from recipeparser.adapters.shares_api import build_router as _build_share_router
@@ -314,7 +316,9 @@ app.add_middleware(
     # browser's preflight refuses the only verb that clears a recipe's picture,
     # so Remove would fail in a browser while passing every server-side test.
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    # Idempotency-Key since 9.9.0 (Cayenne F-200): a custom header is preflighted, and a
+    # refused preflight fails every import and share from a cross-origin dev server.
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
 )
 logger.info("CORS enabled for: %s", ", ".join(_cors_origins))
 
@@ -1059,6 +1063,7 @@ class JobsRequest(BaseModel):
 async def submit_job(
     body: JobsRequest,
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
+    idempotency_key: Optional[str] = Header(default=None, alias=_IDEMPOTENCY_HEADER),
 ) -> AsyncJobResponse:
     """Fire-and-forget URL or text ingestion job.
 
@@ -1074,69 +1079,73 @@ async def submit_job(
         )
 
     user_id: str = user.get("sub", "")
-    job_id = str(uuid.uuid4())
-    controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
-    _active_jobs[job_id] = (user_id, controller)
+    with _idempotency.once(user_id, idempotency_key) as slot:
+        if slot.replay is not None:
+            return AsyncJobResponse(**slot.replay)
+        job_id = str(uuid.uuid4())
+        controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
+        _active_jobs[job_id] = (user_id, controller)
 
-    async def _read() -> Tuple[Any, List[Chunk]]:
-        client = _get_client()
-        source_text: str
-        source_url: Optional[str] = None
-        stored_image_url: Optional[str] = None
+        async def _read() -> Tuple[Any, List[Chunk]]:
+            client = _get_client()
+            source_text: str
+            source_url: Optional[str] = None
+            stored_image_url: Optional[str] = None
 
-        page_meta = PageMeta(None, None)
-        if body.url:
-            source_url = body.url
-            # UrlReader is the one place that decides what a fetched URL means: the Jina
-            # fetch, its timeout, and every refusal (an HTTP error, a timeout, a blank page,
-            # a bot-protection challenge) as a UrlFetchError. This endpoint kept its own copy
-            # until 2026-09-28, and #54's reader fix was dead code here until #55 copied it
-            # (RecipeParser#57, Fix Roadmap F-014). The reader is synchronous, so it runs in
-            # a thread.
-            [fetched] = await asyncio.to_thread(UrlReader().read, body.url)
-            markdown_text = fetched.text
-            # The page's own head first (og:image, the description), the
-            # scraper's markdown second: the markdown dropped both on the
-            # NYT page of 2026-09-12 and offered a logo instead.
-            page_meta = await _fetch_page_meta(body.url)
-            page_image = (
-                page_meta.image_url
-                if page_meta.image_url and not looks_like_badge(page_meta.image_url)
-                else None
-            )
-            image_url_candidate = page_image or _extract_image_url_from_markdown(markdown_text)
-            recipe_id_for_img = str(uuid.uuid4())
-            if image_url_candidate:
-                stored_image_url = await _upload_image_to_storage(
-                    image_url_candidate, recipe_id_for_img
+            page_meta = PageMeta(None, None)
+            if body.url:
+                source_url = body.url
+                # UrlReader is the one place that decides what a fetched URL means: the Jina
+                # fetch, its timeout, and every refusal (an HTTP error, a timeout, a blank page,
+                # a bot-protection challenge) as a UrlFetchError. This endpoint kept its own copy
+                # until 2026-09-28, and #54's reader fix was dead code here until #55 copied it
+                # (RecipeParser#57, Fix Roadmap F-014). The reader is synchronous, so it runs in
+                # a thread.
+                [fetched] = await asyncio.to_thread(UrlReader().read, body.url)
+                markdown_text = fetched.text
+                # The page's own head first (og:image, the description), the
+                # scraper's markdown second: the markdown dropped both on the
+                # NYT page of 2026-09-12 and offered a logo instead.
+                page_meta = await _fetch_page_meta(body.url)
+                page_image = (
+                    page_meta.image_url
+                    if page_meta.image_url and not looks_like_badge(page_meta.image_url)
+                    else None
                 )
-            source_text = html_to_text(markdown_text)
-        else:
-            source_text = (body.text or "").strip()
+                image_url_candidate = page_image or _extract_image_url_from_markdown(markdown_text)
+                recipe_id_for_img = str(uuid.uuid4())
+                if image_url_candidate:
+                    stored_image_url = await _upload_image_to_storage(
+                        image_url_candidate, recipe_id_for_img
+                    )
+                source_text = html_to_text(markdown_text)
+            else:
+                source_text = (body.text or "").strip()
 
-        # Build a single URL/text chunk for the pipeline.
-        # Both URL-scraped and raw-text paths use InputType.URL so the
-        # pipeline routes them through the full EXTRACT→REFINE→…→ASSEMBLE
-        # sequence.  source_url is None for raw-text submissions.
-        # A list of one, so _run_ingestion_job takes the same shape here
-        # as it does from the file endpoint.
-        # The page's description is the page's own statement, so it rides
-        # SourceMeta and beats the model's reading, as a Paprika entry's does.
-        chunks = [
-            Chunk(
-                text=source_text,
-                input_type=InputType.URL,
-                source_url=source_url,
-                image_url=stored_image_url,
-                citation=web_citation(body.url) if body.url else None,
-                meta=SourceMeta(description=page_meta.description) if page_meta.description else None,
-            )
-        ]
-        return client, chunks
+            # Build a single URL/text chunk for the pipeline.
+            # Both URL-scraped and raw-text paths use InputType.URL so the
+            # pipeline routes them through the full EXTRACT→REFINE→…→ASSEMBLE
+            # sequence.  source_url is None for raw-text submissions.
+            # A list of one, so _run_ingestion_job takes the same shape here
+            # as it does from the file endpoint.
+            # The page's description is the page's own statement, so it rides
+            # SourceMeta and beats the model's reading, as a Paprika entry's does.
+            chunks = [
+                Chunk(
+                    text=source_text,
+                    input_type=InputType.URL,
+                    source_url=source_url,
+                    image_url=stored_image_url,
+                    citation=web_citation(body.url) if body.url else None,
+                    meta=SourceMeta(description=page_meta.description) if page_meta.description else None,
+                )
+            ]
+            return client, chunks
 
-    _create_ingestion_job(job_id, user_id, source_hint=body.url or None)
-    asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, body.url, "Job"))
-    return AsyncJobResponse(job_id=job_id)
+        _create_ingestion_job(job_id, user_id, source_hint=body.url or None)
+        asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, body.url, "Job"))
+        slot.done({"job_id": job_id})
+        return AsyncJobResponse(job_id=job_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1147,6 +1156,7 @@ async def submit_job(
 async def submit_file_job(
     file: UploadFile = File(...),
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
+    idempotency_key: Optional[str] = Header(default=None, alias=_IDEMPOTENCY_HEADER),
 ) -> AsyncJobResponse:
     """Fire-and-forget file upload ingestion job.
 
@@ -1165,56 +1175,60 @@ async def submit_file_job(
             detail=str(exc),
         ) from exc
 
-    # The upload goes to a temporary file in 1 MB pieces (readers take a path), so a large
-    # Paprika library is never held in memory. Starlette has already spooled the body to disk.
-    suffix = Path(filename).suffix or _IMAGE_SUFFIX_BY_TYPE.get(content_type, ".bin")
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        await asyncio.to_thread(shutil.copyfileobj, file.file, tmp, _COPY_CHUNK_BYTES)
-        tmp_path = tmp.name
-        size = tmp.tell()
-
-    # The ceiling (config.MAX_UPLOAD_BYTES), after the type check so a small .docx is still a 422.
-    # A Paprika export is exempt: it is a whole library with its photos, not a single item, and
-    # its reader takes one entry at a time.
-    if reader_tag != "paprika" and size > MAX_UPLOAD_BYTES:
-        os.unlink(tmp_path)
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=_too_large_sentence(size),
-        )
     user_id: str = user.get("sub", "")
-    job_id = str(uuid.uuid4())
-    controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
-    _active_jobs[job_id] = (user_id, controller)
+    with _idempotency.once(user_id, idempotency_key) as slot:
+        if slot.replay is not None:
+            return AsyncJobResponse(**slot.replay)
+        # The upload goes to a temporary file in 1 MB pieces (readers take a path), so a large
+        # Paprika library is never held in memory. Starlette has already spooled the body to disk.
+        suffix = Path(filename).suffix or _IMAGE_SUFFIX_BY_TYPE.get(content_type, ".bin")
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            await asyncio.to_thread(shutil.copyfileobj, file.file, tmp, _COPY_CHUNK_BYTES)
+            tmp_path = tmp.name
+            size = tmp.tell()
 
-    async def _read() -> Tuple[Any, List[Chunk]]:
-        try:
-            client = _get_client()
-            # Use the appropriate reader to produce List[Chunk].
-            # The pipeline's stage router (_get_stages) inspects each
-            # chunk's input_type and routes accordingly:
-            #   PDF / EPUB          → full pipeline (EXTRACT→…→ASSEMBLE)
-            #   IMAGE               → full pipeline (EXTRACT→…→ASSEMBLE)
-            #   PAPRIKA_LEGACY      → full pipeline (EXTRACT→…→ASSEMBLE)
-            #   PAPRIKA_CAYENNE + embedding  → ASSEMBLE only ($0)
-            #   PAPRIKA_CAYENNE no embedding → EMBED + ASSEMBLE (1 call)
-            if reader_tag == "pdf":
-                # With the client, a scan is transcribed rather than refused (Input media 1).
-                chunks = await asyncio.to_thread(_PdfReader(client=client).read, tmp_path)
-            elif reader_tag == "epub":
-                chunks = await asyncio.to_thread(_EpubReader().read, tmp_path)
-            elif reader_tag == "image":
-                # A model call inside the reader: the OCR is the read.
-                chunks = await asyncio.to_thread(_ImageReader(client).read, tmp_path)
-            else:  # paprika
-                chunks = await asyncio.to_thread(_PaprikaReader().read, tmp_path)
-        finally:
+        # The ceiling (config.MAX_UPLOAD_BYTES), after the type check so a small .docx is still a 422.
+        # A Paprika export is exempt: it is a whole library with its photos, not a single item, and
+        # its reader takes one entry at a time.
+        if reader_tag != "paprika" and size > MAX_UPLOAD_BYTES:
             os.unlink(tmp_path)
-        return client, chunks
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=_too_large_sentence(size),
+            )
+        job_id = str(uuid.uuid4())
+        controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
+        _active_jobs[job_id] = (user_id, controller)
 
-    _create_ingestion_job(job_id, user_id, source_hint=filename or None)
-    asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, filename, "File job"))
-    return AsyncJobResponse(job_id=job_id)
+        async def _read() -> Tuple[Any, List[Chunk]]:
+            try:
+                client = _get_client()
+                # Use the appropriate reader to produce List[Chunk].
+                # The pipeline's stage router (_get_stages) inspects each
+                # chunk's input_type and routes accordingly:
+                #   PDF / EPUB          → full pipeline (EXTRACT→…→ASSEMBLE)
+                #   IMAGE               → full pipeline (EXTRACT→…→ASSEMBLE)
+                #   PAPRIKA_LEGACY      → full pipeline (EXTRACT→…→ASSEMBLE)
+                #   PAPRIKA_CAYENNE + embedding  → ASSEMBLE only ($0)
+                #   PAPRIKA_CAYENNE no embedding → EMBED + ASSEMBLE (1 call)
+                if reader_tag == "pdf":
+                    # With the client, a scan is transcribed rather than refused (Input media 1).
+                    chunks = await asyncio.to_thread(_PdfReader(client=client).read, tmp_path)
+                elif reader_tag == "epub":
+                    chunks = await asyncio.to_thread(_EpubReader().read, tmp_path)
+                elif reader_tag == "image":
+                    # A model call inside the reader: the OCR is the read.
+                    chunks = await asyncio.to_thread(_ImageReader(client).read, tmp_path)
+                else:  # paprika
+                    chunks = await asyncio.to_thread(_PaprikaReader().read, tmp_path)
+            finally:
+                os.unlink(tmp_path)
+            return client, chunks
+
+        _create_ingestion_job(job_id, user_id, source_hint=filename or None)
+        asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, filename, "File job"))
+        slot.done({"job_id": job_id})
+        return AsyncJobResponse(job_id=job_id)
 
 
 def _owned_controller(job_id: str, user: dict[str, Any]) -> PipelineController:
@@ -1745,8 +1759,10 @@ async def generate_recipe_image(
 # The endpoints live in shares_api.py. The client factory is passed as a lambda so that it
 # is looked up on every call, which is what lets a test replace _get_supabase_service_client.
 _share_check_limiter = RecipientCheckLimiter()
+# One answer per Idempotency-Key for the three endpoints that make something (F-200).
+_idempotency = IdempotencyCache()
 app.include_router(_build_share_router(
-    _verify_supabase_jwt, lambda: _get_supabase_service_client(), _share_check_limiter,
+    _verify_supabase_jwt, lambda: _get_supabase_service_client(), _share_check_limiter, _idempotency,
 ))
 
 # ---------------------------------------------------------------------------

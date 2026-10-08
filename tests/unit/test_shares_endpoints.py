@@ -34,6 +34,7 @@ def fake(monkeypatch):
     f.tables["recipe_shares"] = [{"id": SHARE, "sender_id": SENDER, "recipient_id": RECIPIENT}]
     monkeypatch.setattr(api, "_get_supabase_service_client", lambda: f)
     api._share_check_limiter.reset()
+    api._idempotency.reset()
     return f
 
 
