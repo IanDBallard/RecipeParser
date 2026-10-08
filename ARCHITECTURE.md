@@ -15,46 +15,91 @@ RecipeParser is an AI-powered recipe extraction engine that converts any recipe 
 
 ## 2. Module Map
 
+> **Redrawn 2026-10-08 from `git ls-files recipeparser/`** (Cayenne Fix Roadmap F-251). The earlier map named files that never existed or have since gone (`core/chunker.py`, `io/readers/base.py`, `io/readers/text.py`, `io/writers/base.py`, `io/category_sources/paprika_db_source.py`) and left out most of the package. Each line below is taken from the module's own docstring.
+
 ```
 recipeparser/
 │
-├── core/                          # Pure extraction engine — no I/O, no side effects
-│   ├── engine.py                  # RecipeEngine class — orchestrates the pipeline
-│   ├── chunker.py                 # Splits source text into processable segments
-│   ├── fsm.py                     # ExtractionFSM — externalized state machine
+├── core/                          # Pure: no imports from io/ or adapters/
+│   ├── pipeline.py                # RecipePipeline — routes reader Chunks through the stages, in parallel, rate-limited
+│   ├── stages/                    # One module per stage
+│   │   ├── extract.py             # EXTRACT — raw recipes from text, held to the verbatim rule
+│   │   ├── refine.py              # REFINE — Fat Tokens and measure conversion
+│   │   ├── tag.py                 # TAG — one axis per call, five recipes per call (F-246)
+│   │   ├── categorize.py          # The rules every tagging answer is held to, shared by TAG and recategorise
+│   │   ├── embed.py               # EMBED — the 1536-dimension vector
+│   │   └── assemble.py            # ASSEMBLE — the final IngestResponse; no API calls
+│   ├── fsm.py                     # PipelineController — the externalised state machine (pause, cancel, progress)
+│   ├── models.py                  # Chunk, InputType, SourceMeta — the reader → pipeline contract
+│   ├── ports.py                   # CategorySource and ImageStore ports
+│   ├── engine.py                  # deduplicate_recipes only; there is no RecipeEngine (see §3)
+│   ├── citation.py                # Where a recipe came from, as four citation columns
+│   ├── durations.py               # Times and servings as min/max plus a note
+│   ├── numbers.py                 # The numbers a text writes, by value
+│   ├── fat_tokens.py              # The Fat Token grammar and the checks on REFINE's output
+│   ├── taxonomy.py                # The one walk from a category to its axis
+│   ├── regen.py                   # Pure helpers for regenerating derived recipe data
+│   ├── picture_gen.py             # An AI picture of the finished dish: prompt, call, JPEG
+│   ├── rate_limiter.py            # GlobalRateLimiter — the process-wide Gemini rate limit
+│   ├── clock.py                   # utc_timestamp — the one timestamp format written
 │   └── providers/                 # an empty __init__.py only: the provider layer of §5 and §6
 │                                  # was designed and never built (2026-10-01)
 │
 ├── io/
-│   ├── readers/                   # Source → SourceDocument(text, images)
-│   │   ├── base.py                # SourceReader ABC + SourceDocument dataclass
-│   │   ├── epub.py                # EPUB reader
-│   │   ├── pdf.py                 # PDF reader
-│   │   ├── url.py                 # URL reader (via Jina r.jina.ai; direct fetch on failure)
-│   │   ├── text.py                # Plain text passthrough
-│   │   └── paprika.py             # .paprikarecipes reader (Paprika + Cayenne formats)
-│   ├── writers/                   # List[CayenneRecipe] + images → output file
-│   │   ├── base.py                # RecipeWriter ABC
-│   │   ├── cayenne_zip.py         # .cayennerecipes ZIP (Cayenne JSON + image URLs)
-│   │   └── paprika_zip.py         # .paprikarecipes ZIP (Paprika JSON + embedded images)
-│   └── category_sources/          # Taxonomy → CategoryTree
-│       ├── base.py                # CategorySource ABC + CategoryTree dataclass
-│       ├── yaml_source.py         # Load from categories.yaml
-│       ├── paprika_db_source.py   # Load from Paprika SQLite
-│       └── supabase_source.py     # Load from Supabase categories table
+│   ├── readers/                   # RecipeReader (in __init__.py): source → List[Chunk]
+│   │   ├── epub.py                # EpubReader — text, images and chunking
+│   │   ├── pdf.py                 # PdfReader — pre-flight, images, page chunks
+│   │   ├── url.py                 # UrlReader — via r.jina.ai, direct fetch on failure
+│   │   ├── image.py               # ImageReader — a photographed recipe, through vision OCR
+│   │   ├── paprika.py             # PaprikaReader — .paprikarecipes archives (Paprika and Cayenne)
+│   │   ├── book_images.py         # Carries a book's photographs onto its chunks
+│   │   └── photo_check.py         # Whether a book image looks like a photograph of a dish
+│   ├── writers/                   # RecipeWriter (in __init__.py): List[IngestResponse] → destination
+│   │   ├── supabase.py            # write_recipe_to_supabase — the API is the sole writer of recipes
+│   │   ├── image_store.py         # SupabaseImageStore — the ImageStore port on Supabase Storage
+│   │   ├── picture_scale.py       # Brings a picture to Cayenne's stored size
+│   │   ├── cayenne_zip.py         # CayenneZipWriter — a Paprika archive with _cayenne_meta
+│   │   └── paprika_zip.py         # PaprikaWriter — a .paprikarecipes archive
+│   └── category_sources/          # CategorySource implementations (the ABC is in core/ports.py)
+│       ├── supabase_source.py     # The user's taxonomy from the categories table (API)
+│       ├── yaml_source.py         # From a YAML file (CLI and GUI)
+│       ├── paprika_db.py          # From a local Paprika SQLite database (CLI and GUI)
+│       └── base.py                # Re-export of the ABC for older imports
 │
-├── adapters/                      # Environment-specific wrappers
-│   ├── cli.py                     # CLI entry point (replaces __main__.py)
-│   ├── gui.py                     # GUI wrapper (replaces gui.py)
-│   └── api.py                     # FastAPI wrapper (replaces api.py)
+├── adapters/
+│   ├── api.py                     # The FastAPI app: /jobs*, /embed, recipe images, /health; mounts shares and shopping
+│   ├── job_sink.py                # Per-job bookkeeping shared by both ingestion endpoints
+│   ├── ingest_liveness.py         # Keeps live ingest rows fresh; ends those whose process died
+│   ├── regen_worker.py            # The reprocess worker: stale rows → REFINE and EMBED
+│   ├── recat_worker.py            # The bulk recategorise worker
+│   ├── share_worker.py            # The recipe-sharing copy job and its sweep
+│   ├── shares_api.py              # The recipe-sharing endpoints
+│   ├── shopping_api.py            # The shopping classify endpoint
+│   ├── cli.py                     # CLI adapter: Reader → RecipePipeline → PaprikaWriter
+│   └── gui.py                     # CustomTkinter GUI
 │
-├── models.py                      # Pydantic models (source of truth for all data shapes)
-├── config.py                      # Constants (retry limits, backoff, concurrency caps)
-├── exceptions.py                  # RecipeParserError hierarchy
-└── __main__.py                    # Entry point: from recipeparser.adapters.cli import main; main()
+├── gemini.py                      # The Gemini calls, with timeout, back-off and retry
+├── categories.py                  # Taxonomy loading and categorisation via Gemini
+├── categories.yaml                # The default taxonomy for local use
+├── toc.py                         # Table-of-contents extraction and TOC-driven chunking
+├── shopping.py                    # The shopping classify call
+├── recategorize.py                # Re-categorise an existing .paprikarecipes archive (CLI)
+├── paprika_db.py                  # Locates and reads the live Paprika 3 SQLite database, read-only
+├── models.py                      # Pydantic models for structured Gemini output and the API
+├── config.py                      # Configuration constants, GEMINI_MODEL among them
+├── exceptions.py                  # The RecipeParserError hierarchy
+├── logging_setup.py               # One console handler for the package's loggers
+├── paths.py                       # User-writable paths for persisted data
+├── utils.py                       # Shared file and text helpers
+├── __main__.py                    # Entry point: python -m recipeparser
+│
+└── api.py, epub.py, pdf.py,       # Backward-compatibility shims, each marked
+    export.py, supabase_writer.py  # "will be deleted in Phase 7": re-exports of the modules above
 ```
 
 ## 3. Core Engine
+
+> **Status, 2026-10-08: superseded.** There is no `RecipeEngine`. The orchestrator is `RecipePipeline` in `recipeparser/core/pipeline.py`: it routes each reader `Chunk` through the stages in `core/stages/` by its `InputType`, in parallel under `GlobalRateLimiter`, with `PipelineController` (`core/fsm.py`) for pause, cancel and progress. `core/engine.py` holds one helper, `deduplicate_recipes`. Read the rest of this section as the design it was.
 
 The `RecipeEngine` is the heart of the system. It is a pure Python class with no imports from `io/` or `adapters/`. All external dependencies are injected.
 
