@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.9.0] — 2026-10-08
+
+A retried import or share answers the first one (Cayenne Fix Roadmap F-200). Needs no migration; the container restart deploys it. Ship before the Cayenne half: the browser preflights the new header, and only this release allows it.
+
+### 🐛 Fixed — a retry after a timeout made a second job or share
+- `POST /jobs`, `POST /jobs/file` and `POST /shares` take an optional `Idempotency-Key` header (8 to 128 letters, digits or hyphens; otherwise 422). The first request with a key runs; a repeat from the same user within 24 hours gets the same answer and makes nothing; a repeat while the first is still running gets 409 "That request is still being handled. Wait a moment and look again." A request that fails frees its key, so a corrected retry runs.
+- Keys live in process memory (`adapters/idempotency.py`), like the recipient-check limit: a restart forgets them.
+- A replayed file job answers before the upload is copied anywhere, and a replayed share spends none of the sender's 20 recipient checks.
+- CORS allows `Idempotency-Key`.
+
+### 🧪 Tests
+- `tests/unit/test_idempotency.py`: replay, per-user scope, 409 while pending, release on failure, expiry, the abandoned-claim timeout, the entry cap, malformed keys.
+- `tests/unit/test_idempotent_submits.py`: each endpoint replays and makes one; no key behaves as before; a 400, 413 or 404 frees the key; the concurrent 409; no temp file on a replay; one recipient check per share; the preflight.
+
 ## [9.8.0] — 2026-10-05
 
 The import tags one axis per call (Cayenne Fix Roadmap F-246, design `docs/superpowers/specs/2026-10-05-per-axis-tagging-at-import-design.md` in Cayenne). Needs no migration; the container restart deploys it. Recipes imported after the 2026-10-03 clean-up carry the old prompt's tags until the owner re-tags them with `scripts/retag_axis.py --since`.
