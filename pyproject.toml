@@ -100,6 +100,8 @@ select = ["E", "F", "I", "TID"]
 "scripts/**" = ["TID"]
 # This test file drives recipeparser.adapters and recipeparser.io directly by design.
 "tests/test_api.py" = ["TID"]
+# Idempotency unit tests drive the recipeparser.adapters cache directly by design.
+"tests/unit/test_idempotency.py" = ["TID"]
 # Reader unit tests exercise recipeparser.io.readers directly by design.
 "tests/unit/readers/test_readers.py" = ["TID"]
 "tests/unit/readers/test_image_reader.py" = ["TID"]
