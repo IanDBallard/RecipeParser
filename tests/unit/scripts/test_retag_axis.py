@@ -231,3 +231,10 @@ class TestSince:
         monkeypatch.setattr("scripts.retag_axis._supabase", lambda: pytest.fail("connected before checking --since"))
         with pytest.raises(SystemExit, match="no time zone"):
             main(["--user-id", "u", "--axis", "Protein", "--plan", "p.csv", "--since", "2026-10-03"])
+
+
+def test_the_retag_batches_as_the_import_tags():
+    from recipeparser.core.stages.tag import TAG_BATCH_SIZE
+    from scripts import retag_axis
+
+    assert retag_axis.BATCH_SIZE == TAG_BATCH_SIZE

@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.9.1] — 2026-10-11
+
+*Apply to existing recipes* tags in the import's batches (Cayenne Fix Roadmap F-256). Needs no migration; the container restart deploys it.
+
+### 🐛 Fixed — a recategorise asked ten recipes a call
+- `RecatWorker` batched by 10 where the import's TAG stage asks five, after ten a call let a batch of vegetarian dishes carry two stock-based soups into `Vegetarian` (9.8.0's measurement). Its default is now `TAG_BATCH_SIZE`, and `scripts/retag_axis.py` reads the same constant instead of its own `5`, so one number governs every tagging call. A recategorise makes about twice the calls it did.
+- A recategorise job left running across this deploy resumes at five and estimates its failed-batch tally from the new size (the latent case Cayenne F-130 records).
+
+### 🧪 Tests
+- `test_recat_worker.py` and `test_retag_axis.py` hold both to `TAG_BATCH_SIZE`.
+
 ## [9.9.0] — 2026-10-08
 
 A retried import or share answers the first one (Cayenne Fix Roadmap F-200). Needs no migration; the container restart deploys it. Ship before the Cayenne half: the browser preflights the new header, and only this release allows it.
