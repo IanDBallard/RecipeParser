@@ -37,9 +37,9 @@ PLACEHOLDER_RECIPE = RecipeExtraction(
 )
 
 PLACEHOLDER_STRUCTURED = [
-    StructuredIngredient(id="ing_01", amount=2.0, unit="cups", name="plain flour",
+    StructuredIngredient(id="ing_01", kind="ingredient", amount=2.0, unit="cups", name="plain flour",
                          fallback_string="2 cups/250g plain flour"),
-    StructuredIngredient(id="ing_02", amount=1.0, unit="cup", name="sugar", fallback_string="1 cup sugar"),
+    StructuredIngredient(id="ing_02", kind="ingredient", amount=1.0, unit="cup", name="sugar", fallback_string="1 cup sugar"),
 ]
 
 PLACEHOLDER_INGREDIENTS = [

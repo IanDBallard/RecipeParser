@@ -79,6 +79,7 @@ _INGEST_RESPONSE_PAYLOAD: Dict[str, Any] = {
     "structured_ingredients": [
         {
             "id": "ing_01",
+            "kind": "ingredient",
             "amount": 1.5,
             "unit": "cups",
             "name": "flour",

@@ -10,8 +10,8 @@ from recipeparser.models import DirectionMention
 from scripts.backfill_direction_amounts import plan_row, summarise
 
 INGREDIENTS = [
-    {"id": "ing_01", "amount": 2, "unit": "cups", "name": "ricotta", "fallback_string": "2 cups ricotta"},
-    {"id": "ing_02", "amount": 0.75, "unit": "cup", "name": "flour", "fallback_string": "3/4 cup flour"},
+    {"id": "ing_01", "kind": "ingredient", "amount": 2, "unit": "cups", "name": "ricotta", "fallback_string": "2 cups ricotta"},
+    {"id": "ing_02", "kind": "ingredient", "amount": 0.75, "unit": "cup", "name": "flour", "fallback_string": "3/4 cup flour"},
 ]
 STEPS = ["Drain the ricotta.", "Add about 1/2 cup flour; add more flour until sticky."]
 LEGACY = [

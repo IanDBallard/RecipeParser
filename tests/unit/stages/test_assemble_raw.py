@@ -9,7 +9,7 @@ def _refinement():
         title="Cake",
         base_servings=8,
         structured_ingredients=[
-            StructuredIngredient(id="ing_01", amount=1.5, unit="cups", name="flour",
+            StructuredIngredient(id="ing_01", kind="ingredient", amount=1.5, unit="cups", name="flour",
                                  fallback_string="1 1/2 cups flour", line_index=0),
         ],
         tokenized_directions=[TokenizedDirection(step=1, text="Mix {{ing_01|flour}}.")],

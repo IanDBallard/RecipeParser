@@ -52,7 +52,7 @@ def _make_recipe(
     can verify stripping behaviour.
     """
     ing = StructuredIngredient(
-        id="ing_01",
+        id="ing_01", kind="ingredient",
         amount=1.5,
         unit="cups",
         name="all-purpose flour",
@@ -614,7 +614,7 @@ def test_image_store_stores_a_large_picture_scaled_as_a_jpeg():
 def test_an_unquantified_ingredient_serialises_as_null():
     """Spec 4.8: 'to taste' must not be indistinguishable from a real zero."""
     ingredient = StructuredIngredient(
-        id="ing_01",
+        id="ing_01", kind="ingredient",
         amount=None,
         unit=None,
         name="Kosher salt",

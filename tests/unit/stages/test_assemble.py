@@ -10,7 +10,7 @@ def _refined() -> CayenneRefinement:
         title="Cake",
         base_servings=2,
         structured_ingredients=[
-            StructuredIngredient(id="ing_01", name="flour", fallback_string="1 cup flour", line_index=0)
+            StructuredIngredient(id="ing_01", kind="ingredient", name="flour", fallback_string="1 cup flour", line_index=0)
         ],
         tokenized_directions=[TokenizedDirection(step=1, text="Mix {{ing_01|flour}}.")],
     )

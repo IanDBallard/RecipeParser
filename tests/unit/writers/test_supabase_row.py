@@ -11,7 +11,7 @@ def _recipe() -> IngestResponse:
     return IngestResponse(
         title="Cake",
         base_servings=2,
-        structured_ingredients=[StructuredIngredient(id="ing_01", name="flour",
+        structured_ingredients=[StructuredIngredient(id="ing_01", kind="ingredient", name="flour",
                                                      fallback_string="1 cup flour", line_index=0)],
         tokenized_directions=[TokenizedDirection(step=1, text="Mix {{ing_01|flour}}.")],
         embedding=[0.0] * 1536,

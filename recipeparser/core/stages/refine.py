@@ -11,6 +11,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
+from recipeparser.core.headings import heading_name
 from recipeparser.core.fat_tokens import TOKEN_RE, check_mentions
 from recipeparser.core.numbers import written_measures
 from recipeparser.core.rate_limiter import GlobalRateLimiter
@@ -64,6 +65,48 @@ def _ensure_unique_ids(refinement: CayenneRefinement) -> None:
         ing.id = fresh
     if renamed:
         log.warning("refine(): '%s': ingredient IDs made unique: %s", refinement.title, "; ".join(renamed))
+
+
+def _normalise_headings(refinement: CayenneRefinement) -> None:
+    """
+    Give every heading entry exactly the fields a heading has (ingredient headings D3), in place: no
+    quantity of any kind, and a display name cleaned from its source line. A heading that kept an
+    amount ("Day 2") would otherwise grow an amount control in the editor and a line on the
+    shopping list.
+    """
+    for ing in refinement.structured_ingredients:
+        if ing.kind != "heading":
+            continue
+        ing.amount = None
+        ing.unit = None
+        ing.converted_amount = None
+        ing.converted_unit = None
+        ing.is_ai_converted = False
+        ing.state = None
+        ing.name = heading_name(ing.fallback_string)
+
+
+def _unwrap_heading_tokens(refinement: CayenneRefinement) -> None:
+    """
+    Replace, in place, every Fat Token that names a heading with its words, and log each. A heading
+    is not an ingredient a step can use; the slip costs the chip, never the recipe (the same rule
+    ``_check_mentions`` follows).
+    """
+    headings = {ing.id for ing in refinement.structured_ingredients if ing.kind == "heading"}
+    if not headings:
+        return
+    unwrapped: List[str] = []
+
+    def unwrap(match: "re.Match[str]") -> str:
+        if match.group(1) not in headings:
+            return match.group(0)
+        unwrapped.append(match.group(0))
+        return match.group(2)
+
+    for step in refinement.tokenized_directions:
+        step.text = TOKEN_RE.sub(unwrap, step.text)
+    if unwrapped:
+        log.warning("refine(): '%s': tokens naming a heading unwrapped: %s", refinement.title, "; ".join(unwrapped))
 
 
 def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
@@ -446,6 +489,8 @@ def refine(
     # the stored title and the embedded one agree.
     result.title = title_case(result.title)
     _ensure_unique_ids(result)
+    _normalise_headings(result)
+    _unwrap_heading_tokens(result)
     _validate_fat_tokens(result)
     _check_mentions(result)
     _normalise_line_index(result, raw)

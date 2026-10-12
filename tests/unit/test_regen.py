@@ -16,8 +16,8 @@ def test_strip_fat_tokens_leaves_plain_text():
 
 def test_raw_lines_from_derived():
     structured = [
-        StructuredIngredient(id="ing_01", name="flour", fallback_string="1 1/2 cups flour"),
-        StructuredIngredient(id="ing_02", name="egg", fallback_string="2 eggs"),
+        StructuredIngredient(id="ing_01", kind="ingredient", name="flour", fallback_string="1 1/2 cups flour"),
+        StructuredIngredient(id="ing_02", kind="ingredient", name="egg", fallback_string="2 eggs"),
     ]
     tokenized = [
         TokenizedDirection(step=1, text="Mix {{ing_01|flour}} and {{ing_02|eggs}}."),
@@ -83,7 +83,7 @@ def test_build_extraction_rejects_a_double_encoded_direction_column():
 def test_build_update_payload():
     ref = CayenneRefinement(
         title="Cake", base_servings=99,
-        structured_ingredients=[StructuredIngredient(id="ing_01", name="flour",
+        structured_ingredients=[StructuredIngredient(id="ing_01", kind="ingredient", name="flour",
                                                      fallback_string="1 cup flour", line_index=0)],
         tokenized_directions=[TokenizedDirection(step=1, text="Mix {{ing_01|flour}}.")],
         grid_categories={"Cuisine": ["Italian"]},

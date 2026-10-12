@@ -49,7 +49,7 @@ def _make_ingest_response(title: str = "Test Recipe") -> IngestResponse:
         grid_categories={"Cuisine": ["Italian"]},
         structured_ingredients=[
             StructuredIngredient(
-                id="ing_01",
+                id="ing_01", kind="ingredient",
                 amount=1.5,
                 unit="cups",
                 name="flour",
@@ -72,7 +72,7 @@ def _make_refinement(title: str = "Test Recipe") -> CayenneRefinement:
         base_servings=4,
         structured_ingredients=[
             StructuredIngredient(
-                id="ing_01",
+                id="ing_01", kind="ingredient",
                 amount=1.5,
                 unit="cups",
                 name="flour",

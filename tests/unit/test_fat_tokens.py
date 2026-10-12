@@ -14,12 +14,12 @@ from recipeparser.core.fat_tokens import (
 )
 from recipeparser.models import DirectionMention, StructuredIngredient, TokenizedDirection
 
-FLOUR = StructuredIngredient(id="ing_02", amount=0.75, unit="cup", name="all-purpose flour",
+FLOUR = StructuredIngredient(id="ing_02", kind="ingredient", amount=0.75, unit="cup", name="all-purpose flour",
                              fallback_string="3/4 cup (90 g) all-purpose flour",
                              converted_amount=90, converted_unit="g")
-RICOTTA = StructuredIngredient(id="ing_01", amount=425, unit="g", name="ricotta cheese, preferably whole milk",
+RICOTTA = StructuredIngredient(id="ing_01", kind="ingredient", amount=425, unit="g", name="ricotta cheese, preferably whole milk",
                                fallback_string="425 g ricotta cheese, preferably whole milk")
-SALT = StructuredIngredient(id="ing_03", name="Kosher salt", fallback_string="Kosher salt")
+SALT = StructuredIngredient(id="ing_03", kind="ingredient", name="Kosher salt", fallback_string="Kosher salt")
 GNOCCHI = [RICOTTA, FLOUR, SALT]
 GNOCCHI_STEPS = [
     "Drain the ricotta overnight.",
@@ -170,16 +170,16 @@ def test_refine_demotes_and_logs(caplog):
 # The first live sample (2026-10-02, 20 recipes) showed the model putting amounts on names, the whole
 # amount at every mention, and mentions out of order. Each case below is from that sample.
 class TestTheFirstSample:
-    BUTTER = StructuredIngredient(id="ing_01", amount=175, unit="g", name="butter", fallback_string="175 g butter")
-    SUGAR = StructuredIngredient(id="ing_02", amount=50, unit="g", name="confectioners' sugar",
+    BUTTER = StructuredIngredient(id="ing_01", kind="ingredient", amount=175, unit="g", name="butter", fallback_string="175 g butter")
+    SUGAR = StructuredIngredient(id="ing_02", kind="ingredient", amount=50, unit="g", name="confectioners' sugar",
                                  fallback_string="50 g confectioners' sugar")
-    PEEL = StructuredIngredient(id="ing_05", amount=1, name="lemon peel", fallback_string="grated peel of 1 lemon")
-    OIL = StructuredIngredient(id="ing_09", amount=2, unit="tablespoons", name="canola oil",
+    PEEL = StructuredIngredient(id="ing_05", kind="ingredient", amount=1, name="lemon peel", fallback_string="grated peel of 1 lemon")
+    OIL = StructuredIngredient(id="ing_09", kind="ingredient", amount=2, unit="tablespoons", name="canola oil",
                                fallback_string="2 tablespoons canola oil")
-    PEAS = StructuredIngredient(id="ing_10", amount=1, unit="cup", name="peas", fallback_string="1 cup peas")
-    BUTTERMILK = StructuredIngredient(id="ing_11", amount=400, unit="ml", name="buttermilk",
+    PEAS = StructuredIngredient(id="ing_10", kind="ingredient", amount=1, unit="cup", name="peas", fallback_string="1 cup peas")
+    BUTTERMILK = StructuredIngredient(id="ing_11", kind="ingredient", amount=400, unit="ml", name="buttermilk",
                                       fallback_string="400 ml buttermilk")
-    RICE = StructuredIngredient(id="ing_12", amount=1.5, unit="cups", name="rice", fallback_string="1 1/2 cups rice")
+    RICE = StructuredIngredient(id="ing_12", kind="ingredient", amount=1.5, unit="cups", name="rice", fallback_string="1 1/2 cups rice")
     ALL = [BUTTER, SUGAR, PEEL, OIL, PEAS, BUTTERMILK, RICE]
 
     def _check(self, *texts):
@@ -260,7 +260,7 @@ class TestTheFirstSample:
 
 # The second live sample (after 9.5.1): the model wrapped a quantity and the name together.
 class TestTheSecondSample:
-    PEAS = StructuredIngredient(id="ing_01", amount=1, unit="cup", name="peas",
+    PEAS = StructuredIngredient(id="ing_01", kind="ingredient", amount=1, unit="cup", name="peas",
                                 fallback_string="1 cup freshly shelled (or frozen) peas")
 
     def test_an_amount_on_a_quantity_and_the_name_together_becomes_none(self):
@@ -285,9 +285,9 @@ class TestTheSecondSample:
 
 # The third live sample (after 9.6.1): a whole-amount token right after a quantity the text writes.
 class TestTheThirdSample:
-    BANANAS = StructuredIngredient(id="ing_04", amount=4, name="bananas", fallback_string="4 ripe bananas")
-    WHITES = StructuredIngredient(id="ing_09", amount=2, name="eggs", fallback_string="2 eggs")
-    FLOUR = StructuredIngredient(id="ing_01", amount=2, unit="cups", name="flour", fallback_string="2 cups flour")
+    BANANAS = StructuredIngredient(id="ing_04", kind="ingredient", amount=4, name="bananas", fallback_string="4 ripe bananas")
+    WHITES = StructuredIngredient(id="ing_09", kind="ingredient", amount=2, name="eggs", fallback_string="2 eggs")
+    FLOUR = StructuredIngredient(id="ing_01", kind="ingredient", amount=2, unit="cups", name="flour", fallback_string="2 cups flour")
 
     def _check(self, *texts):
         return [d.text for d in check_mentions([self.BANANAS, self.WHITES, self.FLOUR], _d(*texts))[0]]

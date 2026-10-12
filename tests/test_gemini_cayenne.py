@@ -37,7 +37,7 @@ def test_refine_recipe_for_cayenne_success():
         base_servings=4,
         structured_ingredients=[
             StructuredIngredient(
-                id="ing_01",
+                id="ing_01", kind="ingredient",
                 amount=1.0,
                 unit="cup",
                 name="flour",
@@ -109,7 +109,7 @@ def test_the_refinement_keeps_the_detection_and_carries_no_tags(monkeypatch):
     # cleared, and the rest of it, the detection included, survives the clearing.
     expected = CayenneRefinement(
         title="Cake", base_servings=4,
-        structured_ingredients=[StructuredIngredient(id="ing_01", amount=1.0, unit="cup", name="milk", fallback_string="1 cup (250 ml) milk")],
+        structured_ingredients=[StructuredIngredient(id="ing_01", kind="ingredient", amount=1.0, unit="cup", name="milk", fallback_string="1 cup (250 ml) milk")],
         tokenized_directions=[TokenizedDirection(step=1, text="Use {{ing_01|milk}}.")],
         source_uom_system_detected="AU", source_uom_system_evidence="1 cup (250 ml)",
         grid_categories={"Cuisine": ["Italian"]},
@@ -122,11 +122,11 @@ def test_the_refinement_keeps_the_detection_and_carries_no_tags(monkeypatch):
 
 
 def test_structured_ingredient_carries_an_optional_state():
-    ing = StructuredIngredient(id="ing_01", name="milk", fallback_string="1 cup milk", state="liquid")
+    ing = StructuredIngredient(id="ing_01", kind="ingredient", name="milk", fallback_string="1 cup milk", state="liquid")
     assert ing.state == "liquid"
-    assert StructuredIngredient(id="ing_02", name="flour", fallback_string="2 cups flour").state is None
+    assert StructuredIngredient(id="ing_02", kind="ingredient", name="flour", fallback_string="2 cups flour").state is None
     with pytest.raises(ValueError):
-        StructuredIngredient(id="ing_03", name="x", fallback_string="x", state="wet")
+        StructuredIngredient(id="ing_03", kind="ingredient", name="x", fallback_string="x", state="wet")
 
 
 def test_refine_prompt_sizes_the_imperial_measures_and_names_their_evidence():

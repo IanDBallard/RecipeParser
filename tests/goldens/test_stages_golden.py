@@ -212,6 +212,7 @@ def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
     chunks = EpubReader().read(str(corpus_path("phases-bakers.epub")))
 
     phase_markers = []
+    phase_kinds: set = set()
     for chunk in chunks:
         text = chunk.text
         if gemini.needs_table_normalisation(text):
@@ -226,11 +227,14 @@ def test_refine_keeps_the_phase_headings_extraction_produced(golden_client):
             lines = [i.fallback_string for i in refined.structured_ingredients]
             lines += [d.text for d in refined.tokenized_directions]
             phase_markers = [line for line in lines if "phase" in line.lower()]
+            headings = [i for i in refined.structured_ingredients if "phase" in i.fallback_string.lower()]
+            phase_kinds = {i.kind for i in headings}
 
     assert phase_markers, (
         "the refined recipe kept no phase heading at all — extraction produced "
         "them and refinement dropped them"
     )
+    assert phase_kinds == {"heading"}, f"phase lines must be headings, got {phase_kinds}"
 
 
 def test_an_australian_recipe_is_detected_as_au_on_its_own_evidence(golden_client, monkeypatch):

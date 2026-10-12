@@ -539,6 +539,15 @@
             'title': 'Is Ai Converted',
             'type': 'boolean',
           }),
+          'kind': dict({
+            'description': '"heading" for a line that names a part of the recipe and lists nothing to buy ("For the sauce:", "PUDDING", "To serve:"); "ingredient" for every other line, including a food with no amount ("Butter for greasing").',
+            'enum': list([
+              'ingredient',
+              'heading',
+            ]),
+            'title': 'Kind',
+            'type': 'string',
+          }),
           'line_index': dict({
             'anyOf': list([
               dict({
@@ -549,7 +558,7 @@
               }),
             ]),
             'default': None,
-            'description': '0-based index of the raw ingredient line this entry was parsed from. Every ingredient line yields exactly one entry; section-header lines yield none. null only when the entry is not tied to a single line.',
+            'description': '0-based index of the raw ingredient line this entry was parsed from. Every line, heading or ingredient, yields exactly one entry. null only when the entry is not tied to a single line.',
             'title': 'Line Index',
           }),
           'name': dict({
@@ -590,6 +599,7 @@
         }),
         'required': list([
           'id',
+          'kind',
           'name',
           'fallback_string',
         ]),

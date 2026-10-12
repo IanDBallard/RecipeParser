@@ -20,7 +20,7 @@ def _raw(n_lines: int) -> RecipeExtraction:
 
 def _ing(id_: str, line_index):
     return StructuredIngredient(
-        id=id_, amount=1.0, unit="cup", name="thing",
+        id=id_, kind="ingredient", amount=1.0, unit="cup", name="thing",
         fallback_string="1 cup thing", line_index=line_index,
     )
 
@@ -41,7 +41,7 @@ def _run(raw, refinement):
 
 
 def test_line_index_defaults_to_none():
-    ing = StructuredIngredient(id="ing_01", name="x", fallback_string="x")
+    ing = StructuredIngredient(id="ing_01", kind="ingredient", name="x", fallback_string="x")
     assert ing.line_index is None
 
 
@@ -55,10 +55,10 @@ def test_none_indices_pass():
     assert len(result.structured_ingredients) == 2
 
 
-def test_header_line_skipped_is_fine():
-    # 3 raw lines, header at 1 produces no entry
-    result = _run(_raw(3), _refinement([0, 2]))
-    assert [i.line_index for i in result.structured_ingredients] == [0, 2]
+def test_every_line_has_one_entry_including_a_heading():
+    # A heading is an entry of its own (ingredient headings D2): three raw lines, three entries.
+    result = _run(_raw(3), _refinement([0, 1, 2]))
+    assert [i.line_index for i in result.structured_ingredients] == [0, 1, 2]
 
 
 def test_out_of_range_degrades_to_none(caplog):

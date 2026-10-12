@@ -20,7 +20,7 @@ RAW = RecipeExtraction(name="Cake", ingredients=["1 cup flour", "1 cup sugar", "
 
 
 def _ing(id_: str, name: str = "thing") -> StructuredIngredient:
-    return StructuredIngredient(id=id_, amount=1.0, unit="cup", name=name, fallback_string=f"1 cup {name}")
+    return StructuredIngredient(id=id_, kind="ingredient", amount=1.0, unit="cup", name=name, fallback_string=f"1 cup {name}")
 
 
 def _refinement(ids, step_text="Mix.") -> CayenneRefinement:

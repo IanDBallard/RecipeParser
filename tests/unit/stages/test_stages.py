@@ -30,7 +30,7 @@ from recipeparser.models import (
 
 def _make_ingredient(id_: str = "ing_01", name: str = "flour") -> StructuredIngredient:
     return StructuredIngredient(
-        id=id_,
+        id=id_, kind="ingredient",
         amount=1.5,
         unit="cups",
         name=name,

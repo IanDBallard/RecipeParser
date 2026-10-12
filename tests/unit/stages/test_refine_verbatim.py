@@ -24,6 +24,7 @@ def _pecorino(**over) -> StructuredIngredient:
         is_ai_converted=False, line_index=0,
     )
     fields.update(over)
+    fields.setdefault("kind", "ingredient")
     return StructuredIngredient(**fields)
 
 
@@ -33,6 +34,7 @@ def _oil(**over) -> StructuredIngredient:
         converted_amount=13.5, converted_unit="g", is_ai_converted=True, line_index=1,
     )
     fields.update(over)
+    fields.setdefault("kind", "ingredient")
     return StructuredIngredient(**fields)
 
 

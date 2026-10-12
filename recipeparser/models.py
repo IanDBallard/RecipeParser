@@ -141,6 +141,13 @@ class TocRecipeClassification(BaseModel):
 
 class StructuredIngredient(BaseModel):
     id: str = Field(description="Unique ID for cross-linking, e.g., \"ing_01\"")
+    kind: Literal["ingredient", "heading"] = Field(
+        description=(
+            "\"heading\" for a line that names a part of the recipe and lists nothing to buy "
+            "(\"For the sauce:\", \"PUDDING\", \"To serve:\"); \"ingredient\" for every other line, "
+            "including a food with no amount (\"Butter for greasing\")."
+        ),
+    )
     amount: Optional[float] = Field(
         default=None,
         description="Numeric quantity, e.g. 1.5. null when the source states no amount ('salt to taste').",
@@ -170,8 +177,8 @@ class StructuredIngredient(BaseModel):
         default=None,
         description=(
             "0-based index of the raw ingredient line this entry was parsed from. "
-            "Every ingredient line yields exactly one entry; section-header lines "
-            "yield none. null only when the entry is not tied to a single line."
+            "Every line, heading or ingredient, yields exactly one entry. "
+            "null only when the entry is not tied to a single line."
         ),
     )
 
