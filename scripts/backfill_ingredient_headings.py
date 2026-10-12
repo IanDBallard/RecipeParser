@@ -99,7 +99,8 @@ def _position(entries: List[Dict[str, Any]], lines: List[str], line: int) -> Opt
 def plan_row(row: Dict[str, Any]) -> RowPlan:
     entries, lines = row.get("structured_ingredients"), row.get("ingredient_lines")
     plan = RowPlan(id=row["id"], title=row.get("title") or "", status="ok")
-    if not isinstance(entries, list) or not isinstance(lines if lines is not None else [], list):
+    if (not isinstance(entries, list) or not isinstance(lines if lines is not None else [], list)
+            or any(not isinstance(e, dict) or not str(e.get("id") or "").strip() for e in entries)):
         plan.status = "malformed"
         return plan
     lines = [str(l) for l in (lines or [])]
@@ -135,7 +136,8 @@ def _heading(entry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def apply_decisions(plan: RowPlan, accepted: Set[str]) -> List[Dict[str, Any]]:
-    entries = [(_heading(e) if e["id"] in accepted else copy.deepcopy(e)) for e in plan.entries]
+    marks = {p.key for p in plan.proposals if p.change == "mark" and p.key in accepted}
+    entries = [(_heading(e) if e["id"] in marks else copy.deepcopy(e)) for e in plan.entries]
     numbers = [int(m.group(1)) for e in entries if (m := _ID.match(str(e.get("id", ""))))]
     next_number = max(numbers, default=0) + 1
     inserts = [p for p in plan.proposals if p.change == "insert" and p.key in accepted]
@@ -151,20 +153,25 @@ def apply_decisions(plan: RowPlan, accepted: Set[str]) -> List[Dict[str, Any]]:
     return entries
 
 
+def _one_line(text: Any) -> str:
+    """Collapse every whitespace run (newlines included) so no text can start a line of its own in the review."""
+    return " ".join(str(text).split())
+
+
 def render_review(plans: List[RowPlan], shopping: Dict[str, List[str]]) -> str:
     out = ["# Ingredient headings backfill - review", "",
            "Ticked lines are applied; untick to refuse, tick an unticked one to accept. Notes are for information.", ""]
     for plan in plans:
         if not plan.proposals and not plan.notes and not shopping.get(plan.id):
             continue
-        out.append(f"### {plan.title} <!-- id:{plan.id} -->")
+        out.append(f"### {_one_line(plan.title)} <!-- id:{plan.id} -->")
         for p in plan.proposals:
             verb = "mark as heading" if p.change == "mark" else f"add heading at line {p.line_index}"
-            out.append(f"- [{'x' if p.sure else ' '}] `{p.key}` {verb}: {p.text}")
+            out.append(f"- [{'x' if p.sure else ' '}] `{p.key}` {verb}: {_one_line(p.text)}")
         for n in plan.notes:
-            out.append(f"  - note: {n}")
+            out.append(f"  - note: {_one_line(n)}")
         for item in shopping.get(plan.id, []):
-            out.append(f"  - shopping item to delete in the app: {item}")
+            out.append(f"  - shopping item to delete in the app: {_one_line(item)}")
         out.append("")
     return "\n".join(out)
 
@@ -179,3 +186,106 @@ def parse_review(text: str) -> Dict[str, Set[str]]:
         elif (m := _TICK.match(line)) and current and m.group("tick") in "xX":
             accepted[current].add(m.group("key"))
     return {k: v for k, v in accepted.items() if v}
+
+
+def write_row(sb: Any, row: Dict[str, Any], entries: List[Dict[str, Any]]) -> bool:
+    """Write the entries only if the row is still the revision that was read. False when it moved."""
+    response = (
+        sb.table("recipes")
+        .update({"structured_ingredients": entries})
+        .eq("id", row["id"])
+        .eq("body_rev", row.get("body_rev") or 0)
+        .eq("derived_rev", row.get("derived_rev") or 0)
+        .execute()
+    )
+    return bool(response.data)
+
+
+def verify(rows: List[Dict[str, Any]]) -> List[str]:
+    return [r["id"] for r in rows
+            if not isinstance(r.get("structured_ingredients"), list)
+            or any(not isinstance(e, dict) or e.get("kind") not in ("ingredient", "heading") for e in r["structured_ingredients"])]
+
+
+def _creds() -> Tuple[str, str]:
+    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not url or not key:
+        raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must both be set.")
+    return url, key
+
+
+def _read_rows(sb: Any, columns: str = COLUMNS) -> List[Dict[str, Any]]:
+    """Every row of every library, stale or not (Review Focus 4)."""
+    rows: List[Dict[str, Any]] = []
+    offset = 0
+    while True:
+        page = sb.table("recipes").select(columns).order("id").range(offset, offset + PAGE - 1).execute().data or []
+        if not page:
+            return rows
+        rows.extend(page)
+        offset += PAGE
+
+
+def _shopping_matches(sb: Any, plans: List[RowPlan]) -> Dict[str, List[str]]:
+    """Shopping items gathered from an entry this run proposes as a heading, for the owner to delete."""
+    marked = {(p.id, q.key) for p in plans for q in p.proposals if q.change == "mark"}
+    out: Dict[str, List[str]] = {}
+    contributions = sb.table("shopping_contributions").select("recipe_id,ingredient_id,item_id").execute().data or []
+    for c in contributions:
+        if (c.get("recipe_id"), c.get("ingredient_id")) in marked:
+            out.setdefault(c["recipe_id"], []).append(f"item {c['item_id']} (from {c['ingredient_id']})")
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Give every structured ingredient its kind (ingredient headings).")
+    mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--review", type=Path, help="Dry run: write the review file here; change nothing.")
+    mode.add_argument("--apply", type=Path, help="Apply the ticks in this reviewed file.")
+    mode.add_argument("--verify", action="store_true", help="List rows with an entry lacking kind.")
+    ap.add_argument("--live", action="store_true", help="With --apply: actually write. Omit for a dry run.")
+    args = ap.parse_args()
+
+    from supabase import create_client
+    sb = create_client(*_creds())
+
+    if args.verify:
+        bad = verify(_read_rows(sb, "id,structured_ingredients"))
+        print(f"{len(bad)} row(s) with an entry lacking kind" + (f": {', '.join(bad[:20])}" if bad else ""))
+        return 1 if bad else 0
+
+    rows = _read_rows(sb)
+    plans = [plan_row(r) for r in rows]
+    malformed = [p.id for p in plans if p.status == "malformed"]
+    if args.review:
+        args.review.write_text(render_review(plans, _shopping_matches(sb, plans)), encoding="utf-8")
+        print(f"{len(rows)} rows; {sum(len(p.proposals) for p in plans)} proposals; {len(malformed)} malformed; review at {args.review}")
+        return 0
+
+    accepted = parse_review(args.apply.read_text(encoding="utf-8"))
+    by_id = {r["id"]: r for r in rows}
+    written = moved = unchanged = 0
+    for plan in plans:
+        if plan.status != "ok":
+            continue
+        entries = apply_decisions(plan, accepted.get(plan.id, set()))
+        if entries == by_id[plan.id]["structured_ingredients"]:
+            unchanged += 1
+            continue
+        if not args.live:
+            written += 1
+            continue
+        if write_row(sb, by_id[plan.id], entries):
+            written += 1
+        else:
+            moved += 1
+            print(f"moved since read, not written: {plan.id} {plan.title}")
+    print(f"{'wrote' if args.live else 'would write'} {written}; unchanged {unchanged}; moved {moved}; malformed {len(malformed)}")
+    if not args.live:
+        print("DRY RUN — nothing was written. Re-run with --live to apply.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

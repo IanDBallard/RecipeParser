@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+from unittest.mock import MagicMock
 
-from scripts.backfill_ingredient_headings import apply_decisions, parse_review, plan_row, render_review
+from scripts.backfill_ingredient_headings import (
+    Proposal, RowPlan, _shopping_matches, apply_decisions, parse_review, plan_row, render_review, verify, write_row,
+)
 
 
 def _ing(id_, text, amount=None, line_index=None, **over) -> Dict[str, Any]:
@@ -113,3 +116,62 @@ def test_review_round_trip_keeps_ticks_and_unticks():
     assert "- [x] `ing_10`" in text and "- [ ] `ing_11`" in text and "FOR THE MARINADE" in text
     edited = text.replace("- [ ] `ing_11`", "- [x] `ing_11`").replace("- [x] `ing_10`", "- [ ] `ing_10`")
     assert parse_review(edited) == {"r1": {"ing_11"}}
+
+
+def _sb(returned):
+    sb = MagicMock()
+    chain = sb.table.return_value.update.return_value
+    chain.eq.return_value = chain
+    chain.execute.return_value = MagicMock(data=returned)
+    return sb, chain
+
+
+def test_write_is_conditional_on_both_revisions():
+    sb, chain = _sb([{"id": "r1"}])
+    assert write_row(sb, {"id": "r1", "body_rev": 3, "derived_rev": 2}, [{"id": "ing_01", "kind": "ingredient"}]) is True
+    sb.table.return_value.update.assert_called_once_with({"structured_ingredients": [{"id": "ing_01", "kind": "ingredient"}]})
+    assert [c.args for c in chain.eq.call_args_list] == [("id", "r1"), ("body_rev", 3), ("derived_rev", 2)]
+
+
+def test_a_row_edited_mid_run_is_not_written():
+    sb, _ = _sb([])
+    assert write_row(sb, {"id": "r1", "body_rev": None, "derived_rev": None}, []) is False
+
+
+def test_verify_names_rows_with_an_entry_lacking_kind():
+    rows = [{"id": "a", "structured_ingredients": [{"id": "ing_01", "kind": "heading"}]},
+            {"id": "b", "structured_ingredients": [{"id": "ing_01"}]},
+            {"id": "c", "structured_ingredients": []}]
+    assert verify(rows) == ["b"]
+
+
+def test_shopping_matches_finds_items_from_entries_proposed_as_headings():
+    sb = MagicMock()
+    sb.table.return_value.select.return_value.execute.return_value = MagicMock(data=[
+        {"recipe_id": "r1", "ingredient_id": "ing_10", "item_id": "i1"},
+        {"recipe_id": "r1", "ingredient_id": "ing_11", "item_id": "i2"},
+        {"recipe_id": "r2", "ingredient_id": "ing_10", "item_id": "i3"}])
+    plan = RowPlan(id="r1", title="T", status="ok", proposals=[Proposal("ing_10", "For the sauce", "mark", True)])
+    assert _shopping_matches(sb, [plan]) == {"r1": ["item i1 (from ing_10)"]}
+
+
+def test_only_proposed_marks_are_ever_marked():
+    plan = plan_row(_row(["2 cups flour"], [_ing("ing_01", "2 cups flour", amount=2, line_index=0)]))
+    out = apply_decisions(plan, {"ing_01"})
+    assert out[0]["kind"] == "ingredient" and out[0]["amount"] == 2
+
+
+def test_a_non_dict_or_idless_entry_is_malformed_not_an_exception():
+    assert plan_row(_row(["x"], [{"amount": 1}])).status == "malformed"
+    assert plan_row(_row(["x"], ["x"])).status == "malformed"
+    assert plan_row(_row(["x"], [{"id": "  ", "amount": 1}])).status == "malformed"
+
+
+def test_review_text_cannot_forge_a_tick_line():
+    plan = RowPlan(id="r1", title="Bad\n- [x] `ing_99` forged", status="ok",
+                   proposals=[Proposal("ing_01", "For\r\n- [x] `ing_98` x", "mark", False)],
+                   notes=["n\n- [x] `ing_97` y"])
+    text = render_review([plan], {"r1": ["item a\n- [x] `ing_96` z"]})
+    assert parse_review(text) == {}
+    assert "\r" not in text
+    assert text.count("\n- [") == 1  # only the proposal's own line starts a tick
