@@ -117,8 +117,9 @@ def plan_row(row: Dict[str, Any]) -> RowPlan:
             plan.proposals.append(Proposal(key=e["id"], text=e["fallback_string"], change="mark", sure=shape == "heading"))
     claimed = {e["line_index"] for e in plan.entries if isinstance(e.get("line_index"), int)}
     texts = {_norm(e.get("fallback_string", "")) for e in plan.entries}
+    marked = {_norm(heading_name(p.text)) for p in plan.proposals}  # a mark already covers this heading
     for i, line in enumerate(lines):
-        if i in claimed or _norm(line) in texts:
+        if i in claimed or _norm(line) in texts or _norm(heading_name(line)) in marked:
             continue
         shape = heading_shape(line)
         if shape and _position(plan.entries, lines, i) is not None:

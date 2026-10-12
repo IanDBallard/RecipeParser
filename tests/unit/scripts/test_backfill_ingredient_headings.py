@@ -175,3 +175,36 @@ def test_review_text_cannot_forge_a_tick_line():
     assert parse_review(text) == {}
     assert "\r" not in text
     assert text.count("\n- [") == 1  # only the proposal's own line starts a tick
+
+
+def test_a_stale_row_is_planned_like_any_other():
+    row = _row(["For the sauce:", "1 cup milk"],
+               [_ing("ing_01", "For the sauce:", line_index=0), _ing("ing_02", "1 cup milk", amount=1, line_index=1)],
+               body_rev=3, derived_rev=2)
+    plan = plan_row(row)
+    assert [e["kind"] for e in plan.entries] == ["ingredient", "ingredient"]
+    assert [(p.key, p.change) for p in plan.proposals] == [("ing_01", "mark")]
+
+
+def test_read_rows_reads_every_row_with_no_filter_and_pages_to_an_empty_page():
+    from scripts.backfill_ingredient_headings import PAGE, _read_rows
+    chain = MagicMock()
+    chain.table.return_value = chain
+    chain.select.return_value = chain
+    chain.order.return_value = chain
+    chain.range.return_value = chain
+    full = [{"id": str(i)} for i in range(PAGE)]
+    chain.execute.side_effect = [MagicMock(data=full), MagicMock(data=[{"id": "last"}]), MagicMock(data=[])]
+    rows = _read_rows(chain)
+    assert len(rows) == PAGE + 1
+    assert [c.args for c in chain.range.call_args_list] == [(0, PAGE - 1), (PAGE, 2 * PAGE - 1), (2 * PAGE, 3 * PAGE - 1)]
+    assert chain.eq.call_count == 0
+    names = {c[0] for c in chain.method_calls}
+    assert names <= {"table", "select", "order", "range", "execute"}
+
+
+def test_an_unclaimed_line_is_not_inserted_when_a_mark_already_covers_the_heading():
+    row = _row(["For the marinade:", "1/4 tsp salt"],
+               [_ing("ing_10", "For the marinade", line_index=None), _ing("ing_11", "1/4 tsp salt", amount=0.25, line_index=1)])
+    plan = plan_row(row)
+    assert [(p.key, p.change) for p in plan.proposals] == [("ing_10", "mark")]
