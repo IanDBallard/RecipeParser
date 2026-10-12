@@ -138,3 +138,29 @@ def test_refine_prompt_sizes_the_imperial_measures_and_names_their_evidence():
     assert '"breakfast cup", "teacup" or "stone" as a measure, or "gill" when nothing points to the US, is Imperial' in prompt
     assert '"dessertspoon" alone is not evidence' in prompt
     assert prompt.index("SOURCE SYSTEM:") < prompt.index("RAW RECIPE:")
+
+
+def test_refine_schema_requires_kind():
+    from recipeparser.gemini import refine_json_schema
+    schema = refine_json_schema()
+    ingredient = schema["$defs"]["StructuredIngredient"]
+    assert "kind" in ingredient["required"]
+    assert ingredient["properties"]["kind"]["enum"] == ["ingredient", "heading"]
+
+
+def test_refine_prompt_gives_every_line_an_entry():
+    from recipeparser.gemini import build_refine_prompt
+    prompt = build_refine_prompt("RAW", None)
+    assert "gets no entry" not in prompt
+    assert '"kind": "heading"' in prompt
+    assert "Every line of the ingredients list gets exactly one entry" in prompt
+
+
+def test_mentions_prompt_marks_headings_unmentionable():
+    from recipeparser.gemini import build_mentions_prompt
+    from recipeparser.models import StructuredIngredient
+    heading = StructuredIngredient(id="ing_01", kind="heading", name="For the sauce", fallback_string="For the sauce:")
+    salt = StructuredIngredient(id="ing_02", kind="ingredient", name="salt", fallback_string="1 tsp salt")
+    prompt = build_mentions_prompt([heading, salt], ["Add the salt."])
+    assert "ing_01: (heading) For the sauce:" in prompt
+    assert "A heading line is never a mention" in prompt

@@ -728,12 +728,18 @@ You are a culinary data refiner. Transform this raw recipe into the structured C
 
 RULES:
 1. STRUCTURED INGREDIENTS:
-   - Assign each ingredient a unique ID (ing_01, ing_02, etc.).
+   - Assign each entry a unique ID (ing_01, ing_02, etc.).
    - Extract numeric "amount", "unit" (null if unitless), and "name".
    - "fallback_string" is the original full line, unchanged.
-   - "line_index" is the 0-based position of the source line in the RAW RECIPE
-     ingredients list. Every ingredient line gets exactly one entry with its
-     index. A section header line (e.g. "For the sauce:") gets no entry.
+   - Every line of the ingredients list gets exactly one entry, in the order the lines appear,
+     and "line_index" is that line's 0-based position in the RAW RECIPE ingredients list.
+   - "kind": "heading" for a line that names a part of the recipe and lists nothing to buy:
+     "For the sauce:", "PUDDING", "To serve:", "Garnish", a bold phase such as "**Phase 1**".
+     "kind": "ingredient" for every other line, including a food with no amount
+     ("Butter for greasing", "Salt to taste", "To serve: crusty bread").
+   - A heading has "name" set to its words without emphasis or a trailing colon, "fallback_string"
+     the line unchanged, and "amount", "unit", "converted_amount", "converted_unit", "state" null.
+     Number headings in the same ing_01, ing_02 sequence as ingredients.
    - STATE: for every ingredient with an amount and a volume or weight unit, say whether it is
      "liquid" - pourable as the recipe uses it: water, milk, cream, stock, oil, wine, juice,
      vinegar, honey, syrup, melted butter - or "solid" - everything else, including flour,
@@ -774,9 +780,9 @@ RULES:
      stages, or days (a bold heading entry such as "**Phase 1**", "**Day 1**",
      "**Soaker**"), keep every one of those headings as its own entry, in
      place, in both lists.
-   - A heading is not an ingredient: give it no amount, no unit, and no fat
-     tokens. Carry the heading text through as the entry's fallback_string
-     (ingredients) or text (directions).
+   - A heading is not an ingredient: in the ingredients list it is an entry with "kind": "heading"
+     (rule 1); in the directions it is a step whose text is the heading, with no fat tokens.
+     Never put a heading's id in a fat token.
    - Do NOT flatten, merge, renumber, or drop a phase. The reader must still
      be able to tell where one session ends and the next begins.
 
@@ -874,7 +880,10 @@ def build_mentions_prompt(ingredients: List[StructuredIngredient], steps: List[s
     ingredient lines with their ids, and its raw steps. The answer is quotes, not rewritten text, so
     ``core.fat_tokens.splice_mentions`` can place each token where its words are and the steps keep
     every word they had."""
-    lines = "\n".join(f"  {i.id}: {i.fallback_string}" for i in ingredients)
+    lines = "\n".join(
+        f"  {i.id}: (heading) {i.fallback_string}" if i.kind == "heading" else f"  {i.id}: {i.fallback_string}"
+        for i in ingredients
+    )
     numbered = "\n".join(f"  {n}. {text}" for n, text in enumerate(steps, start=1))
     return f"""
 You are a culinary data refiner. For the recipe below, find every mention of an ingredient in the
@@ -887,6 +896,7 @@ RULES:
      the step, so two mentions with the same words can be told apart.
    - "ingredient_id" is the id of the ingredient line the words refer to.
    - A heading step ("**Phase 1**") has no mentions.
+   - A heading line is never a mention: no "ingredient_id" may name a line marked (heading).
 {_MENTION_USES}
    - Examples, as step text -> quote, context, use:
        "Whisk together the flour and salt" -> "flour", "Whisk together the flour and", all;
