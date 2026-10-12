@@ -59,14 +59,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from recipeparser.adapters.recat_worker import resolve_new_axes  # noqa: E402
 from recipeparser.core.stages.categorize import chunked, filter_batch_result  # noqa: E402
+from recipeparser.core.stages.tag import TAG_BATCH_SIZE  # noqa: E402
 from recipeparser.core.taxonomy import descendants_of, parents_from_rows  # noqa: E402
 
 log = logging.getLogger("retag-axis")
 
 PAGE = 500
-#: Five, as the import's TAG stage: ten let vegetarian neighbours carry stock-based soups
-#: into Vegetarian (Cayenne Fix Roadmap F-246, measured 2026-10-05).
-BATCH_SIZE = 5
+#: The import's TAG stage size, so the retag, the import and Apply to existing recipes
+#: ask in the same batches (Cayenne Fix Roadmap F-246, F-256).
+BATCH_SIZE = TAG_BATCH_SIZE
 PLAN_COLUMNS = ["action", "user_id", "recipe_id", "title", "tag", "category_id"]
 
 

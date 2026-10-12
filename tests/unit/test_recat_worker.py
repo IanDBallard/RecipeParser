@@ -654,3 +654,12 @@ def test_a_cancel_after_the_last_check_is_not_overwritten_by_done():
     assert row.row["recipe_count"] == 3
     assert row.row["progress_pct"] == 99                 # where it stopped, not 100
     assert worker.run_once() == 0                        # and the worker let go of it
+
+
+def test_a_recategorise_batches_as_the_import_tags():
+    # F-256: ten a call let vegetarian neighbours carry stock-based soups into Vegetarian
+    # (2026-10-05); Apply to existing recipes asks in the import's batches, one number for both.
+    from recipeparser.adapters.recat_worker import RecatWorker
+    from recipeparser.core.stages.tag import TAG_BATCH_SIZE
+
+    assert RecatWorker(MagicMock(), gemini_client=MagicMock())._batch_size == TAG_BATCH_SIZE

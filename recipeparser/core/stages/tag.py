@@ -24,6 +24,9 @@ log = logging.getLogger(__name__)
 #: Recipes per call. Ten, the retag's size, let a batch of vegetarian dishes carry
 #: two stock-based soups into Vegetarian in two runs of three (measured 2026-10-05,
 #: 95/99); five scored 99/99, as did one recipe per call, at half the calls of one.
+#: The one size for every tagging call: the import, Apply to existing recipes
+#: (``RecatWorker``) and ``scripts/retag_axis.py`` all read it. Re-measure with
+#: ``scripts/measure_per_axis_tagging.py`` before changing it.
 TAG_BATCH_SIZE = 5
 
 #: ``(rows, {axis: tags}) -> {row id: tags}``; ``gemini.categorize_batch`` with
