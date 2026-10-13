@@ -188,7 +188,8 @@ class TokenizedDirection(BaseModel):
     text: str = Field(
         description=(
             "Direction text with Fat Tokens {{id|words|use}}: words exactly as written, use one of "
-            "all, rest, none, or an amount such as '0.5 cup'."
+            "all, rest, none, or an amount such as '0.5 cup'; and temperature tokens "
+            "{{temp:VALUE|words}}, VALUE such as '180C,oven,fan=160C', '350F' or 'gas4'."
         )
     )
 

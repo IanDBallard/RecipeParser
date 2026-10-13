@@ -774,6 +774,24 @@ RULES:
        "Add about 1/2 cup (60 g) flour" -> "Add about {{{{ing_02|1/2 cup (60 g)|0.5 cup}}}} flour"
        "Add the remaining flour" -> "Add the remaining {{{{ing_02|flour|rest}}}}"
        "Add more flour until sticky" -> "Add more {{{{ing_02|flour|none}}}} until sticky"
+   - TEMPERATURES: wrap every temperature a direction states - an oven, a grill, frying oil, sugar,
+     water, proving, a core temperature ("until the centre reads 63°C"), a fridge or a freezer - in a
+     temperature token {{{{temp:VALUE|words}}}}. The words are the direction's own, copied exactly,
+     and the whole run when it gives one setting several ways: "180°C/160°C fan/gas mark 4" is ONE
+     token. VALUE is what the writer meant, in the writer's own unit:
+       * the figure: a number and C or F ("180C", "350F"), or a Gas Mark ("gas4", "gas0.5", "gas0.25");
+       * then ",oven" when it is an oven setting (bake, roast, preheat, a described oven);
+       * then ",fan=160C" (or F) when the writer also gives the fan-oven figure;
+       * "fan=160C" alone when the writer gives only a fan-oven figure.
+     A number with no unit ("bake at 180") or a described oven: decide from the recipe and its
+     SOURCE SYSTEM; a described oven is slow 150C, moderate 180C, hot 220C, very hot 230C, each
+     with ",oven". Never wrap a range ("170-180°C") or words with no figure ("room temperature",
+     "warm", "lukewarm").
+   - Examples:
+       "Preheat the oven to 350°F" -> "Preheat the oven to {{{{temp:350F,oven|350°F}}}}"
+       "Bake at 180°C/160°C fan/gas mark 4" -> "Bake at {{{{temp:180C,oven,fan=160C|180°C/160°C fan/gas mark 4}}}}"
+       "Heat the oil to 180C" -> "Heat the oil to {{{{temp:180C|180C}}}}"
+       "Bake in a moderate oven" -> "Bake in a {{{{temp:180C,oven|moderate oven}}}}"
 
 3. PHASES:
    - If the raw recipe groups its ingredients or directions into phases,

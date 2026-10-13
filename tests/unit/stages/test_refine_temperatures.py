@@ -1,0 +1,52 @@
+"""refine() keeps good temperature tokens and unwraps bad ones (Cayenne oven temperatures D15)."""
+import logging
+from unittest.mock import MagicMock, patch
+
+from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
+
+RAW = RecipeExtraction(
+    name="Roast", ingredients=["1 cup flour"],
+    directions=["Preheat the oven to 350°F.", "Roast until the centre reads 63°C."],
+)
+FLOUR = StructuredIngredient(id="ing_01", kind="ingredient", amount=1, unit="cup", name="flour",
+                             fallback_string="1 cup flour", line_index=0)
+
+
+def _run(steps):
+    from recipeparser.core.stages.refine import refine
+    refinement = CayenneRefinement(
+        title="Roast", base_servings=4, structured_ingredients=[FLOUR],
+        tokenized_directions=[TokenizedDirection(step=n, text=t) for n, t in enumerate(steps, 1)],
+    )
+    with patch("recipeparser.core.stages.refine.refine_recipe_for_cayenne", return_value=refinement):
+        return refine(RAW, client=MagicMock())
+
+
+# Review focus 4: a temperature token must not reach _validate_fat_tokens as an unknown ingredient.
+def test_a_good_temperature_token_survives_and_the_recipe_is_kept():
+    result = _run(["Preheat the oven to {{temp:350F,oven|350°F}}.", "Roast until the centre reads {{temp:63C|63°C}}."])
+    assert result.tokenized_directions[0].text == "Preheat the oven to {{temp:350F,oven|350°F}}."
+    assert result.tokenized_directions[1].text == "Roast until the centre reads {{temp:63C|63°C}}."
+
+
+def test_a_malformed_value_is_unwrapped_to_its_words(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = _run(["Preheat the oven to {{temp:350X,oven|350°F}}.", "Roast until the centre reads 63°C."])
+    assert result.tokenized_directions[0].text == "Preheat the oven to 350°F."
+    assert "temperature token" in caplog.text
+
+
+def test_words_the_recipe_does_not_write_are_unwrapped():
+    result = _run(["Preheat the oven to {{temp:180C,oven|180°C}}.", "Roast until the centre reads 63°C."])
+    assert result.tokenized_directions[0].text == "Preheat the oven to 180°C."
+
+
+def test_an_out_of_range_value_is_unwrapped():
+    result = _run(["Preheat the oven to {{temp:3500F,oven|350°F}}.", "Roast until the centre reads 63°C."])
+    assert result.tokenized_directions[0].text == "Preheat the oven to 350°F."
+
+
+def test_an_unknown_ingredient_id_still_raises():
+    import pytest
+    with pytest.raises(ValueError, match="unknown ingredient"):
+        _run(["Add {{ing_09|sugar|all}}.", "Roast."])

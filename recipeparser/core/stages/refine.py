@@ -12,7 +12,7 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from recipeparser.core.headings import heading_name
-from recipeparser.core.fat_tokens import TOKEN_RE, check_mentions
+from recipeparser.core.fat_tokens import TEMP_PREFIX, TOKEN_RE, check_mentions, is_temp_id, parse_temp_value
 from recipeparser.core.numbers import written_measures
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.gemini import refine_recipe_for_cayenne
@@ -109,6 +109,29 @@ def _unwrap_heading_tokens(refinement: CayenneRefinement) -> None:
         log.warning("refine(): '%s': tokens naming a heading unwrapped: %s", refinement.title, "; ".join(unwrapped))
 
 
+def _check_temperatures(refinement: CayenneRefinement, raw: RecipeExtraction) -> None:
+    """
+    Cayenne oven temperatures D15, in place: a temperature token's value must parse (a known unit, in
+    range) and its words must be words the recipe's directions write. One that fails is unwrapped to
+    its words with a warning: a model slip costs the conversion, never the recipe.
+    """
+    source = _plain("\n".join(raw.directions))
+    unwrapped: List[str] = []
+
+    def check(match: "re.Match[str]") -> str:
+        if not is_temp_id(match.group(1)):
+            return match.group(0)
+        if parse_temp_value(match.group(1)[len(TEMP_PREFIX):]) is not None and _plain(match.group(2)) in source:
+            return match.group(0)
+        unwrapped.append(match.group(0))
+        return match.group(2)
+
+    for step in refinement.tokenized_directions:
+        step.text = TOKEN_RE.sub(check, step.text)
+    if unwrapped:
+        log.warning("refine(): '%s': temperature token(s) unwrapped: %s", refinement.title, "; ".join(unwrapped))
+
+
 def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
     """
     Verify that every Fat Token in tokenized_directions references a valid
@@ -117,6 +140,8 @@ def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
     valid_ids = {ing.id for ing in refinement.structured_ingredients}
     for step in refinement.tokenized_directions:
         for match in TOKEN_RE.finditer(step.text):
+            if is_temp_id(match.group(1)):
+                continue  # checked by _check_temperatures
             token_id = match.group(1)
             if token_id not in valid_ids:
                 raise ValueError(
@@ -491,6 +516,7 @@ def refine(
     _ensure_unique_ids(result)
     _normalise_headings(result)
     _unwrap_heading_tokens(result)
+    _check_temperatures(result, raw)
     _validate_fat_tokens(result)
     _check_mentions(result)
     _normalise_line_index(result, raw)
