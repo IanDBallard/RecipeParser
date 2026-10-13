@@ -43,6 +43,9 @@ def tag(text: str) -> str:
     ("Preheat the oven to 425 degrees F and place a 9-inch cast iron skillet inside to heat.",
      "Preheat the oven to {{temp:425F,oven|425 degrees F}} and place a 9-inch cast iron skillet inside to heat."),
     ("Bake in a water bath at 160°C.", "Bake in a water bath at {{temp:160C,oven|160°C}}."),
+    # The one-character signs U+2109 and U+2103.
+    ("Bake in a preheated 300℉ oven for 35 minutes.", "Bake in a preheated {{temp:300F,oven|300℉}} oven for 35 minutes."),
+    ("Preheat the oven to 180 ℃.", "Preheat the oven to {{temp:180C,oven|180 ℃}}."),
 ])
 def test_tags_the_clear_forms(step, expected):
     assert tag(step) == expected
@@ -78,6 +81,10 @@ def test_leaves_alone_what_it_cannot_tag_for_certain(step):
     ("Roast 2 chickens.", False),
     ("Preheat the oven to 350.", True),
     ("Bake at 350, covered.", True),
+    # A degree sign with no unit is the model's to read (live library, 2026-10-13).
+    ("Preheat oven to 300°.", True),
+    ("Bake in pre-heated 375° oven for about 35 minutes.", True),
+    ("Fold the dough in half, then turn it 90° and repeat.", False),
 ])
 def test_needs_model(step, expected):
     assert needs_model(step) is expected

@@ -18,7 +18,7 @@ from typing import List, Optional, Sequence, Tuple
 from recipeparser.core.fat_tokens import TOKEN_RE, locate, parse_temp_value, temp_token
 
 _DEGREE = re.compile(
-    r"(?<![\d.])(-?\d{1,3}(?:\.\d)?)\s*(?:°|º|˚|degrees?\s+|deg\.?\s*)\s*(C|F|Celsius|Centigrade|Fahrenheit)\b",
+    r"(?<![\d.])(-?\d{1,3}(?:\.\d)?)\s*(?:(?:°|º|˚|degrees?\s+|deg\.?\s*)\s*(C|F|Celsius|Centigrade|Fahrenheit)\b|([℃℉]))",
     re.IGNORECASE,
 )
 _BARE = re.compile(r"(?<![\d.,])(\d{3})\s?(C|F)\b")  # case-sensitive: "180C", "350 F"; never "2 C flour"
@@ -48,7 +48,8 @@ _CLAUSE_START = ".,;!?("
 _CLAUSE_END = ".,;!?)"
 _DESCRIBED_OVEN = re.compile(r"\b(?:(?:very|moderately)\s+)?(?:slow|cool|moderate|hot|quick)\s+oven\b", re.IGNORECASE)
 _BARE_OVEN_NUMBER = re.compile(
-    r"(?<![\d.,/-])([1-4]\d\d|500)(?!\d|[.,]\d|/|\s*(?:°|[-–—]|x|×|%|g\b|kg|ml|cm|mm|in\b|inch|min|hour|hr|sec|C\b|F\b))",
+    # A degree sign followed by a unit is the rule's; a bare one ("375°") is the model's to read.
+    r"(?<![\d.,/-])([1-4]\d\d|500)(?!\d|[.,]\d|/|\s*(?:[°º˚]\s*[CF]\b|[℃℉]|[-–—]|x|×|%|g\b|kg|ml|cm|mm|in\b|inch|min|hour|hr|sec|C\b|F\b))",
     re.IGNORECASE,
 )
 _MARKS = {"¼": 0.25, "1/4": 0.25, "½": 0.5, "1/2": 0.5}
@@ -93,7 +94,8 @@ def _readings(text: str) -> List[_Reading]:
     spans = _token_spans(text)
     found: List[_Reading] = []
     for m in _DEGREE.finditer(text):
-        scale = "F" if m.group(2)[0].upper() == "F" else "C"
+        unit = m.group(2) or m.group(3)  # a letter or word, or one of the one-character signs ℃ ℉
+        scale = "F" if unit[0].upper() == "F" or unit == "℉" else "C"
         found.append(_Reading(m.start(), m.end(), scale, float(m.group(1))))
     for m in _BARE.finditer(text):
         found.append(_Reading(m.start(), m.end(), m.group(2), float(m.group(1))))
