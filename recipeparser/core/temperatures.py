@@ -21,19 +21,27 @@ _DEGREE = re.compile(
     r"(?<![\d.])(-?\d{1,3}(?:\.\d)?)\s*(?:°|º|˚|degrees?\s+|deg\.?\s*)\s*(C|F|Celsius|Centigrade|Fahrenheit)\b",
     re.IGNORECASE,
 )
-_BARE = re.compile(r"(?<![\d.,/])(\d{3})\s?(C|F)\b")  # case-sensitive: "180C", "350 F"; never "2 C flour"
-_GAS = re.compile(r"\bgas(?:\s+mark)?\s*(¼|½|1/4|1/2|[1-9])(?![\d/])", re.IGNORECASE)
+_BARE = re.compile(r"(?<![\d.,])(\d{3})\s?(C|F)\b")  # case-sensitive: "180C", "350 F"; never "2 C flour"
+_GAS = re.compile(r"\bgas(?:\s+mark)?\s*(¼|½|1/4|1/2|[1-9])(?![\d/])(?!\s*(?:times?|burners?|rings?|hobs?)\b)", re.IGNORECASE)
 _FAN_AFTER = re.compile(
     r"\s*(?:\(\s*)?(?:fan(?:[- ](?:forced|assisted))?|convection)(?:\s+oven)?(?:\s*\))?", re.IGNORECASE
 )
 _GAP = re.compile(r"^[\s/,()]*(?:or)?[\s/,()]*$", re.IGNORECASE)
-_RANGE_BEFORE = re.compile(r"\d\s*(?:°\s*[CF]?)?\s*(?:[-–—]|to)\s*$", re.IGNORECASE)
+_RANGE_BEFORE = re.compile(
+    r"(?:\d\s*(?:°\s*[CF]?)?\s*(?:[-–—]|to)|\d\s*/|between\s+\d[\d.]*\s*(?:°\s*[CF]?)?\s+and)\s*$", re.IGNORECASE
+)
 _RANGE_AFTER = re.compile(r"^\s*(?:[-–—]|to)\s*\d")
 _OVEN_WORDS = re.compile(r"\b(?:oven|bake[sd]?|baking|roast(?:s|ed|ing)?|pre-?heat(?:s|ed|ing)?)\b", re.IGNORECASE)
-_PROBE_WORDS = re.compile(r"\b(?:thermometer|internal|reads?|registers?|core|cent(?:re|er)|probe|inside)\b", re.IGNORECASE)
+_PROBE_WORDS = re.compile(
+    r"\b(?:thermometer|internal|reads?|registers?|reach(?:es|ed)?|shows?|temp(?:erature)?|core|cent(?:re|er)|probe|inside"
+    r"|oil|fry|frying|deep-fry|fat|syrup|sugar|caramel|candy|water|boil)\b",
+    re.IGNORECASE,
+)
+_CLAUSE_START = ".,;!?("
+_CLAUSE_END = ".,;!?)"
 _DESCRIBED_OVEN = re.compile(r"\b(?:(?:very|moderately)\s+)?(?:slow|cool|moderate|hot|quick)\s+oven\b", re.IGNORECASE)
 _BARE_OVEN_NUMBER = re.compile(
-    r"(?<![\d.,/-])([1-4]\d\d|500)(?![\d.,/]|\s*(?:°|[-–—]|x|×|%|g\b|kg|ml|cm|mm|in\b|inch|min|hour|hr|sec|C\b|F\b))",
+    r"(?<![\d.,/-])([1-4]\d\d|500)(?!\d|[.,]\d|/|\s*(?:°|[-–—]|x|×|%|g\b|kg|ml|cm|mm|in\b|inch|min|hour|hr|sec|C\b|F\b))",
     re.IGNORECASE,
 )
 _MARKS = {"¼": 0.25, "1/4": 0.25, "½": 0.5, "1/2": 0.5}
@@ -116,11 +124,14 @@ def _value(text: str, run: List[_Reading]) -> Optional[str]:
     fans = [r for r in run if r.fan]
     main = degrees[0] if degrees else (gas[0] if gas else None)
     fan = fans[0] if fans else None
-    sentence = _sentence(text, run[0].start, run[-1].end)
+    before = text[:run[0].start]
+    clause = before[max(before.rfind(c) for c in _CLAUSE_START) + 1:]
+    tail = text[run[-1].end:]
+    clause += tail[:min((i for i in (tail.find(c) for c in _CLAUSE_END) if i >= 0), default=len(tail))]
     celsius = None if main is None or main.scale == "gas" else (
         main.number if main.scale == "C" else (main.number - 32) * 5 / 9)
     oven = bool(gas or fan) or (
-        _OVEN_WORDS.search(sentence) is not None and _PROBE_WORDS.search(sentence) is None
+        _OVEN_WORDS.search(clause) is not None and _PROBE_WORDS.search(clause) is None
         and celsius is not None and celsius >= 100
     )
     parts: List[str] = []
@@ -145,6 +156,9 @@ def find_temperatures(text: str) -> List[Found]:
         if words.count("(") > words.count(")") and text[end:end + 1] == ")":
             end += 1
             words = text[start:end]
+        plain = [r for r in run if not r.fan]
+        if len({r.scale for r in plain}) < len(plain):
+            continue  # two figures of one scale: a range or an alternative, never tagged
         value = _value(text, run)
         if value is not None:
             out.append(Found(start, end, value, words))

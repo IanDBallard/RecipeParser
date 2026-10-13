@@ -24,6 +24,11 @@ def tag(text: str) -> str:
     ("Bake until the loaf reads 95°C inside.", "Bake until the loaf reads {{temp:95C|95°C}} inside."),
     ("Mix the {{ing_01|flour|all}} and bake at 200°C.", "Mix the {{ing_01|flour|all}} and bake at {{temp:200C,oven|200°C}}."),
     ("Bake at 160°C fan-forced.", "Bake at {{temp:fan=160C|160°C fan-forced}}."),
+    ("Preheat oven to 190C/170C fan/Gas 5.", "Preheat oven to {{temp:190C,oven,fan=170C|190C/170C fan/Gas 5}}."),
+    ("Bake until sugar reaches 115°C.", "Bake until sugar reaches {{temp:115C|115°C}}."),
+    ("Fry the roasted nuts in oil at 180°C.", "Fry the roasted nuts in oil at {{temp:180C|180°C}}."),
+    ("In a 350°F oven, cook until a thermometer reads 165°F.",
+     "In a {{temp:350F,oven|350°F}} oven, cook until a thermometer reads {{temp:165F|165°F}}."),
 ])
 def test_tags_the_clear_forms(step, expected):
     assert tag(step) == expected
@@ -37,6 +42,12 @@ def test_tags_the_clear_forms(step, expected):
     "Bake at 350 for an hour.",
     "Leave at room temperature.",
     "Bake at {{temp:180C,oven|180°C}}.",
+    "Bake at 350/375°F.",
+    "Bake at 400°F or 425°F.",
+    "Bake at 200°C or 220°C.",
+    "Bake between 350 and 375°F.",
+    "Turn the gas 3 times.",
+    "Use the gas 6 burner.",
 ])
 def test_leaves_alone_what_it_cannot_tag_for_certain(step):
     assert tag(step) == step
@@ -49,6 +60,8 @@ def test_leaves_alone_what_it_cannot_tag_for_certain(step):
     ("Fry at 170-180°C until golden.", False),
     ("Bake for 25 minutes.", False),
     ("Roast 2 chickens.", False),
+    ("Preheat the oven to 350.", True),
+    ("Bake at 350, covered.", True),
 ])
 def test_needs_model(step, expected):
     assert needs_model(step) is expected
