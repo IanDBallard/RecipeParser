@@ -4,13 +4,17 @@ import logging
 import pytest
 
 from recipeparser.core.fat_tokens import (
+    TempValue,
     Use,
     check_mentions,
     is_quantity,
     is_tagged,
+    is_temp_id,
+    parse_temp_value,
     parse_use,
     splice_mentions,
     strip_fat_tokens,
+    temp_token,
 )
 from recipeparser.models import DirectionMention, StructuredIngredient, TokenizedDirection
 
@@ -309,3 +313,52 @@ class TestTheThirdSample:
     ])
     def test_a_number_in_an_earlier_clause_does_not_count(self, before):
         assert self._check(before + "{{ing_01|flour|all}}.") == [before + "{{ing_01|flour|all}}."]
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("180C", TempValue(("C", 180.0), None, False)),
+    ("350F,oven", TempValue(("F", 350.0), None, True)),
+    ("gas4", TempValue(("gas", 4.0), None, True)),
+    ("gas0.25", TempValue(("gas", 0.25), None, True)),
+    ("180C,oven,fan=160C", TempValue(("C", 180.0), ("C", 160.0), True)),
+    ("180C,fan=160C", TempValue(("C", 180.0), ("C", 160.0), True)),
+    ("fan=160C", TempValue(None, ("C", 160.0), True)),
+    ("-18C", TempValue(("C", -18.0), None, False)),
+])
+def test_parse_temp_value_reads_the_grammar(raw, expected):
+    assert parse_temp_value(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [
+    "", "180", "180K", "gas10", "gas0.75", "oven", "oven,180C", "180C,fan=160C,oven", "400C", "-50C", "700F",
+])
+def test_parse_temp_value_refuses_what_the_client_refuses(raw):
+    assert parse_temp_value(raw) is None
+
+
+def test_temp_token_and_is_temp_id():
+    assert temp_token("180C,oven", "180°C") == "{{temp:180C,oven|180°C}}"
+    assert is_temp_id("temp:180C") and not is_temp_id("ing_01")
+
+
+# Spec Acceptance: exports and regeneration show the writer's words (they all strip with this).
+def test_strip_fat_tokens_gives_a_temperature_back_as_its_words():
+    assert strip_fat_tokens("Bake at {{temp:180C,oven,fan=160C|180°C/160°C fan}}.") == "Bake at 180°C/160°C fan."
+
+
+# Review focus 3: a temperature token says nothing about whether the ingredient mentions carry a use.
+def test_is_tagged_ignores_temperature_tokens():
+    tagged = _d("Mix {{ing_01|flour|all}}; bake at {{temp:180C,oven|180°C}}.")
+    legacy = _d("Mix {{ing_01|flour}}; bake at {{temp:180C,oven|180°C}}.")
+    only_temps = _d("Bake at {{temp:180C,oven|180°C}}.")
+    assert is_tagged(tagged) is True
+    assert is_tagged(legacy) is False
+    assert is_tagged(only_temps) is False
+
+
+def test_check_mentions_leaves_temperature_tokens_as_they_are():
+    flour = StructuredIngredient(id="ing_01", kind="ingredient", amount=1, unit="cup", name="flour", fallback_string="1 cup flour")
+    text = "Mix {{ing_01|flour|all}}; bake at {{temp:180C,oven|180°C}}."
+    out, changes = check_mentions([flour], _d(text))
+    assert out[0].text == text
+    assert changes == []
