@@ -18,6 +18,7 @@ from recipeparser.models import (
     RecipeExtraction,
     RecipeList,
     StructuredIngredient,
+    TemperatureMentions,
     TocList,
     TocRecipeClassification,
 )
@@ -157,6 +158,9 @@ class TestPromptSnapshots:
     def test_direction_mentions_prompt(self, snapshot: SnapshotAssertion):
         assert gemini.build_mentions_prompt(PLACEHOLDER_STRUCTURED, list(PLACEHOLDER_RECIPE.directions)) == snapshot
 
+    def test_temperatures_prompt(self, snapshot: SnapshotAssertion):
+        assert gemini.build_temperatures_prompt(["Bake in a moderate oven.", "Serve."], "UK") == snapshot
+
     def test_toc_parse_prompt(self, snapshot: SnapshotAssertion):
         assert toc.build_toc_parse_prompt(["Contents", "Soups .... 3"]) == snapshot
 
@@ -186,6 +190,9 @@ class TestSchemaSnapshots:
     def test_direction_mentions_schema(self, snapshot: SnapshotAssertion):
         assert gemini._schema_for_gemini(DirectionMentions) == snapshot
 
+    def test_temperature_mentions_schema(self, snapshot: SnapshotAssertion):
+        assert gemini._schema_for_gemini(TemperatureMentions) == snapshot
+
     def test_toc_list_schema(self, snapshot: SnapshotAssertion):
         assert gemini._schema_for_gemini(TocList) == snapshot
 
@@ -196,7 +203,8 @@ class TestSchemaSnapshots:
         assert gemini._schema_for_gemini(ClassifyReply) == snapshot
 
     @pytest.mark.parametrize(
-        "model", [RecipeList, CayenneRefinement, DirectionMentions, TocList, TocRecipeClassification, ClassifyReply]
+        "model",
+        [RecipeList, CayenneRefinement, DirectionMentions, TemperatureMentions, TocList, TocRecipeClassification, ClassifyReply],
     )
     def test_no_schema_carries_additional_properties(self, model):
         rendered = json.dumps(gemini._schema_for_gemini(model))

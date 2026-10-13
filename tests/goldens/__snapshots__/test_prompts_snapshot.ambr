@@ -497,6 +497,32 @@
   PLACEHOLDER CHUNK BODY — fixed text so the snapshot only moves when the template does.
   '''
 # ---
+# name: TestPromptSnapshots.test_temperatures_prompt
+  '''
+  
+  You are a culinary data refiner. Find every temperature these recipe directions state that is not
+  already written with its unit, and say what the writer meant.
+  
+  RULES:
+     - Report only a figure with no unit ("bake at 180", "350 degrees") or a described oven ("a
+       moderate oven", "a hot oven"). Skip anything inside {{ }} and anything with a unit already.
+     - "quote" is the words to wrap, copied character for character from that step; "context" is the
+       quote with about five words around it, copied the same way.
+     - "value" is what the writer meant, in the writer's unit: a number and C or F ("180C", "350F"),
+       then ",oven" when it is an oven setting. Decide the unit from the SOURCE SYSTEM and the figure:
+       US recipes write Fahrenheit; UK, EU and AU recipes write Celsius; an oven figure above 260 is
+       Fahrenheit. A described oven is slow 150C, moderate 180C, hot 220C, very hot 230C, each with ",oven".
+     - Never report a range ("170-180"), a time, a weight, a size or a count.
+     - When unsure, leave it out.
+  
+  SOURCE SYSTEM: UK
+  
+  DIRECTIONS:
+    1. Bake in a moderate oven.
+    2. Serve.
+  
+  '''
+# ---
 # name: TestPromptSnapshots.test_toc_classify_prompt
   '''
   Given this list of table-of-contents entries from a cookbook, identify which ones are
@@ -1075,6 +1101,57 @@
       'recipes',
     ]),
     'title': 'RecipeList',
+    'type': 'object',
+  })
+# ---
+# name: TestSchemaSnapshots.test_temperature_mentions_schema
+  dict({
+    '$defs': dict({
+      'TemperatureMention': dict({
+        'description': 'One temperature in a direction step, as the temperature backfill reports it (Cayenne oven temperatures).',
+        'properties': dict({
+          'context': dict({
+            'default': '',
+            'description': 'The quote with about five words around it, copied exactly from the step.',
+            'title': 'Context',
+            'type': 'string',
+          }),
+          'quote': dict({
+            'description': 'The words to wrap, copied exactly from that step.',
+            'title': 'Quote',
+            'type': 'string',
+          }),
+          'step': dict({
+            'description': '1-based number of the step the temperature is in.',
+            'title': 'Step',
+            'type': 'integer',
+          }),
+          'value': dict({
+            'description': "What the writer meant: '180C,oven', '350F', 'gas4', '180C,oven,fan=160C'.",
+            'title': 'Value',
+            'type': 'string',
+          }),
+        }),
+        'required': list([
+          'step',
+          'quote',
+          'value',
+        ]),
+        'title': 'TemperatureMention',
+        'type': 'object',
+      }),
+    }),
+    'description': "The temperature backfill's whole answer for one recipe.",
+    'properties': dict({
+      'mentions': dict({
+        'items': dict({
+          '$ref': '#/$defs/TemperatureMention',
+        }),
+        'title': 'Mentions',
+        'type': 'array',
+      }),
+    }),
+    'title': 'TemperatureMentions',
     'type': 'object',
   })
 # ---
