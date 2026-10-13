@@ -21,6 +21,7 @@ CORPUS_FIXTURES: tuple[str, ...] = (
     "legacy-photo.paprikarecipes",
     "au-measures.paprikarecipes",
     "imperial-measures.paprikarecipes",
+    "oven-temperatures.paprikarecipes",
 )
 
 #: Gemini fixtures that are not corpus files: their prompts are built in the

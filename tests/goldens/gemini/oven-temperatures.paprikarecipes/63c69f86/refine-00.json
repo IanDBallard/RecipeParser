@@ -1,0 +1,16 @@
+{
+  "stage": "refine",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 180000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "487bc3cb81ee1e862630fead7a83216e7263fac86751c4893127925805480793",
+  "response_text": "{\n  \"title\": \"Roast Pork With Apples\",\n  \"base_servings\": 6,\n  \"structured_ingredients\": [\n    {\n      \"id\": \"ing_01\",\n      \"kind\": \"ingredient\",\n      \"amount\": 1.5,\n      \"unit\": \"kg\",\n      \"name\": \"pork loin\",\n      \"fallback_string\": \"1.5 kg pork loin\",\n      \"converted_amount\": 1500,\n      \"converted_unit\": \"g\",\n      \"is_ai_converted\": false,\n      \"state\": \"solid\",\n      \"line_index\": 0\n    },\n    {\n      \"id\": \"ing_02\",\n      \"kind\": \"ingredient\",\n      \"name\": \"apples\",\n      \"fallback_string\": \"4 apples\",\n      \"line_index\": 1\n    },\n    {\n      \"id\": \"ing_03\",\n      \"kind\": \"ingredient\",\n      \"amount\": 2,\n      \"unit\": \"tbsp\",\n      \"name\": \"olive oil\",\n      \"fallback_string\": \"2 tbsp olive oil\",\n      \"converted_amount\": 30,\n      \"converted_unit\": \"ml\",\n      \"is_ai_converted\": true,\n      \"state\": \"liquid\",\n      \"line_index\": 2\n    }\n  ],\n  \"tokenized_directions\": [\n    {\n      \"step\": 1,\n      \"text\": \"Preheat the oven to {{temp:220C,oven,fan=200C|220°C/200°C fan/gas mark 7}}.\"\n    },\n    {\n      \"step\": 2,\n      \"text\": \"Roast the {{ing_01|pork|all}} for 20 minutes, then turn the oven down to {{temp:180C,oven|180}} and roast for an hour.\"\n    },\n    {\n      \"step\": 3,\n      \"text\": \"Add the {{ing_02|apples|all}} and bake in a {{temp:180C,oven|moderate oven}} until soft.\"\n    },\n    {\n      \"step\": 4,\n      \"text\": \"The {{ing_01|pork|none}} is done when the centre reads {{temp:63C|63°C}}.\"\n    }\n  ],\n  \"source_uom_system_detected\": null,\n  \"source_uom_system_evidence\": null\n}"
+}

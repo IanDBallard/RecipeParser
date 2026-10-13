@@ -365,6 +365,42 @@ def build_imperial_measures() -> None:
         )
 
 
+#: A British recipe whose directions state temperatures every way the oven temperatures design
+#: names (2026-10-12): a triple run with a fan figure and a Gas Mark, a bare oven figure, a
+#: described oven, and a core temperature that is not an oven setting.
+OVEN_TEMPERATURES_ENTRY = {
+    "name": "Roast Pork With Apples",
+    "ingredients": "\n".join([
+        "1.5 kg pork loin",
+        "4 apples",
+        "2 tbsp olive oil",
+    ]),
+    "directions": "\n".join([
+        "Preheat the oven to 220°C/200°C fan/gas mark 7.",
+        "Roast the pork for 20 minutes, then turn the oven down to 180 and roast for an hour.",
+        "Add the apples and bake in a moderate oven until soft.",
+        "The pork is done when the centre reads 63°C.",
+    ]),
+    "servings": "6",
+    "prep_time": "",
+    "cook_time": "",
+    "notes": "",
+    "categories": [],
+    "source": "",
+    "source_url": "",
+}
+
+
+def build_oven_temperatures() -> None:
+    """One legacy Paprika entry (no _cayenne_meta, no photo): temperatures in every form."""
+    out = CORPUS / "oven-temperatures.paprikarecipes"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "Roast Pork With Apples.paprikarecipe",
+            gzip.compress(json.dumps(OVEN_TEMPERATURES_ENTRY, ensure_ascii=False).encode("utf-8")),
+        )
+
+
 def build_text_pages(pages: list[str]) -> None:
     """A four-page PDF with a real text layer and one embedded image."""
     import re
@@ -558,6 +594,7 @@ def main() -> int:
     )
     build_au_measures()
     build_imperial_measures()
+    build_oven_temperatures()
     pages_file.unlink()
 
     total = sum(p.stat().st_size for p in CORPUS.iterdir())

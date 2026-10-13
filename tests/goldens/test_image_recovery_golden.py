@@ -63,6 +63,7 @@ HERO_IMAGES: Dict[str, Dict[str, Optional[str]]] = {
     "legacy-photo.paprikarecipes": {"Boiled Custard": PAPRIKA_PHOTO},
     "au-measures.paprikarecipes": {"Lamington Slice": None},
     "imperial-measures.paprikarecipes": {"Imperial Measures": None},
+    "oven-temperatures.paprikarecipes": {"Roast Pork with Apples": None},
 }
 
 #: fixture -> why its expectation is not met yet. Empty: every expectation holds.

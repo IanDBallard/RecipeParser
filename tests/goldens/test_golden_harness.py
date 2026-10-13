@@ -26,9 +26,9 @@ def test_corpus_path_joins_onto_the_corpus_dir():
     assert paths.corpus_path("dual-units.epub") == paths.CORPUS_DIR / "dual-units.epub"
 
 
-def test_nine_fixtures_are_declared():
-    assert len(paths.CORPUS_FIXTURES) == 9
-    assert len(set(paths.CORPUS_FIXTURES)) == 9
+def test_ten_fixtures_are_declared():
+    assert len(paths.CORPUS_FIXTURES) == 10
+    assert len(set(paths.CORPUS_FIXTURES)) == 10
 
 
 def test_fixed_axes_are_the_two_axes_the_spec_names():
