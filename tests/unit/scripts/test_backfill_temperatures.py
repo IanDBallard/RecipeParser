@@ -87,3 +87,15 @@ def test_write_review_lists_every_proposal_with_who_made_it(tmp_path):
         lines = list(csv.reader(fh))
     assert lines == [["id", "title", "step", "words", "value", "by"],
                      ["r1", "Roast", "1", "180°C/160°C fan", "180C,oven,fan=160C", "rule"]]
+
+
+def test_repair_mends_existing_tokens_only():
+    result = bt.plan_repair(row(["Heat oven to {{temp:350F,oven|350}} degrees.",
+                                 "Heat to 500 to {{temp:550F,oven|550°}}F.",
+                                 "Bake at {{temp:180C,oven|180°C}}."]))
+    assert result.status == "tagged"
+    assert [d.text for d in result.directions] == [
+        "Heat oven to {{temp:350F,oven|350 degrees}}.", "Heat to 500 to 550°F.", "Bake at {{temp:180C,oven|180°C}}."]
+    assert [p[3] for p in result.proposals] == ["repair", "repair"]
+    assert bt.plan_repair(row(["Bake at {{temp:180C,oven|180°C}}."])).status == "none-found"
+    assert bt.plan_repair(row(["Heat oven to {{temp:350F,oven|350}} degrees."], derived_rev=1)).status == "stale"

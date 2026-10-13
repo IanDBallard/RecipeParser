@@ -1,7 +1,13 @@
 """The deterministic temperature splice (Cayenne oven temperatures design, D3-D5)."""
 import pytest
 
-from recipeparser.core.temperatures import find_temperatures, needs_model, place_temperature_mentions, splice
+from recipeparser.core.temperatures import (
+    find_temperatures,
+    needs_model,
+    place_temperature_mentions,
+    repair_tokens,
+    splice,
+)
 
 
 def tag(text: str) -> str:
@@ -67,6 +73,7 @@ def test_tags_the_clear_forms(step, expected):
     "Use the gas 6 burner.",
     "Turn off the gas 5 minutes before serving.",
     "Leave the gas 2 hours.",
+    "The butter should be between 65 and 70°F (18 and 21°C); if not, refrigerate.",
 ])
 def test_leaves_alone_what_it_cannot_tag_for_certain(step):
     assert tag(step) == step
@@ -106,3 +113,38 @@ def test_words_have_balanced_parentheses():
                  "Roast at 200°C (180°C fan) for an hour."]:
         for f in find_temperatures(step):
             assert f.words.count("(") == f.words.count(")")
+
+
+# The live backfill (2026-10-13): the model quoted "350" in "350 degrees" (the kitchen would read
+# "180°C degrees") and tagged one end of "500 to 550°F".
+def test_a_placed_mention_takes_in_its_unit_words():
+    out, dropped = place_temperature_mentions("Heat oven to 350 degrees. Grease a pan.",
+                                              [("350", "Heat oven to 350 degrees", "350F,oven")])
+    assert out == "Heat oven to {{temp:350F,oven|350 degrees}}. Grease a pan."
+    assert dropped == []
+
+
+def test_a_placed_mention_that_is_part_of_a_range_is_dropped():
+    text = "Preheat oven to highest possible temperature setting, 500 to 550°F (260 to 288°C)."
+    for quote in ("550°", "500 to 550°"):
+        out, dropped = place_temperature_mentions(text, [(quote, "setting, 500 to 550°F", "550F,oven")])
+        assert out == text
+        assert len(dropped) == 1
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Heat oven to {{temp:350F,oven|350}} degrees. Grease a pan.",
+     "Heat oven to {{temp:350F,oven|350 degrees}}. Grease a pan."),
+    ("heat to {{temp:425F,oven|425}} degrees, or {{temp:400F,oven|400}} degrees if using convection.",
+     "heat to {{temp:425F,oven|425 degrees}}, or {{temp:400F,oven|400 degrees}} if using convection."),
+    ("setting, 500 to {{temp:550F,oven|550°}}F (260 to 288°C).", "setting, 500 to 550°F (260 to 288°C)."),
+    ("setting, {{temp:500F,oven|500 to 550°}}F (260 to 288°C).", "setting, 500 to 550°F (260 to 288°C)."),
+    ("between 65 and 70°F (18 and {{temp:21C|21°C}}); if not", "between 65 and 70°F (18 and 21°C); if not"),
+    ("Bake at {{temp:180C,oven|180°C}} with the {{ing_01|flour|all}}.",
+     "Bake at {{temp:180C,oven|180°C}} with the {{ing_01|flour|all}}."),
+])
+def test_repair_tokens(text, expected):
+    from recipeparser.core.fat_tokens import strip_fat_tokens
+    out, _ = repair_tokens(text)
+    assert out == expected
+    assert strip_fat_tokens(out) == strip_fat_tokens(text)  # no word changes

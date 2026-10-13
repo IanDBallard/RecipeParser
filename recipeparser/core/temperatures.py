@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
-from recipeparser.core.fat_tokens import TOKEN_RE, locate, parse_temp_value, temp_token
+from recipeparser.core.fat_tokens import TEMP_PREFIX, TOKEN_RE, locate, parse_temp_value, temp_token
 
 _DEGREE = re.compile(
     r"(?<![\d.])(-?\d{1,3}(?:\.\d)?)\s*(?:(?:°|º|˚|degrees?\s+|deg\.?\s*)\s*(C|F|Celsius|Centigrade|Fahrenheit)\b|([℃℉]))",
@@ -31,9 +31,15 @@ _FAN_BEFORE = re.compile(_FAN_WORD + r"[\s:]*$", re.IGNORECASE)
 _GAP = re.compile(r"^[\s/,()]*(?:or)?[\s/,()]*(?:" + _FAN_WORD + r"[\s/,():]*)?$", re.IGNORECASE)
 _CONVENTIONAL_CLOSE = re.compile(r"^(?:\s*(?:conventional|regular|standard)(?:\s+oven)?)?\s*\)", re.IGNORECASE)
 _RANGE_BEFORE = re.compile(
-    r"(?:\d\s*(?:°\s*[CF]?)?\s*(?:[-–—]|to)|\d\s*/|between\s+\d[\d.]*\s*(?:°\s*[CF]?)?\s+and)\s*$", re.IGNORECASE
+    r"(?:\d\s*(?:°\s*[CF]?)?\s*(?:[-–—]|to)|\d\s*/|\d[\d.]*\s*(?:°\s*[CF]?)?\s+and)\s*$", re.IGNORECASE
 )
-_RANGE_AFTER = re.compile(r"^\s*(?:[-–—]|to)\s*\d")
+_RANGE_AFTER = re.compile(r"^\s*(?:[°º˚]\s*[CF]?\s*)?(?:[-–—]|to)\s*\d", re.IGNORECASE)
+_RANGE_WITHIN = re.compile(r"\d\s*(?:[°º˚]\s*[CF]?\s*)?(?:[-–—]|to)\s*\d", re.IGNORECASE)
+# The unit words that belong to a figure the model quoted bare: "350" + " degrees", "550°" + "F".
+_UNIT_AFTER = re.compile(
+    r"(?:\s*[°º˚]\s*(?:[CF]\b)?|\s*degrees?(?:\s+(?:[CF]\b|Celsius|Fahrenheit|Centigrade))?|\s?(?-i:[CF])\b|\s*[℃℉])",
+    re.IGNORECASE,
+)
 _OVEN_WORDS = re.compile(r"\b(?:oven|bake[sd]?|baking|roast(?:s|ed|ing)?|pre-?heat(?:s|ed|ing)?)\b", re.IGNORECASE)
 # Words that make a figure a probe, oil or sugar reading rather than an oven setting. Not "centre",
 # "temperature", "inside" or "water": the live library writes them in ordinary oven sentences ("a rack
@@ -201,10 +207,26 @@ def needs_model(text: str) -> bool:
     return False
 
 
+def unit_end(text: str, end: int) -> int:
+    """Where a temperature's words end once the unit words that follow ``end`` are taken in: a model
+    quoting "350" in "350 degrees" would leave "degrees" outside, and the kitchen would read
+    "180°C degrees"."""
+    m = _UNIT_AFTER.match(text, end)
+    return m.end() if m and not text.startswith("{{", m.end()) else end
+
+
+def in_range(text: str, start: int, end: int) -> bool:
+    """Whether the figure at ``text[start:end]`` is one end of a range ("500 to 550°", "18 and 21°C"):
+    a range is never tagged."""
+    return bool(_RANGE_WITHIN.search(text[start:end]) or _RANGE_BEFORE.search(text[:start])
+                or _RANGE_AFTER.match(text[end:]))
+
+
 def place_temperature_mentions(text: str, mentions: Sequence[Tuple[str, str, str]]) -> Tuple[str, List[str]]:
     """Splice the model's ``(quote, context, value)`` mentions into ``text`` where each quote is found
-    verbatim, outside every token. A bad value, a quote not found or found twice without a context to
-    tell them apart, or one overlapping a token or another placement, is dropped and reported."""
+    verbatim, outside every token, its words widened over the unit words that follow. A bad value, a
+    quote not found or found twice without a context to tell them apart, one overlapping a token or
+    another placement, or one that is part of a range, is dropped and reported."""
     dropped: List[str] = []
     placed: List[Found] = []
     for quote, context, value in mentions:
@@ -212,9 +234,40 @@ def place_temperature_mentions(text: str, mentions: Sequence[Tuple[str, str, str
             dropped.append(f"{quote!r}: unusable value {value!r} or quote")
             continue
         spans = _token_spans(text) + [(p.start, p.end) for p in placed]
-        starts = [s for s in locate(text, quote, context) if not _overlaps(s, s + len(quote), spans)]
+        starts = [s for s in locate(text, quote, context)
+                  if not _overlaps(s, unit_end(text, s + len(quote)), spans)]
         if len(starts) != 1:
             dropped.append(f"{quote!r} ({context!r}): {len(starts)} free placement(s)")
             continue
-        placed.append(Found(starts[0], starts[0] + len(quote), value, text[starts[0]:starts[0] + len(quote)]))
+        start = starts[0]
+        end = unit_end(text, start + len(quote))
+        if in_range(text, start, end):
+            dropped.append(f"{quote!r}: part of a range")
+            continue
+        placed.append(Found(start, end, value, text[start:end]))
     return splice(text, placed), dropped
+
+
+def repair_tokens(text: str) -> Tuple[str, List[str]]:
+    """The temperature tokens already in ``text``, mended: a token followed by its unit words takes
+    them in; a token that is one end of a range is unwrapped to its words. No word changes. Returns
+    the text and one line per change."""
+    changes: List[str] = []
+    out: List[str] = []
+    cursor = 0
+    for m in TOKEN_RE.finditer(text):
+        out.append(text[cursor:m.start()])
+        cursor = m.end()
+        if not m.group(1).startswith(TEMP_PREFIX):
+            out.append(m.group(0))
+        elif in_range(text, m.start(), m.end()) or _RANGE_WITHIN.search(m.group(2)):
+            changes.append(f"unwrapped range {m.group(2)!r}")
+            out.append(m.group(2))
+        else:
+            end = unit_end(text, m.end())
+            if end > m.end():
+                changes.append(f"{m.group(2)!r} took in {text[m.end():end]!r}")
+            out.append("{{" + m.group(1) + "|" + m.group(2) + text[m.end():end] + "}}")
+            cursor = end
+    out.append(text[cursor:])
+    return "".join(out), changes

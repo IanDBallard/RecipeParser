@@ -15,6 +15,7 @@ from recipeparser.core.fat_tokens import TEMP_PREFIX, TOKEN_RE, check_mentions, 
 from recipeparser.core.headings import heading_name
 from recipeparser.core.numbers import written_measures
 from recipeparser.core.rate_limiter import GlobalRateLimiter
+from recipeparser.core.temperatures import repair_tokens
 from recipeparser.gemini import refine_recipe_for_cayenne
 from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction
 from recipeparser.utils import title_case
@@ -139,7 +140,8 @@ def _check_temperatures(refinement: CayenneRefinement, raw: RecipeExtraction) ->
         return match.group(2)
 
     for step in refinement.tokenized_directions:
-        step.text = TOKEN_RE.sub(check, step.text)
+        # A bare "350" takes in the "degrees" after it; one end of a range is unwrapped (2026-10-13).
+        step.text = TOKEN_RE.sub(check, repair_tokens(step.text)[0])
     if unwrapped:
         log.warning("refine(): '%s': temperature token(s) unwrapped: %s", refinement.title, "; ".join(unwrapped))
 

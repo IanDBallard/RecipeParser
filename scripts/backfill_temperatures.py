@@ -48,6 +48,7 @@ from recipeparser.core.temperatures import (  # noqa: E402
     find_temperatures,
     needs_model,
     place_temperature_mentions,
+    repair_tokens,
     splice,
 )
 from recipeparser.models import TemperatureMention, TokenizedDirection  # noqa: E402
@@ -68,6 +69,37 @@ class RowResult:
     proposals: List[Tuple[int, str, str, str]] = field(default_factory=list)  # step, words, value, by
     dropped: List[str] = field(default_factory=list)
     error: str = ""
+
+
+def plan_repair(row: Dict[str, Any]) -> RowResult:
+    """``--repair``: the temperature tokens a recipe already has, mended (core.temperatures.repair_tokens:
+    a bare figure takes in its "degrees", one end of a range is unwrapped). No model, no new token."""
+    result = RowResult(id=row["id"], title=str(row.get("title") or ""), status="tagged",
+                       before=row.get("tokenized_directions"))
+    raw = row.get("tokenized_directions")
+    if not isinstance(raw, list):
+        result.status = "malformed"
+        return result
+    if (row.get("derived_rev") or 0) < (row.get("body_rev") or 0):
+        result.status = "stale"
+        return result
+    try:
+        old = [TokenizedDirection.model_validate(d) for d in raw]
+    except Exception as exc:  # noqa: BLE001
+        result.status, result.error = "malformed", str(exc)
+        return result
+    if not old:
+        result.status = "empty"
+        return result
+    texts = []
+    for d in old:
+        text, changes = repair_tokens(d.text)
+        texts.append(text)
+        result.proposals += [(d.step, change, "", "repair") for change in changes]
+    result.directions = [TokenizedDirection(step=d.step, text=t) for d, t in zip(old, texts)]
+    if all(d.text == t for d, t in zip(old, texts)):
+        result.status = "none-found"
+    return result
 
 
 def _new_tokens(before: str, after: str) -> List[Tuple[str, str]]:
@@ -201,6 +233,8 @@ def main() -> int:
     ap.add_argument("--record", type=Path, help="CSV of each rewritten row's id, title and old tokenized_directions.")
     ap.add_argument("--restore", type=Path, help="Write this record's tokenized_directions back; nothing else.")
     ap.add_argument("--force", action="store_true", help="Look again at recipes that already have a temperature token.")
+    ap.add_argument("--repair", action="store_true",
+                    help="Only mend existing temperature tokens: take in trailing unit words, unwrap range ends. No model.")
     ap.add_argument("--verbose", action="store_true", help="Print every tagged recipe's new steps.")
     ap.add_argument("--progress", type=int, default=50, help="Print a progress line every N recipes (0: none).")
     args = ap.parse_args()
@@ -216,7 +250,7 @@ def main() -> int:
         return _restore(sb, args.restore, args.live)
 
     ask: Optional[Asker] = None
-    if not args.no_model:
+    if not args.no_model and not args.repair:
         from recipeparser import client as gemini_client  # noqa: PLC0415
         from recipeparser.gemini import tag_temperatures  # noqa: PLC0415
         if gemini_client is None:
@@ -234,7 +268,7 @@ def main() -> int:
     ready: List[RowResult] = []  # planned without the model
     todo: List[Dict[str, Any]] = []  # rows the model must read
     sent = 0
-    for row in rows:
+    for row in rows if not args.repair else []:
         called: List[bool] = []
         probe = plan_row(row, (lambda s, sy: called.append(True) or []) if ask is not None else None, force=args.force)
         if not called:
@@ -243,6 +277,8 @@ def main() -> int:
             todo.append(row)
             sent += 1
         # else: over the limit, left unplanned and unwritten.
+    if args.repair:
+        ready = [plan_repair(row) for row in rows]
 
     writer = None
     record_fh = None
@@ -308,6 +344,8 @@ def main() -> int:
         print(f"  {status:15s} {statuses.get(status, 0):5d}")
     print(f"  proposals by rule:                                {by_rule}")
     print(f"  proposals by model:                               {by_model}")
+    if args.repair:
+        print(f"  tokens mended:                                    {sum(len(r.proposals) for r in results)}")
     print(f"  mentions dropped (not placed):                    {dropped}")
     if args.limit is not None and sent >= args.limit:
         print(f"  stopped at --limit {args.limit}; the rest were not sent to the model")

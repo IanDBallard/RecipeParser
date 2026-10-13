@@ -82,3 +82,18 @@ def test_a_gas_mark_and_a_fan_figure_count_as_the_value_figure():
 def test_words_without_digits_are_kept():
     result = _run_with(["Bake in a moderate oven."], ["Bake in a {{temp:180C,oven|moderate oven}}."])
     assert result.tokenized_directions[0].text == "Bake in a {{temp:180C,oven|moderate oven}}."
+
+
+def test_a_bare_figure_takes_in_its_unit_words_and_a_range_end_is_unwrapped():
+    from recipeparser.core.stages.refine import refine
+    raw = RecipeExtraction(name="Roast", ingredients=["1 cup flour"],
+                           directions=["Heat oven to 350 degrees.", "Heat to 500 to 550°F."])
+    refinement = CayenneRefinement(
+        title="Roast", base_servings=4, structured_ingredients=[FLOUR],
+        tokenized_directions=[TokenizedDirection(step=1, text="Heat oven to {{temp:350F,oven|350}} degrees."),
+                              TokenizedDirection(step=2, text="Heat to 500 to {{temp:550F,oven|550°F}}.")],
+    )
+    with patch("recipeparser.core.stages.refine.refine_recipe_for_cayenne", return_value=refinement):
+        result = refine(raw, client=MagicMock())
+    assert result.tokenized_directions[0].text == "Heat oven to {{temp:350F,oven|350 degrees}}."
+    assert result.tokenized_directions[1].text == "Heat to 500 to 550°F."
