@@ -22,11 +22,14 @@ _DEGREE = re.compile(
     re.IGNORECASE,
 )
 _BARE = re.compile(r"(?<![\d.,])(\d{3})\s?(C|F)\b")  # case-sensitive: "180C", "350 F"; never "2 C flour"
-_GAS = re.compile(r"\bgas(?:\s+mark)?\s*(¼|½|1/4|1/2|[1-9])(?![\d/])(?!\s*(?:times?|burners?|rings?|hobs?)\b)", re.IGNORECASE)
+_GAS = re.compile(r"\bgas(?:\s+mark)?\s*(¼|½|1/4|1/2|[1-9])(?![\d/])(?!\s*(?:times?|burners?|rings?|hobs?|min(?:ute)?s?|hours?|hrs?|sec(?:ond)?s?)\b)", re.IGNORECASE)
 _FAN_AFTER = re.compile(
     r"\s*(?:\(\s*)?(?:fan(?:[- ](?:forced|assisted))?|convection)(?:\s+oven)?(?:\s*\))?", re.IGNORECASE
 )
-_GAP = re.compile(r"^[\s/,()]*(?:or)?[\s/,()]*$", re.IGNORECASE)
+_FAN_WORD = r"(?:fan(?:[- ](?:forced|assisted))?|convection)(?:\s+oven)?"
+_FAN_BEFORE = re.compile(_FAN_WORD + r"[\s:]*$", re.IGNORECASE)
+_GAP = re.compile(r"^[\s/,()]*(?:or)?[\s/,()]*(?:" + _FAN_WORD + r"[\s/,():]*)?$", re.IGNORECASE)
+_CONVENTIONAL_CLOSE = re.compile(r"^(?:\s*(?:conventional|regular|standard)(?:\s+oven)?)?\s*\)", re.IGNORECASE)
 _RANGE_BEFORE = re.compile(
     r"(?:\d\s*(?:°\s*[CF]?)?\s*(?:[-–—]|to)|\d\s*/|between\s+\d[\d.]*\s*(?:°\s*[CF]?)?\s+and)\s*$", re.IGNORECASE
 )
@@ -102,8 +105,12 @@ def _readings(text: str) -> List[_Reading]:
             continue  # inside a token already there
         if _RANGE_BEFORE.search(text[:r.start]) or _RANGE_AFTER.match(text[r.end:]):
             continue  # a range is never tagged
-        if r.scale != "gas" and (fan := _FAN_AFTER.match(text, r.end)) and fan.end() > r.end:
-            r.end, r.fan = fan.end(), True
+        if r.scale != "gas":
+            fan = _FAN_AFTER.match(text, r.end)
+            if fan and fan.end() > r.end and not re.match(r"\s*\d", text[fan.end():]):
+                r.end, r.fan = fan.end(), True  # "180°C fan"; not "180°C (fan 160°C)", where fan labels the next
+            elif _FAN_BEFORE.search(text[:r.start]):
+                r.fan = True  # "(fan 160°C)": the word before labels this figure
         kept.append(r)
     return kept
 
@@ -153,8 +160,8 @@ def find_temperatures(text: str) -> List[Found]:
     for run in _runs(text, _readings(text)):
         start, end = run[0].start, run[-1].end
         words = text[start:end]
-        if words.count("(") > words.count(")") and text[end:end + 1] == ")":
-            end += 1
+        if words.count("(") > words.count(")") and (close := _CONVENTIONAL_CLOSE.match(text[end:])):
+            end += close.end()
             words = text[start:end]
         plain = [r for r in run if not r.fan]
         if len({r.scale for r in plain}) < len(plain):

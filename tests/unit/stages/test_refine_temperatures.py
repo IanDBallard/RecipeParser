@@ -50,3 +50,35 @@ def test_an_unknown_ingredient_id_still_raises():
     import pytest
     with pytest.raises(ValueError, match="unknown ingredient"):
         _run(["Add {{ing_09|sugar|all}}.", "Roast."])
+
+
+def _run_with(raw_steps, steps):
+    from recipeparser.core.stages.refine import refine
+    raw = RecipeExtraction(name="Roast", ingredients=["1 cup flour"], directions=raw_steps)
+    refinement = CayenneRefinement(
+        title="Roast", base_servings=4, structured_ingredients=[FLOUR],
+        tokenized_directions=[TokenizedDirection(step=n, text=t) for n, t in enumerate(steps, 1)],
+    )
+    with patch("recipeparser.core.stages.refine.refine_recipe_for_cayenne", return_value=refinement):
+        return refine(raw, client=MagicMock())
+
+
+def test_words_whose_figure_is_not_the_value_are_unwrapped():
+    result = _run_with(["Bake at 350°F."], ["Bake at {{temp:180C,oven|350°F}}."])
+    assert result.tokenized_directions[0].text == "Bake at 350°F."
+
+
+def test_words_whose_figure_matches_the_value_are_kept():
+    result = _run_with(["Bake at 350°F."], ["Bake at {{temp:350F,oven|350°F}}."])
+    assert result.tokenized_directions[0].text == "Bake at {{temp:350F,oven|350°F}}."
+
+
+def test_a_gas_mark_and_a_fan_figure_count_as_the_value_figure():
+    result = _run_with(["Bake at 160°C fan, gas mark 4."],
+                       ["Bake at {{temp:gas4,oven,fan=160C|160°C fan, gas mark 4}}."])
+    assert "{{temp:" in result.tokenized_directions[0].text
+
+
+def test_words_without_digits_are_kept():
+    result = _run_with(["Bake in a moderate oven."], ["Bake in a {{temp:180C,oven|moderate oven}}."])
+    assert result.tokenized_directions[0].text == "Bake in a {{temp:180C,oven|moderate oven}}."

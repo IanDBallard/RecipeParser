@@ -23,6 +23,12 @@ def tag(text: str) -> str:
      "Preheat the oven. Cook until a thermometer in the centre reads {{temp:63C|63°C}}."),
     ("Bake until the loaf reads 95°C inside.", "Bake until the loaf reads {{temp:95C|95°C}} inside."),
     ("Mix the {{ing_01|flour|all}} and bake at 200°C.", "Mix the {{ing_01|flour|all}} and bake at {{temp:200C,oven|200°C}}."),
+    ("Bake at 180°C (fan 160°C).", "Bake at {{temp:180C,oven,fan=160C|180°C (fan 160°C)}}."),
+    ("Bake at 350°F (convection 325°F).", "Bake at {{temp:350F,oven,fan=325F|350°F (convection 325°F)}}."),
+    ("Preheat oven to 350°F (convection oven 325°F).",
+     "Preheat oven to {{temp:350F,oven,fan=325F|350°F (convection oven 325°F)}}."),
+    ("Bake at 160°C fan-forced (180°C conventional).",
+     "Bake at {{temp:180C,oven,fan=160C|160°C fan-forced (180°C conventional)}}."),
     ("Bake at 160°C fan-forced.", "Bake at {{temp:fan=160C|160°C fan-forced}}."),
     ("Preheat oven to 190C/170C fan/Gas 5.", "Preheat oven to {{temp:190C,oven,fan=170C|190C/170C fan/Gas 5}}."),
     ("Bake until sugar reaches 115°C.", "Bake until sugar reaches {{temp:115C|115°C}}."),
@@ -48,6 +54,8 @@ def test_tags_the_clear_forms(step, expected):
     "Bake between 350 and 375°F.",
     "Turn the gas 3 times.",
     "Use the gas 6 burner.",
+    "Turn off the gas 5 minutes before serving.",
+    "Leave the gas 2 hours.",
 ])
 def test_leaves_alone_what_it_cannot_tag_for_certain(step):
     assert tag(step) == step
@@ -76,3 +84,10 @@ def test_places_model_mentions_by_quote_and_skips_a_bad_value_or_a_token():
     ])
     assert out == "Mix the {{ing_01|flour|all}}, then bake in a {{temp:180C,oven|moderate oven}} for an hour."
     assert len(dropped) == 2
+
+
+def test_words_have_balanced_parentheses():
+    for step in ["Bake at 160°C fan-forced (180°C conventional).", "Bake at 180°C (fan 160°C).",
+                 "Roast at 200°C (180°C fan) for an hour."]:
+        for f in find_temperatures(step):
+            assert f.words.count("(") == f.words.count(")")

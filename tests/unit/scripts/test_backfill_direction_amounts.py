@@ -215,3 +215,12 @@ def test_main_writes_each_recipe_as_its_call_returns(monkeypatch, tmp_path, caps
     assert record.read_text().count("\n") == 3
     out = capsys.readouterr().out
     assert "progress: 1/2 sent to Gemini, 1 written" in out and "progress: 2/2 sent to Gemini, 2 written" in out
+
+
+def test_a_recipe_carrying_a_temperature_token_is_never_rewritten_even_with_force():
+    calls: List[int] = []
+    legacy = [{"step": 1, "text": "Bake at {{temp:350F,oven|350°F}}."}]
+    for force in (False, True):
+        result = plan_row(_row(tokenized_directions=legacy, direction_steps=["Bake at 350°F."]), _tag(calls), force=force)
+        assert result.status == "already-tagged"
+    assert calls == []

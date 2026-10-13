@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.11.0] — 2026-10-13
+
+Oven temperatures are marked, so Cayenne can show them in the cook's unit (Cayenne oven temperatures design, D1-D15). Needs no migration. Order: the Cayenne client first, then this deploy, then the backfill.
+
+### ✨ Added
+- A `temp:` token in `tokenized_directions`: `{{temp:VALUE|words}}`, where VALUE is `[<n>C|<n>F|gas<mark>][,oven][,fan=<n>C|F]` (for example `180C,oven,fan=160C`, `gas4,oven`, `63C`). It has no `use` field and names no ingredient; `words` are the recipe's own words, unchanged.
+- REFINE's TEMPERATURES rule: the model wraps a temperature in a `temp:` token (a figure with its unit, a Gas Mark, a described oven such as "moderate oven"). `_check_temperatures` (D15) then unwraps, with a warning, any token whose value does not parse, whose words the directions do not write, or whose figured words carry neither the value's main nor fan number: a model slip costs the conversion, never the recipe.
+- `recipeparser/core/temperatures.py`: the deterministic wrap for the clear forms, including a conventional/fan pair in either order ("180°C (fan 160°C)", "160°C fan-forced (180°C conventional)").
+- `scripts/backfill_temperatures.py`: wraps the temperatures of existing recipes (rule first, Gemini only for bare figures and described ovens). Run order: dry run with `--review temperatures-review.csv`, read the CSV, then `--live --record temperatures-before.csv`.
+
+### ⚠️ Operational
+- `scripts/backfill_direction_amounts.py` now treats any recipe whose directions carry a `temp:` token as already tagged, with or without `--force`; before this release `--force` re-tagged a recipe from its plain text and would have stripped the temperature tokens.
+
+### 🧪 Tests
+- `test_temperatures.py`, `test_refine_temperatures.py` and `test_backfill_direction_amounts.py` cover the above.
+
 ## [9.10.0] — 2026-10-12
 
 Ingredient section headings ("For the sauce:") are marked, not dropped (Cayenne ingredient headings, D1-D3). Needs no migration.

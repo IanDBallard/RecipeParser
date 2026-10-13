@@ -32,9 +32,9 @@ _KEYWORDS = ("all", "rest", "none")
 _PART_SLACK = 1.05
 
 TEMP_PREFIX = "temp:"
-_TEMP_MAIN = re.compile(r"^(-?\d+(?:\.\d+)?)([CF])$")
-_TEMP_GAS = re.compile(r"^gas(0\.25|0\.5|[1-9])$")
-_TEMP_FAN = re.compile(r"^fan=(-?\d+(?:\.\d+)?)([CF])$")
+_TEMP_MAIN = re.compile(r"^(-?\d+(?:\.\d+)?)([CF])$", re.ASCII)
+_TEMP_GAS = re.compile(r"^gas(0\.25|0\.5|[1-9])$", re.ASCII)
+_TEMP_FAN = re.compile(r"^fan=(-?\d+(?:\.\d+)?)([CF])$", re.ASCII)
 _TEMP_MIN_C, _TEMP_MAX_C = -40.0, 300.0
 
 

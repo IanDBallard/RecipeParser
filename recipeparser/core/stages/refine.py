@@ -11,8 +11,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
-from recipeparser.core.headings import heading_name
 from recipeparser.core.fat_tokens import TEMP_PREFIX, TOKEN_RE, check_mentions, is_temp_id, parse_temp_value
+from recipeparser.core.headings import heading_name
 from recipeparser.core.numbers import written_measures
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.gemini import refine_recipe_for_cayenne
@@ -109,6 +109,17 @@ def _unwrap_heading_tokens(refinement: CayenneRefinement) -> None:
         log.warning("refine(): '%s': tokens naming a heading unwrapped: %s", refinement.title, "; ".join(unwrapped))
 
 
+def _words_state_value(value: Any, words: str) -> bool:
+    """Words with figures must carry one of the value's (main, fan or Gas Mark); words without any
+    (a described oven) are taken as they are."""
+    figures = {int(n) for n in re.findall(r"\d+", words, re.ASCII)}
+    if not figures:
+        return True
+    wanted = {k for r in (value.main, value.fan) if r is not None for k in (int(r[1]), int(r[1]) + 1)
+              if k == r[1] or r[1] != int(r[1])}
+    return bool(figures & wanted)
+
+
 def _check_temperatures(refinement: CayenneRefinement, raw: RecipeExtraction) -> None:
     """
     Cayenne oven temperatures D15, in place: a temperature token's value must parse (a known unit, in
@@ -121,7 +132,8 @@ def _check_temperatures(refinement: CayenneRefinement, raw: RecipeExtraction) ->
     def check(match: "re.Match[str]") -> str:
         if not is_temp_id(match.group(1)):
             return match.group(0)
-        if parse_temp_value(match.group(1)[len(TEMP_PREFIX):]) is not None and _plain(match.group(2)) in source:
+        value = parse_temp_value(match.group(1)[len(TEMP_PREFIX):])
+        if value is not None and _plain(match.group(2)) in source and _words_state_value(value, match.group(2)):
             return match.group(0)
         unwrapped.append(match.group(0))
         return match.group(2)

@@ -51,7 +51,14 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from recipeparser.core.fat_tokens import check_mentions, is_tagged, splice_mentions, strip_fat_tokens  # noqa: E402
+from recipeparser.core.fat_tokens import (  # noqa: E402
+    TOKEN_RE,
+    check_mentions,
+    is_tagged,
+    is_temp_id,
+    splice_mentions,
+    strip_fat_tokens,
+)
 from recipeparser.models import DirectionMention, StructuredIngredient, TokenizedDirection  # noqa: E402
 
 PAGE = 500
@@ -94,6 +101,9 @@ def plan_row(row: Dict[str, Any], tag: Tagger, force: bool = False) -> RowResult
         old = [TokenizedDirection.model_validate(d) for d in tokenized_raw]
     except Exception as exc:  # noqa: BLE001
         result.status, result.error = "malformed", str(exc)
+        return result
+    if any(is_temp_id(m.group(1)) for d in old for m in TOKEN_RE.finditer(d.text)):
+        result.status = "already-tagged"  # --force would strip the temperature tokens: never
         return result
     if is_tagged(old) and not force:
         result.status = "already-tagged"
