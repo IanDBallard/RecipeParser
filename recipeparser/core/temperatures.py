@@ -35,9 +35,13 @@ _RANGE_BEFORE = re.compile(
 )
 _RANGE_AFTER = re.compile(r"^\s*(?:[-–—]|to)\s*\d")
 _OVEN_WORDS = re.compile(r"\b(?:oven|bake[sd]?|baking|roast(?:s|ed|ing)?|pre-?heat(?:s|ed|ing)?)\b", re.IGNORECASE)
+# Words that make a figure a probe, oil or sugar reading rather than an oven setting. Not "centre",
+# "temperature", "inside" or "water": the live library writes them in ordinary oven sentences ("a rack
+# in the center of the oven", "reduce oven temperature", "a water bath"); a probe sentence names its
+# thermometer or says the food reads/reaches the figure.
 _PROBE_WORDS = re.compile(
-    r"\b(?:thermometer|internal|reads?|registers?|reach(?:es|ed)?|shows?|temp(?:erature)?|core|cent(?:re|er)|probe|inside"
-    r"|oil|fry|frying|deep-fry|fat|syrup|sugar|caramel|candy|water|boil)\b",
+    r"\b(?:thermometer|internal|reads?|registers?|reach(?:es|ed)?|shows?|core|probe"
+    r"|oil|fry|frying|deep-fry|fat|syrup|sugar|caramel|candy|boil)\b",
     re.IGNORECASE,
 )
 _CLAUSE_START = ".,;!?("

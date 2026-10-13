@@ -35,6 +35,14 @@ def tag(text: str) -> str:
     ("Fry the roasted nuts in oil at 180°C.", "Fry the roasted nuts in oil at {{temp:180C|180°C}}."),
     ("In a 350°F oven, cook until a thermometer reads 165°F.",
      "In a {{temp:350F,oven|350°F}} oven, cook until a thermometer reads {{temp:165F|165°F}}."),
+    # Oven sentences from the live library's dry run (2026-10-13): "center", "temperature" and
+    # "inside" are ordinary oven words, not probe words.
+    ("Position a rack in the center of the oven and heat the oven to 350°F.",
+     "Position a rack in the center of the oven and heat the oven to {{temp:350F,oven|350°F}}."),
+    ("Reduce oven temperature to 375 degrees F.", "Reduce oven temperature to {{temp:375F,oven|375 degrees F}}."),
+    ("Preheat the oven to 425 degrees F and place a 9-inch cast iron skillet inside to heat.",
+     "Preheat the oven to {{temp:425F,oven|425 degrees F}} and place a 9-inch cast iron skillet inside to heat."),
+    ("Bake in a water bath at 160°C.", "Bake in a water bath at {{temp:160C,oven|160°C}}."),
 ])
 def test_tags_the_clear_forms(step, expected):
     assert tag(step) == expected
