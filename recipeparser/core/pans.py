@@ -51,7 +51,8 @@ HINT_KEYS = (
     "au-slab-30x20",
     "au-bar-25x8",
 )
-_ID = re.compile(r"^pan_\d{2}$")
+_ID = re.compile(r"pan_\d{2}")
+_HEADING = re.compile(r"\*\*[^*]+\*\*:?")
 _MM_MIN, _MM_MAX = 10.0, 1000.0
 _ML_MAX = 10000.0
 _CORE_MIN_C, _CORE_MAX_C = 30.0, 110.0
@@ -66,7 +67,7 @@ def normalise_pans(pans: Iterable[RecipePan]) -> Tuple[List[RecipePan], List[str
     warnings: List[str] = []
     seen: Set[str] = set()
     for p in pans:
-        if not _ID.match(p.id) or p.id in seen:
+        if not _ID.fullmatch(p.id) or p.id in seen:
             warnings.append(f"tin {p.id!r} dropped: bad or repeated id")
             continue
         dims = p.dims_mm.model_copy(update={k: _mm(getattr(p.dims_mm, k)) for k in ("d", "w", "l", "depth")})
@@ -128,39 +129,51 @@ def check_bake(
     return kind, step
 
 
+def _core_in_band(main: Tuple[str, float]) -> bool:
+    scale, n = main
+    c = n if scale == "C" else (n - 32) * 5 / 9
+    return _CORE_MIN_C <= c <= _CORE_MAX_C
+
+
+def _without_core(value: str) -> str:
+    return ",".join(part for part in value.split(",") if part.strip() != "core")
+
+
 def check_core_flags(directions: Sequence[TokenizedDirection]) -> Tuple[List[TokenizedDirection], List[str]]:
-    """R5: ``,core`` stays only on a degree reading between 30 and 110 °C; otherwise it is removed."""
+    """
+    R5, R-B: ``,core`` stays only on a degree reading between 30 and 110 °C; otherwise it is removed
+    and the token kept. A value that does not parse but would parse without ``,core`` (``180C,oven,core``,
+    ``gas4,core``) loses the flag. A value that fails either way is left untouched for
+    _check_temperatures. Pre-pass: refine calls this before _check_temperatures.
+    """
     warnings: List[str] = []
 
     def check(m: "re.Match[str]") -> str:
-        if not is_temp_id(m.group(1)) or ",core" not in m.group(1):
+        token_id = m.group(1)
+        if not is_temp_id(token_id) or ",core" not in token_id:
             return m.group(0)
-        value = parse_temp_value(m.group(1)[len(TEMP_PREFIX) :])
-        if value is None:
-            # Malformed temperatures are _check_temperatures' to unwrap, not this check's.
+        value = token_id[len(TEMP_PREFIX) :]
+        parsed = parse_temp_value(value)
+        if parsed is not None and parsed.core and parsed.main is not None and _core_in_band(parsed.main):
             return m.group(0)
-        if value.main is not None:
-            scale, n = value.main
-            c = n if scale == "C" else (n - 32) * 5 / 9
-            if _CORE_MIN_C <= c <= _CORE_MAX_C:
-                return m.group(0)
+        if parsed is None and parse_temp_value(_without_core(value)) is None:
+            return m.group(0)
         warnings.append(f"core flag removed: {m.group(0)}")
-        return "{{" + m.group(1).replace(",core", "") + "|" + m.group(2) + "}}"
+        return m.group(0).replace(token_id, TEMP_PREFIX + _without_core(value), 1)
 
     return [d.model_copy(update={"text": TOKEN_RE.sub(check, d.text)}) for d in directions], warnings
 
 
 def heading_steps(directions: Sequence[TokenizedDirection]) -> Set[int]:
-    """0-based indexes of steps that are a phase heading: bold, short, no token (REFINE rule 3)."""
-    return {
-        i
-        for i, d in enumerate(directions)
-        if d.text.strip().startswith("**") and d.text.strip().endswith("**") and "{{" not in d.text
-    }
+    """0-based indexes of steps that are a phase heading: one bold span, optional colon (REFINE rule 3)."""
+    return {i for i, d in enumerate(directions) if _HEADING.fullmatch(d.text.strip())}
 
 
 def apply_pan_checks(refinement: CayenneRefinement, raw_directions: Sequence[str]) -> List[str]:
-    """Every check above, in place on ``refinement``. Returns the warnings."""
+    """
+    Every check above, in place on ``refinement``. Returns the warnings. Order matters: check_core_flags
+    is a pre-pass that refine must also run before _check_temperatures (Task 4 wires that).
+    """
     pans, warnings = normalise_pans(refinement.pans)
     directions, w = check_pan_tokens(refinement.tokenized_directions, {p.id for p in pans}, "\n".join(raw_directions))
     warnings += w

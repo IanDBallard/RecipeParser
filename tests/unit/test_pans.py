@@ -105,3 +105,71 @@ def test_apply_pan_checks_wires_everything_and_unwraps_tokens_of_dropped_tins():
     assert [p.id for p in r.pans] == ["pan_01"]
     assert r.tokenized_directions[0].text == "Grease {{pan_01|two 20cm tins}} and a tin."
     assert (r.bake_type, r.bake_step) == ("sponge", 1) and warnings
+
+
+def test_heading_steps_is_one_bold_span_with_an_optional_colon():
+    from recipeparser.core.pans import heading_steps
+
+    d = steps("**Bake**", "**For the filling**:", "**Bake** at 180C then **cool**", "Bake.", "**a** and **b**")
+    assert heading_steps(d) == {0, 1}
+
+
+def test_normalise_nulls_the_hint_of_a_sized_tin_and_keeps_it():
+    kept, _ = normalise_pans([pan(catalog_hint="made-up")])
+    assert [p.id for p in kept] == ["pan_01"] and kept[0].catalog_hint is None
+
+
+def test_normalise_duplicate_id_keeps_only_the_first_tin():
+    kept, warnings = normalise_pans(
+        [pan(raw="a 2 lb loaf tin", shape="loaf", family="loaf", dims_mm={}, catalog_hint="uk-loaf-2lb"), pan()]
+    )
+    assert len(kept) == 1 and kept[0].raw == "a 2 lb loaf tin" and len(warnings) == 1
+
+
+def test_normalise_rejects_an_id_with_a_trailing_newline_or_a_short_number():
+    kept, warnings = normalise_pans([pan(id="pan_01\n"), pan(id="pan_1")])
+    assert kept == [] and len(warnings) == 2
+
+
+def test_core_band_edges_are_inclusive_and_fahrenheit_is_converted():
+    out, warnings = check_core_flags(
+        steps(
+            "{{temp:86F,core|86°F}}", "{{temp:230F,core|230°F}}", "{{temp:29C,core|29°C}}", "{{temp:111C,core|111°C}}"
+        )
+    )
+    assert [d.text for d in out] == [
+        "{{temp:86F,core|86°F}}",
+        "{{temp:230F,core|230°F}}",
+        "{{temp:29C|29°C}}",
+        "{{temp:111C|111°C}}",
+    ]
+    assert len(warnings) == 2
+
+
+def test_core_on_an_oven_or_gas_reading_loses_the_flag_and_keeps_the_token():
+    out, warnings = check_core_flags(
+        steps("{{temp:180C,oven,core|180°C}}", "{{temp:gas4,core|gas 4}}", "{{temp:93C,core,oven|93°C}}")
+    )
+    assert [d.text for d in out] == ["{{temp:180C,oven|180°C}}", "{{temp:gas4|gas 4}}", "{{temp:93C,oven|93°C}}"]
+    assert len(warnings) == 3
+
+
+def test_malformed_core_value_is_left_untouched_without_a_warning():
+    texts = ["{{temp:93c,core|93°C}}", "{{temp:garbage,core|x}}"]
+    out, warnings = check_core_flags(steps(*texts))
+    assert [d.text for d in out] == texts and warnings == []
+
+
+def test_empty_directions_do_not_crash():
+    assert check_core_flags([]) == ([], [])
+    assert check_pan_tokens([], set(), "") == ([], [])
+    assert check_bake("sponge", 0, [], set()) == ("sponge", None)
+
+
+def test_negative_bake_step_is_nulled():
+    assert check_bake("sponge", -1, steps("Bake."), set()) == ("sponge", None)
+
+
+def test_a_bad_id_such_as_pan_1_is_unwrapped():
+    out, warnings = check_pan_tokens(steps("Grease {{pan_1|two tins}}."), {"pan_01"}, "Grease two tins.")
+    assert [d.text for d in out] == ["Grease two tins."] and len(warnings) == 1
