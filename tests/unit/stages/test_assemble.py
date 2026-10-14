@@ -2,7 +2,7 @@
 from recipeparser.core.citation import book_citation, web_citation
 from recipeparser.core.models import SourceMeta
 from recipeparser.core.stages.assemble import assemble
-from recipeparser.models import CayenneRefinement, StructuredIngredient, TokenizedDirection
+from recipeparser.models import CayenneRefinement, RecipePan, StructuredIngredient, TokenizedDirection
 
 
 def _refined() -> CayenneRefinement:
@@ -112,3 +112,13 @@ def test_the_full_pipeline_hands_assemble_the_four_extracted_fields(monkeypatch)
     src = inspect.getsource(pipeline_mod.RecipePipeline._process_chunk)
     for name in ("total_time", "description", "nutritional_info", "notes"):
         assert f'{name}=getattr(raw, "{name}", None)' in src, name
+
+
+def test_assemble_carries_the_tins_bake_type_and_bake_step():
+    refined = _refined()
+    refined.pans = [RecipePan(id="pan_01", raw="a 20 cm tin", shape="round", family="round-cake")]
+    refined.bake_type = "sponge"
+    refined.bake_step = 0
+    r = assemble(recipe=refined, embedding=[0.0] * 1536, source_url=None, image_url=None, grid_categories={})
+    assert r.pans == refined.pans
+    assert (r.bake_type, r.bake_step) == ("sponge", 0)

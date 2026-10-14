@@ -83,7 +83,17 @@ class RegenWorker:
                 source_host=host_of(row["source_url"]) if row.get("source_url") else None,
             )
             vector = self._embed(recipe=refinement, client=self._client)
-            payload = build_update(refinement, vector, read_rev)
+            # A tin the cook edited must survive regen. Best-effort: a failed read writes REFINE's tins.
+            current_pans: Any = None
+            try:
+                current = self._sb.table("recipes").select("pans").eq("id", rid).single().execute().data
+                current_pans = current.get("pans") if isinstance(current, dict) else None
+            except Exception as exc:  # noqa: BLE001 — the guard must not fail the regen
+                log.warning("regen: %s: could not read current tins (%s); writing REFINE's", rid, exc)
+            payload = build_update(
+                refinement, vector, read_rev,
+                current_pans=current_pans if isinstance(current_pans, list) else None,
+            )
             res = (
                 self._sb.table("recipes")
                 .update(payload)

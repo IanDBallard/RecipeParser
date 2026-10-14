@@ -2,7 +2,7 @@
 import pytest
 
 from recipeparser.core.regen import build_extraction, build_update, raw_lines_from_derived, strip_fat_tokens
-from recipeparser.models import CayenneRefinement, StructuredIngredient, TokenizedDirection
+from recipeparser.models import CayenneRefinement, RecipePan, StructuredIngredient, TokenizedDirection
 
 
 def test_strip_fat_tokens_replaces_with_fallback():
@@ -87,6 +87,9 @@ def test_build_update_payload():
                                                      fallback_string="1 cup flour", line_index=0)],
         tokenized_directions=[TokenizedDirection(step=1, text="Mix {{ing_01|flour}}.")],
         grid_categories={"Cuisine": ["Italian"]},
+        pans=[RecipePan(id="pan_01", raw="a 20 cm tin")],
+        bake_type="sponge",
+        bake_step=1,
     )
     payload = build_update(ref, [0.1] * 3, read_rev=7)
     assert payload == {
@@ -100,6 +103,9 @@ def test_build_update_payload():
         "claimed_at": None,
         "source_uom_system_detected": None,
         "source_uom_system_evidence": None,
+        "pans": [ref.pans[0].model_dump()],
+        "bake_type": "sponge",
+        "bake_step": 1,
     }
     # base_servings, grid_categories and title are user-owned after ingest (D3, 3.6)
     assert "base_servings" not in payload and "title" not in payload
@@ -108,3 +114,33 @@ def test_build_update_payload():
 def test_strip_fat_tokens_drops_the_use_field():
     assert strip_fat_tokens("Add about {{ing_02|1/2 cup (60 g)|0.5 cup}} flour; add more {{ing_02|flour|none}}.") == \
         "Add about 1/2 cup (60 g) flour; add more flour."
+
+
+def _two_tin_refinement():
+    return CayenneRefinement(
+        title="Cake", base_servings=4,
+        structured_ingredients=[],
+        tokenized_directions=[
+            TokenizedDirection(step=1, text="Divide between {{pan_01|two tins}} and {{pan_02|a tray}}."),
+        ],
+        pans=[RecipePan(id="pan_01", raw="two tins", count=2), RecipePan(id="pan_02", raw="a tray")],
+        bake_type="sponge",
+        bake_step=0,
+    )
+
+
+def test_build_update_keeps_a_cooks_edited_tins():
+    current = [{"id": "pan_01", "raw": "two tins", "count": 2, "shape": "round", "edited": True}]
+    payload = build_update(_two_tin_refinement(), [0.1] * 3, read_rev=1, current_pans=current)
+    assert payload["pans"] == current
+    # pan_01 is the cook's and its words are in the step, so its token stays; pan_02 is gone, so it unwraps.
+    assert payload["tokenized_directions"][0]["text"] == "Divide between {{pan_01|two tins}} and a tray."
+
+
+def test_build_update_writes_refines_tins_when_none_is_edited():
+    current = [{"id": "pan_01", "raw": "old", "edited": False}]
+    ref = _two_tin_refinement()
+    for cur in (current, None, []):
+        payload = build_update(ref, [0.1] * 3, read_rev=1, current_pans=cur)
+        assert payload["pans"] == [p.model_dump() for p in ref.pans]
+        assert "{{pan_02|a tray}}" in payload["tokenized_directions"][0]["text"]

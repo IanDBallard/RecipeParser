@@ -316,6 +316,11 @@ def write_recipe_to_supabase(
         # What REFINE detected (verbatim ingestion D5, Cayenne migration verbatim_ingestion).
         "source_uom_system_detected": recipe.source_uom_system_detected,
         "source_uom_system_evidence": recipe.source_uom_system_evidence,
+        # Tins (pan-aware scaling): pans is jsonb, so a real list of dicts like the two below;
+        # bake_type is text and bake_step an integer >= 0.
+        "pans": [p.model_dump() for p in recipe.pans],
+        "bake_type": recipe.bake_type,
+        "bake_step": recipe.bake_step,
         # jsonb columns — send the list itself. json.dumps()ing it here handed
         # Postgres a JSON *string* containing an array, and that is what jsonb
         # stored: on 2026-09-06 jsonb_typeof reported 'string' for all 786 rows

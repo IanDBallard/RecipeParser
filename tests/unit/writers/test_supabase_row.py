@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from recipeparser.io.writers.supabase import write_recipe_to_supabase
-from recipeparser.models import IngestResponse, StructuredIngredient, TokenizedDirection
+from recipeparser.models import IngestResponse, RecipePan, StructuredIngredient, TokenizedDirection
 
 
 def _recipe() -> IngestResponse:
@@ -21,6 +21,9 @@ def _recipe() -> IngestResponse:
         prep_min_minutes=15, prep_max_minutes=15, prep_note=None,
         servings_min=2, servings_max=4, servings_note=None,
         source_kind="book", source_key="cake book", source_title="Cake Book", source_author="A. Baker",
+        pans=[RecipePan(id="pan_01", raw="a 20 cm tin", shape="round", family="round-cake", dims_mm={"d": 200})],
+        bake_type="sponge",
+        bake_step=0,
     )
 
 
@@ -57,3 +60,11 @@ def test_line_index_serialised(posted):
 def test_row_has_the_citation_columns(posted):
     assert (posted["source_kind"], posted["source_key"], posted["source_title"], posted["source_author"]) == (
         "book", "cake book", "Cake Book", "A. Baker")
+
+
+def test_row_has_the_tins_bake_type_and_bake_step(posted):
+    assert isinstance(posted["pans"], list)  # a real list for jsonb, never a JSON string
+    assert posted["pans"][0]["id"] == "pan_01"
+    assert posted["pans"][0]["dims_mm"]["d"] == 200
+    assert posted["pans"][0]["edited"] is False
+    assert (posted["bake_type"], posted["bake_step"]) == ("sponge", 0)

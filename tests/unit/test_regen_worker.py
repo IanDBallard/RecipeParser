@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List
 from unittest.mock import MagicMock
 
-from recipeparser.models import CayenneRefinement, StructuredIngredient, TokenizedDirection
+from recipeparser.models import CayenneRefinement, RecipePan, StructuredIngredient, TokenizedDirection
 
 
 class _Result:
@@ -77,7 +77,12 @@ def _worker(fake, refine_fn=None, embed_fn=None, clock=None):
 
 
 def _ops(fake, table):
-    return [q.ops for q in fake.queries if q.table == table]
+    """The write ops on a table; the edit-guard's select is read separately by _selects."""
+    return [q.ops for q in fake.queries if q.table == table and q.ops[0][0] != "select"]
+
+
+def _selects(fake, table):
+    return [q.ops for q in fake.queries if q.table == table and q.ops[0][0] == "select"]
 
 
 def test_claims_with_batch_size():
@@ -416,3 +421,67 @@ def test_run_workers_still_sleeps_between_rounds_of_a_regen_backlog():
     asyncio.run(asyncio.wait_for(run_workers([RegenLike()], stop, poll_seconds=0.2), timeout=5))
     gaps = [b - a for a, b in zip(stamps, stamps[1:])]
     assert len(gaps) == 2 and all(g >= 0.15 for g in gaps), gaps
+
+
+class _TwoTable(FakeSupabase):
+    """The select answers one thing (a dict, as .single() does), the write-back another."""
+    def __init__(self, current, **kw):
+        super().__init__(**kw)
+        self.current = current
+    def table(self, name):
+        q = _Query(self, name)
+        fake = self
+        orig = q.execute
+        def execute():
+            if q.ops and q.ops[0][0] == "select":
+                fake.queries.append(q)
+                exc = fake.raises.get("select")
+                if exc is not None:
+                    raise exc
+                return _Result(fake.current)
+            return orig()
+        q.execute = execute  # type: ignore[method-assign]
+        return q
+
+
+def _tin_refinement():
+    r = _refinement()
+    r.tokenized_directions = [TokenizedDirection(step=1, text="Bake in {{pan_01|two tins}} and {{pan_02|a tray}}.")]
+    r.pans = [RecipePan(id="pan_01", raw="two tins", count=2), RecipePan(id="pan_02", raw="a tray")]
+    return r
+
+
+def test_regen_reads_the_rows_current_tins_and_keeps_an_edited_one():
+    cooks = [{"id": "pan_01", "raw": "two tins", "count": 2, "edited": True}]
+    fake = _TwoTable(
+        {"pans": cooks}, rpc_responses={"claim_stale_recipes": [_row()]}, responses={"recipes": [{"id": "r1"}]}
+    )
+    _worker(fake, refine_fn=MagicMock(return_value=_tin_refinement())).run_once()
+    assert _selects(fake, "recipes") == [[("select", ("pans",), {}), ("eq", ("id", "r1"), {}), ("single", (), {})]]
+    payload = _ops(fake, "recipes")[0][0][1][0]
+    assert payload["pans"] == cooks
+    assert payload["tokenized_directions"][0]["text"] == "Bake in {{pan_01|two tins}} and a tray."
+
+
+def test_a_failed_tin_read_writes_refines_tins_and_logs(caplog):
+    fake = _TwoTable(
+        {},
+        rpc_responses={"claim_stale_recipes": [_row()]},
+        responses={"recipes": [{"id": "r1"}]},
+        raises={"select": RuntimeError("boom")},
+    )
+    with caplog.at_level(logging.WARNING, logger="recipeparser.adapters.regen_worker"):
+        _worker(fake, refine_fn=MagicMock(return_value=_tin_refinement())).run_once()
+    payload = _ops(fake, "recipes")[0][0][1][0]
+    assert [p["id"] for p in payload["pans"]] == ["pan_01", "pan_02"]
+    assert "{{pan_02|a tray}}" in payload["tokenized_directions"][0]["text"]
+    assert not any(n == "regen_failed" for n, _ in fake.rpcs)
+    assert any("could not read current tins" in r.getMessage() for r in caplog.records)
+
+
+def test_a_non_list_pans_column_is_ignored():
+    fake = _TwoTable(
+        {"pans": "garbage"}, rpc_responses={"claim_stale_recipes": [_row()]}, responses={"recipes": [{"id": "r1"}]}
+    )
+    _worker(fake, refine_fn=MagicMock(return_value=_tin_refinement())).run_once()
+    assert [p["id"] for p in _ops(fake, "recipes")[0][0][1][0]["pans"]] == ["pan_01", "pan_02"]

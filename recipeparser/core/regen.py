@@ -8,9 +8,10 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from recipeparser.core.fat_tokens import strip_fat_tokens
+from recipeparser.core.pans import check_pan_tokens
 from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
 
 __all__ = ["strip_fat_tokens", "raw_lines_from_derived", "raw_body_column", "build_extraction", "build_update"]
@@ -94,16 +95,29 @@ def build_update(
     refinement: CayenneRefinement,
     embedding: List[float],
     read_rev: int,
+    current_pans: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     """
     The conditional write-back payload (spec 5.5).  Title, base_servings and
     grid_categories are deliberately absent: they are user-owned after ingest.
     amount_overrides is emptied because the new structured entries already
     reflect the rewritten lines. The detected system is derived data, so an edit refreshes it (D5).
+
+    Tins, bake type and step are derived data like the detected system, with one exception
+    (pan-aware scaling, parser contract): a tin the cook edited is theirs, so when any current tin
+    is edited the cook's tins are written back unchanged and REFINE's pan tokens for other ids unwrap.
     """
+    edited = bool(current_pans) and any(isinstance(p, dict) and p.get("edited") is True for p in current_pans or [])
+    directions = refinement.tokenized_directions
+    pans: List[Any] = [p.model_dump() for p in refinement.pans]
+    if edited:
+        pans = list(current_pans or [])
+        keep = {p["id"] for p in pans if isinstance(p, dict) and isinstance(p.get("id"), str)}
+        # The stripped text is the source: a kept token survives when its words are in the recipe's own text.
+        directions, _ = check_pan_tokens(directions, keep, strip_fat_tokens("\n".join(d.text for d in directions)))
     return {
         "structured_ingredients": [i.model_dump() for i in refinement.structured_ingredients],
-        "tokenized_directions": [d.model_dump() for d in refinement.tokenized_directions],
+        "tokenized_directions": [d.model_dump() for d in directions],
         "embedding": list(embedding),
         "derived_rev": read_rev,
         "amount_overrides": {},
@@ -112,4 +126,7 @@ def build_update(
         "claimed_at": None,
         "source_uom_system_detected": refinement.source_uom_system_detected,
         "source_uom_system_evidence": refinement.source_uom_system_evidence,
+        "pans": pans,
+        "bake_type": refinement.bake_type,
+        "bake_step": refinement.bake_step,
     }
