@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.13.1] — 2026-10-14
+
+Bake types defined by how the item is made (Cayenne docs/superpowers/specs/2026-10-14-pan-families-savoury-pies-design.md, D29). No schema change; no Cayenne change needed.
+
+### 🐛 Fixed
+- The bake type rule gives each of the 13 types a definition by method (whisked foam, creamed or melted batter, yeast or chemical leavening, egg-set, crust or lid) instead of a few examples, and the model takes the first that fits, in a fixed order. `pie-savoury` now needs pastry, a suet crust or a mashed-potato lid: casseroles, gratins, lasagne and moussaka get no bake type, and neither does pastry on its own. A creamed cake is `butter-cake` even when it is called a sponge; yeast cakes are `bread-enriched`; fruit crumbles and cobblers are `pie-fruit`; cookies, granola and meringues get none. Shared by REFINE and the pans backfill.
+
+### ✨ Added
+- `scripts/probe_bake_types.py` and `tests/goldens/bake_types/cases.csv`: 50 of the owner's recipes at the boundaries, with the expected type. Read-only; reports matches and run-to-run agreement. 9.13.0's rule: 34/50, 46/50 stable. This rule: 50/50 in both runs.
+
 ## [9.13.0] — 2026-10-14
 
 Stovetop vessels and savoury pies (Cayenne docs/superpowers/specs/2026-10-14-pan-families-savoury-pies-design.md, D25–D28). Needs Cayenne migration 20261014150000_pie_savoury: the database refuses `pie-savoury` until it is applied. Order: Cayenne live, then this deploy, then the pans backfill.

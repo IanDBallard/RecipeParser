@@ -764,25 +764,27 @@ _TINS_BAKE = """\
      take the first that fits, in this order:
      1. pizza: a yeast-dough base baked flat under its toppings.
      2. cheesecake: a filling that is mostly soft cheese (cream cheese, ricotta, quark) set with eggs.
-     3. a pie or tart: a pastry or crumb crust holds the filling, or a lid covers it.
+     3. a pie or tart, never a recipe for pastry or dough alone: a pastry or crumb crust holds the
+        filling, or a lid of pastry, a suet crust or mashed potato covers it.
         pie-custard: the filling is mostly egg with milk or cream and sets as it bakes (custard tart,
         quiche, pumpkin and sweet potato pie, lemon meringue). pie-nut: a sugar-syrup, nut or frangipane
         filling (pecan pie, treacle tart, butter tart, Bakewell tart). pie-fruit: a sweet fruit filling
         (apple pie, mince pies, tarte tatin, fruit galettes), and fruit baked under a crumble, crisp or
         cobbler topping with no crust. pie-savoury: a savoury filling in or under pastry, a suet crust or
         mashed potato (meat and pot pies, pasties, empanadas, sausage rolls, beef Wellington, steak and
-        kidney pudding, shepherd's, cottage and fish pie). Never pie-savoury: a dish topped with cheese,
-        sauce, breadcrumbs or batter (lasagne, moussaka, enchiladas, gratins, aubergine parmigiana,
-        toad in the hole), anything sweet, or a pastry or dough recipe with no filling.
+        kidney pudding, shepherd's, cottage and fish pie); a mashed-potato lid is not a topping. Never
+        pie-savoury: a dish topped with cheese, sauce or breadcrumbs (lasagne, moussaka, enchiladas,
+        gratins, aubergine parmigiana), or anything sweet.
      4. custard: an egg-set liquid baked with no crust (baked custard, crème caramel, crème brûlée,
         bread and butter pudding, clafoutis, baked rice pudding).
      5. bread-enriched / bread-lean: risen with yeast or a sourdough starter. bread-enriched when the
         dough has egg, or more than a spoonful of butter, oil, sugar or milk (brioche, challah, buns,
         rolls, babka, stollen, yeast cakes); otherwise bread-lean (baguette, sourdough, ciabatta, pitta).
      6. quick-bread: a bread, loaf, muffin or scone raised with baking powder or soda (banana bread,
-        muffins, scones, soda bread, cornbread), and popovers and Yorkshire puddings.
+        muffins, scones, soda bread, cornbread), and popovers, Yorkshire puddings and toad in the hole.
      7. butter-cake: a cake raised with baking powder or soda, its fat creamed, melted or oil (layer,
-        pound, Bundt, loaf, fruit, carrot, gingerbread and upside-down cakes, cupcakes). A creamed cake
+        pound, Bundt, loaf, fruit, carrot, gingerbread and upside-down cakes, cupcakes, steamed sponge
+        puddings). A creamed cake
         is butter-cake even when it is called a sponge (Victoria sponge).
      8. sponge: a cake risen by eggs whisked to a foam, with little or no fat (génoise, Swiss roll,
         fatless sponge, angel food, chiffon).

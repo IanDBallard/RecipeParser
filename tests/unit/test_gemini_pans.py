@@ -76,7 +76,7 @@ def _bake_rule():
 def test_bake_types_are_decided_by_method_in_a_fixed_order():
     p = _bake_rule()
     assert "Decide by how the item is made, not by its name" in p
-    order = ["1. pizza:", "2. cheesecake:", "3. a pie or tart:", "4. custard:", "5. bread-enriched / bread-lean:",
+    order = ["1. pizza:", "2. cheesecake:", "3. a pie or tart,", "4. custard:", "5. bread-enriched / bread-lean:",
              "6. quick-bread:", "7. butter-cake:", "8. sponge:", "9. bar:"]
     positions = [p.index(label) for label in order]
     assert positions == sorted(positions)
@@ -93,8 +93,7 @@ def test_pie_savoury_needs_a_pastry_suet_or_mashed_potato_lid_and_excludes_bakes
     p = _bake_rule()
     assert "or a topping" not in p
     assert "pastry, a suet crust or mashed potato" in p
-    for excluded in ("lasagne", "moussaka", "enchiladas", "gratins", "toad in the hole", "anything sweet",
-                     "a pastry or dough recipe with no filling"):
+    for excluded in ("lasagne", "moussaka", "enchiladas", "gratins", "anything sweet"):
         assert excluded in p
 
 
@@ -108,3 +107,16 @@ def test_null_names_the_common_non_bakes():
     p = _bake_rule()
     for item in ("roast meat", "casseroles", "cookies baked as separate pieces", "meringues", "on the hob"):
         assert item in p
+
+
+def test_a_mashed_potato_lid_still_makes_a_pie():
+    p = _bake_rule()
+    assert "a lid of pastry, a suet crust or mashed potato covers it" in p
+    assert "a mashed-potato lid is not a topping" in p
+
+
+def test_pastry_alone_is_never_a_pie_and_batter_puddings_are_quick_bread():
+    p = _bake_rule()
+    assert "3. a pie or tart, never a recipe for pastry or dough alone:" in p
+    assert "Yorkshire puddings and toad in the hole" in p
+    assert "steamed sponge puddings" in p
