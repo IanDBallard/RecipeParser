@@ -760,13 +760,36 @@ _TINS_SIZES = """\
      {hints}.
    - A tin with no size and none of those names ("a cake tin", "a baking dish") is not listed."""
 _TINS_BAKE = """\
-   - "bake_type": one of {bake_types}, or null when nothing is baked. sponge = whisked or creamed
-     sponge cakes; butter-cake = layer, pound, Bundt, loaf cakes, cupcakes; quick-bread = banana bread,
-     muffins, scones, cornbread; bar = brownies, blondies, slices; bread-lean / bread-enriched = yeast
-     breads without / with butter, eggs or sugar (brioche, challah, rolls); cheesecake; custard =
-     baked custards, bread pudding, flan; pizza; pie-fruit, pie-custard (custard, cream, pumpkin
-     pies), pie-nut (pecan), pie-savoury = savoury fillings under or in pastry or a topping (pot pies,
-     savoury galettes, shepherd's, cottage and fish pie); a quiche is pie-custard."""
+   - "bake_type": one of {bake_types}, or null. Decide by how the item is made, not by its name, and
+     take the first that fits, in this order:
+     1. pizza: a yeast-dough base baked flat under its toppings.
+     2. cheesecake: a filling that is mostly soft cheese (cream cheese, ricotta, quark) set with eggs.
+     3. a pie or tart: a pastry or crumb crust holds the filling, or a lid covers it.
+        pie-custard: the filling is mostly egg with milk or cream and sets as it bakes (custard tart,
+        quiche, pumpkin and sweet potato pie, lemon meringue). pie-nut: a sugar-syrup, nut or frangipane
+        filling (pecan pie, treacle tart, butter tart, Bakewell tart). pie-fruit: a sweet fruit filling
+        (apple pie, mince pies, tarte tatin, fruit galettes), and fruit baked under a crumble, crisp or
+        cobbler topping with no crust. pie-savoury: a savoury filling in or under pastry, a suet crust or
+        mashed potato (meat and pot pies, pasties, empanadas, sausage rolls, beef Wellington, steak and
+        kidney pudding, shepherd's, cottage and fish pie). Never pie-savoury: a dish topped with cheese,
+        sauce, breadcrumbs or batter (lasagne, moussaka, enchiladas, gratins, aubergine parmigiana,
+        toad in the hole), anything sweet, or a pastry or dough recipe with no filling.
+     4. custard: an egg-set liquid baked with no crust (baked custard, crème caramel, crème brûlée,
+        bread and butter pudding, clafoutis, baked rice pudding).
+     5. bread-enriched / bread-lean: risen with yeast or a sourdough starter. bread-enriched when the
+        dough has egg, or more than a spoonful of butter, oil, sugar or milk (brioche, challah, buns,
+        rolls, babka, stollen, yeast cakes); otherwise bread-lean (baguette, sourdough, ciabatta, pitta).
+     6. quick-bread: a bread, loaf, muffin or scone raised with baking powder or soda (banana bread,
+        muffins, scones, soda bread, cornbread), and popovers and Yorkshire puddings.
+     7. butter-cake: a cake raised with baking powder or soda, its fat creamed, melted or oil (layer,
+        pound, Bundt, loaf, fruit, carrot, gingerbread and upside-down cakes, cupcakes). A creamed cake
+        is butter-cake even when it is called a sponge (Victoria sponge).
+     8. sponge: a cake risen by eggs whisked to a foam, with little or no fat (génoise, Swiss roll,
+        fatless sponge, angel food, chiffon).
+     9. bar: a batter or dough baked in one pan and cut into pieces (brownies, blondies, flapjacks,
+        shortbread slices).
+     null: anything else, including roast meat, casseroles, cookies baked as separate pieces,
+     meringues and pavlova, granola, crackers, and anything cooked on the hob."""
 _TINS_VOCAB = _TINS_SIZES + "\n" + _TINS_BAKE
 _TINS_TOKEN = """\
    - In the directions, wrap the words naming each listed tin in a tin token {{{{pan_01|words}}}},

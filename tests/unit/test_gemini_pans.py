@@ -26,7 +26,7 @@ def test_the_prompt_numbers_steps_lists_ingredients_and_shares_the_vocabulary():
     assert "1-based" in prompt and "may already sit inside" not in prompt
     assert "wrap the words naming each listed tin" not in prompt
     assert "stovetop" in prompt and "Dutch oven" in prompt and "is not stovetop" in prompt
-    assert "pie-savoury" in prompt and "a quiche is pie-custard" in prompt
+    assert "pie-savoury" in prompt and "quiche" in prompt
 
 
 def test_tag_pans_returns_a_pan_answer_at_temperature_zero():
@@ -63,3 +63,48 @@ def test_an_empty_reply_raises():
     with patch("recipeparser.gemini._call_with_retry", return_value=MagicMock(text="")):
         with pytest.raises(RuntimeError):
             tag_pans(["Bake."], [], None, MagicMock())
+
+
+# --- Bake type definitions (Cayenne D29): decided by how the item is made, first fit in a fixed order ---
+
+
+def _bake_rule():
+    # The rule wraps at about 100 columns; compare words, not line breaks.
+    return " ".join(build_pans_prompt(["Bake."], ["flour"], None).split())
+
+
+def test_bake_types_are_decided_by_method_in_a_fixed_order():
+    p = _bake_rule()
+    assert "Decide by how the item is made, not by its name" in p
+    order = ["1. pizza:", "2. cheesecake:", "3. a pie or tart:", "4. custard:", "5. bread-enriched / bread-lean:",
+             "6. quick-bread:", "7. butter-cake:", "8. sponge:", "9. bar:"]
+    positions = [p.index(label) for label in order]
+    assert positions == sorted(positions)
+
+
+def test_a_creamed_cake_is_butter_cake_and_sponge_means_a_foam():
+    p = _bake_rule()
+    assert "whisked or creamed" not in p
+    assert "A creamed cake is butter-cake even when it is called a sponge" in p
+    assert "eggs whisked to a foam" in p
+
+
+def test_pie_savoury_needs_a_pastry_suet_or_mashed_potato_lid_and_excludes_bakes():
+    p = _bake_rule()
+    assert "or a topping" not in p
+    assert "pastry, a suet crust or mashed potato" in p
+    for excluded in ("lasagne", "moussaka", "enchiladas", "gratins", "toad in the hole", "anything sweet",
+                     "a pastry or dough recipe with no filling"):
+        assert excluded in p
+
+
+def test_yeast_cakes_are_enriched_bread_and_fruit_crumbles_are_pie_fruit():
+    p = _bake_rule()
+    assert "yeast cakes" in p
+    assert "crumble, crisp or cobbler topping" in p
+
+
+def test_null_names_the_common_non_bakes():
+    p = _bake_rule()
+    for item in ("roast meat", "casseroles", "cookies baked as separate pieces", "meringues", "on the hob"):
+        assert item in p
