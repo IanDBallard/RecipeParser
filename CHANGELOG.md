@@ -13,7 +13,7 @@ Bake types defined by how the item is made (Cayenne docs/superpowers/specs/2026-
 - The bake type rule gives each of the 13 types a definition by method (whisked foam, creamed or melted batter, yeast or chemical leavening, egg-set, crust or lid) instead of a few examples, and the model takes the first that fits, in a fixed order. `pie-savoury` now needs pastry, a suet crust or a mashed-potato lid: casseroles, gratins, lasagne and moussaka get no bake type, and neither does pastry on its own. A creamed cake is `butter-cake` even when it is called a sponge; yeast cakes are `bread-enriched`; fruit crumbles and cobblers are `pie-fruit`; cookies, granola and meringues get none. Shared by REFINE and the pans backfill.
 
 ### ✨ Added
-- `scripts/probe_bake_types.py` and `tests/goldens/bake_types/cases.csv`: 50 of the owner's recipes at the boundaries, with the expected type. Read-only; reports matches and run-to-run agreement. 9.13.0's rule: 34/50, 46/50 stable. This rule: 50/50 in both runs.
+- `scripts/probe_bake_types.py` and `tests/goldens/bake_types/cases.csv`: 56 of the owner's recipes at the boundaries, with the expected type. Read-only; reports matches and run-to-run agreement. On the first 50 cases, 9.13.0's rule matched 34 (46 stable over two runs). This rule matches 55 of all 56 in both runs, stable 56/56; the miss is Black Bun (a sweet filling in a hot-water crust, read as savoury). Over the whole library, two dry runs disagreed on 20 of 1,686 recipes.
 
 ## [9.13.0] — 2026-10-14
 

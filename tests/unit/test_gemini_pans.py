@@ -120,3 +120,10 @@ def test_pastry_alone_is_never_a_pie_and_batter_puddings_are_quick_bread():
     assert "3. a pie or tart, never a recipe for pastry or dough alone:" in p
     assert "Yorkshire puddings and toad in the hole" in p
     assert "steamed sponge puddings" in p
+
+
+def test_sweet_suet_puddings_and_fruit_pastries_are_pie_fruit_and_savoury_galettes_are_pie_savoury():
+    p = _bake_rule()
+    assert "sweet suet puddings and fruit-filled pastries (Sussex pond pudding, Eccles cakes, black bun)" in p
+    assert "sweet fruit galettes" in p
+    assert "savoury tarts and galettes" in p
