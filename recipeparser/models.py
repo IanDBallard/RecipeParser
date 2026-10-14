@@ -248,7 +248,7 @@ class RecipePan(BaseModel):
         default=None, description="round, square, rect, loaf, ring, flat-round, sheet; null if unknown."
     )
     family: Optional[str] = Field(
-        default=None, description="round-cake, square, traybake, sheet, loaf, ring, tart, pizza; null if unknown."
+        default=None, description="round-cake, square, traybake, sheet, loaf, ring, tart, pizza, stovetop; null if unknown."
     )
     dims_mm: PanDims = Field(
         default_factory=PanDims,
@@ -269,7 +269,7 @@ class RecipePan(BaseModel):
 
 
 _BAKE_TYPE_DESC = (
-    "What the recipe bakes, one word from the prompt's list of 12 bake types; null when nothing bakes."
+    "What the recipe bakes, one word from the prompt's list of 13 bake types; null when nothing bakes."
 )
 _BAKE_STEP_DESC = (
     "0-based index into tokenized_directions of the step that bakes; null when nothing bakes."

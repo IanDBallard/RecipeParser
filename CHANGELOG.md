@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.13.0] — 2026-10-14
+
+Stovetop vessels and savoury pies (Cayenne docs/superpowers/specs/2026-10-14-pan-families-savoury-pies-design.md, D25–D28). Needs Cayenne migration 20261014150000_pie_savoury: the database refuses `pie-savoury` until it is applied. Order: Cayenne live, then this deploy, then the pans backfill.
+
+### ✨ Added
+- Tin family `stovetop`: frying pans, skillets, sauté pans, woks, paella, omelette and pancake pans, griddles, saucepans, pots and lidded casserole pots, wherever the recipe uses them. A baking dish, even one called a casserole dish, is not stovetop. Cayenne recognises these vessels and never fits them.
+- Bake type `pie-savoury` (13 values): savoury fillings under pastry or a topping, including shepherd's, cottage and fish pie. A quiche stays `pie-custard`.
+
 ## [9.12.1] — 2026-10-14
 
 ### 🐛 Fixed

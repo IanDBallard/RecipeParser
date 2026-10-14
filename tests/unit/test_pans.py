@@ -269,3 +269,13 @@ def test_core_check_decides_by_trimmed_parts_not_the_substring():
     out, warnings = check_core_flags(steps("oil at {{temp:180C, core|180°C}}", "in {{temp:180C,oven, core|180°C}}"))
     assert [d.text for d in out] == ["oil at {{temp:180C|180°C}}", "in {{temp:180C,oven|180°C}}"]
     assert len(warnings) == 2
+
+
+def test_normalise_keeps_a_stovetop_family():
+    kept, _ = normalise_pans([pan(raw="12-inch frying pan", family="stovetop", count=1, dims_mm={"d": 305})])
+    assert kept[0].family == "stovetop"
+
+
+def test_check_bake_keeps_pie_savoury():
+    d = steps("Fill the dish.", "Bake 30 min.")
+    assert check_bake("pie-savoury", 1, d, set()) == ("pie-savoury", 1)

@@ -356,7 +356,10 @@
      - "pans": every baking tin, pan, tray or dish the recipe names with a size, in order of first
        mention, ids pan_01, pan_02, ... One entry per size: "two 20cm sandwich tins" is ONE entry with
        "count": 2. "raw" is the recipe's words, copied exactly.
-     - "shape": one of round, square, rect, loaf, ring, flat-round, sheet. "family": one of round-cake, square, traybake, sheet, loaf, ring, tart, pizza.
+     - "shape": one of round, square, rect, loaf, ring, flat-round, sheet. "family": one of round-cake, square, traybake, sheet, loaf, ring, tart, pizza, stovetop.
+     - "family" stovetop: a frying pan, skillet, sauté pan, wok, paella pan, omelette or pancake pan,
+       griddle, saucepan, pot or lidded casserole pot such as a Dutch oven, whether the recipe uses it
+       on the hob or in the oven; a baking dish, even one called a casserole dish, is not stovetop.
      - "dims_mm": inside size in MILLIMETRES (inches x 25.4): "d" for a round, "l" and "w" for a
        rectangle, square or loaf; "depth" only when the recipe states it. Never guess a size.
      - "capacity_ml" only when the recipe names the tin by volume ("a 1.5 litre tin", "a 10-cup Bundt").
@@ -366,12 +369,13 @@
      - In the directions, wrap the words naming each listed tin in a tin token {{pan_01|words}},
        copying the words exactly: "Grease two 20cm sandwich tins" -> "Grease {{pan_01|two 20cm sandwich tins}}".
        Wrap the first mention in each step only.
-     - "bake_type": one of sponge, butter-cake, quick-bread, bar, bread-lean, bread-enriched, cheesecake, custard, pizza, pie-fruit, pie-custard, pie-nut, or null when nothing is baked. sponge = whisked or creamed
+     - "bake_type": one of sponge, butter-cake, quick-bread, bar, bread-lean, bread-enriched, cheesecake, custard, pizza, pie-fruit, pie-custard, pie-nut, pie-savoury, or null when nothing is baked. sponge = whisked or creamed
        sponge cakes; butter-cake = layer, pound, Bundt, loaf cakes, cupcakes; quick-bread = banana bread,
        muffins, scones, cornbread; bar = brownies, blondies, slices; bread-lean / bread-enriched = yeast
        breads without / with butter, eggs or sugar (brioche, challah, rolls); cheesecake; custard =
        baked custards, bread pudding, flan; pizza; pie-fruit, pie-custard (custard, cream, pumpkin
-       pies), pie-nut (pecan).
+       pies), pie-nut (pecan), pie-savoury = savoury fillings under or in pastry or a topping (pot pies,
+       savoury galettes, shepherd's, cottage and fish pie); a quiche is pie-custard.
      - "bake_step": the 0-based position in tokenized_directions (the first step is 0, not 1) of the
        step that bakes the main item, or null.
   
@@ -506,7 +510,10 @@
      - "pans": every baking tin, pan, tray or dish the recipe names with a size, in order of first
        mention, ids pan_01, pan_02, ... One entry per size: "two 20cm sandwich tins" is ONE entry with
        "count": 2. "raw" is the recipe's words, copied exactly.
-     - "shape": one of round, square, rect, loaf, ring, flat-round, sheet. "family": one of round-cake, square, traybake, sheet, loaf, ring, tart, pizza.
+     - "shape": one of round, square, rect, loaf, ring, flat-round, sheet. "family": one of round-cake, square, traybake, sheet, loaf, ring, tart, pizza, stovetop.
+     - "family" stovetop: a frying pan, skillet, sauté pan, wok, paella pan, omelette or pancake pan,
+       griddle, saucepan, pot or lidded casserole pot such as a Dutch oven, whether the recipe uses it
+       on the hob or in the oven; a baking dish, even one called a casserole dish, is not stovetop.
      - "dims_mm": inside size in MILLIMETRES (inches x 25.4): "d" for a round, "l" and "w" for a
        rectangle, square or loaf; "depth" only when the recipe states it. Never guess a size.
      - "capacity_ml" only when the recipe names the tin by volume ("a 1.5 litre tin", "a 10-cup Bundt").
@@ -516,12 +523,13 @@
      - In the directions, wrap the words naming each listed tin in a tin token {{pan_01|words}},
        copying the words exactly: "Grease two 20cm sandwich tins" -> "Grease {{pan_01|two 20cm sandwich tins}}".
        Wrap the first mention in each step only.
-     - "bake_type": one of sponge, butter-cake, quick-bread, bar, bread-lean, bread-enriched, cheesecake, custard, pizza, pie-fruit, pie-custard, pie-nut, or null when nothing is baked. sponge = whisked or creamed
+     - "bake_type": one of sponge, butter-cake, quick-bread, bar, bread-lean, bread-enriched, cheesecake, custard, pizza, pie-fruit, pie-custard, pie-nut, pie-savoury, or null when nothing is baked. sponge = whisked or creamed
        sponge cakes; butter-cake = layer, pound, Bundt, loaf cakes, cupcakes; quick-bread = banana bread,
        muffins, scones, cornbread; bar = brownies, blondies, slices; bread-lean / bread-enriched = yeast
        breads without / with butter, eggs or sugar (brioche, challah, rolls); cheesecake; custard =
        baked custards, bread pudding, flan; pizza; pie-fruit, pie-custard (custard, cream, pumpkin
-       pies), pie-nut (pecan).
+       pies), pie-nut (pecan), pie-savoury = savoury fillings under or in pastry or a topping (pot pies,
+       savoury galettes, shepherd's, cottage and fish pie); a quiche is pie-custard.
      - "bake_step": the 0-based position in tokenized_directions (the first step is 0, not 1) of the
        step that bakes the main item, or null.
   
@@ -719,7 +727,7 @@
               }),
             ]),
             'default': None,
-            'description': 'round-cake, square, traybake, sheet, loaf, ring, tart, pizza; null if unknown.',
+            'description': 'round-cake, square, traybake, sheet, loaf, ring, tart, pizza, stovetop; null if unknown.',
             'title': 'Family',
           }),
           'id': dict({
@@ -923,7 +931,7 @@
           }),
         ]),
         'default': None,
-        'description': "What the recipe bakes, one word from the prompt's list of 12 bake types; null when nothing bakes.",
+        'description': "What the recipe bakes, one word from the prompt's list of 13 bake types; null when nothing bakes.",
         'title': 'Bake Type',
       }),
       'base_servings': dict({

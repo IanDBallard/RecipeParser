@@ -750,6 +750,9 @@ _TINS_SIZES = """\
      mention, ids pan_01, pan_02, ... One entry per size: "two 20cm sandwich tins" is ONE entry with
      "count": 2. "raw" is the recipe's words, copied exactly.
    - "shape": one of {shapes}. "family": one of {families}.
+   - "family" stovetop: a frying pan, skillet, sauté pan, wok, paella pan, omelette or pancake pan,
+     griddle, saucepan, pot or lidded casserole pot such as a Dutch oven, whether the recipe uses it
+     on the hob or in the oven; a baking dish, even one called a casserole dish, is not stovetop.
    - "dims_mm": inside size in MILLIMETRES (inches x 25.4): "d" for a round, "l" and "w" for a
      rectangle, square or loaf; "depth" only when the recipe states it. Never guess a size.
    - "capacity_ml" only when the recipe names the tin by volume ("a 1.5 litre tin", "a 10-cup Bundt").
@@ -762,7 +765,8 @@ _TINS_BAKE = """\
      muffins, scones, cornbread; bar = brownies, blondies, slices; bread-lean / bread-enriched = yeast
      breads without / with butter, eggs or sugar (brioche, challah, rolls); cheesecake; custard =
      baked custards, bread pudding, flan; pizza; pie-fruit, pie-custard (custard, cream, pumpkin
-     pies), pie-nut (pecan)."""
+     pies), pie-nut (pecan), pie-savoury = savoury fillings under or in pastry or a topping (pot pies,
+     savoury galettes, shepherd's, cottage and fish pie); a quiche is pie-custard."""
 _TINS_VOCAB = _TINS_SIZES + "\n" + _TINS_BAKE
 _TINS_TOKEN = """\
    - In the directions, wrap the words naming each listed tin in a tin token {{{{pan_01|words}}}},

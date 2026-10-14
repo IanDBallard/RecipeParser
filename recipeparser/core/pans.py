@@ -38,9 +38,10 @@ BAKE_TYPES = (
     "pie-fruit",
     "pie-custard",
     "pie-nut",
+    "pie-savoury",
 )
 PAN_SHAPES = ("round", "square", "rect", "loaf", "ring", "flat-round", "sheet")
-PAN_FAMILIES = ("round-cake", "square", "traybake", "sheet", "loaf", "ring", "tart", "pizza")
+PAN_FAMILIES = ("round-cake", "square", "traybake", "sheet", "loaf", "ring", "tart", "pizza", "stovetop")
 # R2: tins a source names without dimensions; Cayenne domain/pans.ts keys.
 HINT_KEYS = (
     "uk-loaf-1lb",

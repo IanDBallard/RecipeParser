@@ -25,6 +25,8 @@ def test_the_prompt_numbers_steps_lists_ingredients_and_shares_the_vocabulary():
     assert "in a tin token" not in prompt
     assert "1-based" in prompt and "may already sit inside" not in prompt
     assert "wrap the words naming each listed tin" not in prompt
+    assert "stovetop" in prompt and "Dutch oven" in prompt and "is not stovetop" in prompt
+    assert "pie-savoury" in prompt and "a quiche is pie-custard" in prompt
 
 
 def test_tag_pans_returns_a_pan_answer_at_temperature_zero():
