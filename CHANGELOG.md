@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.12.0] — 2026-10-14
+
+A recipe's tins, bake type and baking step, and the internal temperature it states, for Cayenne's pan-aware scaling (Cayenne docs/superpowers/specs/2026-10-13-pan-aware-scaling-design.md: parser contract, D9, D10, D21, D22, D24). Needs Cayenne migration 20261014090000_pan_aware_scaling (merged with Cayenne #287). Order: Cayenne #287 live, then this deploy, then the backfill.
+
+### ✨ Added
+- REFINE writes `pans` (each tin: id pan_NN, raw words, count, shape, family, dims_mm, capacity_ml, catalog_hint), `bake_type` (12 values) and `bake_step` (0-based) on a new ingest and on regen, and wraps the tin's words in the directions in `{{pan_NN|words}}`.
+- A `temp:` value may end `,core`: the food's internal temperature, the source's own doneness figure (`{{temp:93C,core|93°C}}`). Kept only on a °C/°F reading between 30 and 110 °C; a `,core` the model puts on an oven, fan or Gas Mark reading is removed and the token kept.
+- `recipeparser/core/pans.py`: the checks; a model slip costs the field, never the recipe. An unknown bake type drops its step too.
+- `scripts/backfill_pans.py`: gives existing recipes the same fields, pans-only. Run order: dry run with `--review pans-review.csv`, read the CSV (one line per tagged step with its new text, and one line per skipped recipe with its status), then `--live --record pans-before.csv`. `--restore pans-before.csv` puts the four columns back.
+
+### ⚠️ Operational
+- Regen reads the row's current `pans` first: when the cook has edited a tin (`edited: true`), their tins are written back unchanged, and a REFINE tin token is kept only if its id and words still name the cook's tin. Not guarded: a tin edit not yet synced when regen reads it can be overwritten.
+- Known limitation: removing a tin in Cayenne does not mark the remaining tins edited, so the next regen restores REFINE's tins. Needs a Cayenne-side follow-up.
+- The backfill never touches a recipe with a cook-edited tin, even with `--force`; `--force` unwraps the old tin tokens before placing new ones.
+- `scripts/backfill_direction_amounts.py` treats a recipe with a `pan_` token as already tagged, like one with a `temp:` token.
+
+### 🧪 Tests
+- Unit tests for the grammar, the checks, REFINE, regen, the Gemini call and the backfill; the REFINE prompt and schema snapshots are updated.
+
 ## [9.11.0] — 2026-10-13
 
 Oven temperatures are marked, so Cayenne can show them in the cook's unit (Cayenne oven temperatures design, D1-D15). Needs no migration. Order: the Cayenne client first, then this deploy, then the backfill.
