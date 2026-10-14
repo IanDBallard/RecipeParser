@@ -2,6 +2,8 @@
   "entries": {
     "Boiled Custard.paprikarecipe": {
       "_cayenne_meta": {
+        "bake_step": null,
+        "bake_type": null,
         "base_servings": 6,
         "categories": [
           "British",
@@ -41,6 +43,7 @@
         ],
         "notes": null,
         "nutritional_info": null,
+        "pans": [],
         "prep_max_minutes": 10,
         "prep_min_minutes": 10,
         "prep_note": null,

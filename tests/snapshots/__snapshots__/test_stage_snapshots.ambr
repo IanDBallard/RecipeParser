@@ -1,6 +1,8 @@
 # serializer version: 1
 # name: test_assemble_output_shape
   dict({
+    'bake_step': None,
+    'bake_type': None,
     'base_servings': 4,
     'categories': list([
       'Italian',
@@ -30,6 +32,8 @@
     ]),
     'notes': None,
     'nutritional_info': None,
+    'pans': list([
+    ]),
     'prep_max_minutes': None,
     'prep_min_minutes': None,
     'prep_note': None,
@@ -115,6 +119,8 @@
 # ---
 # name: test_refine_output_shape
   dict({
+    'bake_step': None,
+    'bake_type': None,
     'base_servings': 4,
     'grid_categories': dict({
       'Cuisine': list([
@@ -124,6 +130,8 @@
         'Dessert',
       ]),
     }),
+    'pans': list([
+    ]),
     'source_uom_system_detected': None,
     'source_uom_system_evidence': None,
     'structured_ingredients': list([

@@ -26,9 +26,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': 'AU',
           'source_uom_system_evidence': '1 tbsp (20 ml)',
           'structured_ingredients': list([
@@ -132,9 +136,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': 8,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -252,9 +260,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': 12,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -381,9 +393,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -675,9 +691,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -1038,9 +1058,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -1228,9 +1252,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -1315,9 +1343,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -1440,9 +1472,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -2053,9 +2089,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': 'Imperial',
           'source_uom_system_evidence': '1 stone potatoes',
           'structured_ingredients': list([
@@ -2237,9 +2277,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': 6,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -2365,9 +2409,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': 10,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -2545,9 +2593,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': 12,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -2687,9 +2739,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -2979,9 +3035,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -3289,9 +3349,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -3406,9 +3470,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -3478,9 +3546,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([
@@ -3580,9 +3652,13 @@
           'total_time': None,
         }),
         'refined': dict({
+          'bake_step': None,
+          'bake_type': None,
           'base_servings': None,
           'grid_categories': dict({
           }),
+          'pans': list([
+          ]),
           'source_uom_system_detected': None,
           'source_uom_system_evidence': None,
           'structured_ingredients': list([

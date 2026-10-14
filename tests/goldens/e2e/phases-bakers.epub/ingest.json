@@ -1,6 +1,8 @@
 {
   "recipes": [
     {
+      "bake_step": null,
+      "bake_type": null,
       "base_servings": 10,
       "categories": [
         "Bread"
@@ -42,6 +44,7 @@
       ],
       "notes": null,
       "nutritional_info": null,
+      "pans": [],
       "prep_max_minutes": 840,
       "prep_min_minutes": 840,
       "prep_note": null,
@@ -206,6 +209,8 @@
       ]
     },
     {
+      "bake_step": null,
+      "bake_type": null,
       "base_servings": 12,
       "categories": [
         "Bread"
@@ -240,6 +245,7 @@
       ],
       "notes": null,
       "nutritional_info": null,
+      "pans": [],
       "prep_max_minutes": 180,
       "prep_min_minutes": 180,
       "prep_note": null,

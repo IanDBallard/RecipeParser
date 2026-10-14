@@ -70,6 +70,25 @@ def _schema_for_gemini(schema_class: Type[BaseModel]) -> dict:
     return _strip_additional_properties(raw)
 
 
+def schema_without_edited(schema: dict) -> dict:
+    """Return *schema* without any ``edited`` property: RecipePan.edited is set by a person
+    editing a tin, never by the model, so it stays out of every schema the model is held to."""
+    def strip(obj):
+        if isinstance(obj, dict):
+            return {
+                k: (
+                    {n: strip(v) for n, v in val.items() if n != "edited"}
+                    if k == "properties" and isinstance(val, dict)
+                    else strip(val)
+                )
+                for k, val in obj.items()
+            }
+        if isinstance(obj, list):
+            return [strip(i) for i in obj]
+        return obj
+    return strip(schema)
+
+
 def _is_rate_limit_error(exc: Exception) -> bool:
     """Return True if the exception looks like a 429 / quota error."""
     msg = str(exc).lower()
@@ -845,7 +864,7 @@ def refine_json_schema() -> dict:
     """
     json_schema = _schema_for_gemini(CayenneRefinement)
     json_schema["properties"].pop("grid_categories", None)
-    return json_schema
+    return schema_without_edited(json_schema)
 
 
 def refine_recipe_for_cayenne(

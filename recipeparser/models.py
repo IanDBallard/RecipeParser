@@ -224,6 +224,83 @@ class TemperatureMentions(BaseModel):
     mentions: List[TemperatureMention] = Field(default_factory=list)
 
 
+class PanDims(BaseModel):
+    """A tin's inside size in millimetres."""
+    d: Optional[float] = Field(default=None, description="Diameter, for a round tin.")
+    w: Optional[float] = Field(default=None, description="Width, for a rectangle or loaf.")
+    l: Optional[float] = Field(default=None, description="Length, for a rectangle or loaf.")  # noqa: E741
+    depth: Optional[float] = Field(default=None, description="Depth, only if the recipe states it.")
+
+
+# Shapes, families and bake types are plain strings, not Literals: a word outside the list must
+# not fail validation and cost the recipe (the source_uom_system_detected precedent). core/pans.py
+# enforces the vocabulary.
+class RecipePan(BaseModel):
+    """One kind of tin a recipe bakes in."""
+    id: str = Field(description="pan_01, pan_02, \u2026 in order of first mention.")
+    raw: str = Field(description="The recipe's words naming the tin(s), copied exactly.")
+    # No lower bound: validation must never fail on a count.
+    count: int = Field(
+        default=1,
+        description="How many of this tin the recipe uses (two 20 cm tins \u2192 2).",
+    )
+    shape: Optional[str] = Field(
+        default=None, description="round, square, rectangle, loaf, bundt, tube, ring, other; null if unknown."
+    )
+    family: Optional[str] = Field(
+        default=None, description="The kind of tin, e.g. round-cake, loaf, bundt; null if unknown."
+    )
+    dims_mm: PanDims = Field(
+        default_factory=PanDims,
+        description=(
+            "Inside size in millimetres (inches \u00d7 25.4): d for a round, l and w for a rectangle "
+            "or loaf, depth only if the recipe states it."
+        ),
+    )
+    capacity_ml: Optional[float] = Field(
+        default=None,
+        description="Only when the recipe names the tin by volume ('a 1.5 litre tin', 'a 10-cup Bundt').",
+    )
+    catalog_hint: Optional[str] = Field(
+        default=None, description="Only for the named tins listed in the prompt; otherwise null."
+    )
+    # Set by a person editing the tin; the model is never asked for it (stripped from its schema).
+    edited: bool = False
+
+
+_BAKE_TYPE_DESC = (
+    "What the recipe bakes, one word from the prompt's list of 12 bake types; null when nothing bakes."
+)
+_BAKE_STEP_DESC = (
+    "0-based index into tokenized_directions of the step that bakes; null when nothing bakes."
+)
+
+
+class PanMention(BaseModel):
+    """A tin named in a direction step."""
+    step: int = Field(description="1-based number of the step the tin is named in.")
+    quote: str = Field(description="The words naming the tin, copied exactly from that step.")
+    context: str = Field(
+        default="", description="The quote with about five words around it, copied exactly from the step."
+    )
+    pan_id: str = Field(description="The id of the pan in pans this refers to.")
+
+
+class CoreMention(BaseModel):
+    """An internal temperature named in a direction step."""
+    step: int = Field(description="1-based number of the step the temperature is in.")
+    quote: str = Field(description="The words of the internal temperature, copied exactly.")
+
+
+class PanAnswer(BaseModel):
+    """The pan pass's whole answer for one recipe."""
+    pans: List[RecipePan] = Field(default_factory=list)
+    bake_type: Optional[str] = Field(default=None, description=_BAKE_TYPE_DESC)
+    bake_step: Optional[int] = Field(default=None, description=_BAKE_STEP_DESC)
+    mentions: List[PanMention] = Field(default_factory=list)
+    core: List[CoreMention] = Field(default_factory=list)
+
+
 class CayenneRefinement(BaseModel):
     """Internal refinement pass output."""
     title: str
@@ -251,6 +328,11 @@ class CayenneRefinement(BaseModel):
         default=None,
         description="The words that judgement rests on, quoted exactly from the recipe, or the source host exactly as given.",
     )
+    pans: List[RecipePan] = Field(
+        default_factory=list, description="The tins the recipe bakes in; [] when none."
+    )
+    bake_type: Optional[str] = Field(default=None, description=_BAKE_TYPE_DESC)
+    bake_step: Optional[int] = Field(default=None, description=_BAKE_STEP_DESC)
 
 
 class CayenneRecipe(BaseModel):
@@ -289,6 +371,9 @@ class CayenneRecipe(BaseModel):
     # What REFINE detected (verbatim-ingestion D5), written at insert and by the regen worker.
     source_uom_system_detected: Optional[str] = None
     source_uom_system_evidence: Optional[str] = None
+    pans: List[RecipePan] = Field(default_factory=list)
+    bake_type: Optional[str] = None
+    bake_step: Optional[int] = None
     # Raw, user-owned body (spec 3.2). Empty lists on legacy objects; the writer
     # and regen worker derive them from the structured data when empty.
     ingredient_lines: List[str] = Field(default_factory=list)

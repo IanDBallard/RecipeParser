@@ -109,3 +109,34 @@ def test_both_extract_prompts_name_the_three_fields():
 
     for prompt in (gemini.build_plain_text_prompt("x"), gemini.build_extract_prompt("x")):
         assert "total_time:" in prompt and "description:" in prompt and "nutritional_info:" in prompt
+
+
+from recipeparser.models import CayenneRefinement, PanAnswer, RecipePan  # noqa: E402
+
+
+def test_refinement_defaults_to_no_tins_and_no_bake():
+    r = CayenneRefinement(title="T", base_servings=4, structured_ingredients=[], tokenized_directions=[])
+    assert r.pans == [] and r.bake_type is None and r.bake_step is None
+
+
+def test_recipe_pan_round_trips_with_mm_and_hint():
+    p = RecipePan.model_validate({"id": "pan_01", "raw": "two 20cm tins", "count": 2, "shape": "round",
+                                  "family": "round-cake", "dims_mm": {"d": 200}, "capacity_ml": None,
+                                  "catalog_hint": None})
+    assert p.dims_mm.d == 200 and p.edited is False and p.model_dump()["dims_mm"]["depth"] is None
+
+
+def test_pan_answer_tolerates_free_text_vocab():
+    a = PanAnswer.model_validate({"pans": [{"id": "pan_01", "raw": "a tin", "count": 1, "shape": "blob",
+                                            "family": "cake", "dims_mm": {}}], "bake_type": "souffle",
+                                  "bake_step": 9, "mentions": [], "core": []})
+    assert a.pans[0].shape == "blob"  # vocab is enforced by core/pans.py, never by validation
+
+
+def test_edited_is_absent_from_refine_and_pan_answer_schemas():
+    import json
+
+    from recipeparser.gemini import refine_json_schema, schema_without_edited
+    assert '"edited"' not in json.dumps(refine_json_schema())
+    assert '"edited"' not in json.dumps(schema_without_edited(PanAnswer.model_json_schema()))
+    assert "pans" in refine_json_schema()["properties"]

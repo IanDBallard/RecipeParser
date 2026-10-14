@@ -2,6 +2,8 @@
   "entries": {
     "Brown Butter Shortbread.paprikarecipe": {
       "_cayenne_meta": {
+        "bake_step": null,
+        "bake_type": null,
         "base_servings": 12,
         "categories": [
           "British",
@@ -40,6 +42,7 @@
         ],
         "notes": null,
         "nutritional_info": null,
+        "pans": [],
         "prep_max_minutes": 20,
         "prep_min_minutes": 20,
         "prep_note": null,
@@ -156,6 +159,8 @@
     },
     "Buttermilk Scones.paprikarecipe": {
       "_cayenne_meta": {
+        "bake_step": null,
+        "bake_type": null,
         "base_servings": 8,
         "categories": [
           "British",
@@ -197,6 +202,7 @@
         ],
         "notes": null,
         "nutritional_info": null,
+        "pans": [],
         "prep_max_minutes": 15,
         "prep_min_minutes": 15,
         "prep_note": null,

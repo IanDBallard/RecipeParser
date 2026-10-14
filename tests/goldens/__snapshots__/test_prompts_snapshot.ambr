@@ -559,6 +559,148 @@
 # name: TestSchemaSnapshots.test_cayenne_refinement_schema
   dict({
     '$defs': dict({
+      'PanDims': dict({
+        'description': "A tin's inside size in millimetres.",
+        'properties': dict({
+          'd': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Diameter, for a round tin.',
+            'title': 'D',
+          }),
+          'depth': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Depth, only if the recipe states it.',
+            'title': 'Depth',
+          }),
+          'l': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Length, for a rectangle or loaf.',
+            'title': 'L',
+          }),
+          'w': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Width, for a rectangle or loaf.',
+            'title': 'W',
+          }),
+        }),
+        'title': 'PanDims',
+        'type': 'object',
+      }),
+      'RecipePan': dict({
+        'description': 'One kind of tin a recipe bakes in.',
+        'properties': dict({
+          'capacity_ml': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Only when the recipe names the tin by volume ('a 1.5 litre tin', 'a 10-cup Bundt').",
+            'title': 'Capacity Ml',
+          }),
+          'catalog_hint': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Only for the named tins listed in the prompt; otherwise null.',
+            'title': 'Catalog Hint',
+          }),
+          'count': dict({
+            'default': 1,
+            'description': 'How many of this tin the recipe uses (two 20 cm tins → 2).',
+            'title': 'Count',
+            'type': 'integer',
+          }),
+          'dims_mm': dict({
+            '$ref': '#/$defs/PanDims',
+            'description': 'Inside size in millimetres (inches × 25.4): d for a round, l and w for a rectangle or loaf, depth only if the recipe states it.',
+          }),
+          'family': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'The kind of tin, e.g. round-cake, loaf, bundt; null if unknown.',
+            'title': 'Family',
+          }),
+          'id': dict({
+            'description': 'pan_01, pan_02, … in order of first mention.',
+            'title': 'Id',
+            'type': 'string',
+          }),
+          'raw': dict({
+            'description': "The recipe's words naming the tin(s), copied exactly.",
+            'title': 'Raw',
+            'type': 'string',
+          }),
+          'shape': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'round, square, rectangle, loaf, bundt, tube, ring, other; null if unknown.',
+            'title': 'Shape',
+          }),
+        }),
+        'required': list([
+          'id',
+          'raw',
+        ]),
+        'title': 'RecipePan',
+        'type': 'object',
+      }),
       'StructuredIngredient': dict({
         'properties': dict({
           'amount': dict({
@@ -706,6 +848,32 @@
     }),
     'description': 'Internal refinement pass output.',
     'properties': dict({
+      'bake_step': dict({
+        'anyOf': list([
+          dict({
+            'type': 'integer',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': '0-based index into tokenized_directions of the step that bakes; null when nothing bakes.',
+        'title': 'Bake Step',
+      }),
+      'bake_type': dict({
+        'anyOf': list([
+          dict({
+            'type': 'string',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': "What the recipe bakes, one word from the prompt's list of 12 bake types; null when nothing bakes.",
+        'title': 'Bake Type',
+      }),
       'base_servings': dict({
         'anyOf': list([
           dict({
@@ -716,6 +884,14 @@
           }),
         ]),
         'title': 'Base Servings',
+      }),
+      'pans': dict({
+        'description': 'The tins the recipe bakes in; [] when none.',
+        'items': dict({
+          '$ref': '#/$defs/RecipePan',
+        }),
+        'title': 'Pans',
+        'type': 'array',
       }),
       'source_uom_system_detected': dict({
         'anyOf': list([
