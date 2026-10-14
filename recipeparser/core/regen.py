@@ -119,14 +119,17 @@ def build_update(
     pans: List[Any] = [p.model_dump() for p in refinement.pans]
     if edited:
         pans = list(current_pans or [])
-        keep = {p["id"] for p in pans if isinstance(p, dict) and isinstance(p.get("id"), str)}
+        # A tombstone (Cayenne F-291: a tin the cook removed, removed: true) is written back but is not a kept tin.
+        live = [
+            p for p in pans if isinstance(p, dict) and isinstance(p.get("id"), str) and p.get("removed") is not True
+        ]
+        keep = {p["id"] for p in live}
         # The stripped text is the source: a kept token survives when its words are in the recipe's own text.
         directions, _ = check_pan_tokens(directions, keep, strip_fat_tokens("\n".join(d.text for d in directions)))
         # R-F: REFINE may renumber tins, so a kept id must also still name this tin: its words sit in the cook's raw.
         raws = {
             p["id"]: _fold(str(p.get("raw") or ""))
-            for p in pans
-            if isinstance(p, dict) and isinstance(p.get("id"), str)
+            for p in live
         }
 
         def same_tin(m: "re.Match[str]") -> str:

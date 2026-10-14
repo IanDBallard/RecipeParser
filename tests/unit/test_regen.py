@@ -178,3 +178,22 @@ def test_a_non_dict_entry_in_current_pans_does_not_crash():
     assert "{{pan_01|two tins}}" in payload["tokenized_directions"][0]["text"]
     assert "{{pan_02" not in payload["tokenized_directions"][0]["text"]
     assert build_update(_two_tin_refinement(), [0.1], read_rev=1, current_pans=["junk"])["pans"][0]["id"] == "pan_01"
+
+
+def test_a_tombstoned_tin_is_not_kept_and_its_token_unwraps():
+    # Cayenne F-291: a tin the cook removed stays in the list as a tombstone.
+    current = [
+        {"id": "pan_01", "raw": "two tins", "count": 2, "removed": True, "edited": True},
+        {"id": "pan_02", "raw": "a tray", "edited": True},
+    ]
+    payload = build_update(_two_tin_refinement(), [0.1] * 3, read_rev=1, current_pans=current)
+    assert payload["pans"] == current  # written back unchanged, tombstone included
+    # pan_01's words match its raw, yet its token unwraps; pan_02's stays.
+    assert payload["tokenized_directions"][0]["text"] == "Divide between two tins and {{pan_02|a tray}}."
+
+
+def test_a_list_with_only_a_tombstone_unwraps_every_pan_token():
+    current = [{"id": "pan_01", "raw": "two tins", "removed": True, "edited": True}]
+    payload = build_update(_two_tin_refinement(), [0.1] * 3, read_rev=1, current_pans=current)
+    assert payload["pans"] == current
+    assert "{{pan_" not in payload["tokenized_directions"][0]["text"]

@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.12.1] — 2026-10-14
+
+### 🐛 Fixed
+- A tin the cook removed in Cayenne (a tombstone, `removed: true`) stays removed on regen: the cook's list is written back with it, and its `{{pan_NN|...}}` token is unwrapped to plain words. Pairs with Cayenne's F-291 PR.
+
 ## [9.12.0] — 2026-10-14
 
 A recipe's tins, bake type and baking step, and the internal temperature it states, for Cayenne's pan-aware scaling (Cayenne docs/superpowers/specs/2026-10-13-pan-aware-scaling-design.md: parser contract, D9, D10, D21, D22, D24). Needs Cayenne migration 20261014090000_pan_aware_scaling (merged with Cayenne #287). Order: Cayenne #287 live, then this deploy, then the backfill.

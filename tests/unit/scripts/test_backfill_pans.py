@@ -327,3 +327,25 @@ def test_none_found_is_never_written_or_recorded(monkeypatch, tmp_path):
     with rev.open(newline="", encoding="utf-8") as fh:
         lines = list(csv.DictReader(fh))
     assert [(ln["id"], ln["status"]) for ln in lines] == [("r1", "none-found")]
+
+
+def test_a_row_whose_only_tin_is_a_tombstone_is_cook_edited_and_not_asked():
+    # Cayenne F-291: a removed tin is a tombstone carrying edited: true.
+    def never(*a, **k):
+        raise AssertionError("asked")
+
+    gone = row(pans=[{"id": "pan_01", "raw": "x", "removed": True, "edited": True}])
+    assert bp.plan_row(gone, never).status == "cook-edited"
+    assert bp.plan_row(gone, never, force=True).status == "cook-edited"
+
+
+def test_restore_skips_a_row_whose_current_pans_are_only_a_tombstone(monkeypatch, tmp_path, capsys):
+    rec = tmp_path / "before.csv"
+    old = row(bake_step=3, pans=[{"id": "pan_09", "raw": "old"}])
+    _run_main(monkeypatch, ["--all-users", "--live", "--force", "--record", str(rec)], [old], [])
+    log = []
+    now = [{"pans": [{"id": "pan_09", "raw": "old", "removed": True, "edited": True}]}]
+    sb = SimpleNamespace(table=lambda name: FakeTable(now, log))
+    assert bp._restore(sb, rec, live=True) == 0
+    assert not [e for e in log if e[0] == "update"]
+    assert "SKIPPED r1" in capsys.readouterr().out
