@@ -629,4 +629,21 @@ A recipe's tins, bake type and baking step, and the internal temperature it stat
 
 ## Rulings made during execution
 
-_(filled in after the work)_
+- R-A/R-D: the tins rule is one set of shared building blocks. `build_refine_prompt` puts them together byte-identically, and `build_pans_prompt` reuses the vocabulary with its own step wording.
+- R-B: `check_core_flags` is a pre-pass. A `,core` on an oven, fan or gas reading is removed and the token is kept, so refine runs it before `_check_temperatures`. Parts are trimmed, so `180C, core` is checked too.
+- R-C: a heading step is one bold span (`**…**`, optional colon).
+- R-E: an unknown bake type drops its bake step too.
+- R-F: when the cook has edited tins, regen keeps a REFINE tin token only if its id and words still name the cook's tin.
+- R-G: the pans prompt asks for `bake_step` 1-based like everything else, and `tag_pans` converts it to 0-based once.
+- R-H/R-I: the backfill sends Gemini plain steps. Quotes are copied exactly. Tin placement needs word boundaries. A `mark_core` quote that is ambiguous marks nothing.
+- Backfill: `cook-edited` is never touched, even with `--force`. `--force` unwraps old tin tokens. `none-found` writes nothing. `--restore` skips a row whose tins the cook has since edited.
+- Final review: the Cayenne zip writer and archive restore carry tins, bake type and bake step.
+- Accepted risks:
+  - a tin edit not yet synced can be overwritten by regen;
+  - removing a tin is not remembered (Cayenne follow-up);
+  - R7 has no "looked, found nothing" marker, so `--limit` is for trials.
+- Follow-ups:
+  - merge the fold/plain text helpers;
+  - the temperature placer matches mid-word;
+  - check rule-5 wording in the dry-run review;
+  - run `backfill_direction_amounts` before `backfill_pans`.
