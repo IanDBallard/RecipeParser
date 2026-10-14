@@ -128,6 +128,7 @@ def test_steps_out_of_range_and_unknown_tins_are_ignored():
     r = bp.plan_row(row(), asker(ans))
     assert r.status == "tagged"
     assert "pan_" not in r.directions[0].text
+    assert sum("ignored" in n for n in r.notes) == 3
     assert r.directions[1].text.endswith("{{temp:93C|93°C}}.")
 
 
@@ -166,15 +167,45 @@ def test_write_row_is_conditional_and_reports_a_race():
     assert bp.write_row(SimpleNamespace(table=lambda name: FakeTable([], [])), row(), r) is False
 
 
-def test_review_lists_tokens_and_notes(tmp_path):
+def test_review_lists_tokens_notes_and_skips(tmp_path):
     import csv
     r = bp.plan_row(row(), asker(answer()))
+    skipped = bp.plan_row(row(derived_rev=1, id="r0"), no_ask)
+    failed = bp.RowResult(id="r2", title="F", status="failed", error="quota")
     path = tmp_path / "review.csv"
-    bp.write_review(path, [r])
+    bp.write_review(path, [r, skipped, failed])
     with path.open(newline="", encoding="utf-8") as fh:
         lines = list(csv.reader(fh))
-    assert lines[0] == ["id", "title", "pans", "bake_type", "bake_step", "step", "pan_tokens", "core_tokens", "notes"]
-    assert [ln[5:8] for ln in lines[1:]] == [["1", "pan_01: 20cm round tin", ""], ["2", "", "93°C"]]
+    assert lines[0] == ["id", "title", "status", "pans", "bake_type", "bake_step_1based", "step", "step_text",
+                        "pan_tokens", "core_tokens", "notes"]
+    assert lines[1][:3] == ["r0", "Cake", "stale"]
+    assert [ln[5:10] for ln in lines[2:4]] == [
+        ["2", "1", "Grease a {{pan_01|20cm round tin}}.", "pan_01: 20cm round tin", ""],
+        ["2", "2", "Bake until the middle reaches {{temp:93C,core|93°C}}.", "", "93°C"]]
+    assert lines[4][2] == "failed" and lines[4][-1] == "quota"
+
+
+def test_stale_wins_over_malformed():
+    assert bp.plan_row(row(derived_rev=1, tokenized_directions="x"), no_ask).status == "stale"
+
+
+def test_guard_ignores_step_zero_and_negative_even_when_the_quote_is_in_the_last_step():
+    ans = answer(
+        mentions=[PanMention(step=0, quote="the middle", context="", pan_id="pan_01")],
+        core=[CoreMention(step=0, quote="93°C")], bake_step=None)
+    r = bp.plan_row(row(), asker(ans))
+    assert r.directions[1].text == "Bake until the middle reaches {{temp:93C|93°C}}."
+    assert sum("ignored: step 0" in n for n in r.notes) == 2
+
+
+def test_force_unwrap_drops_stale_ids_and_differing_words():
+    steps = ["Grease a {{pan_02|20cm tin}} and a {{pan_01|small tin}}.", "Bake."]
+    ans = answer(
+        pans=[tin(raw="20cm round tin")], core=[],
+        mentions=[PanMention(step=1, quote="20cm tin", context="Grease a 20cm tin", pan_id="pan_01")])
+    r = bp.plan_row(row(steps), asker(ans), force=True)
+    assert r.directions[0].text == "Grease a {{pan_01|20cm tin}} and a small tin."
+    assert "pan_02" not in r.directions[0].text
 
 
 def _run_main(monkeypatch, argv, rows, log):
@@ -187,13 +218,14 @@ def _run_main(monkeypatch, argv, rows, log):
 
     class Table(FakeTable):
         def select(self, cols):
+            self.cols = cols.split(",")
             return self
 
         def order(self, col):
             return self
 
         def range(self, a, b):
-            self.data = rows if a == 0 else []
+            self.data = [{k: v for k, v in r.items() if k in self.cols} for r in rows] if a == 0 else []
             return self
 
     monkeypatch.setitem(sys.modules, "supabase", SimpleNamespace(
@@ -215,8 +247,45 @@ def test_live_without_record_refuses(monkeypatch):
     assert "--record" in str(exc.value) and log == []
 
 
-def test_live_with_record_writes_and_records(monkeypatch, tmp_path):
+def test_live_with_record_writes_and_records_the_old_values(monkeypatch, tmp_path):
+    import csv
     log = []
     rec = tmp_path / "before.csv"
-    assert _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row()], log) == 0
-    assert len(log) == 1 and rec.read_text().count("\n") >= 2
+    old = row(bake_step=3, pans=[{"id": "pan_09", "raw": "old"}])
+    assert _run_main(monkeypatch, ["--all-users", "--live", "--force", "--record", str(rec)], [old], log) == 0
+    assert len(log) == 1
+    with rec.open(newline="", encoding="utf-8") as fh:
+        lines = list(csv.DictReader(fh))
+    assert lines[0]["bake_step"] == "3" and lines[0]["bake_type"] == "null"
+    assert lines[0]["pans"] == '[{"id": "pan_09", "raw": "old"}]'
+
+
+def test_record_is_on_disk_before_the_row_is_written(monkeypatch, tmp_path):
+    rec = tmp_path / "before.csv"
+    seen = []
+    orig = FakeTable.update
+
+    def update(self, payload):
+        seen.append(rec.read_text(encoding="utf-8"))
+        return orig(self, payload)
+
+    monkeypatch.setattr(FakeTable, "update", update)
+    assert _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row()], []) == 0
+    assert len(seen) == 1 and "r1" in seen[0]
+
+
+def test_record_round_trips_through_restore(monkeypatch, tmp_path):
+    rec = tmp_path / "before.csv"
+    old = row(bake_step=3, pans=[{"id": "pan_09", "raw": "old"}])
+    _run_main(monkeypatch, ["--all-users", "--live", "--force", "--record", str(rec)], [old], [])
+    log = []
+    sb = SimpleNamespace(table=lambda name: FakeTable([], log))
+    assert bp._restore(sb, rec, live=False) == 0
+    assert log == []
+    assert bp._restore(sb, rec, live=True) == 0
+    _, payload, filters = log[0]
+    assert set(payload) == {"pans", "bake_type", "bake_step", "tokenized_directions"}
+    assert filters == [("id", "r1")]
+    assert payload["pans"] == [{"id": "pan_09", "raw": "old"}]
+    assert payload["bake_type"] is None and payload["bake_step"] == 3
+    assert payload["tokenized_directions"] == old["tokenized_directions"]

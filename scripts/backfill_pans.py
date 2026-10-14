@@ -61,7 +61,7 @@ from recipeparser.models import PanAnswer, TokenizedDirection  # noqa: E402
 PAGE = 500
 COLUMNS = (
     "id,title,ingredient_lines,structured_ingredients,tokenized_directions,body_rev,derived_rev,"
-    "pans,bake_type,source_uom_system,source_uom_system_detected"
+    "pans,bake_type,bake_step,source_uom_system,source_uom_system_detected"
 )
 
 Asker = Callable[[List[str], List[str], Optional[str]], PanAnswer]
@@ -100,14 +100,18 @@ def _ingredients(row: Dict[str, Any]) -> List[str]:
     return out
 
 
-def _group_by_step(items: Sequence[Any], size: int) -> Dict[int, List[Any]]:
-    """Group model items by their 1-based ``step`` as 0-based keys; a step outside the recipe is ignored."""
+def _group_by_step(items: Sequence[Any], size: int, what: str) -> Tuple[Dict[int, List[Any]], List[str]]:
+    """Group model items by their 1-based ``step`` as 0-based keys. A step outside the recipe is left
+    out and reported."""
     grouped: Dict[int, List[Any]] = {}
+    ignored: List[str] = []
     for item in items:
         i = item.step - 1
         if 0 <= i < size:
             grouped.setdefault(i, []).append(item)
-    return grouped
+        else:
+            ignored.append(f"{what} ignored: step {item.step} is not a step of this recipe ({item.quote!r})")
+    return grouped, ignored
 
 
 def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
@@ -118,11 +122,11 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
         before_bake_type=row.get("bake_type"), before_bake_step=row.get("bake_step"),
     )
     raw = row.get("tokenized_directions")
-    if not isinstance(raw, list):
-        result.status = "malformed"
-        return result
     if (row.get("derived_rev") or 0) < (row.get("body_rev") or 0):
         result.status = "stale"
+        return result
+    if not isinstance(raw, list):
+        result.status = "malformed"
         return result
     try:
         old = [TokenizedDirection.model_validate(d) for d in raw]
@@ -150,8 +154,9 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
 
     pans, notes = normalise_pans(answer.pans)
     ids = {p.id for p in pans}
-    mentions = _group_by_step([m for m in answer.mentions if m.pan_id in ids], len(texts))
-    cores = _group_by_step(answer.core, len(texts))
+    mentions, ignored = _group_by_step([m for m in answer.mentions if m.pan_id in ids], len(texts), "tin mention")
+    cores, ignored_core = _group_by_step(answer.core, len(texts), "core temperature")
+    notes += ignored + ignored_core
     for i, text in enumerate(texts):
         step = old[i].step
         if i in mentions:
@@ -203,22 +208,26 @@ def _step_tokens(text: str) -> Tuple[List[str], List[str]]:
 
 
 def write_review(path: Path, results: Sequence[RowResult]) -> None:
-    """One line per step that has a tin or core token (a recipe with neither gets one line): the owner's
-    file to read before any live run. ``notes`` (drops, warnings) is on the recipe's first line."""
+    """The owner's file to read before any live run. A tagged recipe has one line per step that has a
+    tin or core token (one blank-step line if none), with the step's new text; every other recipe has
+    one line saying why it was skipped. ``bake_step_1based`` counts like ``step``. ``notes`` holds the
+    drops and warnings (or the error) and is on the recipe's first line."""
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["id", "title", "pans", "bake_type", "bake_step", "step", "pan_tokens", "core_tokens", "notes"])
+        writer.writerow(["id", "title", "status", "pans", "bake_type", "bake_step_1based", "step", "step_text",
+                         "pan_tokens", "core_tokens", "notes"])
         for r in sorted(results, key=lambda r: r.id):
             if r.status != "tagged":
+                writer.writerow([r.id, r.title, r.status, "", "", "", "", "", "", "", r.error])
                 continue
-            head: List[Any] = [r.id, r.title, json.dumps(r.pans), r.bake_type or "",
-                               "" if r.bake_step is None else r.bake_step]
+            head: List[Any] = [r.id, r.title, r.status, json.dumps(r.pans), r.bake_type or "",
+                               "" if r.bake_step is None else r.bake_step + 1]
             lines: List[List[Any]] = []
             for d in r.directions:
                 pan, core = _step_tokens(d.text)
                 if pan or core:
-                    lines.append([d.step, " | ".join(pan), " | ".join(core)])
-            for n, tail in enumerate(lines or [["", "", ""]]):
+                    lines.append([d.step, d.text, " | ".join(pan), " | ".join(core)])
+            for n, tail in enumerate(lines or [["", "", "", ""]]):
                 writer.writerow(head + tail + [" | ".join(r.notes) if n == 0 else ""])
 
 
