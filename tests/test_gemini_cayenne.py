@@ -164,3 +164,16 @@ def test_mentions_prompt_marks_headings_unmentionable():
     prompt = build_mentions_prompt([heading, salt], ["Add the salt."])
     assert "ing_01: (heading) For the sauce:" in prompt
     assert "A heading line is never a mention" in prompt
+
+
+def test_refine_prompt_asks_for_tins_baking_and_core_temperatures():
+    from recipeparser.core.pans import BAKE_TYPES, HINT_KEYS, PAN_FAMILIES, PAN_SHAPES
+
+    prompt = build_refine_prompt("x", None)
+    assert "5. TINS AND BAKING" in prompt
+    assert "pan_01" in prompt
+    assert ",core" in prompt
+    assert "{{pan_01|" in prompt  # the f-string brace doubling renders literal double braces
+    assert "{{temp:93C,core|93°C}}" in prompt
+    for value in (*BAKE_TYPES, *HINT_KEYS, *PAN_SHAPES, *PAN_FAMILIES):
+        assert value in prompt

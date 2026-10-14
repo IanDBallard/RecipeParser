@@ -21,6 +21,7 @@ from recipeparser.core.fat_tokens import (
 )
 from recipeparser.core.headings import heading_name
 from recipeparser.core.numbers import written_measures
+from recipeparser.core.pans import apply_pan_checks, check_core_flags
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.temperatures import repair_tokens
 from recipeparser.gemini import refine_recipe_for_cayenne
@@ -537,7 +538,13 @@ def refine(
     _ensure_unique_ids(result)
     _normalise_headings(result)
     _unwrap_heading_tokens(result)
+    # R-B: strip a misplaced ",core" first, or _check_temperatures unwraps the whole token.
+    result.tokenized_directions, core_warnings = check_core_flags(result.tokenized_directions)
+    for line in core_warnings:
+        log.warning("refine(): '%s': %s", result.title, line)
     _check_temperatures(result, raw)
+    for line in apply_pan_checks(result, raw.directions):
+        log.warning("refine(): '%s': %s", result.title, line)
     _validate_fat_tokens(result)
     _check_mentions(result)
     _normalise_line_index(result, raw)

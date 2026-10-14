@@ -26,6 +26,7 @@ from recipeparser.config import (
     PARSE_RETRY_DELAY_SECS,
     THINKING_LEVEL,
 )
+from recipeparser.core.pans import BAKE_TYPES, HINT_KEYS, PAN_FAMILIES, PAN_SHAPES
 from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import (
     CayenneRefinement,
@@ -739,6 +740,38 @@ _MENTION_USES = """   - Say how much of the ingredient each mention uses, as "us
    - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour"."""
 
 
+# Rule 5 of the REFINE prompt, a template over core.pans' vocabularies so they cannot drift. Its
+# literal braces are doubled for str.format; the pans-only prompt (Task 6) reuses it.
+_TINS_RULES = """\
+   - "pans": every baking tin, pan, tray or dish the recipe names with a size, in order of first
+     mention, ids pan_01, pan_02, ... One entry per size: "two 20cm sandwich tins" is ONE entry with
+     "count": 2. "raw" is the recipe's words, copied exactly.
+   - "shape": one of {shapes}. "family": one of {families}.
+   - "dims_mm": inside size in MILLIMETRES (inches x 25.4): "d" for a round, "l" and "w" for a
+     rectangle, square or loaf; "depth" only when the recipe states it. Never guess a size.
+   - "capacity_ml" only when the recipe names the tin by volume ("a 1.5 litre tin", "a 10-cup Bundt").
+   - "catalog_hint" only for a tin the recipe names WITHOUT a size, from this list, else null:
+     {hints}.
+   - A tin with no size and none of those names ("a cake tin", "a baking dish") is not listed.
+   - In the directions, wrap the words naming each listed tin in a tin token {{{{pan_01|words}}}},
+     copying the words exactly: "Grease two 20cm sandwich tins" -> "Grease {{{{pan_01|two 20cm sandwich tins}}}}".
+     Wrap the first mention in each step only.
+   - "bake_type": one of {bake_types}, or null when nothing is baked. sponge = whisked or creamed
+     sponge cakes; butter-cake = layer, pound, Bundt, loaf cakes, cupcakes; quick-bread = banana bread,
+     muffins, scones, cornbread; bar = brownies, blondies, slices; bread-lean / bread-enriched = yeast
+     breads without / with butter, eggs or sugar (brioche, challah, rolls); cheesecake; custard =
+     baked custards, bread pudding, flan; pizza; pie-fruit, pie-custard (custard, cream, pumpkin
+     pies), pie-nut (pecan).
+   - "bake_step": the 0-based position in tokenized_directions of the step that bakes the main
+     item, or null."""
+_TINS_RULES_TEXT = _TINS_RULES.format(
+    shapes=", ".join(PAN_SHAPES),
+    families=", ".join(PAN_FAMILIES),
+    hints=", ".join(HINT_KEYS),
+    bake_types=", ".join(BAKE_TYPES),
+)
+
+
 def build_refine_prompt(
     raw_recipe: object,
     source_host: Optional[str],
@@ -810,6 +843,8 @@ RULES:
        * then ",oven" when it is an oven setting (bake, roast, preheat, a described oven);
        * then ",fan=160C" (or F) when the writer also gives the fan-oven figure;
        * "fan=160C" alone when the writer gives only a fan-oven figure.
+       * ",core" (and nothing else after the figure) when it is the food's internal temperature,
+         the doneness check: "until the centre reads 200°F", "an internal temperature of 93°C".
      A number with no unit ("bake at 180") or a described oven: decide from the recipe and its
      SOURCE SYSTEM; a described oven is slow 150C, moderate 180C, hot 220C, very hot 230C, each
      with ",oven". Never wrap a range ("170-180°C") or words with no figure ("room temperature",
@@ -819,6 +854,7 @@ RULES:
        "Bake at 180°C/160°C fan/gas mark 4" -> "Bake at {{{{temp:180C,oven,fan=160C|180°C/160°C fan/gas mark 4}}}}"
        "Heat the oil to 180C" -> "Heat the oil to {{{{temp:180C|180C}}}}"
        "Bake in a moderate oven" -> "Bake in a {{{{temp:180C,oven|moderate oven}}}}"
+       "Bake until it reads 93°C in the centre" -> "Bake until it reads {{{{temp:93C,core|93°C}}}} in the centre"
 
 3. PHASES:
    - If the raw recipe groups its ingredients or directions into phases,
@@ -847,6 +883,9 @@ RULES:
    - "source_uom_system_evidence": the words you relied on, quoted exactly from the RAW RECIPE, or
      the SOURCE HOST exactly as given. One short quote.
    - Leave both null when nothing above applies.
+
+5. TINS AND BAKING:
+{_TINS_RULES_TEXT}
 
 SOURCE HOST: {source_host or "none"}
 

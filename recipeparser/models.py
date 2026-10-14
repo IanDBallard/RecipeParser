@@ -245,10 +245,10 @@ class RecipePan(BaseModel):
         description="How many of this tin the recipe uses (two 20 cm tins \u2192 2).",
     )
     shape: Optional[str] = Field(
-        default=None, description="round, square, rectangle, loaf, bundt, tube, ring, other; null if unknown."
+        default=None, description="round, square, rect, loaf, ring, flat-round, sheet; null if unknown."
     )
     family: Optional[str] = Field(
-        default=None, description="The kind of tin, e.g. round-cake, loaf, bundt; null if unknown."
+        default=None, description="round-cake, square, traybake, sheet, loaf, ring, tart, pizza; null if unknown."
     )
     dims_mm: PanDims = Field(
         default_factory=PanDims,
