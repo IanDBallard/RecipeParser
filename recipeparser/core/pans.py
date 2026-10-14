@@ -12,7 +12,17 @@ from __future__ import annotations
 import re
 from typing import Iterable, List, Optional, Sequence, Set, Tuple
 
-from recipeparser.core.fat_tokens import TEMP_PREFIX, TOKEN_RE, is_pan_id, is_temp_id, parse_temp_value
+from recipeparser.core.fat_tokens import (
+    TEMP_PREFIX,
+    TOKEN_RE,
+    fold,
+    is_pan_id,
+    is_temp_id,
+    locate,
+    pan_token,
+    parse_temp_value,
+)
+from recipeparser.core.temperatures import _overlaps, _token_spans
 from recipeparser.models import CayenneRefinement, RecipePan, TokenizedDirection
 
 BAKE_TYPES = (
@@ -190,3 +200,64 @@ def apply_pan_checks(refinement: CayenneRefinement, raw_directions: Sequence[str
         refinement.bake_type, refinement.bake_step, directions, heading_steps(directions)
     )
     return warnings
+
+
+def place_pan_mentions(text: str, mentions: Sequence[Tuple[str, str, str]]) -> Tuple[str, List[str]]:
+    """Splice the model's ``(quote, context, pan_id)`` mentions into ``text`` as tin tokens where each
+    quote is found verbatim, outside every token and earlier placement. A bad id or quote, a quote
+    not found or found twice without a context to tell them apart, is dropped and reported. Only the
+    braces and id are added: no word of ``text`` changes."""
+    dropped: List[str] = []
+    placed: List[Tuple[int, int, str]] = []
+    for quote, context, pan_id in mentions:
+        if not _ID.fullmatch(pan_id) or not quote or any(c in quote for c in "{}|"):
+            dropped.append(f"{quote!r}: unusable id {pan_id!r} or quote")
+            continue
+        spans = _token_spans(text) + [(s, e) for s, e, _ in placed]
+        starts = [s for s in locate(text, quote, context) if not _overlaps(s, s + len(quote), spans)]
+        if len(starts) != 1:
+            dropped.append(f"{quote!r} ({context!r}): {len(starts)} free placement(s)")
+            continue
+        placed.append((starts[0], starts[0] + len(quote), pan_id))
+    pieces: List[str] = []
+    cursor = 0
+    for start, end, pan_id in sorted(placed):
+        pieces.append(text[cursor:start])
+        pieces.append(pan_token(pan_id, text[start:end]))
+        cursor = end
+    pieces.append(text[cursor:])
+    return "".join(pieces), dropped
+
+
+def mark_core(text: str, quotes: Sequence[str]) -> Tuple[str, List[str]]:
+    """Add ``,core`` to the plain degree token whose words contain a quote (internal temperature,
+    D24). Only the token's value changes. An oven, fan, gas, tin or ingredient token, a value outside
+    30 to 110 C, or a quote matching no token is left alone and reported."""
+    notes: List[str] = []
+    wanted = {fold(q): q for q in quotes if q}
+    hit: Set[str] = set()
+
+    def mark(m: "re.Match[str]") -> str:
+        token_id = m.group(1)
+        if not is_temp_id(token_id):
+            return m.group(0)
+        words = fold(m.group(2))
+        matched = [q for q in wanted if q in words]
+        if not matched:
+            return m.group(0)
+        hit.update(matched)
+        value = token_id[len(TEMP_PREFIX) :]
+        parsed = parse_temp_value(value)
+        flagged = parse_temp_value(value + ",core")
+        if (
+            parsed is None or parsed.core or parsed.oven or parsed.fan is not None
+            or flagged is None or not flagged.core or flagged.main is None
+            or flagged.main[0] == "gas" or not _core_in_band(flagged.main)
+        ):
+            notes.append(f"core not marked: {m.group(0)}")
+            return m.group(0)
+        return m.group(0).replace(token_id, token_id + ",core", 1)
+
+    out = TOKEN_RE.sub(mark, text)
+    notes.extend(f"core quote {wanted[q]!r} matches no temperature token" for q in wanted if q not in hit)
+    return out, notes

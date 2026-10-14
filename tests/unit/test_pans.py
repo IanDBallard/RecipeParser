@@ -1,10 +1,13 @@
+from recipeparser.core.fat_tokens import strip_fat_tokens
 from recipeparser.core.pans import (
     HINT_KEYS,
     apply_pan_checks,
     check_bake,
     check_core_flags,
     check_pan_tokens,
+    mark_core,
     normalise_pans,
+    place_pan_mentions,
 )
 from recipeparser.models import CayenneRefinement, RecipePan, TokenizedDirection
 
@@ -188,3 +191,45 @@ def test_apply_pan_checks_drops_an_unknown_bake_type_and_step_with_a_warning():
     warnings = apply_pan_checks(r, ["Mix.", "Bake."])
     assert (r.bake_type, r.bake_step) == (None, None)
     assert "bake type 'souffle' dropped" in warnings
+
+
+# --- Task 6: placing the backfill's answer ---------------------------------------------------
+def test_place_pan_mentions_wraps_a_free_quote_once():
+    text, dropped = place_pan_mentions("Grease two 20cm tins. Bake.", [("two 20cm tins", "", "pan_01")])
+    assert text == "Grease {{pan_01|two 20cm tins}}. Bake." and dropped == []
+
+
+def test_place_pan_mentions_drops_a_missing_or_ambiguous_quote_and_never_enters_a_token():
+    text, dropped = place_pan_mentions(
+        "Use a tin. Use a tin. {{ing_01|tin foil|all}}",
+        [("a tin", "", "pan_01"), ("tin foil", "", "pan_02"), ("x", "", "bad")],
+    )
+    assert text == "Use a tin. Use a tin. {{ing_01|tin foil|all}}" and len(dropped) == 3
+
+
+def test_place_pan_mentions_never_changes_a_word_outside_the_token():
+    src = "Line the “20cm” tin — then {{ing_01|butter|all}} and {{temp:180C,oven|180°C}}; fill the 20cm tin."
+    out, dropped = place_pan_mentions(
+        src, [("the “20cm” tin", "", "pan_01"), ("fill the 20cm tin", "", "pan_01"), ("nope", "", "pan_01")]
+    )
+    assert out != src and len(dropped) == 1
+    assert strip_fat_tokens(out) == strip_fat_tokens(src)
+
+
+def test_mark_core_adds_the_flag_to_the_matching_temperature_token_only():
+    text, notes = mark_core("Bake at {{temp:180C,oven|180°C}} until {{temp:93C|93°C}} in the centre.", ["93°C"])
+    assert text == "Bake at {{temp:180C,oven|180°C}} until {{temp:93C,core|93°C}} in the centre."
+    text, notes = mark_core("Bake at {{temp:180C,oven|180°C}}.", ["180°C"])
+    assert "core" not in text and notes  # an oven token never takes core
+
+
+def test_mark_core_leaves_an_out_of_band_fan_gas_pan_or_ingredient_token_alone():
+    for src, quote in [
+        ("Bake at {{temp:250C|250°C}}.", "250°C"),
+        ("Bake at {{temp:180C,fan=160C|180°C}}.", "180°C"),
+        ("Bake at {{temp:gas4|gas 4}}.", "gas 4"),
+        ("Grease {{pan_01|20cm tin}}.", "20cm tin"),
+        ("Add {{ing_01|flour|all}}.", "flour"),
+    ]:
+        text, notes = mark_core(src, [quote])
+        assert text == src and notes, src

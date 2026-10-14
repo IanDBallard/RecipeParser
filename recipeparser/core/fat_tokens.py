@@ -430,8 +430,9 @@ def splice_mentions(
     return out, dropped
 
 
-#: The placement rule splice_mentions uses, for the temperature backfill (core.temperatures).
+#: The placement rule splice_mentions uses, for the temperature and pan backfills.
 locate = _locate
+fold = _fold
 
 
 def is_tagged(directions: Sequence[TokenizedDirection]) -> bool:

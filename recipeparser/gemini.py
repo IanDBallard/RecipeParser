@@ -32,6 +32,7 @@ from recipeparser.models import (
     CayenneRefinement,
     DirectionMention,
     DirectionMentions,
+    PanAnswer,
     RecipeList,
     StructuredIngredient,
     TemperatureMention,
@@ -740,9 +741,11 @@ _MENTION_USES = """   - Say how much of the ingredient each mention uses, as "us
    - Wrap only the ingredient's words, never "the", "your" or "of": "the flour" -> the words are "flour"."""
 
 
-# Rule 5 of the REFINE prompt, a template over core.pans' vocabularies so they cannot drift. Its
-# literal braces are doubled for str.format; the pans-only prompt (Task 6) reuses it.
-_TINS_RULES = """\
+# Rule 5 of the REFINE prompt, templates over core.pans' vocabularies so they cannot drift. The
+# shared part (_TINS_VOCAB = sizes + bake type) also builds the pans-only prompt; the token and
+# bake_step bullets are REFINE's own, because they speak of tokenized_directions. Literal braces
+# are doubled for str.format.
+_TINS_SIZES = """\
    - "pans": every baking tin, pan, tray or dish the recipe names with a size, in order of first
      mention, ids pan_01, pan_02, ... One entry per size: "two 20cm sandwich tins" is ONE entry with
      "count": 2. "raw" is the recipe's words, copied exactly.
@@ -752,24 +755,31 @@ _TINS_RULES = """\
    - "capacity_ml" only when the recipe names the tin by volume ("a 1.5 litre tin", "a 10-cup Bundt").
    - "catalog_hint" only for a tin the recipe names WITHOUT a size, from this list, else null:
      {hints}.
-   - A tin with no size and none of those names ("a cake tin", "a baking dish") is not listed.
-   - In the directions, wrap the words naming each listed tin in a tin token {{{{pan_01|words}}}},
-     copying the words exactly: "Grease two 20cm sandwich tins" -> "Grease {{{{pan_01|two 20cm sandwich tins}}}}".
-     Wrap the first mention in each step only.
+   - A tin with no size and none of those names ("a cake tin", "a baking dish") is not listed."""
+_TINS_BAKE = """\
    - "bake_type": one of {bake_types}, or null when nothing is baked. sponge = whisked or creamed
      sponge cakes; butter-cake = layer, pound, Bundt, loaf cakes, cupcakes; quick-bread = banana bread,
      muffins, scones, cornbread; bar = brownies, blondies, slices; bread-lean / bread-enriched = yeast
      breads without / with butter, eggs or sugar (brioche, challah, rolls); cheesecake; custard =
      baked custards, bread pudding, flan; pizza; pie-fruit, pie-custard (custard, cream, pumpkin
-     pies), pie-nut (pecan).
+     pies), pie-nut (pecan)."""
+_TINS_VOCAB = _TINS_SIZES + "\n" + _TINS_BAKE
+_TINS_TOKEN = """\
+   - In the directions, wrap the words naming each listed tin in a tin token {{{{pan_01|words}}}},
+     copying the words exactly: "Grease two 20cm sandwich tins" -> "Grease {{{{pan_01|two 20cm sandwich tins}}}}".
+     Wrap the first mention in each step only."""
+_TINS_STEP = """\
    - "bake_step": the 0-based position in tokenized_directions (the first step is 0, not 1) of the
      step that bakes the main item, or null."""
-_TINS_RULES_TEXT = _TINS_RULES.format(
+_TINS_RULES = "\n".join((_TINS_SIZES, _TINS_TOKEN, _TINS_BAKE, _TINS_STEP))
+_TINS_FILL = dict(
     shapes=", ".join(PAN_SHAPES),
     families=", ".join(PAN_FAMILIES),
     hints=", ".join(HINT_KEYS),
     bake_types=", ".join(BAKE_TYPES),
 )
+_TINS_VOCAB_TEXT = _TINS_VOCAB.format(**_TINS_FILL)
+_TINS_RULES_TEXT = _TINS_RULES.format(**_TINS_FILL)
 
 
 def build_refine_prompt(
@@ -1082,6 +1092,67 @@ def tag_temperatures(
     if not response.text or not response.text.strip():
         raise RuntimeError("tag_temperatures(): Gemini returned an empty response")
     return TemperatureMentions.model_validate(json.loads(response.text)).mentions
+
+
+def build_pans_prompt(steps: List[str], ingredients: List[str], source_system: Optional[str]) -> str:
+    """The pans backfill's prompt (pan-aware scaling D22): the tins, bake type and baking step of a
+    recipe already saved. The answer is quotes, placed by ``core.pans.place_pan_mentions`` and
+    ``mark_core``, so no word of a step changes."""
+    numbered = "\n".join(f"  {n}. {text}" for n, text in enumerate(steps, start=1))
+    lines = "\n".join(f"  - {line}" for line in ingredients)
+    return f"""
+You are a culinary data refiner. Find the baking tins this recipe uses, what kind of bake it is,
+and the internal temperatures its directions state.
+
+RULES:
+{_TINS_VOCAB_TEXT}
+   - "bake_step": 0-based position in the numbered DIRECTIONS below of the step that bakes the main
+     item, or null. The first numbered step, "1.", is bake_step 0, not 1.
+   - "mentions": for each listed tin, the first mention in each step: "step" (1-based, as numbered),
+     "quote" (the words naming the tin, copied character for character from that step), "context"
+     (the quote with about five words around it, copied the same way) and "pan_id".
+   - "core": each internal (probe, doneness) temperature figure a step states ("until the centre
+     reaches 93°C", "internal temperature of 200F"), never an oven setting: "step" (1-based) and
+     "quote", the words of the figure. The figure may already sit inside a {{{{temp:...}}}} token; quote
+     its words, not the token.
+
+SOURCE SYSTEM: {source_system or "unknown"}
+
+INGREDIENTS:
+{lines}
+
+DIRECTIONS:
+{numbered}
+"""
+
+
+def tag_pans(
+    steps: List[str],
+    ingredients: List[str],
+    source_system: Optional[str],
+    client: Any,
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
+) -> PanAnswer:
+    """The tins, bake type, baking step and core temperatures of one recipe, from one Gemini call.
+    Raises on failure: the backfill decides whether a recipe it could not ask about is skipped."""
+    response: Any = _call_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=build_pans_prompt(steps, ingredients, source_system),
+        config={
+            "response_mime_type": "application/json",
+            # RecipePan.edited is set by a person editing a tin, never by the model.
+            "response_json_schema": schema_without_edited(_schema_for_gemini(PanAnswer)),
+            "temperature": 0,
+        },
+        what="Pans",
+        limiter=limiter,
+    )
+    if not response.text or not response.text.strip():
+        raise RuntimeError("tag_pans(): Gemini returned an empty response")
+    answer: PanAnswer = PanAnswer.model_validate(json.loads(response.text))
+    return answer
 
 
 class _RecipeTags(BaseModel):
