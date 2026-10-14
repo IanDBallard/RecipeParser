@@ -762,8 +762,8 @@ _TINS_RULES = """\
      breads without / with butter, eggs or sugar (brioche, challah, rolls); cheesecake; custard =
      baked custards, bread pudding, flan; pizza; pie-fruit, pie-custard (custard, cream, pumpkin
      pies), pie-nut (pecan).
-   - "bake_step": the 0-based position in tokenized_directions of the step that bakes the main
-     item, or null."""
+   - "bake_step": the 0-based position in tokenized_directions (the first step is 0, not 1) of the
+     step that bakes the main item, or null."""
 _TINS_RULES_TEXT = _TINS_RULES.format(
     shapes=", ".join(PAN_SHAPES),
     families=", ".join(PAN_FAMILIES),

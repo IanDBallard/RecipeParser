@@ -20,6 +20,7 @@ RAW = RecipeExtraction(
         "Bake for 25 minutes.",
         "Fry the onion in oil.",
         "Heat the oil to 180°C.",
+        "Bake until it reads 93°C in the centre.",
     ],
 )
 FLOUR = StructuredIngredient(
@@ -47,11 +48,12 @@ def _run(steps, pans=(), **kw):
 
 def test_a_sized_tin_its_token_and_the_bake_are_kept():
     steps = ["Grease {{pan_01|two 20cm sandwich tins}}.", "Bake for 25 minutes.", "Fry the onion in oil."]
-    result = _run(steps, pans=[PAN], bake_type="sponge", bake_step=2)
+    result = _run(steps, pans=[PAN], bake_type="sponge", bake_step=1)
     assert [p.id for p in result.pans] == ["pan_01"]
+    assert result.pans[0].count == 2
     assert result.tokenized_directions[0].text == steps[0]
     assert result.bake_type == "sponge"
-    assert result.bake_step == 2
+    assert result.bake_step == 1
 
 
 def test_a_tin_token_with_no_tin_is_unwrapped_and_the_recipe_kept(caplog):
@@ -61,9 +63,11 @@ def test_a_tin_token_with_no_tin_is_unwrapped_and_the_recipe_kept(caplog):
     assert "pan_02" in caplog.text
 
 
-def test_a_core_flag_on_an_oil_step_is_removed_and_the_token_kept():
-    result = _run(["Grease the tins.", "Bake.", "Heat the oil to {{temp:180C,core|180°C}}."])
+def test_a_core_flag_on_an_oil_step_is_removed_and_the_token_kept(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = _run(["Grease the tins.", "Bake.", "Heat the oil to {{temp:180C,core|180°C}}."])
     assert result.tokenized_directions[2].text == "Heat the oil to {{temp:180C|180°C}}."
+    assert "core flag removed" in caplog.text
 
 
 def test_a_core_flag_on_an_oven_value_does_not_cost_the_token():
@@ -71,7 +75,27 @@ def test_a_core_flag_on_an_oven_value_does_not_cost_the_token():
     assert result.tokenized_directions[0].text == "Preheat to {{temp:180C,oven|180°C}}."
 
 
-def test_an_unknown_bake_type_is_dropped_and_the_recipe_kept():
-    result = _run(["Grease the tins.", "Bake.", "Fry."], bake_type="souffle", bake_step=1)
+def test_an_unknown_bake_type_is_dropped_with_its_step_and_the_recipe_kept(caplog):
+    with caplog.at_level(logging.WARNING):
+        result = _run(["Grease the tins.", "Bake.", "Fry."], bake_type="souffle", bake_step=1)
     assert result.bake_type is None
+    assert result.bake_step is None
     assert result.title
+    assert "bake type 'souffle' dropped" in caplog.text
+
+
+def test_a_bake_step_on_a_heading_is_nulled():
+    result = _run(["**Cake**", "Bake."], bake_type="sponge", bake_step=0)
+    assert result.bake_type == "sponge"
+    assert result.bake_step is None
+
+
+def test_an_out_of_range_bake_step_is_nulled():
+    result = _run(["Grease the tins.", "Bake."], bake_type="sponge", bake_step=9)
+    assert result.bake_step is None
+
+
+def test_a_valid_core_temperature_survives():
+    steps = ["Grease the tins.", "Bake.", "Fry.", "Heat.", "Bake until it reads {{temp:93C,core|93°C}} in the centre."]
+    result = _run(steps)
+    assert result.tokenized_directions[4].text == steps[4]

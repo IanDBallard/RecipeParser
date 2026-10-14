@@ -74,7 +74,8 @@ def test_check_pan_tokens_unwraps_unknown_ids_and_words_the_source_never_wrote()
 def test_check_bake_keeps_known_type_and_in_range_step_not_a_heading():
     d = steps("Heat the oven.", "**Bake**", "Bake 25 min.")
     assert check_bake("sponge", 2, d, {1}) == ("sponge", 2)
-    assert check_bake("souffle", 2, d, {1}) == (None, 2)
+    assert check_bake("souffle", 2, d, {1}) == (None, None)
+    assert check_bake(None, 2, d, {1}) == (None, None)
     assert check_bake("sponge", 1, d, {1}) == ("sponge", None)
     assert check_bake("sponge", 7, d, set()) == ("sponge", None)
 
@@ -173,3 +174,17 @@ def test_negative_bake_step_is_nulled():
 def test_a_bad_id_such_as_pan_1_is_unwrapped():
     out, warnings = check_pan_tokens(steps("Grease {{pan_1|two tins}}."), {"pan_01"}, "Grease two tins.")
     assert [d.text for d in out] == ["Grease two tins."] and len(warnings) == 1
+
+
+def test_apply_pan_checks_drops_an_unknown_bake_type_and_step_with_a_warning():
+    r = CayenneRefinement(
+        title="T",
+        base_servings=8,
+        structured_ingredients=[],
+        tokenized_directions=steps("Mix.", "Bake."),
+        bake_type="souffle",
+        bake_step=1,
+    )
+    warnings = apply_pan_checks(r, ["Mix.", "Bake."])
+    assert (r.bake_type, r.bake_step) == (None, None)
+    assert "bake type 'souffle' dropped" in warnings

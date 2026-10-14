@@ -120,7 +120,10 @@ def check_bake(
     directions: Sequence[TokenizedDirection],
     heading_steps: Set[int],
 ) -> Tuple[Optional[str], Optional[int]]:
-    kind = bake_type if bake_type in BAKE_TYPES else None
+    # R-E: a step with no known type is meaningless, so both go.
+    if bake_type not in BAKE_TYPES:
+        return None, None
+    kind = bake_type
     step = (
         bake_step
         if bake_step is not None and 0 <= bake_step < len(directions) and bake_step not in heading_steps
@@ -179,6 +182,8 @@ def apply_pan_checks(refinement: CayenneRefinement, raw_directions: Sequence[str
     warnings += w
     directions, w = check_core_flags(directions)
     warnings += w
+    if refinement.bake_type is not None and refinement.bake_type not in BAKE_TYPES:
+        warnings.append(f"bake type {refinement.bake_type!r} dropped")
     refinement.pans = pans
     refinement.tokenized_directions = directions
     refinement.bake_type, refinement.bake_step = check_bake(
