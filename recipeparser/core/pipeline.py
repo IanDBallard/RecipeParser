@@ -595,4 +595,9 @@ def _pre_parsed_to_refinement(
         base_servings=pr.base_servings,
         structured_ingredients=pr.structured_ingredients,
         tokenized_directions=pr.tokenized_directions,
+        # A restore skips REFINE, so the tins and the bake would be dropped here. getattr: an archive
+        # that predates them has none.
+        pans=list(getattr(pr, "pans", None) or []),
+        bake_type=getattr(pr, "bake_type", None),
+        bake_step=getattr(pr, "bake_step", None),
     )

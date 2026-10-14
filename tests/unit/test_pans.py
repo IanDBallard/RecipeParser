@@ -263,3 +263,9 @@ def test_mark_core_marks_none_when_a_quote_fits_two_tokens():
     src = "Reach {{temp:93C|93°C}}, then {{temp:93C|93°C}} again."
     text, notes = mark_core(src, ["93°C"])
     assert text == src and len(notes) == 1 and "ambiguous" in notes[0]
+
+
+def test_core_check_decides_by_trimmed_parts_not_the_substring():
+    out, warnings = check_core_flags(steps("oil at {{temp:180C, core|180°C}}", "in {{temp:180C,oven, core|180°C}}"))
+    assert [d.text for d in out] == ["oil at {{temp:180C|180°C}}", "in {{temp:180C,oven|180°C}}"]
+    assert len(warnings) == 2

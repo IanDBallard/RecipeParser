@@ -82,11 +82,11 @@ def _number(n: float) -> str:
     return str(int(n)) if n == int(n) else str(n)
 
 
-def _token_spans(text: str) -> List[Tuple[int, int]]:
+def token_spans(text: str) -> List[Tuple[int, int]]:
     return [(m.start(), m.end()) for m in TOKEN_RE.finditer(text)]
 
 
-def _overlaps(start: int, end: int, spans: Sequence[Tuple[int, int]]) -> bool:
+def overlaps(start: int, end: int, spans: Sequence[Tuple[int, int]]) -> bool:
     return any(start < e and s < end for s, e in spans)
 
 
@@ -97,7 +97,7 @@ def _sentence(text: str, start: int, end: int) -> str:
 
 
 def _readings(text: str) -> List[_Reading]:
-    spans = _token_spans(text)
+    spans = token_spans(text)
     found: List[_Reading] = []
     for m in _DEGREE.finditer(text):
         unit = m.group(2) or m.group(3)  # a letter or word, or one of the one-character signs ℃ ℉
@@ -113,7 +113,7 @@ def _readings(text: str) -> List[_Reading]:
     for r in found:
         if kept and r.start < kept[-1].end:
             continue  # "350°F" matched by both patterns: keep the first, longest
-        if _overlaps(r.start, r.end, spans):
+        if overlaps(r.start, r.end, spans):
             continue  # inside a token already there
         if _RANGE_BEFORE.search(text[:r.start]) or _RANGE_AFTER.match(text[r.end:]):
             continue  # a range is never tagged
@@ -233,9 +233,9 @@ def place_temperature_mentions(text: str, mentions: Sequence[Tuple[str, str, str
         if parse_temp_value(value) is None or not quote or any(c in quote for c in "{}|"):
             dropped.append(f"{quote!r}: unusable value {value!r} or quote")
             continue
-        spans = _token_spans(text) + [(p.start, p.end) for p in placed]
+        spans = token_spans(text) + [(p.start, p.end) for p in placed]
         starts = [s for s in locate(text, quote, context)
-                  if not _overlaps(s, unit_end(text, s + len(quote)), spans)]
+                  if not overlaps(s, unit_end(text, s + len(quote)), spans)]
         if len(starts) != 1:
             dropped.append(f"{quote!r} ({context!r}): {len(starts)} free placement(s)")
             continue

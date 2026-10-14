@@ -35,3 +35,26 @@ def test_a_paprika_restore_skips_refine_and_is_still_title_cased():
         tokenized_directions=[TokenizedDirection(step=1, text="Cook.")],
     )
     assert _pre_parsed_to_refinement(pr).title == "Chicken Tikka Masala"
+
+
+def test_a_restored_recipe_keeps_its_tins_and_bake():
+    from recipeparser.models import RecipePan
+
+    tin = RecipePan(id="pan_01", raw="20cm round tin", shape="round", family="round-cake")
+    pr = CayenneRecipe(
+        title="Cake", structured_ingredients=[],
+        tokenized_directions=[TokenizedDirection(step=1, text="Bake in a {{pan_01|20cm round tin}}.")],
+        pans=[tin], bake_type="sponge", bake_step=0,
+    )
+    out = _pre_parsed_to_refinement(pr)
+    assert [p.id for p in out.pans] == ["pan_01"]
+    assert out.bake_type == "sponge" and out.bake_step == 0
+
+
+def test_a_restored_recipe_without_tins_has_none():
+    pr = CayenneRecipe(
+        title="Cake", structured_ingredients=[],
+        tokenized_directions=[TokenizedDirection(step=1, text="Cook.")],
+    )
+    out = _pre_parsed_to_refinement(pr)
+    assert out.pans == [] and out.bake_type is None and out.bake_step is None

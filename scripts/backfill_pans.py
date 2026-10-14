@@ -7,6 +7,11 @@ bake type, the step that bakes, and which temperatures are internal doneness fig
 checked (core.pans) and spliced into the stored ``tokenized_directions`` around the words that are
 there: no word changes. Written: ``pans``, ``bake_type``, ``bake_step`` and ``tokenized_directions``.
 
+Nothing found: a recipe whose answer changes nothing (no tins, no bake type, nothing to place) gets the
+status ``none-found``: it is not written and has no record line. R7 has no "looked, found nothing" marker
+on the row, so a rerun asks Gemini about these non-baking recipes again; ``--limit`` is for trial runs,
+not for batching.
+
 Skipped: a stale recipe (``derived_rev < body_rev`` -- the regeneration worker re-derives it with
 REFINE, which writes all of this itself), one that is already done (a ``bake_type``, any ``pans`` or a
 tin token in its directions; ``--force`` looks again, unwrapping its tin tokens first), one with no
@@ -20,7 +25,9 @@ a cook's edit mid-run wins.
     # for real; --record keeps every rewritten row's old pans, bake type, step and directions
     python scripts/backfill_pans.py --all-users --live --record pans-before.csv
 
-    # undo, from that record
+    # undo, from that record; a row whose current tins include an edited one is skipped with a note,
+    # so a restore never undoes a cook's later tin edit. The record also holds rows whose write was
+    # refused (moved during the run): restoring those writes back what is already there.
     python scripts/backfill_pans.py --all-users --restore pans-before.csv --live
 
 Run order: after the temperature backfill (its tokens are what core flags are set on).
@@ -43,9 +50,11 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from recipeparser.core.fat_tokens import (  # noqa: E402
+    TEMP_PREFIX,
     TOKEN_RE,
     is_pan_id,
     is_temp_id,
+    parse_temp_value,
     strip_fat_tokens,
 )
 from recipeparser.core.pans import (  # noqa: E402
@@ -71,7 +80,7 @@ Asker = Callable[[List[str], List[str], Optional[str]], PanAnswer]
 class RowResult:
     id: str
     title: str
-    # tagged | already-done | cook-edited | stale | empty | malformed | failed
+    # tagged | none-found | already-done | cook-edited | stale | empty | malformed | failed
     status: str
     directions: List[TokenizedDirection] = field(default_factory=list)
     pans: List[Dict[str, Any]] = field(default_factory=list)
@@ -174,6 +183,9 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
     result.pans = [p.model_dump() for p in pans]
     result.bake_type, result.bake_step = bake_type, bake_step
     result.notes = notes
+    if (result.pans == stored_pans and bake_type == row.get("bake_type") and bake_step == row.get("bake_step")
+            and [d.text for d in directions] == [d.text for d in old]):
+        result.status = "none-found"  # nothing to write: no record line, no write
     return result
 
 
@@ -202,8 +214,10 @@ def _step_tokens(text: str) -> Tuple[List[str], List[str]]:
     for m in TOKEN_RE.finditer(text):
         if is_pan_id(m.group(1)):
             pan.append(f"{m.group(1)}: {m.group(2)}")
-        elif is_temp_id(m.group(1)) and m.group(1).endswith(",core"):
-            core.append(m.group(2))
+        elif is_temp_id(m.group(1)):
+            parsed = parse_temp_value(m.group(1)[len(TEMP_PREFIX):])
+            if parsed is not None and parsed.core:
+                core.append(m.group(2))
     return pan, core
 
 
@@ -256,9 +270,15 @@ def _read_rows(sb: Any, user_id: Optional[str], recipe_id: Optional[str]) -> Lis
 
 
 def _restore(sb: Any, path: Path, live: bool) -> int:
-    restored = 0
+    restored = skipped = 0
     with path.open(newline="", encoding="utf-8") as fh:
         for rec in csv.DictReader(fh):
+            current = sb.table("recipes").select("pans").eq("id", rec["id"]).execute().data or []
+            now = (current[0].get("pans") if current else None) or []
+            if any(isinstance(p, dict) and p.get("edited") for p in now):
+                skipped += 1
+                print(f"  SKIPPED {rec['id']}  {rec.get('title', '')!r}: a tin was edited since the backfill")
+                continue
             if live:
                 sb.table("recipes").update({
                     "pans": json.loads(rec["pans"]),
@@ -267,13 +287,14 @@ def _restore(sb: Any, path: Path, live: bool) -> int:
                     "tokenized_directions": json.loads(rec["tokenized_directions"]),
                 }).eq("id", rec["id"]).execute()
             restored += 1
-    print(f"{'restored' if live else 'would restore'} {restored} recipe(s) from {path}")
+    print(f"{'restored' if live else 'would restore'} {restored} recipe(s) from {path}"
+          f"{f', skipped {skipped} with an edited tin' if skipped else ''}")
     if not live:
         print("DRY RUN — nothing was written. Re-run with --live to apply.")
     return 0
 
 
-STATUSES = ("tagged", "already-done", "cook-edited", "stale", "empty", "malformed", "failed")
+STATUSES = ("tagged", "none-found", "already-done", "cook-edited", "stale", "empty", "malformed", "failed")
 
 
 def main() -> int:
@@ -288,8 +309,10 @@ def main() -> int:
                                                 "pan_tokens, core_tokens, notes.")
     ap.add_argument("--live", action="store_true", help="Actually write. Omit for a dry run.")
     ap.add_argument("--record", type=Path, help="CSV of each rewritten row's id, title and old pans, bake_type, "
-                                                "bake_step and tokenized_directions.")
-    ap.add_argument("--restore", type=Path, help="Write this record's four columns back; nothing else.")
+                                                "bake_step and tokenized_directions. It also holds rows whose "
+                                                "write was refused (moved during the run).")
+    ap.add_argument("--restore", type=Path, help="Write this record's four columns back; nothing else. A row "
+                                                 "whose current tins include an edited one is skipped.")
     ap.add_argument("--force", action="store_true",
                     help="Look again at recipes that already have a bake type, tins or a tin token "
                          "(a cook-edited tin is still never touched).")

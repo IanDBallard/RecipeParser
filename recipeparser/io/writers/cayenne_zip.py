@@ -62,6 +62,7 @@ def _build_cayenne_meta(recipe: IngestResponse) -> Dict[str, Any]:
 
     # model_dump() gives us nested Pydantic objects as dicts automatically;
     # we need to do the same for our manual extraction.
+    meta["pans"] = [pan.model_dump() for pan in recipe.pans]
     meta["structured_ingredients"] = [
         ing.model_dump() for ing in recipe.structured_ingredients
     ]

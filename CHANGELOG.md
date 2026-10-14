@@ -20,6 +20,10 @@ A recipe's tins, bake type and baking step, and the internal temperature it stat
 - Known limitation: removing a tin in Cayenne does not mark the remaining tins edited, so the next regen restores REFINE's tins. Needs a Cayenne-side follow-up.
 - The backfill never touches a recipe with a cook-edited tin, even with `--force`; `--force` unwraps the old tin tokens before placing new ones.
 - `scripts/backfill_direction_amounts.py` treats a recipe with a `pan_` token as already tagged, like one with a `temp:` token.
+- The Cayenne zip writer and the restore path carry `pans`, `bake_type` and `bake_step` (the writer used to fail on a recipe with a tin).
+- The backfill gives a recipe where it finds nothing the status `none-found`: not written, no record line. There is no "looked, found nothing" marker, so a rerun asks again; `--limit` is for trial runs.
+- `--restore` re-reads each row and skips one with an edited tin (`edited: true`), with a note.
+- Run order: `backfill_direction_amounts` before `backfill_pans`, because a legacy recipe whose only tokens are tin tokens counts as already tagged there.
 
 ### 🧪 Tests
 - Unit tests for the grammar, the checks, REFINE, regen, the Gemini call and the backfill; the REFINE prompt and schema snapshots are updated.

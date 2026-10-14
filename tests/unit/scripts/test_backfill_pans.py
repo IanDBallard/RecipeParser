@@ -148,6 +148,10 @@ class FakeTable:
         self.log.append(("update", payload, self.filters))
         return self
 
+    def select(self, cols):
+        self.log.append(("select", cols, self.filters))
+        return self
+
     def eq(self, col, val):
         self.filters.append((col, val))
         return self
@@ -208,13 +212,13 @@ def test_force_unwrap_drops_stale_ids_and_differing_words():
     assert "pan_02" not in r.directions[0].text
 
 
-def _run_main(monkeypatch, argv, rows, log):
+def _run_main(monkeypatch, argv, rows, log, ans=None):
     import recipeparser
     import recipeparser.gemini as gem
     monkeypatch.setenv("SUPABASE_URL", "http://x")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "k")
     monkeypatch.setattr(recipeparser, "client", object(), raising=False)
-    monkeypatch.setattr(gem, "tag_pans", lambda *a, **k: answer())
+    monkeypatch.setattr(gem, "tag_pans", lambda *a, **k: ans or answer())
 
     class Table(FakeTable):
         def select(self, cols):
@@ -281,11 +285,45 @@ def test_record_round_trips_through_restore(monkeypatch, tmp_path):
     log = []
     sb = SimpleNamespace(table=lambda name: FakeTable([], log))
     assert bp._restore(sb, rec, live=False) == 0
-    assert log == []
+    assert not [e for e in log if e[0] == "update"]
     assert bp._restore(sb, rec, live=True) == 0
-    _, payload, filters = log[0]
+    _, payload, filters = [e for e in log if e[0] == "update"][0]
     assert set(payload) == {"pans", "bake_type", "bake_step", "tokenized_directions"}
     assert filters == [("id", "r1")]
     assert payload["pans"] == [{"id": "pan_09", "raw": "old"}]
     assert payload["bake_type"] is None and payload["bake_step"] == 3
     assert payload["tokenized_directions"] == old["tokenized_directions"]
+
+
+def test_restore_skips_a_row_whose_current_tin_was_edited(monkeypatch, tmp_path, capsys):
+    rec = tmp_path / "before.csv"
+    old = row(bake_step=3, pans=[{"id": "pan_09", "raw": "old"}])
+    _run_main(monkeypatch, ["--all-users", "--live", "--force", "--record", str(rec)], [old], [])
+    log = []
+    now = [{"pans": [{"id": "pan_01", "raw": "20cm tin", "edited": True}]}]
+    sb = SimpleNamespace(table=lambda name: FakeTable(now, log))
+    assert bp._restore(sb, rec, live=True) == 0
+    assert not [e for e in log if e[0] == "update"]
+    out = capsys.readouterr().out
+    assert "SKIPPED r1" in out and "skipped 1" in out
+
+
+def test_a_recipe_with_nothing_found_is_none_found():
+    ans = PanAnswer(pans=[], bake_type=None, bake_step=None)
+    r = bp.plan_row(row(), asker(ans))
+    assert r.status == "none-found"
+
+
+def test_none_found_is_never_written_or_recorded(monkeypatch, tmp_path):
+    import csv
+    log = []
+    rec, rev = tmp_path / "before.csv", tmp_path / "review.csv"
+    monkeypatch.setattr(bp, "write_row", lambda *a, **k: (_ for _ in ()).throw(AssertionError("written")))
+    argv = ["--all-users", "--live", "--record", str(rec), "--review", str(rev)]
+    assert _run_main(monkeypatch, argv, [row(steps=["Stir.", "Serve."])], log, ans=PanAnswer()) == 0
+    assert not [e for e in log if e[0] == "update"]
+    with rec.open(newline="", encoding="utf-8") as fh:
+        assert len(list(csv.reader(fh))) == 1  # header only
+    with rev.open(newline="", encoding="utf-8") as fh:
+        lines = list(csv.DictReader(fh))
+    assert [(ln["id"], ln["status"]) for ln in lines] == [("r1", "none-found")]

@@ -22,7 +22,7 @@ from recipeparser.core.fat_tokens import (
     pan_token,
     parse_temp_value,
 )
-from recipeparser.core.temperatures import _overlaps, _token_spans
+from recipeparser.core.temperatures import overlaps, token_spans
 from recipeparser.models import CayenneRefinement, RecipePan, TokenizedDirection
 
 BAKE_TYPES = (
@@ -163,9 +163,11 @@ def check_core_flags(directions: Sequence[TokenizedDirection]) -> Tuple[List[Tok
 
     def check(m: "re.Match[str]") -> str:
         token_id = m.group(1)
-        if not is_temp_id(token_id) or ",core" not in token_id:
+        if not is_temp_id(token_id):
             return m.group(0)
         value = token_id[len(TEMP_PREFIX) :]
+        if "core" not in [p.strip() for p in value.split(",")]:
+            return m.group(0)
         parsed = parse_temp_value(value)
         if parsed is not None and parsed.core and parsed.main is not None and _core_in_band(parsed.main):
             return m.group(0)
@@ -221,10 +223,10 @@ def place_pan_mentions(text: str, mentions: Sequence[Tuple[str, str, str]]) -> T
         if not _ID.fullmatch(pan_id) or not quote or any(c in quote for c in "{}|"):
             dropped.append(f"{quote!r}: unusable id {pan_id!r} or quote")
             continue
-        spans = _token_spans(text) + [(s, e) for s, e, _ in placed]
+        spans = token_spans(text) + [(s, e) for s, e, _ in placed]
         starts = [
             s for s in locate(text, quote, context)
-            if not _overlaps(s, s + len(quote), spans) and _on_word_boundary(text, s, s + len(quote))
+            if not overlaps(s, s + len(quote), spans) and _on_word_boundary(text, s, s + len(quote))
         ]
         if len(starts) != 1:
             dropped.append(f"{quote!r} ({context!r}): {len(starts)} free placement(s)")
