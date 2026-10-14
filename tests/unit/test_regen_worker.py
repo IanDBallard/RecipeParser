@@ -78,11 +78,11 @@ def _worker(fake, refine_fn=None, embed_fn=None, clock=None):
 
 def _ops(fake, table):
     """The write ops on a table; the edit-guard's select is read separately by _selects."""
-    return [q.ops for q in fake.queries if q.table == table and q.ops[0][0] != "select"]
+    return [q.ops for q in fake.queries if q.table == table and not (q.ops and q.ops[0][0] == "select")]
 
 
 def _selects(fake, table):
-    return [q.ops for q in fake.queries if q.table == table and q.ops[0][0] == "select"]
+    return [q.ops for q in fake.queries if q.table == table and q.ops and q.ops[0][0] == "select"]
 
 
 def test_claims_with_batch_size():

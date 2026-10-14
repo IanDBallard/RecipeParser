@@ -8,9 +8,10 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
-from recipeparser.core.fat_tokens import strip_fat_tokens
+from recipeparser.core.fat_tokens import TOKEN_RE, is_pan_id, strip_fat_tokens
 from recipeparser.core.pans import check_pan_tokens
 from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
 
@@ -91,6 +92,10 @@ def build_extraction(row: Mapping[str, Any]) -> RecipeExtraction:
     )
 
 
+def _fold(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
 def build_update(
     refinement: CayenneRefinement,
     embedding: List[float],
@@ -106,6 +111,8 @@ def build_update(
     Tins, bake type and step are derived data like the detected system, with one exception
     (pan-aware scaling, parser contract): a tin the cook edited is theirs, so when any current tin
     is edited the cook's tins are written back unchanged and REFINE's pan tokens for other ids unwrap.
+    Accepted race, not guarded: a pans edit the cook has made that has not synced when regen reads
+    can be overwritten.
     """
     edited = bool(current_pans) and any(isinstance(p, dict) and p.get("edited") is True for p in current_pans or [])
     directions = refinement.tokenized_directions
@@ -115,6 +122,19 @@ def build_update(
         keep = {p["id"] for p in pans if isinstance(p, dict) and isinstance(p.get("id"), str)}
         # The stripped text is the source: a kept token survives when its words are in the recipe's own text.
         directions, _ = check_pan_tokens(directions, keep, strip_fat_tokens("\n".join(d.text for d in directions)))
+        # R-F: REFINE may renumber tins, so a kept id must also still name this tin: its words sit in the cook's raw.
+        raws = {
+            p["id"]: _fold(str(p.get("raw") or ""))
+            for p in pans
+            if isinstance(p, dict) and isinstance(p.get("id"), str)
+        }
+
+        def same_tin(m: "re.Match[str]") -> str:
+            if is_pan_id(m.group(1)) and _fold(m.group(2)) not in raws.get(m.group(1), ""):
+                return m.group(2)
+            return m.group(0)
+
+        directions = [d.model_copy(update={"text": TOKEN_RE.sub(same_tin, d.text)}) for d in directions]
     return {
         "structured_ingredients": [i.model_dump() for i in refinement.structured_ingredients],
         "tokenized_directions": [d.model_dump() for d in directions],
