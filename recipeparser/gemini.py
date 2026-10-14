@@ -1106,15 +1106,14 @@ and the internal temperatures its directions state.
 
 RULES:
 {_TINS_VOCAB_TEXT}
-   - "bake_step": 0-based position in the numbered DIRECTIONS below of the step that bakes the main
-     item, or null. The first numbered step, "1.", is bake_step 0, not 1.
+   - "bake_step": the number, as numbered in the DIRECTIONS below (1-based, like "step" below), of
+     the step that bakes the main item, or null.
    - "mentions": for each listed tin, the first mention in each step: "step" (1-based, as numbered),
-     "quote" (the words naming the tin, copied character for character from that step), "context"
-     (the quote with about five words around it, copied the same way) and "pan_id".
+     "quote" (the words naming the tin, copied character for character from that step, same case and
+     spacing), "context" (the quote with about five words around it, copied the same way) and "pan_id".
    - "core": each internal (probe, doneness) temperature figure a step states ("until the centre
      reaches 93°C", "internal temperature of 200F"), never an oven setting: "step" (1-based) and
-     "quote", the words of the figure. The figure may already sit inside a {{{{temp:...}}}} token; quote
-     its words, not the token.
+     "quote", the words of the figure, copied character for character, same case and spacing.
 
 SOURCE SYSTEM: {source_system or "unknown"}
 
@@ -1124,6 +1123,26 @@ INGREDIENTS:
 DIRECTIONS:
 {numbered}
 """
+
+
+_PANS_BAKE_STEP_DESC = "1-based number of the step that bakes the main item; null when nothing bakes."
+
+
+def _with_bake_step_description(schema: Any) -> Any:
+    """*schema* with every ``bake_step`` property described as the pans prompt asks for it."""
+    if isinstance(schema, dict):
+        return {
+            k: (
+                {n: ({**v, "description": _PANS_BAKE_STEP_DESC} if n == "bake_step" and isinstance(v, dict)
+                     else _with_bake_step_description(v)) for n, v in val.items()}
+                if k == "properties" and isinstance(val, dict)
+                else _with_bake_step_description(val)
+            )
+            for k, val in schema.items()
+        }
+    if isinstance(schema, list):
+        return [_with_bake_step_description(i) for i in schema]
+    return schema
 
 
 def tag_pans(
@@ -1143,7 +1162,7 @@ def tag_pans(
         config={
             "response_mime_type": "application/json",
             # RecipePan.edited is set by a person editing a tin, never by the model.
-            "response_json_schema": schema_without_edited(_schema_for_gemini(PanAnswer)),
+            "response_json_schema": _with_bake_step_description(schema_without_edited(_schema_for_gemini(PanAnswer))),
             "temperature": 0,
         },
         what="Pans",
@@ -1152,6 +1171,9 @@ def tag_pans(
     if not response.text or not response.text.strip():
         raise RuntimeError("tag_pans(): Gemini returned an empty response")
     answer: PanAnswer = PanAnswer.model_validate(json.loads(response.text))
+    # Asked 1-based, like mentions and core; PanAnswer.bake_step is 0-based (R-G).
+    if answer.bake_step is not None:
+        answer.bake_step = answer.bake_step - 1 if answer.bake_step >= 1 else None
     return answer
 
 

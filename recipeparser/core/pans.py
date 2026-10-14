@@ -202,6 +202,14 @@ def apply_pan_checks(refinement: CayenneRefinement, raw_directions: Sequence[str
     return warnings
 
 
+def _on_word_boundary(text: str, start: int, end: int) -> bool:
+    """Whether ``text[start:end]`` is not cut out of a longer word: "tin" in "tinning" is not."""
+    before = text[start - 1] if start > 0 else ""
+    after = text[end] if end < len(text) else ""
+    first, last = text[start], text[end - 1]
+    return not (first.isalnum() and before.isalnum()) and not (last.isalnum() and after.isalnum())
+
+
 def place_pan_mentions(text: str, mentions: Sequence[Tuple[str, str, str]]) -> Tuple[str, List[str]]:
     """Splice the model's ``(quote, context, pan_id)`` mentions into ``text`` as tin tokens where each
     quote is found verbatim, outside every token and earlier placement. A bad id or quote, a quote
@@ -214,7 +222,10 @@ def place_pan_mentions(text: str, mentions: Sequence[Tuple[str, str, str]]) -> T
             dropped.append(f"{quote!r}: unusable id {pan_id!r} or quote")
             continue
         spans = _token_spans(text) + [(s, e) for s, e, _ in placed]
-        starts = [s for s in locate(text, quote, context) if not _overlaps(s, s + len(quote), spans)]
+        starts = [
+            s for s in locate(text, quote, context)
+            if not _overlaps(s, s + len(quote), spans) and _on_word_boundary(text, s, s + len(quote))
+        ]
         if len(starts) != 1:
             dropped.append(f"{quote!r} ({context!r}): {len(starts)} free placement(s)")
             continue
@@ -232,32 +243,39 @@ def place_pan_mentions(text: str, mentions: Sequence[Tuple[str, str, str]]) -> T
 def mark_core(text: str, quotes: Sequence[str]) -> Tuple[str, List[str]]:
     """Add ``,core`` to the plain degree token whose words contain a quote (internal temperature,
     D24). Only the token's value changes. An oven, fan, gas, tin or ingredient token, a value outside
-    30 to 110 C, or a quote matching no token is left alone and reported."""
+    30 to 110 C, or a quote matching no token is left alone and reported; a token already ``,core``
+    is left alone silently; a quote that fits several eligible tokens marks none."""
     notes: List[str] = []
     wanted = {fold(q): q for q in quotes if q}
+    matches = [m for m in TOKEN_RE.finditer(text) if is_temp_id(m.group(1))]
+    mark: Set[int] = set()
     hit: Set[str] = set()
-
-    def mark(m: "re.Match[str]") -> str:
-        token_id = m.group(1)
-        if not is_temp_id(token_id):
-            return m.group(0)
-        words = fold(m.group(2))
-        matched = [q for q in wanted if q in words]
-        if not matched:
-            return m.group(0)
-        hit.update(matched)
-        value = token_id[len(TEMP_PREFIX) :]
-        parsed = parse_temp_value(value)
-        flagged = parse_temp_value(value + ",core")
-        if (
-            parsed is None or parsed.core or parsed.oven or parsed.fan is not None
-            or flagged is None or not flagged.core or flagged.main is None
-            or flagged.main[0] == "gas" or not _core_in_band(flagged.main)
-        ):
-            notes.append(f"core not marked: {m.group(0)}")
-            return m.group(0)
-        return m.group(0).replace(token_id, token_id + ",core", 1)
-
-    out = TOKEN_RE.sub(mark, text)
+    for q, original in wanted.items():
+        eligible: List["re.Match[str]"] = []
+        for m in matches:
+            if q not in fold(m.group(2)):
+                continue
+            hit.add(q)
+            value = m.group(1)[len(TEMP_PREFIX) :]
+            parsed = parse_temp_value(value)
+            flagged = parse_temp_value(value + ",core")
+            if parsed is not None and parsed.core:
+                continue
+            if (
+                parsed is None or parsed.oven or parsed.fan is not None
+                or flagged is None or not flagged.core or flagged.main is None
+                or flagged.main[0] == "gas" or not _core_in_band(flagged.main)
+            ):
+                notes.append(f"core not marked: {m.group(0)}")
+            else:
+                eligible.append(m)
+        if len(eligible) > 1:
+            notes.append(f"core quote {original!r} is ambiguous: {len(eligible)} temperature tokens fit")
+        else:
+            mark.update(m.start() for m in eligible)
     notes.extend(f"core quote {wanted[q]!r} matches no temperature token" for q in wanted if q not in hit)
-    return out, notes
+
+    def apply(m: "re.Match[str]") -> str:
+        return m.group(0).replace(m.group(1), m.group(1) + ",core", 1) if m.start() in mark else m.group(0)
+
+    return TOKEN_RE.sub(apply, text), notes

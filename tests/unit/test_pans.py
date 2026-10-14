@@ -233,3 +233,33 @@ def test_mark_core_leaves_an_out_of_band_fan_gas_pan_or_ingredient_token_alone()
     ]:
         text, notes = mark_core(src, [quote])
         assert text == src and notes, src
+
+
+def test_place_pan_mentions_needs_a_word_boundary_and_never_cuts_a_token():
+    out, dropped = place_pan_mentions("Use tinning.", [("tin", "", "pan_01")])
+    assert out == "Use tinning." and len(dropped) == 1
+    out, dropped = place_pan_mentions("Use the tin.", [("tin", "", "pan_01")])
+    assert out == "Use the {{pan_01|tin}}." and dropped == []
+    src = "Use {{ing_01|foil|all}} tin."
+    out, dropped = place_pan_mentions(src, [("foil tin", "", "pan_01")])  # spans a token boundary
+    assert out == src and len(dropped) == 1
+
+
+def test_place_pan_mentions_drops_overlapping_quotes():
+    out, dropped = place_pan_mentions(
+        "Grease two 20cm tins well.", [("two 20cm tins", "", "pan_01"), ("20cm tins", "", "pan_02")]
+    )
+    assert out == "Grease {{pan_01|two 20cm tins}} well." and len(dropped) == 1
+
+
+def test_mark_core_reads_fahrenheit_and_leaves_an_already_core_token_silent():
+    text, notes = mark_core("Cook to {{temp:200F|200°F}}.", ["200°F"])
+    assert text == "Cook to {{temp:200F,core|200°F}}." and notes == []
+    src = "Cook to {{temp:93C,core|93°C}}."
+    assert mark_core(src, ["93°C"]) == (src, [])
+
+
+def test_mark_core_marks_none_when_a_quote_fits_two_tokens():
+    src = "Reach {{temp:93C|93°C}}, then {{temp:93C|93°C}} again."
+    text, notes = mark_core(src, ["93°C"])
+    assert text == src and len(notes) == 1 and "ambiguous" in notes[0]
