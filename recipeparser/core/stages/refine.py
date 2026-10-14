@@ -11,7 +11,14 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
-from recipeparser.core.fat_tokens import TEMP_PREFIX, TOKEN_RE, check_mentions, is_temp_id, parse_temp_value
+from recipeparser.core.fat_tokens import (
+    TEMP_PREFIX,
+    TOKEN_RE,
+    check_mentions,
+    is_special_id,
+    is_temp_id,
+    parse_temp_value,
+)
 from recipeparser.core.headings import heading_name
 from recipeparser.core.numbers import written_measures
 from recipeparser.core.rate_limiter import GlobalRateLimiter
@@ -154,8 +161,8 @@ def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
     valid_ids = {ing.id for ing in refinement.structured_ingredients}
     for step in refinement.tokenized_directions:
         for match in TOKEN_RE.finditer(step.text):
-            if is_temp_id(match.group(1)):
-                continue  # checked by _check_temperatures
+            if is_special_id(match.group(1)):
+                continue  # a temperature is checked by _check_temperatures; a tin names no ingredient
             token_id = match.group(1)
             if token_id not in valid_ids:
                 raise ValueError(

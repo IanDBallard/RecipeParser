@@ -7,9 +7,12 @@ from recipeparser.core.fat_tokens import (
     TempValue,
     Use,
     check_mentions,
+    is_pan_id,
     is_quantity,
+    is_special_id,
     is_tagged,
     is_temp_id,
+    pan_token,
     parse_temp_value,
     parse_use,
     splice_mentions,
@@ -339,6 +342,29 @@ def test_parse_temp_value_refuses_what_the_client_refuses(raw):
 def test_temp_token_and_is_temp_id():
     assert temp_token("180C,oven", "180°C") == "{{temp:180C,oven|180°C}}"
     assert is_temp_id("temp:180C") and not is_temp_id("ing_01")
+
+
+def test_pan_ids_are_special_and_never_ingredients():
+    assert is_pan_id("pan_01") and is_special_id("pan_01")
+    assert is_special_id("temp:180C,oven")
+    assert not is_pan_id("ing_pan_01") and not is_special_id("ing_01")
+    assert pan_token("pan_01", "two 20cm tins") == "{{pan_01|two 20cm tins}}"
+
+
+def test_core_flag_parses_after_a_degree_reading_only():
+    v = parse_temp_value("93C,core")
+    assert v is not None and v.core and not v.oven and v.main == ("C", 93.0)
+    assert parse_temp_value("205F,core").core
+    assert parse_temp_value("180C,oven").core is False
+    for bad in ("gas4,core", "93C,core,oven", "93C,oven,core", "93C,core,fan=80C"):
+        assert parse_temp_value(bad) is None, bad
+
+
+def test_is_tagged_ignores_pan_tokens():
+    steps = [TokenizedDirection(step=1, text="Grease {{pan_01|two tins}} and add {{ing_01|flour|all}}")]
+    assert is_tagged(steps)
+    only_pan = [TokenizedDirection(step=1, text="Grease {{pan_01|two tins}}")]
+    assert not is_tagged(only_pan)
 
 
 # Spec Acceptance: exports and regeneration show the writer's words (they all strip with this).

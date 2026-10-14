@@ -13,6 +13,10 @@ docs/superpowers/specs/2026-10-12-oven-temperatures-design.md, D2-D3): ``{{temp:
 Its value is what the writer meant, in the writer's unit; it has no ``use`` and names no ingredient.
 Cayenne's domain/temperature.ts reads the same grammar; keep them alike.
 
+A token whose id starts ``pan_`` is a tin (Cayenne pan-aware scaling D21): ``{{pan_01|two 20cm sandwich
+tins}}``; no ``use``, names no ingredient. A ``temp:`` value may end ``,core``: an internal
+temperature, the source's own doneness figure (D24).
+
 Pure: no I/O, no imports from recipeparser.io or recipeparser.adapters.
 """
 from __future__ import annotations
@@ -32,6 +36,7 @@ _KEYWORDS = ("all", "rest", "none")
 _PART_SLACK = 1.05
 
 TEMP_PREFIX = "temp:"
+PAN_PREFIX = "pan_"
 _TEMP_MAIN = re.compile(r"^(-?\d+(?:\.\d+)?)([CF])$", re.ASCII)
 _TEMP_GAS = re.compile(r"^gas(0\.25|0\.5|[1-9])$", re.ASCII)
 _TEMP_FAN = re.compile(r"^fan=(-?\d+(?:\.\d+)?)([CF])$", re.ASCII)
@@ -42,6 +47,7 @@ class TempValue(NamedTuple):
     main: Optional[Tuple[str, float]]  # ("C" | "F" | "gas", number)
     fan: Optional[Tuple[str, float]]   # ("C" | "F", number)
     oven: bool
+    core: bool = False                 # an internal (probe) temperature (pan-aware scaling D24)
 
 
 def _celsius(scale: str, number: float) -> float:
@@ -49,23 +55,28 @@ def _celsius(scale: str, number: float) -> float:
 
 
 def parse_temp_value(raw: str) -> Optional[TempValue]:
-    """The value after ``temp:``, or None when it is malformed (D3, D13): ``[main][,oven][,fan=...]``."""
+    """
+    The value after ``temp:``, or None when it is malformed (D3, D13): ``[main][,core]`` or
+    ``[main][,oven][,fan=...]``.
+    """
     parts = [p.strip() for p in raw.split(",")]
-    i, main, fan, oven = 0, None, None, False
+    i, main, fan, oven, core = 0, None, None, False, False
     if (m := _TEMP_MAIN.match(parts[0])):
         main, i = (m.group(2), float(m.group(1))), 1
     elif (g := _TEMP_GAS.match(parts[0])):
         main, oven, i = ("gas", float(g.group(1))), True, 1
-    if i < len(parts) and parts[i] == "oven":
+    if main is not None and main[0] != "gas" and i < len(parts) and parts[i] == "core":
+        core, i = True, i + 1
+    if not core and i < len(parts) and parts[i] == "oven":
         oven, i = True, i + 1
-    if i < len(parts) and (f := _TEMP_FAN.match(parts[i])):
+    if not core and i < len(parts) and (f := _TEMP_FAN.match(parts[i])):
         fan, oven, i = (f.group(2), float(f.group(1))), True, i + 1
     if i != len(parts) or (main is None and fan is None):
         return None
     for reading in (main, fan):
         if reading is not None and reading[0] != "gas" and not _TEMP_MIN_C <= _celsius(*reading) <= _TEMP_MAX_C:
             return None
-    return TempValue(main, fan, oven)
+    return TempValue(main, fan, oven, core)
 
 
 def is_temp_id(token_id: str) -> bool:
@@ -73,8 +84,23 @@ def is_temp_id(token_id: str) -> bool:
     return token_id.startswith(TEMP_PREFIX)
 
 
+def is_pan_id(token_id: str) -> bool:
+    """Whether a token's first field names a tin."""
+    return token_id.startswith(PAN_PREFIX)
+
+
+def is_special_id(token_id: str) -> bool:
+    """A temperature or a tin: a token that names no ingredient."""
+    return is_temp_id(token_id) or is_pan_id(token_id)
+
+
 def temp_token(value: str, words: str) -> str:
     return "{{" + TEMP_PREFIX + value + "|" + words + "}}"
+
+
+def pan_token(pan_id: str, words: str) -> str:
+    return "{{" + pan_id + "|" + words + "}}"
+
 
 _UNIT_ALIASES: Dict[str, str] = {
     "cups": "cup", "c": "cup",
@@ -199,8 +225,8 @@ def _mentions(directions: Sequence[TokenizedDirection]) -> List[_Mention]:
     found: List[_Mention] = []
     for index, step in enumerate(directions):
         for match in TOKEN_RE.finditer(step.text):
-            if is_temp_id(match.group(1)):
-                continue  # a temperature names no ingredient and carries no use
+            if is_special_id(match.group(1)):
+                continue  # a temperature or a tin names no ingredient and carries no use
             before = strip_fat_tokens(step.text[: match.start()])
             found.append(_Mention(index, match.start(), match.end(), match.group(1), match.group(2),
                                   match.group(3), before))
@@ -410,6 +436,7 @@ locate = _locate
 
 def is_tagged(directions: Sequence[TokenizedDirection]) -> bool:
     """Whether the directions carry ingredient tokens and every one says its use: written by 9.5.0 or
-    later. Temperature tokens say nothing either way and are not counted."""
-    found = [match.group(3) for d in directions for match in TOKEN_RE.finditer(d.text) if not is_temp_id(match.group(1))]
+    later. Temperature and tin tokens say nothing either way and are not counted."""
+    found = [match.group(3) for d in directions for match in TOKEN_RE.finditer(d.text)
+             if not is_special_id(match.group(1))]
     return bool(found) and all(use is not None for use in found)

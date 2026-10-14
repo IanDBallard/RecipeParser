@@ -319,8 +319,8 @@ def test_refine_wraps_every_temperature_in_a_temp_token(golden_client, monkeypat
 
     temps = {m.group(2): parse_temp_value(m.group(1)[len("temp:"):])
              for d in refined.tokenized_directions for m in TOKEN_RE.finditer(d.text) if is_temp_id(m.group(1))}
-    assert temps["220°C/200°C fan/gas mark 7"] == (("C", 220.0), ("C", 200.0), True)
-    assert temps["180"] == (("C", 180.0), None, True)
-    assert temps.get("moderate oven") == (("C", 180.0), None, True)
-    assert temps["63°C"] == (("C", 63.0), None, False)
+    assert temps["220°C/200°C fan/gas mark 7"] == (("C", 220.0), ("C", 200.0), True, False)
+    assert temps["180"] == (("C", 180.0), None, True, False)
+    assert temps.get("moderate oven") == (("C", 180.0), None, True, False)
+    assert temps["63°C"] == (("C", 63.0), None, False, False)
     assert [strip_fat_tokens(d.text) for d in refined.tokenized_directions] == raws[0].directions

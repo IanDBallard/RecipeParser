@@ -54,8 +54,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recipeparser.core.fat_tokens import (  # noqa: E402
     TOKEN_RE,
     check_mentions,
+    is_special_id,
     is_tagged,
-    is_temp_id,
     splice_mentions,
     strip_fat_tokens,
 )
@@ -102,8 +102,8 @@ def plan_row(row: Dict[str, Any], tag: Tagger, force: bool = False) -> RowResult
     except Exception as exc:  # noqa: BLE001
         result.status, result.error = "malformed", str(exc)
         return result
-    if any(is_temp_id(m.group(1)) for d in old for m in TOKEN_RE.finditer(d.text)):
-        result.status = "already-tagged"  # --force would strip the temperature tokens: never
+    if any(is_special_id(m.group(1)) for d in old for m in TOKEN_RE.finditer(d.text)):
+        result.status = "already-tagged"  # --force would strip the temperature and tin tokens: never
         return result
     if is_tagged(old) and not force:
         result.status = "already-tagged"

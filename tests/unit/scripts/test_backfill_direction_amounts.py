@@ -217,6 +217,16 @@ def test_main_writes_each_recipe_as_its_call_returns(monkeypatch, tmp_path, caps
     assert "progress: 1/2 sent to Gemini, 1 written" in out and "progress: 2/2 sent to Gemini, 2 written" in out
 
 
+def test_a_recipe_whose_only_token_is_a_tin_is_already_tagged():
+    calls: List[int] = []
+    tin = [{"step": 1, "text": "Grease the {{pan_01|two tins}}."}]
+    for force in (False, True):
+        row = _row(tokenized_directions=tin, direction_steps=["Grease the two tins."])
+        result = plan_row(row, _tag(calls), force=force)
+        assert result.status == "already-tagged"
+    assert calls == []
+
+
 def test_a_recipe_carrying_a_temperature_token_is_never_rewritten_even_with_force():
     calls: List[int] = []
     legacy = [{"step": 1, "text": "Bake at {{temp:350F,oven|350°F}}."}]

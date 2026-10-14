@@ -46,6 +46,11 @@ def test_an_out_of_range_value_is_unwrapped():
     assert result.tokenized_directions[0].text == "Preheat the oven to 350°F."
 
 
+def test_a_tin_token_is_not_an_unknown_ingredient():
+    result = _run(["Grease the {{pan_01|two 20cm tins}} and preheat.", "Roast until the centre reads 63°C."])
+    assert result.tokenized_directions[0].text == "Grease the {{pan_01|two 20cm tins}} and preheat."
+
+
 def test_an_unknown_ingredient_id_still_raises():
     import pytest
     with pytest.raises(ValueError, match="unknown ingredient"):
