@@ -753,6 +753,11 @@ _TINS_SIZES = """\
    - "family" stovetop: a frying pan, skillet, sauté pan, wok, paella pan, omelette or pancake pan,
      griddle, saucepan, pot or lidded casserole pot such as a Dutch oven, whether the recipe uses it
      on the hob or in the oven; a baking dish, even one called a casserole dish, is not stovetop.
+   - A baking, ovenproof, gratin, casserole or pie dish takes the family of its shape: rectangular
+     traybake, square square, round round-cake, a pie dish tart. When the recipe offers a choice
+     ("8-inch square or round baking dish", "8x12 or 9x13-inch dish"), use the first size and shape it names.
+     A rectangle is traybake, never square: square only when its sides are equal (a 9 x 13-inch dish or
+     pan is traybake).
    - "dims_mm": inside size in MILLIMETRES (inches x 25.4): "d" for a round, "l" and "w" for a
      rectangle, square or loaf; "depth" only when the recipe states it. Never guess a size.
    - "capacity_ml" only when the recipe names the tin by volume ("a 1.5 litre tin", "a 10-cup Bundt").

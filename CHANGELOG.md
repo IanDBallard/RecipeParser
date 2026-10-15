@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.13.2] — 2026-10-15
+
+### 🐛 Fixed
+- A baking dish now gets a tin family. The tin rules named tins and pans but never dishes, so 13 dimensioned dishes in the live library ("an ovenproof dish, about 18 x 23cm", "9-by-13-inch baking dish") came back with no family and no recipe baked in one could be fitted in Cayenne. A baking, ovenproof, gratin, casserole or pie dish now takes the family of its shape (rectangular traybake, square square, round round-cake, a pie dish tart), a rectangle is traybake and never square (F-298's 9 x 13 wobble), and a choice of sizes ("8x12 or 9x13-inch dish") takes the first. A dish sized only by capacity ("1.2 litre pie dish") still has no family: fitting by volume is a design of its own. Shared by REFINE and the pans backfill. After deploy, rerun the affected recipes with `backfill_pans.py --recipe-id … --force`.
+
 ## [9.13.1] — 2026-10-14
 
 Bake types defined by how the item is made (Cayenne docs/superpowers/specs/2026-10-14-pan-families-savoury-pies-design.md, D29). No schema change; no Cayenne change needed.
