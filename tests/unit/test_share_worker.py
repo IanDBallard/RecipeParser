@@ -52,6 +52,8 @@ def _seed(fake: FakeSupabase, items: List[Dict[str, Any]], recipes: List[Dict[st
     fake.rpcs["finish_recipe_share"] = emulate_finish(fake)
     fake.rpcs["expire_recipe_shares"] = lambda p: 0
     fake.rpcs["purge_recipe_shares"] = lambda p: 0
+    fake.rpcs["expire_household_invites"] = lambda p: 0
+    fake.rpcs["purge_household_invites"] = lambda p: 0
 
 
 def _worker(fake: FakeSupabase, images: Optional[FakeImageStore] = None, clock=lambda: 0.0) -> ShareWorker:
@@ -488,3 +490,34 @@ def test_the_sweep_does_not_keep_the_loop_busy():
     fake.tables["ingestion_jobs"] = []
     fake.rpcs["expire_recipe_shares"] = lambda p: 3
     assert _worker(fake).run_once() == 0
+
+
+def test_the_sweep_expires_and_purges_household_invites_on_the_share_timers():
+    fake = FakeSupabase()
+    _seed(fake, [], [])
+    fake.tables["ingestion_jobs"] = []
+    expired, purged = _counting(fake, "expire_household_invites"), _counting(fake, "purge_household_invites")
+    now = [0.0]
+    worker = _worker(fake, clock=lambda: now[0])
+    worker.run_once()
+    assert (len(expired), len(purged)) == (1, 1)
+    now[0] = 15 * 60
+    worker.run_once()
+    assert (len(expired), len(purged)) == (2, 1)
+    now[0] = 24 * 60 * 60
+    worker.run_once()
+    assert (len(expired), len(purged)) == (3, 2)
+
+
+def test_a_failing_invite_sweep_does_not_stop_the_share_sweep():
+    fake = FakeSupabase()
+    _seed(fake, [], [])
+    fake.tables["ingestion_jobs"] = []
+    shares = _counting(fake, "expire_recipe_shares")
+
+    def down(p):
+        raise RuntimeError("database unavailable")
+
+    fake.rpcs["expire_household_invites"] = down
+    _worker(fake).run_once()
+    assert len(shares) == 1

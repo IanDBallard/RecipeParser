@@ -319,9 +319,12 @@ class ShareWorker:
         if self._next_expire is None or now >= self._next_expire:
             self._next_expire = now + EXPIRE_EVERY_SECONDS
             self._sweep_call("expire_recipe_shares")
+            # Household invites ride the share timers (household design Part 3).
+            self._sweep_call("expire_household_invites")
         if self._next_purge is None or now >= self._next_purge:
             self._next_purge = now + PURGE_EVERY_SECONDS
             self._sweep_call("purge_recipe_shares")
+            self._sweep_call("purge_household_invites")
 
     def _sweep_call(self, fn: str) -> None:
         """Best effort: a failure waits for the next due time rather than retrying every poll,
@@ -332,4 +335,4 @@ class ShareWorker:
             log.error("%s failed: %s", fn, exc)
             return
         if n:
-            log.info("%s: %s share(s).", fn, n)
+            log.info("%s: %s row(s).", fn, n)
