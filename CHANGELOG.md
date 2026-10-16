@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.14.0] — 2026-10-15
+
+AI caps for the beta (Cayenne spec `2026-10-15-ai-caps-and-invite-gate-design.md`, D2–D10). Every Gemini call is recorded in `ai_usage` against its user and action. The kill switch (`ai_settings.paused`) refuses AI work for everyone but exempt accounts. An import stops at the account's `recipe_cap` and finishes `done` with a note. Search embeds are limited to 60 a minute per user.
+
+### ⚠️ Requires — apply the Cayenne migration **before** deploying this version
+- `*_ai_allowance.sql` (AI caps plan A): `ai_allowance`, `ai_usage`, `ai_settings`, `consume_recipe_allowance`. Without it every AI request is refused as paused, because the allowance row is missing and the gate fails closed.
+
+### ✨ Added
+- `recipeparser/usage.py`: per-request attribution; picture generation now records its tokens too.
+- `recipeparser/adapters/ai_gate.py`: 503 when paused, 429 at the cap and over the search rate. Never 403.
+- `JobSink`: one allowance spent per AI-made recipe. Cayenne restores spend none.
+- The regeneration and re-categorise workers are attributed, and wait out a pause for non-exempt owners.
+- A recipe refused at the cap is neither written nor tagged, so no AI is spent on it after the cap.
+- While paused, a regeneration row whose owner isn't exempt is left to its claim lease rather than released, so exempt owners' rows keep moving.
+
 ## [9.13.2] — 2026-10-15
 
 ### 🐛 Fixed
