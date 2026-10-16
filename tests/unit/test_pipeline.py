@@ -384,6 +384,42 @@ class TestPipelineRun:
 # Test: on_result / on_skip streaming callbacks (Task 3)
 # ---------------------------------------------------------------------------
 
+def _skip_chunk() -> Chunk:
+    return Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        skip_reason="Bad Cake: the Cayenne data in this entry could not be read",
+        label="Bad Cake",
+    )
+
+
+def test_skip_reason_chunk_runs_no_stage_and_reports_skip():
+    pipeline = _make_pipeline()
+    results_seen: List[IngestResponse] = []
+    skips_seen: List[tuple] = []
+
+    returned = pipeline.run(
+        [_skip_chunk()],
+        on_result=lambda r, _ai: results_seen.append(r),
+        on_skip=lambda chunk, reason, index: skips_seen.append((reason, index)),
+    )
+
+    assert skips_seen == [("Bad Cake: the Cayenne data in this entry could not be read", 0)]
+    assert results_seen == []
+    assert returned == []
+    pipeline._client.models.embed_content.assert_not_called()
+    pipeline._client.models.generate_content.assert_not_called()
+    assert pipeline._client.mock_calls == []
+
+
+def test_skip_reason_chunk_needs_no_ai():
+    from recipeparser.core.pipeline import chunk_needs_ai, chunk_stages
+
+    chunk = _skip_chunk()
+    assert chunk_stages(chunk) == []
+    assert chunk_needs_ai(chunk) is False
+
+
 def test_on_result_fires_per_recipe_and_on_skip_names_the_failed_chunk():
     """Spec 4.2, 4.3: results stream out as they finish and failures are reported, not swallowed."""
     good = Chunk(text="good", input_type=InputType.URL, label="Good One")

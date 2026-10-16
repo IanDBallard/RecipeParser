@@ -62,6 +62,8 @@ class _ChunkFailed(Exception):
 
 def chunk_stages(chunk: Chunk) -> List[str]:
     """The ordered stage names to run for ``chunk`` (the table in ``RecipePipeline._get_stages``)."""
+    if chunk.skip_reason is not None:
+        return []                        # a skipped line: no stage, no model call (D6)
     if chunk.input_type == InputType.PAPRIKA_CAYENNE:
         if chunk.pre_parsed_embedding is not None:
             return ["ASSEMBLE"]          # $0 — skip all Gemini calls
@@ -399,6 +401,9 @@ class RecipePipeline:
         Exceptions propagate to the caller (run()) which handles them in the
         per-chunk error boundary.
         """
+        if chunk.skip_reason is not None:
+            return ChunkResult([], [chunk.skip_reason])
+
         results: List[IngestResponse] = []
 
         # ── Fast-path: PAPRIKA_CAYENNE with pre_parsed + embedding ────────────

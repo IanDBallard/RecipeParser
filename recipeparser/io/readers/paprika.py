@@ -29,6 +29,7 @@ import base64
 import gzip
 import json
 import logging
+import math
 import zipfile
 import zlib
 from pathlib import Path
@@ -95,6 +96,15 @@ def _decode_photo(entry: Dict[str, Any]) -> tuple[Optional[bytes], str]:
         return None, content_type
 
 
+def _valid_embedding(value: Any) -> bool:
+    """True for a list of exactly 1536 finite numbers (bools excluded)."""
+    return (
+        isinstance(value, list)
+        and len(value) == 1536
+        and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in value)
+    )
+
+
 class PaprikaReader(RecipeReader):
     """
     Reads a .paprikarecipes ZIP archive and returns the decoded recipe entries.
@@ -115,8 +125,10 @@ class PaprikaReader(RecipeReader):
           - ``pre_parsed`` is populated from the meta dict
           - ``pre_parsed_embedding`` is extracted if present (enables $0 restore)
           - ``text`` is empty (not needed for the fast-path ASSEMBLE stage)
-        - Entries WITH corrupt ``_cayenne_meta`` (validation error) → same as
-          legacy: ``InputType.PAPRIKA_LEGACY`` using Paprika name/ingredients/directions
+        - Entries WITH corrupt ``_cayenne_meta`` (validation error) → a skipped
+          line: a ``PAPRIKA_CAYENNE`` chunk with ``skip_reason`` set and no
+          ``pre_parsed``. It never reaches the AI pipeline (D6).
+        - The embedding is kept only as a list of exactly 1536 finite floats.
         - Entries WITHOUT ``_cayenne_meta`` → ``InputType.PAPRIKA_LEGACY``
           - ``text`` is built from name + ingredients + directions
           - Full pipeline (EXTRACT → REFINE → CATEGORIZE → EMBED → ASSEMBLE)
@@ -152,14 +164,26 @@ class PaprikaReader(RecipeReader):
                 try:
                     pre_parsed = CayenneRecipe(**meta_copy)
                 except Exception as exc:  # noqa: BLE001
+                    name = entry.get("name") or ""
                     log.warning(
                         "PaprikaReader: could not deserialize _cayenne_meta for %r: %s — "
-                        "falling back to PAPRIKA_LEGACY (Flow A).",
-                        entry.get("name"),
+                        "skipping the entry.",
+                        name,
                         exc,
                     )
-                    pre_parsed = None
-                    embedding = None  # orphan embedding must not attach to a legacy chunk
+                    chunks.append(
+                        Chunk(
+                            text="",
+                            input_type=InputType.PAPRIKA_CAYENNE,
+                            pre_parsed=None,
+                            skip_reason=f"{name}: the Cayenne data in this entry could not be read",
+                            label=name or None,
+                        )
+                    )
+                    continue
+
+                if not _valid_embedding(embedding):
+                    embedding = None
 
             if pre_parsed is not None:
                 photo_bytes, photo_type = _decode_photo(entry)

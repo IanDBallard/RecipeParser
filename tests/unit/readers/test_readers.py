@@ -246,15 +246,14 @@ def test_paprika_reader_cayenne_entry_without_embedding_returns_cayenne_type_no_
 
 
 # ---------------------------------------------------------------------------
-# PaprikaReader — corrupt _cayenne_meta falls back to legacy
+# PaprikaReader — corrupt _cayenne_meta is a skipped line (D6)
 # ---------------------------------------------------------------------------
 
 
-def test_paprika_reader_corrupt_cayenne_meta_falls_back_to_legacy() -> None:
+def test_paprika_reader_corrupt_cayenne_meta_is_skipped() -> None:
     """
-    If _cayenne_meta is present but CayenneRecipe validation fails, the reader
-    must NOT emit PAPRIKA_CAYENNE with pre_parsed=None. It should fall back to
-    Flow A using the Paprika name/ingredients/directions fields.
+    If _cayenne_meta is present but CayenneRecipe validation fails, the entry is
+    a skipped line: never a legacy chunk, so it never reaches the AI pipeline.
     """
     entry = {
         "name": "Broken Meta Cake",
@@ -266,18 +265,53 @@ def test_paprika_reader_corrupt_cayenne_meta_falls_back_to_legacy() -> None:
     archive_path = _make_paprikarecipes([entry])
 
     try:
-        reader = PaprikaReader()
-        chunks = reader.read(archive_path)
+        chunks = PaprikaReader().read(archive_path)
     finally:
         os.unlink(archive_path)
 
     assert len(chunks) == 1
     chunk = chunks[0]
-    assert chunk.input_type == InputType.PAPRIKA_LEGACY
-    assert "Broken Meta Cake" in chunk.text
-    assert "sugar" in chunk.text
+    assert chunk.input_type != InputType.PAPRIKA_LEGACY
+    assert chunk.input_type == InputType.PAPRIKA_CAYENNE
+    assert chunk.skip_reason is not None and "could not be read" in chunk.skip_reason
+    assert chunk.skip_reason.startswith("Broken Meta Cake")
+    assert chunk.label == "Broken Meta Cake"
+    assert chunk.text == ""
     assert chunk.pre_parsed is None
     assert chunk.pre_parsed_embedding is None
+
+
+@pytest.mark.parametrize(
+    "embedding",
+    [[0.1] * 1535, [0.1] * 1537, [0.1] * 1535 + [float("nan")], [0.1] * 1535 + [float("inf")], "nope"],
+)
+def test_paprika_reader_bad_embedding_is_dropped(embedding) -> None:
+    meta = dict(_INGEST_RESPONSE_PAYLOAD)
+    meta["embedding"] = embedding
+    archive_path = _make_paprikarecipes([{"name": "Test Cake", "_cayenne_meta": meta}])
+    try:
+        chunks = PaprikaReader().read(archive_path)
+    finally:
+        os.unlink(archive_path)
+
+    assert chunks[0].input_type == InputType.PAPRIKA_CAYENNE
+    assert chunks[0].pre_parsed is not None
+    assert chunks[0].pre_parsed_embedding is None
+
+
+def test_contract_archive_reads_as_restores() -> None:
+    from recipeparser.core.pipeline import chunk_stages
+
+    path = Path(__file__).resolve().parents[2] / "fixtures" / "cayenne-export-contract.paprikarecipes"
+    chunks = PaprikaReader().read(str(path))
+
+    assert chunks
+    for chunk in chunks:
+        assert chunk.input_type == InputType.PAPRIKA_CAYENNE
+        assert chunk.skip_reason is None
+        assert chunk.pre_parsed is not None
+        assert chunk.pre_parsed_embedding is not None and len(chunk.pre_parsed_embedding) == 1536
+        assert chunk_stages(chunk) == ["ASSEMBLE"]
 
 
 # ---------------------------------------------------------------------------

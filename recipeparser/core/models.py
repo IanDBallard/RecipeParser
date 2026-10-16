@@ -144,6 +144,10 @@ class Chunk:
         Fields the source stated for itself rather than the extractor inferring
         them.  Set by ``PaprikaReader``; None for every other reader, whose
         sources carry no such metadata.
+    skip_reason:
+        Set by a reader for an entry it could not turn into a chunk worth running
+        (a Cayenne entry whose ``_cayenne_meta`` failed validation). The pipeline
+        runs no stage for it and reports the reason as a skipped line.
     citation:
         What the reader knows about where the recipe came from: a book's
         metadata, a URL's host, a Paprika entry's source. None when only the
@@ -163,3 +167,4 @@ class Chunk:
     pre_parsed_embedding: Optional[List[float]] = field(default=None)
     label: Optional[str] = None
     meta: Optional[SourceMeta] = None
+    skip_reason: Optional[str] = None
