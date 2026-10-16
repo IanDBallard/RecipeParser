@@ -413,11 +413,12 @@ def test_skip_reason_chunk_runs_no_stage_and_reports_skip():
 
 
 def test_skip_reason_chunk_needs_no_ai():
-    from recipeparser.core.pipeline import chunk_needs_ai, chunk_stages
+    from recipeparser.core.pipeline import chunk_calls_ai, chunk_needs_ai, chunk_stages
 
     chunk = _skip_chunk()
     assert chunk_stages(chunk) == []
     assert chunk_needs_ai(chunk) is False
+    assert chunk_calls_ai(chunk) is False
 
 
 def test_on_result_fires_per_recipe_and_on_skip_names_the_failed_chunk():

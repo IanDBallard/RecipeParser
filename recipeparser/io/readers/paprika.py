@@ -105,6 +105,18 @@ def _valid_embedding(value: Any) -> bool:
     )
 
 
+def _unreadable_cayenne_chunk(entry: Dict[str, Any]) -> Chunk:
+    """The skipped line for an entry whose ``_cayenne_meta`` could not be read (D6)."""
+    name = str(entry.get("name") or "").strip()
+    return Chunk(
+        text="",
+        input_type=InputType.PAPRIKA_CAYENNE,
+        pre_parsed=None,
+        skip_reason=f"{name or 'Untitled recipe'}: the Cayenne data in this entry could not be read",
+        label=name or None,
+    )
+
+
 class PaprikaReader(RecipeReader):
     """
     Reads a .paprikarecipes ZIP archive and returns the decoded recipe entries.
@@ -158,28 +170,20 @@ class PaprikaReader(RecipeReader):
                 # this works whether or not the archive was exported with one.
                 # IngestResponse *requires* embedding, so we use CayenneRecipe
                 # here and carry the vector in pre_parsed_embedding instead.
-                meta_copy = dict(meta)
-                embedding = meta_copy.pop("embedding", None)
-
                 try:
+                    if not isinstance(meta, dict):
+                        raise TypeError(f"_cayenne_meta is a {type(meta).__name__}, not an object")
+                    meta_copy = dict(meta)
+                    embedding = meta_copy.pop("embedding", None)
                     pre_parsed = CayenneRecipe(**meta_copy)
                 except Exception as exc:  # noqa: BLE001
-                    name = entry.get("name") or ""
                     log.warning(
                         "PaprikaReader: could not deserialize _cayenne_meta for %r: %s — "
                         "skipping the entry.",
-                        name,
+                        entry.get("name"),
                         exc,
                     )
-                    chunks.append(
-                        Chunk(
-                            text="",
-                            input_type=InputType.PAPRIKA_CAYENNE,
-                            pre_parsed=None,
-                            skip_reason=f"{name}: the Cayenne data in this entry could not be read",
-                            label=name or None,
-                        )
-                    )
+                    chunks.append(_unreadable_cayenne_chunk(entry))
                     continue
 
                 if not _valid_embedding(embedding):
@@ -199,8 +203,8 @@ class PaprikaReader(RecipeReader):
                     )
                 )
             else:
-                # Flow A — Legacy Paprika → full pipeline (no _cayenne_meta, or
-                # corrupt meta that failed CayenneRecipe validation above).
+                # Flow A — Legacy Paprika → full pipeline (no _cayenne_meta;
+                # an unreadable one was skipped above).
                 name = entry.get("name", "")
                 ingredients = entry.get("ingredients", "")
                 directions = entry.get("directions", "")
@@ -325,9 +329,8 @@ class PaprikaReader(RecipeReader):
                             name,
                             exc,
                         )
-                        # Remove the malformed key so the entry falls through
-                        # to Flow A (full pipeline) rather than failing silently.
-                        del entry["_cayenne_meta"]
+                        # Keep the unreadable value: read() turns the entry into
+                        # a skipped line (D6), never a legacy AI-pipeline chunk.
 
                 log.debug(
                     "Parsed entry %r: name=%r cayenne=%s",

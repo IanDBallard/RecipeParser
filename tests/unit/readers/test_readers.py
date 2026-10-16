@@ -281,6 +281,26 @@ def test_paprika_reader_corrupt_cayenne_meta_is_skipped() -> None:
     assert chunk.pre_parsed_embedding is None
 
 
+@pytest.mark.parametrize("garbage", ["garbage", [1, 2], 5])
+def test_paprika_reader_non_object_cayenne_meta_is_skipped_and_others_still_read(garbage) -> None:
+    good = dict(_INGEST_RESPONSE_PAYLOAD)
+    archive_path = _make_paprikarecipes(
+        [
+            {"name": "Good Cake", "_cayenne_meta": good},
+            {"name": "", "_cayenne_meta": garbage},
+        ]
+    )
+    try:
+        chunks = PaprikaReader().read(archive_path)
+    finally:
+        os.unlink(archive_path)
+
+    assert len(chunks) == 2
+    assert chunks[0].skip_reason is None and chunks[0].pre_parsed is not None
+    assert chunks[1].pre_parsed is None
+    assert chunks[1].skip_reason == "Untitled recipe: the Cayenne data in this entry could not be read"
+
+
 @pytest.mark.parametrize(
     "embedding",
     [[0.1] * 1535, [0.1] * 1537, [0.1] * 1535 + [float("nan")], [0.1] * 1535 + [float("inf")], "nope"],
