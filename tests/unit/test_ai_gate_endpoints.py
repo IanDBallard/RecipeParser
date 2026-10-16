@@ -141,3 +141,174 @@ def test_non_exempt_user_is_refused_by_every_dependency_while_paused(client, mon
     else:
         resp = client.post(path, json={"text": "cake", "category_ids": []})
     assert (resp.status_code, resp.json()["detail"]) == (503, ai_gate.PAUSED_DETAIL)
+
+
+# ---------------------------------------------------------------------------
+# A Cayenne restore bypasses the import gate (owner ruling, 2026-10-15)
+# ---------------------------------------------------------------------------
+
+import asyncio  # noqa: E402
+from contextlib import nullcontext  # noqa: E402
+
+from recipeparser.adapters.ai_gate import AiGate  # noqa: E402
+from recipeparser.core.fsm import PipelineController  # noqa: E402
+from recipeparser.core.models import Chunk, InputType  # noqa: E402
+
+
+def _fake_db(*, paused=False, processed=10, cap=10, exempt=False):
+    sb = MagicMock()
+
+    def table(name):
+        q = MagicMock()
+        data = [{"paused": paused}] if name == "ai_settings" else [
+            {"recipes_processed": processed, "recipe_cap": cap, "exempt": exempt}
+        ]
+        q.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = data
+        return q
+
+    sb.table.side_effect = table
+    return sb
+
+
+def _restore_chunk() -> Chunk:
+    return Chunk(text="", input_type=InputType.PAPRIKA_CAYENNE, pre_parsed=MagicMock(), pre_parsed_embedding=[0.0])
+
+
+def _flow_a_chunk() -> Chunk:
+    return Chunk(text="Cake. Mix.", input_type=InputType.PAPRIKA_LEGACY)
+
+
+def _upload(client, monkeypatch, name, **db):
+    """POST /jobs/file with a real gate over a fake database; the job itself is recorded, not run."""
+    monkeypatch.setattr(api, "_ai_gate", AiGate(lambda: _fake_db(**db)))
+    started = []
+
+    async def fake_run(*args, **kwargs):
+        started.append((args, kwargs))
+
+    monkeypatch.setattr(api, "_run_ingestion_job", fake_run)
+    monkeypatch.setattr(api, "_create_ingestion_job", lambda *a, **k: None)
+    resp = client.post("/jobs/file", files={"file": (name, b"x", "application/octet-stream")})
+    return resp, started
+
+
+@pytest.mark.parametrize("name", ["lib.paprikarecipes", "LIB.PaprikaRecipes"])
+@pytest.mark.parametrize("db", [{"paused": True}, {"processed": 10, "cap": 10}])
+def test_a_paprikarecipes_upload_is_not_refused_at_the_endpoint(client, monkeypatch, name, db) -> None:
+    resp, started = _upload(client, monkeypatch, name, **db)
+    assert resp.status_code == 202
+    assert len(started) == 1
+    assert started[0][1].get("gate_after_read") is True
+
+
+def test_a_pdf_at_the_cap_is_still_refused_at_the_endpoint(client, monkeypatch) -> None:
+    resp, started = _upload(client, monkeypatch, "book.pdf", processed=10, cap=10)
+    assert (resp.status_code, resp.json()["detail"]) == (429, ai_gate.CAP_DETAIL.format(cap=10))
+    assert started == []
+
+
+def test_a_paprikarecipes_upload_still_needs_a_valid_jwt(monkeypatch) -> None:
+    def reject():
+        raise HTTPException(401, detail="bad token")
+
+    api.app.dependency_overrides[api._verify_supabase_jwt] = reject
+    try:
+        anon = TestClient(api.app, raise_server_exceptions=False)
+        resp, started = _upload(anon, monkeypatch, "lib.paprikarecipes")
+    finally:
+        api.app.dependency_overrides.clear()
+    assert resp.status_code == 401
+    assert started == []
+
+
+def _run_deferred(monkeypatch, chunks, **db):
+    """Run api._run_ingestion_job as a deferred job; return (pipeline_cls, finalized)."""
+    monkeypatch.setattr(api, "_ai_gate", AiGate(lambda: _fake_db(**db)))
+    finalized = []
+    monkeypatch.setattr(api, "_finalize_ingestion_job", lambda jid, payload: finalized.append(payload))
+    monkeypatch.setattr(api, "_update_total_chunks", lambda *a, **k: None)
+    monkeypatch.setattr(api, "_make_progress_writer", lambda jid: (lambda pct: None))
+    monkeypatch.setattr(api.usage, "attributed", lambda *a, **k: nullcontext())
+    with patch.object(api, "RecipePipeline") as pipeline_cls, \
+         patch.object(api, "SupabaseCategorySource") as cat_src, \
+         patch.object(api, "SupabaseImageStore"):
+        cat_src.return_value.load_category_ids.return_value = {}
+
+        async def _read():
+            return MagicMock(), chunks
+
+        asyncio.run(
+            api._run_ingestion_job(
+                "job-1", "user-1", PipelineController(), _read, "lib.paprikarecipes", "File job",
+                gate_after_read=True,
+            )
+        )
+    return pipeline_cls, finalized
+
+
+@pytest.mark.parametrize("db", [{"paused": True}, {"processed": 10, "cap": 10}])
+def test_a_restore_only_file_runs_at_the_cap_and_while_paused(monkeypatch, db) -> None:
+    pipeline_cls, finalized = _run_deferred(monkeypatch, [_restore_chunk(), _restore_chunk()], **db)
+    pipeline_cls.return_value.run.assert_called_once()
+    assert finalized[0]["status"] == "done"
+
+
+def test_a_flow_a_file_at_the_cap_ends_in_the_cap_sentence(monkeypatch) -> None:
+    pipeline_cls, finalized = _run_deferred(monkeypatch, [_flow_a_chunk()], processed=10, cap=10)
+    pipeline_cls.return_value.run.assert_not_called()
+    assert (finalized[0]["status"], finalized[0]["error_message"]) == ("error", ai_gate.CAP_DETAIL.format(cap=10))
+
+
+def test_a_flow_a_file_while_paused_ends_in_the_paused_sentence(monkeypatch) -> None:
+    pipeline_cls, finalized = _run_deferred(monkeypatch, [_flow_a_chunk()], paused=True)
+    pipeline_cls.return_value.run.assert_not_called()
+    assert (finalized[0]["status"], finalized[0]["error_message"]) == ("error", ai_gate.PAUSED_DETAIL)
+
+
+def test_one_ai_chunk_among_restores_is_enough_to_refuse(monkeypatch) -> None:
+    pipeline_cls, finalized = _run_deferred(monkeypatch, [_restore_chunk(), _flow_a_chunk()], paused=True)
+    pipeline_cls.return_value.run.assert_not_called()
+    assert finalized[0]["error_message"] == ai_gate.PAUSED_DETAIL
+
+
+def test_an_exempt_user_runs_a_flow_a_file_paused_and_over_the_cap(monkeypatch) -> None:
+    pipeline_cls, finalized = _run_deferred(
+        monkeypatch, [_flow_a_chunk()], paused=True, processed=50, cap=10, exempt=True
+    )
+    pipeline_cls.return_value.run.assert_called_once()
+    assert finalized[0]["status"] == "done"
+
+
+def test_an_unreadable_allowance_fails_a_flow_a_file_closed_as_paused(monkeypatch) -> None:
+    sb = MagicMock()
+    sb.table.side_effect = RuntimeError("db down")
+    monkeypatch.setattr(api, "_ai_gate", AiGate(lambda: sb))
+    finalized = []
+    monkeypatch.setattr(api, "_finalize_ingestion_job", lambda jid, payload: finalized.append(payload))
+    monkeypatch.setattr(api.usage, "attributed", lambda *a, **k: nullcontext())
+    with patch.object(api, "RecipePipeline") as pipeline_cls, patch.object(api, "SupabaseCategorySource"):
+        async def _read():
+            return MagicMock(), [_flow_a_chunk()]
+
+        asyncio.run(
+            api._run_ingestion_job("j", "u", PipelineController(), _read, "lib.paprikarecipes", "File job",
+                                   gate_after_read=True)
+        )
+    pipeline_cls.return_value.run.assert_not_called()
+    assert finalized[0]["error_message"] == ai_gate.PAUSED_DETAIL
+
+
+def test_needs_ai_is_the_stage_decision_that_sets_ai_processed() -> None:
+    from recipeparser.core.pipeline import RecipePipeline, chunk_needs_ai
+
+    pipeline = RecipePipeline(client=MagicMock(), controller=PipelineController(), category_source=MagicMock())
+    odd = [
+        _restore_chunk(),
+        Chunk(text="", input_type=InputType.PAPRIKA_CAYENNE, pre_parsed=MagicMock()),
+        Chunk(text="", input_type=InputType.PAPRIKA_CAYENNE),
+        _flow_a_chunk(),
+        Chunk(text="x", input_type=InputType.PAPRIKA_LEGACY, pre_parsed=MagicMock()),
+    ]
+    for chunk in odd:
+        assert chunk_needs_ai(chunk) == ("REFINE" in pipeline._get_stages(chunk))
+    assert [chunk_needs_ai(c) for c in odd] == [False, False, False, True, True]

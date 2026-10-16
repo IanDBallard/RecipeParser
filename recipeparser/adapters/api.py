@@ -63,7 +63,7 @@ from recipeparser.core.clock import utc_timestamp
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
-from recipeparser.core.pipeline import RecipePipeline
+from recipeparser.core.pipeline import RecipePipeline, chunk_needs_ai
 from recipeparser.core.taxonomy import descendants_of
 from recipeparser.exceptions import UnreadableInputError
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
@@ -604,6 +604,43 @@ def _require_ai_import(user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> 
     _ai_gate.check(user.get("sub", ""), imports=True)
 
 
+_DEFERRED_GATE_SUFFIX = ".paprikarecipes"
+
+
+def _defers_ai_gate(filename: Optional[str]) -> bool:
+    """A Paprika export is gated after it is read, and only if some recipe in it needs AI (owner ruling)."""
+    return (filename or "").lower().endswith(_DEFERRED_GATE_SUFFIX)
+
+
+def _require_ai_import_upload(
+    user: dict[str, Any] = Depends(_verify_supabase_jwt),
+    file: UploadFile = File(...),
+) -> bool:
+    """The /jobs/file gate: the import check now, except for a .paprikarecipes upload.
+
+    Returns True when the check was deferred to the job (``_run_ingestion_job`` makes it after the read),
+    because a Cayenne restore makes no AI call and must run at the cap and while paused.
+    """
+    if _defers_ai_gate(file.filename):
+        return True
+    _ai_gate.check(user.get("sub", ""), imports=True)
+    return False
+
+
+class _AiRefusal(Exception):
+    """The AI gate's refusal, carried to the job's error path with its sentence as the message."""
+
+
+def _check_ai_after_read(user_id: str, chunks: List[Chunk]) -> None:
+    """The import gate for a deferred job: only when some chunk needs AI; a refusal is the job's error."""
+    if not any(chunk_needs_ai(c) for c in chunks):
+        return
+    try:
+        _ai_gate.check(user_id, imports=True)
+    except HTTPException as exc:
+        raise _AiRefusal(exc.detail) from exc
+
+
 def _require_ai_embed(user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> None:
     _ai_gate.check(user.get("sub", ""), embed=True)
 
@@ -706,6 +743,8 @@ def _job_error_message(name: Optional[str], exc: BaseException) -> str:
     so the two join as a sentence. Anything else keeps the "<name>: <error>"
     shape. A pasted-text job has no name and reports the error alone.
     """
+    if isinstance(exc, _AiRefusal):
+        return str(exc)  # the gate's own sentence, as the endpoint would have sent it
     if not name:
         return str(exc)
     if isinstance(exc, UnreadableInputError):
@@ -997,6 +1036,7 @@ async def _run_ingestion_job(
     read: Callable[[], Awaitable[Tuple[Any, List[Chunk]]]],
     failure_name: Optional[str],
     log_label: str,
+    gate_after_read: bool = False,
 ) -> None:
     """Run one ingestion job to its end: the half ``POST /jobs`` and ``POST /jobs/file`` share.
 
@@ -1005,6 +1045,10 @@ async def _run_ingestion_job(
     category map, the sink, progress, the pipeline, and the job row's last write.
     A failure in ``read`` or after it finishes the row as an error, worded with
     ``failure_name`` (the URL or the file name).
+
+    ``gate_after_read`` is set for a .paprikarecipes upload, which the endpoint did not gate:
+    once the chunks are read, the import gate runs if any of them needs AI, so a Cayenne restore
+    (no AI call) runs at the cap and while paused.
     """
     # NOTE: Do NOT call controller.transition("start") here.
     # RecipePipeline.run() calls it internally (IDLE → RUNNING).
@@ -1013,6 +1057,8 @@ async def _run_ingestion_job(
     with usage.attributed(user_id, "import", job_id, get_client=_get_supabase_service_client):
         try:
             client, chunks = await read()
+            if gate_after_read:
+                await asyncio.to_thread(_check_ai_after_read, user_id, chunks)
 
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
@@ -1198,7 +1244,7 @@ async def submit_job(
 async def submit_file_job(
     file: UploadFile = File(...),
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
-    _gate: None = Depends(_require_ai_import),
+    gate_after_read: bool = Depends(_require_ai_import_upload),
     idempotency_key: Optional[str] = Header(default=None, alias=_IDEMPOTENCY_HEADER),
 ) -> AsyncJobResponse:
     """Fire-and-forget file upload ingestion job.
@@ -1269,7 +1315,7 @@ async def submit_file_job(
             return client, chunks
 
         _create_ingestion_job(job_id, user_id, source_hint=filename or None)
-        asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, filename, "File job"))
+        asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, filename, "File job", gate_after_read=gate_after_read))
         slot.done({"job_id": job_id})
         return AsyncJobResponse(job_id=job_id)
 

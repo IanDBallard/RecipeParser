@@ -60,6 +60,24 @@ class _ChunkFailed(Exception):
         self.skipped = skipped
 
 
+def chunk_stages(chunk: Chunk) -> List[str]:
+    """The ordered stage names to run for ``chunk`` (the table in ``RecipePipeline._get_stages``)."""
+    if chunk.input_type == InputType.PAPRIKA_CAYENNE:
+        if chunk.pre_parsed_embedding is not None:
+            return ["ASSEMBLE"]          # $0 — skip all Gemini calls
+        return ["EMBED", "ASSEMBLE"]     # Only embed: skip extract, refine and tag
+    # URL, PDF, EPUB, IMAGE, PAPRIKA_LEGACY — full pipeline
+    return ["EXTRACT", "REFINE", "EMBED", "ASSEMBLE", "TAG"]
+
+
+def chunk_needs_ai(chunk: Chunk) -> bool:
+    """True when the chunk's recipe is made by the model (REFINE runs): the decision behind ``ai_processed``.
+
+    Not ``pre_parsed is None``: a Cayenne chunk without ``pre_parsed`` still takes no
+    REFINE, and a non-Cayenne chunk with one still does.
+    """
+    return "REFINE" in chunk_stages(chunk)
+
 
 class RecipePipeline:
     """
@@ -343,6 +361,7 @@ class RecipePipeline:
     def _get_stages(self, chunk: Chunk) -> List[str]:
         """
         Return the ordered list of stage names to execute for this chunk.
+        (The routing itself is ``chunk_stages``, which ``chunk_needs_ai`` shares.)
 
         Routing table (§4.2 / §7.3 of PIPELINE_REFACTOR.md):
           PAPRIKA_CAYENNE + embedding  → ['ASSEMBLE']
@@ -350,12 +369,7 @@ class RecipePipeline:
           All other InputTypes         → ['EXTRACT', 'REFINE', 'EMBED', 'ASSEMBLE', 'TAG']
           (TAG is not per chunk: it runs over every TAG_BATCH_SIZE finished recipes, in run())
         """
-        if chunk.input_type == InputType.PAPRIKA_CAYENNE:
-            if chunk.pre_parsed_embedding is not None:
-                return ["ASSEMBLE"]          # $0 — skip all Gemini calls
-            return ["EMBED", "ASSEMBLE"]     # Only embed: skip extract, refine and tag
-        # URL, PDF, EPUB, IMAGE, PAPRIKA_LEGACY — full pipeline
-        return ["EXTRACT", "REFINE", "EMBED", "ASSEMBLE", "TAG"]
+        return chunk_stages(chunk)
 
     # ──────────────────────────────────────────────────────────────────────────
     # Per-chunk processing
