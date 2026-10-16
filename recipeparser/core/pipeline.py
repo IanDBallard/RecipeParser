@@ -128,7 +128,7 @@ class RecipePipeline:
         on_progress: Optional[Callable[[str, int, int], None]] = None,
         user_id: str = "",
         *,
-        on_result: Optional[Callable[[IngestResponse, bool], None]] = None,
+        on_result: Optional[Callable[[IngestResponse, bool], Optional[bool]]] = None,
         on_skip: Optional[Callable[[Chunk, str, int], None]] = None,
         on_tags: Optional[Callable[[IngestResponse], None]] = None,
         on_tag_failed: Optional[Callable[[TagFailure], None]] = None,
@@ -147,7 +147,9 @@ class RecipePipeline:
                          persist results as they arrive instead of after the
                          whole batch.  The second argument is True when REFINE
                          ran for the recipe's chunk (AI processed it) and False
-                         for a Cayenne restore (AI caps D3).
+                         for a Cayenne restore (AI caps D3).  Returning
+                         ``False`` (exactly) means the recipe was not written,
+                         so it is not queued for TAG; ``None``/``True`` keep it.
             on_skip:     Optional callback ``(chunk, reason, index) -> None``
                          fired for every chunk that produced no result because
                          of a failure.  ``index`` is the chunk's zero-based
@@ -289,7 +291,8 @@ class RecipePipeline:
                     for position, result in enumerate(outcome.results):
                         if on_result is not None:
                             try:
-                                on_result(result, needs_tags)
+                                if on_result(result, needs_tags) is False:
+                                    continue  # refused (the beta cap): not written, so nothing to tag
                             except Exception:
                                 # Deliberately NOT re-raised, unlike on_progress below. That
                                 # callback guards a stale stage label, which is indistinguishable

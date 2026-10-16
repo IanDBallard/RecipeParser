@@ -85,17 +85,21 @@ class JobSink:
 
     # ── callbacks handed to RecipePipeline.run ────────────────────────────────
 
-    def on_result(self, recipe: IngestResponse, ai_processed: bool = True) -> None:
-        """Persist one finished recipe. A failure here costs that recipe, not the job."""
+    def on_result(self, recipe: IngestResponse, ai_processed: bool = True) -> Optional[bool]:
+        """Persist one finished recipe. A failure here costs that recipe, not the job.
+
+        Returns False when the recipe was refused at the beta cap (the pipeline then
+        does not tag it); None otherwise.
+        """
         # The beta cap (AI caps D3, D7): an AI-made recipe spends one allowance before it is
         # written; a restore spends none. Past the cap nothing more is written or asked for,
         # and the job is asked once to stop. Not a skip: the recipe was fine, the allowance ran out.
         if self.cap_reached:
-            return
+            return False
         if ai_processed and not self._consume(self._user_id):
             self.cap_reached = True
             self._on_cap()
-            return
+            return False
         title = getattr(recipe, "title", None)
 
         def _link_refused(link: Dict[str, str]) -> None:

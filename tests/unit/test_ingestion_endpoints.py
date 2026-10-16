@@ -208,3 +208,48 @@ def test_source_key_of_is_none_for_two_different_hosts():
         Chunk(text="b", input_type=InputType.URL, citation=web_citation("https://seriouseats.com/r")),
     ]
     assert api._source_key_of(chunks) is None
+
+
+def _drive_job(monkeypatch, allowance):
+    """Run api._run_ingestion_job once with the pipeline patched; return (sink, controller, finalized)."""
+    import asyncio
+    from contextlib import nullcontext
+    from unittest.mock import AsyncMock, patch
+
+    from recipeparser.core.fsm import PipelineController
+
+    finalized = []
+    monkeypatch.setattr(api._ai_gate, "allowance", allowance)
+    monkeypatch.setattr(api, "_finalize_ingestion_job", lambda jid, payload: finalized.append(payload))
+    monkeypatch.setattr(api, "_update_total_chunks", lambda *a, **k: None)
+    monkeypatch.setattr(api, "_make_progress_writer", lambda jid: (lambda pct: None))
+    monkeypatch.setattr(api.usage, "attributed", lambda *a, **k: nullcontext())
+    controller = PipelineController()
+    with patch.object(api, "RecipePipeline") as pipeline_cls,          patch.object(api, "SupabaseCategorySource") as cat_src,          patch.object(api, "SupabaseImageStore"):
+        cat_src.return_value.load_category_ids.return_value = {}
+
+        async def _read():
+            return MagicMock(), []
+
+        asyncio.run(api._run_ingestion_job("job-1", "user-1", controller, _read, None, "Job"))
+    sink = pipeline_cls.return_value.run.call_args.kwargs["on_result"].__self__
+    return sink, controller, finalized
+
+
+def test_the_sink_is_wired_to_the_ai_gate_and_the_controller(monkeypatch):
+    from recipeparser.adapters.ai_gate import Allowance
+
+    sink, controller, finalized = _drive_job(monkeypatch, lambda uid: Allowance(2, 5, False))
+    assert sink._consume == api._ai_gate.consume_recipe
+    assert sink._on_cap == controller.request_cancel
+    assert sink.cap == 5
+    assert finalized[0]["status"] == "done"
+
+
+def test_a_failing_allowance_read_leaves_the_cap_unknown_and_the_job_running(monkeypatch):
+    def _boom(uid):
+        raise RuntimeError("db down")
+
+    sink, _controller, finalized = _drive_job(monkeypatch, _boom)
+    assert sink.cap is None
+    assert finalized[0]["status"] == "done"

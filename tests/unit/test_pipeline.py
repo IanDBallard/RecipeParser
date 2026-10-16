@@ -1074,3 +1074,11 @@ def test_no_axes_means_no_tag_calls():
     results, tagger = _tag_run(3, source=_NoAxes())
     assert tagger.calls == []
     assert all(r.grid_categories == {} for r in results)
+
+
+def test_a_recipe_on_result_declines_is_not_tagged():
+    tagged: List[str] = []
+    _, tagger = _tag_run(3, on_result=lambda r, _ai: False if r.title == "recipe 1" else None,
+                         on_tags=lambda r: tagged.append(r.title))
+    assert tagged == ["recipe 0", "recipe 2"]
+    assert all("recipe 1" not in titles for titles, _a, _p in tagger.calls)

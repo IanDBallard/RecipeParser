@@ -439,3 +439,11 @@ def test_after_the_cap_no_further_consume_is_attempted():
     sink.on_result(_Recipe("A"), True)
     sink.on_result(_Recipe("B"), True)
     assert len(calls) == 1
+
+
+def test_on_result_returns_false_only_for_a_recipe_refused_at_the_cap():
+    answers = iter([True, False])
+    sink = _sink(consume=lambda u: next(answers))
+    assert sink.on_result(_Recipe("A"), True) is None
+    assert sink.on_result(_Recipe("B"), True) is False  # the refusing call
+    assert sink.on_result(_Recipe("C"), False) is False  # every call after the cap
