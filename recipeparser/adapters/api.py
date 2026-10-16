@@ -56,6 +56,7 @@ from recipeparser.adapters.job_sink import JobSink
 from recipeparser.adapters.shares_api import RecipientCheckLimiter
 from recipeparser.adapters.shares_api import build_router as _build_share_router
 from recipeparser.adapters.shopping_api import build_router as _build_shopping_router
+from recipeparser.adapters.household_api import build_router as _build_household_router
 from recipeparser.config import MAX_UPLOAD_BYTES
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
@@ -1876,3 +1877,13 @@ app.include_router(_build_share_router(
 # The endpoint lives in shopping_api.py. The client factory is a lambda so a
 # test can replace _get_client, as the shares block does for Supabase.
 app.include_router(_build_shopping_router(_verify_supabase_jwt, lambda: _get_client(), _require_ai, lambda: _get_supabase_service_client()))
+
+# ---------------------------------------------------------------------------
+# Households — POST /household/invites, /invites/{id}/accept|decline|cancel, /leave,
+# /members/{id}/remove, /copy (Cayenne's household shopping design, Part 3)
+# ---------------------------------------------------------------------------
+# The endpoints live in household_api.py. The recipient-check limiter and the idempotency cache are
+# the sharing endpoints' own: one budget of checks, one answer per Idempotency-Key.
+app.include_router(_build_household_router(
+    _verify_supabase_jwt, lambda: _get_supabase_service_client(), _share_check_limiter, _idempotency,
+))
