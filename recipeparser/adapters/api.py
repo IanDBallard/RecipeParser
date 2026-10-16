@@ -1013,7 +1013,16 @@ async def _run_ingestion_job(
                 user_id=user_id,
                 category_ids=category_ids,
                 write=write_recipe_to_supabase,
+                consume=_ai_gate.consume_recipe,
+                on_cap=controller.request_cancel,
             )
+            # For the closing note only; consume_recipe is what enforces the cap. A failed read
+            # must not fail the import, so it falls back to a note without the number.
+            try:
+                allowance = await asyncio.to_thread(_ai_gate.allowance, user_id)
+                sink.cap = allowance.recipe_cap if allowance is not None else None
+            except Exception:
+                logger.exception("Job %s: could not read the recipe allowance for the cap note.", job_id)
             write_progress = _make_progress_writer(job_id)
 
             def _on_progress(stage: str, completed: int, total: int) -> None:

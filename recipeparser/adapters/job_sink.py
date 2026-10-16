@@ -38,6 +38,8 @@ class JobSink:
         write: WriteFn = write_recipe_to_supabase,
         now: Callable[[], str] = utc_timestamp,
         write_links: WriteFn = write_recipe_categories,
+        consume: Callable[[str], bool] = lambda _u: True,
+        on_cap: Callable[[], None] = lambda: None,
     ) -> None:
         self._job_id = job_id
         self._user_id = user_id
@@ -45,6 +47,12 @@ class JobSink:
         self._write = write
         self._write_links = write_links
         self._now = now
+        self._consume = consume
+        self._on_cap = on_cap
+        # The beta cap (AI caps D3, D7): set once an AI-made recipe is refused its allowance.
+        # `cap` is the user's limit, for the closing note; None when it could not be read.
+        self.cap_reached = False
+        self.cap: Optional[int] = None
         # The row id each written recipe got, keyed by the object, so TAG's links
         # (which arrive after the recipe, Fix Roadmap F-246) reach the right row.
         self._row_ids: Dict[int, str] = {}
@@ -79,6 +87,15 @@ class JobSink:
 
     def on_result(self, recipe: IngestResponse, ai_processed: bool = True) -> None:
         """Persist one finished recipe. A failure here costs that recipe, not the job."""
+        # The beta cap (AI caps D3, D7): an AI-made recipe spends one allowance before it is
+        # written; a restore spends none. Past the cap nothing more is written or asked for,
+        # and the job is asked once to stop. Not a skip: the recipe was fine, the allowance ran out.
+        if self.cap_reached:
+            return
+        if ai_processed and not self._consume(self._user_id):
+            self.cap_reached = True
+            self._on_cap()
+            return
         title = getattr(recipe, "title", None)
 
         def _link_refused(link: Dict[str, str]) -> None:
@@ -189,6 +206,11 @@ class JobSink:
         is checked first so a cancel racing an exception cannot relabel the
         failure as a tidy stop.
         """
+        if success and self.cap_reached:
+            # The cap's own request_cancel set cancelled; the job is a success that stopped early (D7).
+            cancelled = False
+            limit = f"{self.cap}-recipe beta limit" if self.cap is not None else "recipe beta limit"
+            error_message = f"Stopped at your {limit}. {self.recipe_count} recipes were added."
         if not success:
             status = "error"
         elif cancelled:

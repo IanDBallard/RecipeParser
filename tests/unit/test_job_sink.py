@@ -371,3 +371,71 @@ def test_an_axis_that_could_not_be_asked_counts_each_recipe_it_left_untagged():
         {"label": "Gnocchi", "axis": "Protein", "reason": "503 unavailable"},
         {"label": "Sponge", "axis": "Protein", "reason": "503 unavailable"},
     ]
+
+
+# ── the beta cap during a job (AI caps D3, D7) ────────────────────────────────
+
+
+def test_ai_recipes_consume_and_restores_do_not():
+    spent = []
+    sink = _sink(consume=lambda u: spent.append(u) or True)
+    sink.on_result(_Recipe("A"), True)
+    sink.on_result(_Recipe("B"), False)  # a Cayenne restore (D3)
+    assert spent == ["user-1"]
+    assert len(sink.written) == 2
+
+
+def test_a_refused_consume_stops_the_job_and_writes_nothing_more():
+    answers = iter([True, False, False])
+    stopped = []
+    sink = _sink(consume=lambda u: next(answers), on_cap=lambda: stopped.append(1))
+    sink.cap = 2
+    for title in ("A", "B", "C"):  # three results of one chunk, one allowance left
+        sink.on_result(_Recipe(title), True)
+    assert [r.title for r in sink.written] == ["A"]
+    assert sink.cap_reached is True
+    assert stopped == [1]  # asked once, not per refused recipe
+    assert sink.skipped_count == 0  # over-cap recipes are not "missed"
+
+
+def test_cap_finalizes_done_with_the_note():
+    sink = _sink(consume=lambda u: False)
+    sink.cap = 5
+    sink.recipe_count = 5
+    sink.on_result(_Recipe("F"), True)
+    payload = sink.finalize_payload(True, cancelled=True)  # the cap's own cancel request
+    assert payload["status"] == "done"
+    assert payload["stage"] == "DONE"
+    assert payload["progress_pct"] == 100
+    assert payload["error_message"] == "Stopped at your 5-recipe beta limit. 5 recipes were added."
+
+
+def test_cap_note_without_a_known_limit_still_reads_sensibly():
+    sink = _sink(consume=lambda u: False)
+    sink.recipe_count = 3
+    sink.on_result(_Recipe("F"), True)
+    payload = sink.finalize_payload(True, cancelled=True)
+    assert payload["status"] == "done"
+    assert payload["error_message"] == "Stopped at your recipe beta limit. 3 recipes were added."
+
+
+def test_a_user_cancel_without_the_cap_stays_cancelled():
+    sink = _sink()
+    payload = sink.finalize_payload(True, cancelled=True)
+    assert payload["status"] == "cancelled"
+    assert "error_message" not in payload
+
+
+def test_a_run_that_raised_after_the_cap_is_still_an_error():
+    sink = _sink(consume=lambda u: False)
+    sink.on_result(_Recipe("A"), True)
+    assert sink.finalize_payload(False, "boom")["status"] == "error"
+
+
+def test_after_the_cap_no_further_consume_is_attempted():
+    calls = []
+    sink = _sink(consume=lambda u: calls.append(1) or False)
+    sink.cap = 1
+    sink.on_result(_Recipe("A"), True)
+    sink.on_result(_Recipe("B"), True)
+    assert len(calls) == 1
