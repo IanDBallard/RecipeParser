@@ -76,7 +76,7 @@ from recipeparser.io.readers.url import PAGE_USER_AGENT as _PAGE_USER_AGENT
 from recipeparser.io.readers.url import PageMeta, UrlReader, looks_like_badge, page_meta_from_html
 from recipeparser.io.readers.url import is_unsafe_fetch_target as _is_unsafe_fetch_target
 from recipeparser.io.writers.image_store import SupabaseImageStore
-from recipeparser.io.category_sources.restore_paths import ensure_category_paths, restore_grid
+from recipeparser.io.category_sources.restore_paths import clean_path, ensure_category_paths, restore_grid
 from recipeparser.io.writers.supabase import _get_creds, write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
 
@@ -1065,7 +1065,7 @@ def _create_restore_categories(user_id: str, chunks: List[Chunk]) -> Dict[str, L
         raw = getattr(chunk.pre_parsed, "category_paths", None)
         if chunk.input_type != InputType.PAPRIKA_CAYENNE or not isinstance(raw, list):
             continue
-        paths = [tuple(n for n in p if n) for p in raw if isinstance(p, (list, tuple))]
+        paths = [clean_path(p) for p in raw if isinstance(p, (list, tuple))]
         paths = [p for p in paths if p]
         if paths:
             wanted.append((chunk, paths))
@@ -1186,7 +1186,9 @@ async def _run_ingestion_job(
                 controller=controller,
                 category_source=category_source,
                 image_store=SupabaseImageStore(),
-                picture_source=_picture_source(),
+                picture_source=_picture_source() if any(
+                    c.input_type == InputType.PAPRIKA_CAYENNE for c in chunks
+                ) else None,
             )
             await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
             await asyncio.to_thread(

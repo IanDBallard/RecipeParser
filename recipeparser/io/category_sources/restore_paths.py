@@ -56,6 +56,11 @@ def _depth(name: str, by_name: Dict[str, Dict[str, Any]]) -> int:
     return depth
 
 
+def clean_path(path: Sequence[Any]) -> Tuple[str, ...]:
+    """A category path as the restore keys it: each name stripped, empty names dropped."""
+    return tuple(s for s in (str(n).strip() for n in path) if s)
+
+
 def ensure_category_paths(
     user_id: str,
     paths: Iterable[Sequence[str]],
@@ -74,7 +79,7 @@ def ensure_category_paths(
         )
     clean: List[Tuple[str, ...]] = []
     for p in paths:
-        t = tuple(str(n).strip() for n in p if str(n).strip())
+        t = clean_path(p)
         if t and t not in clean:
             clean.append(t)
     if not clean:

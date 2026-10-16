@@ -98,3 +98,10 @@ def test_a_five_long_new_path_creates_four_nodes_and_places_the_fourth():
     out = _run(db, [["A", "B", "C", "D", "E"]])
     assert [r["name"] for p in db.posts for r in p] == ["A", "B", "C", "D"]
     assert out == {("A", "B", "C", "D", "E"): "D"}
+
+
+def test_padded_names_are_cleaned_the_same_way_everywhere():
+    assert rp.clean_path([" Course ", "", "  ", "Cake	"]) == ("Course", "Cake")
+    db = _Db()
+    out = _run(db, [[" Course ", "Cake "]])
+    assert out == {("Course", "Cake"): "Cake"}

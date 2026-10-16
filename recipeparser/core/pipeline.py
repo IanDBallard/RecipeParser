@@ -418,6 +418,7 @@ class RecipePipeline:
         if not chunk.image_url:
             log.warning("restore: the recipe %r goes without its picture.", chunk.label or pr.title)
             pr.image_url = None
+            pr.image_source = None
 
     def _process_chunk(
         self,

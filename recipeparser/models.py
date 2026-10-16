@@ -382,6 +382,17 @@ class CayenneRecipe(BaseModel):
     source_uom_system: Optional[str] = None
     image_source: Optional[str] = None
     stale: bool = False
+
+    @field_validator("category_paths", mode="before")
+    @classmethod
+    def _null_paths_are_empty(cls, v):
+        return [] if v is None else v
+
+    @field_validator("stale", mode="before")
+    @classmethod
+    def _null_stale_is_false(cls, v):
+        return False if v is None else v
+
     # Raw, user-owned body (spec 3.2). Empty lists on legacy objects; the writer
     # and regen worker derive them from the structured data when empty.
     ingredient_lines: List[str] = Field(default_factory=list)

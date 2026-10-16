@@ -1,6 +1,6 @@
 ; Inno Setup script for RecipeParser
 ; Build: ISCC.exe installer.iss
-; Output: output\RecipeParser-Setup-9.14.0.exe
+; Output: output\RecipeParser-Setup-9.16.0.exe
 
 #define AppName      "RecipeParser"
 #define AppVersion   "9.16.0"

@@ -111,7 +111,7 @@ def test_both_extract_prompts_name_the_three_fields():
         assert "total_time:" in prompt and "description:" in prompt and "nutritional_info:" in prompt
 
 
-from recipeparser.models import CayenneRefinement, PanAnswer, RecipePan  # noqa: E402
+from recipeparser.models import CayenneRecipe, CayenneRefinement, PanAnswer, RecipePan  # noqa: E402
 
 
 def test_refinement_defaults_to_no_tins_and_no_bake():
@@ -196,3 +196,12 @@ def test_recipe_pan_keeps_removed():
     p = RecipePan.model_validate({"id": "pan_01", "raw": "a tin", "removed": True})
     assert p.removed is True
     assert RecipePan.model_validate({"id": "pan_01", "raw": "a tin"}).removed is False
+
+
+def test_cayenne_recipe_reads_null_paths_and_stale_as_defaults():
+    r = CayenneRecipe.model_validate(
+        {"title": "T", "structured_ingredients": [], "tokenized_directions": [],
+         "category_paths": None, "stale": None}
+    )
+    assert r.category_paths == []
+    assert r.stale is False

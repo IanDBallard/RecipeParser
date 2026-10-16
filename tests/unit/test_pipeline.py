@@ -1210,13 +1210,14 @@ def test_restore_picture_copy_failure_drops_old_url(caplog):
     import logging
 
     store = _FakeImageStore()
-    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL)
+    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL, image_source="generated")
     skipped: list = []
     with caplog.at_level(logging.WARNING):
         results = _restore_pipeline(_picture_client(error=RuntimeError("gone")), store).run(
             [chunk], on_skip=skipped.append)
     assert len(results) == 1
     assert results[0].image_url is None
+    assert results[0].image_source is None
     assert skipped == []
     assert store.calls == []
     assert any(r.levelno == logging.WARNING for r in caplog.records)

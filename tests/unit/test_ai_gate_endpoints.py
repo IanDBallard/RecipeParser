@@ -151,6 +151,7 @@ import asyncio  # noqa: E402
 from contextlib import nullcontext  # noqa: E402
 
 from recipeparser.adapters.ai_gate import AiGate  # noqa: E402
+from recipeparser.io.category_sources import restore_paths as rp  # noqa: E402
 from recipeparser.core.fsm import PipelineController  # noqa: E402
 from recipeparser.core.models import Chunk, InputType  # noqa: E402
 
@@ -439,3 +440,23 @@ def test_a_category_creation_failure_does_not_fail_the_restore(monkeypatch) -> N
     assert chunk.pre_parsed.grid_categories == {"restore": ["Cake"]}
     pipeline_cls.return_value.run.assert_called_once()
     assert finalized[0]["status"] == "done"
+
+
+def test_a_padded_category_name_still_links(monkeypatch) -> None:
+    calls = []
+
+    def ensure(uid, paths, *, supabase_url, service_key):
+        return {rp.clean_path(p): rp.clean_path(p)[-1] for p in paths}
+
+    chunk = _cayenne_chunk([[" Course ", " Cake "]])
+    _drive_restore(monkeypatch, [chunk], ensure, calls)
+    assert chunk.pre_parsed.grid_categories == {"restore": ["Cake"]}
+
+
+def test_a_job_without_a_restore_chunk_never_builds_the_picture_source(monkeypatch) -> None:
+    built = []
+    monkeypatch.setattr(api, "_picture_source", lambda: built.append(1))
+    _run_deferred(monkeypatch, [_flow_a_chunk()])
+    assert built == []
+    _run_deferred(monkeypatch, [_restore_chunk()])
+    assert built == [1]
