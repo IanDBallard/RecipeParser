@@ -48,6 +48,8 @@ from google.genai import errors as genai_errors
 from pydantic import BaseModel, Field
 
 import recipeparser.gemini as _gemini_mod
+from recipeparser import usage
+from recipeparser.adapters.ai_gate import AiGate
 from recipeparser.adapters.idempotency import HEADER as _IDEMPOTENCY_HEADER
 from recipeparser.adapters.idempotency import IdempotencyCache
 from recipeparser.adapters.job_sink import JobSink
@@ -579,16 +581,37 @@ class EmbedResponse(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# The AI gate (AI caps spec §2). A lambda, so a test's monkeypatch of
+# _get_supabase_service_client reaches it, as the share router's does.
+# ---------------------------------------------------------------------------
+_ai_gate = AiGate(lambda: _get_supabase_service_client())
+
+
+def _require_ai(user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> None:
+    _ai_gate.check(user.get("sub", ""))
+
+
+def _require_ai_import(user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> None:
+    _ai_gate.check(user.get("sub", ""), imports=True)
+
+
+def _require_ai_embed(user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> None:
+    _ai_gate.check(user.get("sub", ""), embed=True)
+
+
 @app.post("/embed", response_model=EmbedResponse, status_code=200)
 def embed_text(
     body: EmbedRequest,
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
+    _gate: None = Depends(_require_ai_embed),
 ) -> EmbedResponse:
     """Generate a 1536-dim embedding for the given text."""
     try:
         client = _get_client()  # validates API key is present
         # One retry, not the whole ladder: a person is waiting on this search.
-        embedding = _gemini_mod.get_embeddings(body.text, client, max_retries=1)
+        with usage.attributed(user.get("sub", ""), "search", get_client=_get_supabase_service_client):
+            embedding = _gemini_mod.get_embeddings(body.text, client, max_retries=1)
         return EmbedResponse(embedding=embedding)
     except Exception as exc:
         raise HTTPException(
@@ -979,73 +1002,74 @@ async def _run_ingestion_job(
     # RecipePipeline.run() calls it internally (IDLE → RUNNING).
     # Calling it here first would cause an invalid double-transition.
     sink = None
-    try:
-        client, chunks = await read()
+    with usage.attributed(user_id, "import", job_id, get_client=_get_supabase_service_client):
+        try:
+            client, chunks = await read()
 
-        category_source = SupabaseCategorySource()
-        category_ids = category_source.load_category_ids(user_id)
-        sink = JobSink(
-            job_id=job_id,
-            user_id=user_id,
-            category_ids=category_ids,
-            write=write_recipe_to_supabase,
-        )
-        write_progress = _make_progress_writer(job_id)
-
-        def _on_progress(stage: str, completed: int, total: int) -> None:
-            before = len(sink.progress_updates)
-            sink.on_progress(stage, completed, total)
-            if len(sink.progress_updates) > before:
-                write_progress(sink.progress_updates[-1])
-
-        # RecipePipeline.run() transitions IDLE→RUNNING internally,
-        # processes all chunks (with per-chunk error isolation), then
-        # transitions RUNNING→IDLE on success.
-        pipeline = RecipePipeline(
-            client=client,
-            controller=controller,
-            category_source=category_source,
-            image_store=SupabaseImageStore(),
-        )
-        await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
-        await asyncio.to_thread(
-            lambda: pipeline.run(
-                chunks,
-                on_progress=_on_progress,
+            category_source = SupabaseCategorySource()
+            category_ids = category_source.load_category_ids(user_id)
+            sink = JobSink(
+                job_id=job_id,
                 user_id=user_id,
-                on_result=sink.on_result,
-                on_skip=sink.on_skip,
-                on_tags=sink.on_tags,
-                on_tag_failed=sink.on_tag_failed,
+                category_ids=category_ids,
+                write=write_recipe_to_supabase,
             )
-        )
-        logger.info(
-            "Job %s completed — %d recipe(s), %d skipped, %d category link(s) refused.",
-            job_id, sink.recipe_count, sink.skipped_count, sink.refused_link_count,
-        )
-        await asyncio.to_thread(
-            _finalize_ingestion_job,
-            job_id,
-            # The controller is back at IDLE by now, so the flag is the only
-            # thing that still knows the user pressed Cancel (spec 5.1).
-            sink.finalize_payload(True, cancelled=controller.cancel_requested),
-        )
-    except Exception as exc:
-        logger.error("%s %s failed: %s", log_label, job_id, exc, exc_info=True)
-        # Transition to IDLE via "error" event.  The FSM allows this from
-        # RUNNING, PAUSING, and RESUMING states.  If the pipeline never
-        # started (e.g. a reader raised before pipeline.run()), the controller
-        # is still IDLE and the transition is a no-op (logs a warning).
-        controller.transition("error")
-        message = _job_error_message(failure_name, exc)
-        payload = (
-            sink.finalize_payload(False, message)
-            if sink is not None
-            else {"status": "error", "stage": "ERROR", "error_message": message}
-        )
-        await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
-    finally:
-        _active_jobs.pop(job_id, None)
+            write_progress = _make_progress_writer(job_id)
+
+            def _on_progress(stage: str, completed: int, total: int) -> None:
+                before = len(sink.progress_updates)
+                sink.on_progress(stage, completed, total)
+                if len(sink.progress_updates) > before:
+                    write_progress(sink.progress_updates[-1])
+
+            # RecipePipeline.run() transitions IDLE→RUNNING internally,
+            # processes all chunks (with per-chunk error isolation), then
+            # transitions RUNNING→IDLE on success.
+            pipeline = RecipePipeline(
+                client=client,
+                controller=controller,
+                category_source=category_source,
+                image_store=SupabaseImageStore(),
+            )
+            await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
+            await asyncio.to_thread(
+                lambda: pipeline.run(
+                    chunks,
+                    on_progress=_on_progress,
+                    user_id=user_id,
+                    on_result=sink.on_result,
+                    on_skip=sink.on_skip,
+                    on_tags=sink.on_tags,
+                    on_tag_failed=sink.on_tag_failed,
+                )
+            )
+            logger.info(
+                "Job %s completed — %d recipe(s), %d skipped, %d category link(s) refused.",
+                job_id, sink.recipe_count, sink.skipped_count, sink.refused_link_count,
+            )
+            await asyncio.to_thread(
+                _finalize_ingestion_job,
+                job_id,
+                # The controller is back at IDLE by now, so the flag is the only
+                # thing that still knows the user pressed Cancel (spec 5.1).
+                sink.finalize_payload(True, cancelled=controller.cancel_requested),
+            )
+        except Exception as exc:
+            logger.error("%s %s failed: %s", log_label, job_id, exc, exc_info=True)
+            # Transition to IDLE via "error" event.  The FSM allows this from
+            # RUNNING, PAUSING, and RESUMING states.  If the pipeline never
+            # started (e.g. a reader raised before pipeline.run()), the controller
+            # is still IDLE and the transition is a no-op (logs a warning).
+            controller.transition("error")
+            message = _job_error_message(failure_name, exc)
+            payload = (
+                sink.finalize_payload(False, message)
+                if sink is not None
+                else {"status": "error", "stage": "ERROR", "error_message": message}
+            )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
+        finally:
+            _active_jobs.pop(job_id, None)
 
 
 
@@ -1063,6 +1087,7 @@ class JobsRequest(BaseModel):
 async def submit_job(
     body: JobsRequest,
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
+    _gate: None = Depends(_require_ai_import),
     idempotency_key: Optional[str] = Header(default=None, alias=_IDEMPOTENCY_HEADER),
 ) -> AsyncJobResponse:
     """Fire-and-forget URL or text ingestion job.
@@ -1156,6 +1181,7 @@ async def submit_job(
 async def submit_file_job(
     file: UploadFile = File(...),
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
+    _gate: None = Depends(_require_ai_import),
     idempotency_key: Optional[str] = Header(default=None, alias=_IDEMPOTENCY_HEADER),
 ) -> AsyncJobResponse:
     """Fire-and-forget file upload ingestion job.
@@ -1267,6 +1293,7 @@ class RecategorizeRequest(BaseModel):
 def submit_recategorize_job(
     body: RecategorizeRequest,
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
+    _gate: None = Depends(_require_ai),
 ) -> AsyncJobResponse:
     """Queue a bulk recategorise over the caller's whole library.
 
@@ -1696,6 +1723,7 @@ async def generate_recipe_image(
     recipe_id: str,
     body: PictureRequest,
     user: dict[str, Any] = Depends(_verify_supabase_jwt),
+    _gate: None = Depends(_require_ai),
 ) -> Response:
     """A generated picture of the recipe's dish, as JPEG bytes. Nothing is stored.
 
@@ -1726,7 +1754,8 @@ async def generate_recipe_image(
         return to_jpeg(data)
 
     try:
-        jpeg = await asyncio.to_thread(_make_picture)
+        with usage.attributed(user_id, "picture", get_client=_get_supabase_service_client):
+            jpeg = await asyncio.to_thread(_make_picture)
     except NoPictureError as exc:
         logger.warning("No picture for recipe %s: %s", recipe_id, exc)
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=_NO_PICTURE) from exc
@@ -1770,4 +1799,4 @@ app.include_router(_build_share_router(
 # ---------------------------------------------------------------------------
 # The endpoint lives in shopping_api.py. The client factory is a lambda so a
 # test can replace _get_client, as the shares block does for Supabase.
-app.include_router(_build_shopping_router(_verify_supabase_jwt, lambda: _get_client()))
+app.include_router(_build_shopping_router(_verify_supabase_jwt, lambda: _get_client(), _require_ai, lambda: _get_supabase_service_client()))

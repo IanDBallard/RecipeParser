@@ -77,6 +77,9 @@ def fake(monkeypatch):
     f.handlers["categories"] = categories
     f.responses["ingestion_jobs"] = []
     monkeypatch.setattr(api, "_get_supabase_service_client", lambda: f)
+    # This file is not about the AI gate (test_ai_gate_endpoints.py is), and the fake
+    # database holds no ai_allowance row, which the gate rightly fails closed on.
+    monkeypatch.setattr(api._ai_gate, "check", lambda *a, **k: None)
     return f
 
 

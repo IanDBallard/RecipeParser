@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from google.genai import errors as genai_errors
 from pydantic import BaseModel
 
+from recipeparser import usage
 from recipeparser.shopping import (
     ClassifyCheckError,
     ClassifiedItem,
@@ -55,13 +56,22 @@ class ClassifyResponse(BaseModel):
     items: List[ClassifiedItem]
 
 
-def build_router(verify_jwt: Callable, get_client: Callable[[], Any]) -> APIRouter:
+def build_router(
+    verify_jwt: Callable,
+    get_client: Callable[[], Any],
+    require_ai: Callable,
+    get_service_client: Callable[[], Any],
+) -> APIRouter:
     router = APIRouter()
 
     # A plain def: FastAPI runs it on the thread pool, and the Gemini call is
     # synchronous (as /embed's is).
     @router.post("/shopping/classify", response_model=ClassifyResponse, status_code=200)
-    def classify(body: ClassifyRequest, user: dict = Depends(verify_jwt)) -> ClassifyResponse:
+    def classify(
+        body: ClassifyRequest,
+        user: dict = Depends(verify_jwt),
+        _gate: None = Depends(require_ai),
+    ) -> ClassifyResponse:
         if len(body.ingredients) > MAX_INGREDIENTS:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=TOO_MANY_INGREDIENTS)
         if len(body.known_foods) > MAX_KNOWN_FOODS:
@@ -79,7 +89,8 @@ def build_router(verify_jwt: Callable, get_client: Callable[[], Any]) -> APIRout
             log.warning("Shopping classify: no client (missing key?): %s", exc)
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=NOT_CONFIGURED) from exc
         try:
-            items = classify_ingredients(client, body.ingredients, body.known_foods)
+            with usage.attributed(user.get("sub", ""), "classify", get_client=get_service_client):
+                items = classify_ingredients(client, body.ingredients, body.known_foods)
         except ClassifyCheckError as exc:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
         except httpx.TimeoutException as exc:
