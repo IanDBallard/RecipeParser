@@ -73,14 +73,18 @@ def _schema_for_gemini(schema_class: Type[BaseModel]) -> dict:
     return _strip_additional_properties(raw)
 
 
-def schema_without_edited(schema: dict) -> dict:
-    """Return *schema* without any ``edited`` property: RecipePan.edited is set by a person
-    editing a tin, never by the model, so it stays out of every schema the model is held to."""
+_CLIENT_FIELDS = frozenset({"edited", "removed"})
+
+
+def schema_without_client_fields(schema: dict) -> dict:
+    """Return *schema* without any ``edited`` or ``removed`` property: RecipePan.edited and
+    .removed are set by a person editing a tin, never by the model, so they stay out of every
+    schema the model is held to."""
     def strip(obj):
         if isinstance(obj, dict):
             return {
                 k: (
-                    {n: strip(v) for n, v in val.items() if n != "edited"}
+                    {n: strip(v) for n, v in val.items() if n not in _CLIENT_FIELDS}
                     if k == "properties" and isinstance(val, dict)
                     else strip(val)
                 )
@@ -952,7 +956,7 @@ def refine_json_schema() -> dict:
     """
     json_schema = _schema_for_gemini(CayenneRefinement)
     json_schema["properties"].pop("grid_categories", None)
-    return schema_without_edited(json_schema)
+    return schema_without_client_fields(json_schema)
 
 
 def refine_recipe_for_cayenne(
@@ -1200,8 +1204,8 @@ def tag_pans(
         contents=build_pans_prompt(steps, ingredients, source_system),
         config={
             "response_mime_type": "application/json",
-            # RecipePan.edited is set by a person editing a tin, never by the model.
-            "response_json_schema": _with_bake_step_description(schema_without_edited(_schema_for_gemini(PanAnswer))),
+            # RecipePan.edited and .removed are set by a person, never by the model.
+            "response_json_schema": _with_bake_step_description(schema_without_client_fields(_schema_for_gemini(PanAnswer))),
             "temperature": 0,
         },
         what="Pans",

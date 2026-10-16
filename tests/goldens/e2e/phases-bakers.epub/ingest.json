@@ -7,6 +7,7 @@
       "categories": [
         "Bread"
       ],
+      "category_paths": [],
       "cook_max_minutes": 40,
       "cook_min_minutes": 40,
       "cook_note": null,
@@ -30,6 +31,7 @@
           "Bread"
         ]
       },
+      "image_source": null,
       "image_url": null,
       "ingredient_lines": [
         "**PHASE 1 — Levain**",
@@ -42,6 +44,7 @@
         "360g (1 1/2 cups) water",
         "10g (2 teaspoons) fine salt"
       ],
+      "is_favourite": null,
       "notes": null,
       "nutritional_info": null,
       "pans": [],
@@ -58,9 +61,11 @@
       "source_key": "phases and percentages",
       "source_kind": "book",
       "source_title": "Phases And Percentages",
+      "source_uom_system": null,
       "source_uom_system_detected": null,
       "source_uom_system_evidence": null,
       "source_url": null,
+      "stale": false,
       "structured_ingredients": [
         {
           "amount": null,
@@ -215,6 +220,7 @@
       "categories": [
         "Bread"
       ],
+      "category_paths": [],
       "cook_max_minutes": 35,
       "cook_min_minutes": 35,
       "cook_note": null,
@@ -235,6 +241,7 @@
           "Bread"
         ]
       },
+      "image_source": null,
       "image_url": null,
       "ingredient_lines": [
         "Bread flour: 500g (4 cups) \", \" 100%",
@@ -243,6 +250,7 @@
         "Instant yeast: 7g (2 1/4 tsp) \", \" 1.4%",
         "Butter: 30g (2 tbsp) \", \" 6%"
       ],
+      "is_favourite": null,
       "notes": null,
       "nutritional_info": null,
       "pans": [],
@@ -259,9 +267,11 @@
       "source_key": "phases and percentages",
       "source_kind": "book",
       "source_title": "Phases And Percentages",
+      "source_uom_system": null,
       "source_uom_system_detected": null,
       "source_uom_system_evidence": null,
       "source_url": null,
+      "stale": false,
       "structured_ingredients": [
         {
           "amount": 4.0,

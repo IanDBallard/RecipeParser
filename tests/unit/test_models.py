@@ -133,10 +133,66 @@ def test_pan_answer_tolerates_free_text_vocab():
     assert a.pans[0].shape == "blob"  # vocab is enforced by core/pans.py, never by validation
 
 
-def test_edited_is_absent_from_refine_and_pan_answer_schemas():
-    import json
+def _property_names(obj):
+    """Every property name anywhere in a JSON schema."""
+    found = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "properties" and isinstance(v, dict):
+                found.update(v)
+            found |= _property_names(v)
+    elif isinstance(obj, list):
+        for i in obj:
+            found |= _property_names(i)
+    return found
 
-    from recipeparser.gemini import refine_json_schema, schema_without_edited
-    assert '"edited"' not in json.dumps(refine_json_schema())
-    assert '"edited"' not in json.dumps(schema_without_edited(PanAnswer.model_json_schema()))
+
+def test_refine_and_pan_schemas_have_no_client_fields():
+    from recipeparser.gemini import refine_json_schema, schema_without_client_fields
+    for schema in (refine_json_schema(), schema_without_client_fields(PanAnswer.model_json_schema())):
+        names = _property_names(schema)
+        assert "edited" not in names and "removed" not in names
     assert "pans" in refine_json_schema()["properties"]
+    # The helper is what strips them: the raw model schema still carries both.
+    raw = _property_names(PanAnswer.model_json_schema())
+    assert "edited" in raw and "removed" in raw
+
+
+def test_the_pan_call_schema_has_no_client_fields():
+    from unittest.mock import MagicMock, patch
+
+    from recipeparser import gemini
+    response = MagicMock()
+    response.text = '{"pans": [], "bake_type": null, "bake_step": null, "mentions": [], "core": []}'
+    with patch.object(gemini, "_call_with_retry", return_value=response) as call:
+        gemini.tag_pans(["Bake."], ["flour"], None, MagicMock())
+    names = _property_names(call.call_args.kwargs["config"]["response_json_schema"])
+    assert "pans" in names and "edited" not in names and "removed" not in names
+
+
+_V2 = {
+    "title": "T", "structured_ingredients": [], "tokenized_directions": [],
+    "is_favourite": True, "category_paths": [["Course", "Dessert"], ["Cuisine"]],
+    "source_uom_system": "UK", "image_source": "generated", "stale": True,
+}
+
+
+def test_cayenne_recipe_accepts_v2_fields():
+    from recipeparser.models import CayenneRecipe
+    r = CayenneRecipe.model_validate(_V2)
+    assert r.is_favourite is True
+    assert r.category_paths == [["Course", "Dessert"], ["Cuisine"]]
+    assert r.source_uom_system == "UK" and r.image_source == "generated" and r.stale is True
+
+
+def test_cayenne_recipe_v1_meta_still_validates():
+    from recipeparser.models import CayenneRecipe
+    r = CayenneRecipe.model_validate({"title": "T", "structured_ingredients": [], "tokenized_directions": []})
+    assert r.category_paths == [] and r.stale is False and r.is_favourite is None
+    assert r.source_uom_system is None and r.image_source is None
+
+
+def test_recipe_pan_keeps_removed():
+    p = RecipePan.model_validate({"id": "pan_01", "raw": "a tin", "removed": True})
+    assert p.removed is True
+    assert RecipePan.model_validate({"id": "pan_01", "raw": "a tin"}).removed is False

@@ -9,6 +9,7 @@
           "British",
           "Dessert"
         ],
+        "category_paths": [],
         "cook_max_minutes": 20,
         "cook_min_minutes": 20,
         "cook_note": null,
@@ -34,6 +35,7 @@
             "Dessert"
           ]
         },
+        "image_source": null,
         "image_url": null,
         "ingredient_lines": [
           "1 quart milk",
@@ -41,6 +43,7 @@
           "1/2 cup sugar",
           "1 teaspoon vanilla"
         ],
+        "is_favourite": null,
         "notes": null,
         "nutritional_info": null,
         "pans": [],
@@ -57,9 +60,11 @@
         "source_key": null,
         "source_kind": "unknown",
         "source_title": null,
+        "source_uom_system": null,
         "source_uom_system_detected": null,
         "source_uom_system_evidence": null,
         "source_url": null,
+        "stale": false,
         "structured_ingredients": [
           {
             "amount": 1.0,
