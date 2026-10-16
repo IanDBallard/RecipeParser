@@ -77,7 +77,7 @@ class JobSink:
 
     # ── callbacks handed to RecipePipeline.run ────────────────────────────────
 
-    def on_result(self, recipe: IngestResponse) -> None:
+    def on_result(self, recipe: IngestResponse, ai_processed: bool = True) -> None:
         """Persist one finished recipe. A failure here costs that recipe, not the job."""
         title = getattr(recipe, "title", None)
 

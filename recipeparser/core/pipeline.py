@@ -16,6 +16,7 @@ TID rule: this module lives in ``core/`` and therefore MUST NOT import from
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 import mimetypes
 import os
@@ -127,7 +128,7 @@ class RecipePipeline:
         on_progress: Optional[Callable[[str, int, int], None]] = None,
         user_id: str = "",
         *,
-        on_result: Optional[Callable[[IngestResponse], None]] = None,
+        on_result: Optional[Callable[[IngestResponse, bool], None]] = None,
         on_skip: Optional[Callable[[Chunk, str, int], None]] = None,
         on_tags: Optional[Callable[[IngestResponse], None]] = None,
         on_tag_failed: Optional[Callable[[TagFailure], None]] = None,
@@ -144,7 +145,9 @@ class RecipePipeline:
             on_result:   Optional callback fired once per assembled recipe, in
                          completion order, from this thread.  Lets a caller
                          persist results as they arrive instead of after the
-                         whole batch.
+                         whole batch.  The second argument is True when REFINE
+                         ran for the recipe's chunk (AI processed it) and False
+                         for a Cayenne restore (AI caps D3).
             on_skip:     Optional callback ``(chunk, reason, index) -> None``
                          fired for every chunk that produced no result because
                          of a failure.  ``index`` is the chunk's zero-based
@@ -253,7 +256,10 @@ class RecipePipeline:
             # position is the only identification a labelless (EPUB/PDF)
             # chunk has.
             future_to_chunk = {
-                executor.submit(_worker, chunk): (chunk, index)
+                # Each worker runs in a copy of the caller's context, so its Gemini calls are
+                # attributed to the job (usage.py, AI caps D8). One copy per submit: a Context
+                # cannot be entered by two threads at once.
+                executor.submit(contextvars.copy_context().run, _worker, chunk): (chunk, index)
                 for index, chunk in enumerate(chunks)
             }
 
@@ -283,7 +289,7 @@ class RecipePipeline:
                     for position, result in enumerate(outcome.results):
                         if on_result is not None:
                             try:
-                                on_result(result)
+                                on_result(result, needs_tags)
                             except Exception:
                                 # Deliberately NOT re-raised, unlike on_progress below. That
                                 # callback guards a stale stage label, which is indistinguishable

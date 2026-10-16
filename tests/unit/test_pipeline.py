@@ -401,7 +401,7 @@ def test_on_result_fires_per_recipe_and_on_skip_names_the_failed_chunk():
     ):
         returned = pipeline.run(
             [good, bad],
-            on_result=results_seen.append,
+            on_result=lambda r, _ai: results_seen.append(r),
             on_skip=lambda chunk, reason, index: skips_seen.append((chunk.label, reason, index)),
         )
 
@@ -424,7 +424,7 @@ def test_a_raising_on_result_does_not_abort_the_run():
         "_process_chunk",
         side_effect=lambda chunk, stages: ChunkResult([_make_ingest_response(chunk.text)], []),
     ):
-        returned = pipeline.run(chunks, on_result=lambda _r: (_ for _ in ()).throw(RuntimeError("write failed")))
+        returned = pipeline.run(chunks, on_result=lambda _r, _ai: (_ for _ in ()).throw(RuntimeError("write failed")))
 
     assert len(returned) == 3
 
@@ -1011,14 +1011,14 @@ def test_a_batch_is_tagged_in_source_order_whatever_order_its_chunks_finish():
 
 def test_every_recipe_is_handed_to_on_result_before_its_tags():
     order: List[str] = []
-    _tag_run(2, on_result=lambda r: order.append(f"result {r.title}"),
+    _tag_run(2, on_result=lambda r, _ai: order.append(f"result {r.title}"),
              on_tags=lambda r: order.append(f"tags {r.title}"))
     assert order.index("result recipe 0") < order.index("tags recipe 0")
     assert order.index("result recipe 1") < order.index("tags recipe 1")
 
 
 def test_a_recipe_whose_write_failed_is_not_tagged():
-    def _write(r):
+    def _write(r, _ai):
         if r.title == "recipe 0":
             raise RuntimeError("insert refused")
     tagged: List[str] = []
@@ -1042,7 +1042,7 @@ def test_a_cancelled_run_still_tags_what_it_wrote():
     written: List[str] = []
     tagged: List[str] = []
 
-    def _on_result(r):
+    def _on_result(r, _ai):
         written.append(r.title)
         if len(written) == 3:
             controller.request_cancel()
