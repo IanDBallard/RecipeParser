@@ -471,7 +471,7 @@ def _detect_format(entry: dict) -> str:
     return "cayenne" if "_cayenne_meta" in entry else "paprika"
 ```
 
-- **Cayenne format**: `_cayenne_meta` key present → extract `CayenneRecipe` directly, skip Gemini extraction/refinement. The adapter signals the engine to bypass those stages.
+- **Cayenne format**: `_cayenne_meta` key present → extract `CayenneRecipe` directly, skip Gemini extraction/refinement. The adapter signals the engine to bypass those stages. A restore keeps the cook's title, time spans, servings, favourite, measuring system, stale flag and removed tins as exported (`_cayenne_meta` v2), creates any category path the new account lacks (`io/category_sources/restore_paths.py`, depth capped at 4) and copies the recipe's picture into the new account's bucket (`io/writers/picture_copy.py`). It makes no AI call and leaves `ai_processed` false. An entry whose `_cayenne_meta` cannot be read is skipped with a reported line and is never sent to the AI path.
 - **Paprika format**: No `_cayenne_meta` → flatten ingredients + directions to plain text → pass through full engine pipeline.
 
 ### Reader Selection (Adapter Logic)
@@ -608,7 +608,7 @@ Output: `<title>_<timestamp>.paprikarecipes` — a ZIP archive containing:
 <recipe_uid>.paprikarecipe    # gzip-compressed JSON per Paprika 3 format
 ```
 
-Each entry embeds the image bytes (base64) for Paprika compatibility. The entry also includes a `_cayenne_meta` key containing the full `CayenneRecipe` JSON, enabling lossless round-trip import back into Cayenne (Flow B — bypass Gemini).
+Each entry embeds the image bytes (base64) for Paprika compatibility. The entry also includes a `_cayenne_meta` key containing the full `CayenneRecipe` JSON, enabling lossless round-trip import back into Cayenne (Flow B — bypass Gemini; see the restore notes under Format detection).
 
 ### Writer Selection (CLI/GUI)
 
