@@ -122,3 +122,26 @@ def test_assemble_carries_the_tins_bake_type_and_bake_step():
     r = assemble(recipe=refined, embedding=[0.0] * 1536, source_url=None, image_url=None, grid_categories={})
     assert r.pans == refined.pans
     assert (r.bake_type, r.bake_step) == ("sponge", 0)
+
+
+# --- Cayenne restore (plan B task 3) -----------------------------------------
+
+_SPANS = {
+    "servings_min": 10, "servings_max": 12, "servings_note": "cakes",
+    "prep_min_minutes": 30, "prep_max_minutes": 45, "prep_note": "overnight",
+    "cook_min_minutes": 60, "cook_max_minutes": 90, "cook_note": "slow",
+    "base_servings": 10,
+}
+
+
+def test_assemble_uses_given_spans():
+    r = _assemble(spans=_SPANS, servings_text=None, prep_time="1 hr", cook_time="2 hr")
+    for key, value in _SPANS.items():
+        assert getattr(r, key) == value, key
+
+
+def test_assemble_carries_restore_fields():
+    from recipeparser.core.models import RestoreFields
+
+    r = _assemble(restore=RestoreFields(is_favourite=True, source_uom_system="UK", image_source="generated", stale=True))
+    assert (r.is_favourite, r.source_uom_system, r.image_source, r.stale) == (True, "UK", "generated", True)

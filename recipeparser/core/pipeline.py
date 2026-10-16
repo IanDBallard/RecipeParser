@@ -25,8 +25,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from recipeparser.core.citation import Citation, host_of, resolve_citation
+from recipeparser.core.durations import duration_columns
 from recipeparser.core.fsm import PipelineController
-from recipeparser.core.models import Chunk, InputType, SourceMeta
+from recipeparser.core.models import Chunk, InputType, RestoreFields, SourceMeta
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.stages.assemble import assemble
 from recipeparser.core.stages.embed import embed
@@ -36,7 +37,6 @@ from recipeparser.core.stages.tag import TAG_BATCH_SIZE, TagFailure, tag_batch
 from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.gemini import categorize_batch
 from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse, Photo
-from recipeparser.utils import title_case
 
 log = logging.getLogger(__name__)
 
@@ -430,6 +430,8 @@ class RecipePipeline:
                 direction_steps=list(getattr(pr, "direction_steps", []) or []),
                 servings_text=None,
                 citation=chunk.citation or _citation_from(pr),
+                spans=_restore_spans(pr),
+                restore=_restore_fields(pr),
             )
             result.attach_photo(_chunk_photo(chunk))
             return ChunkResult([result], [])
@@ -459,6 +461,8 @@ class RecipePipeline:
                 direction_steps=list(getattr(pr, "direction_steps", []) or []),
                 servings_text=None,
                 citation=chunk.citation or _citation_from(pr),
+                spans=_restore_spans(pr),
+                restore=_restore_fields(pr),
             )
             result.attach_photo(_chunk_photo(chunk))
             return ChunkResult([result], [])
@@ -624,10 +628,11 @@ def _pre_parsed_to_refinement(
     here (``title``, ``base_servings``, ``structured_ingredients``,
     ``tokenized_directions``), so the shim works for either type.
 
-    The title is title-cased here as REFINE does for every other input: a restore skips REFINE.
+    The title is kept exactly as given: a Cayenne restore is the cook's own title, and
+    title-casing it would undo what they typed.  The measures REFINE detected ride along.
     """
     return CayenneRefinement(
-        title=title_case(pr.title),
+        title=pr.title,
         base_servings=pr.base_servings,
         structured_ingredients=pr.structured_ingredients,
         tokenized_directions=pr.tokenized_directions,
@@ -636,4 +641,35 @@ def _pre_parsed_to_refinement(
         pans=list(getattr(pr, "pans", None) or []),
         bake_type=getattr(pr, "bake_type", None),
         bake_step=getattr(pr, "bake_step", None),
+        source_uom_system_detected=getattr(pr, "source_uom_system_detected", None),
+        source_uom_system_evidence=getattr(pr, "source_uom_system_evidence", None),
+    )
+
+
+_SPAN_KEYS = (
+    "prep_min_minutes", "prep_max_minutes", "prep_note",
+    "cook_min_minutes", "cook_max_minutes", "cook_note",
+    "servings_min", "servings_max", "servings_note",
+    "base_servings",
+)
+
+
+def _restore_spans(pr: "CayenneRecipe | IngestResponse") -> Dict[str, Any]:
+    """
+    The ten span columns of a pre-parsed recipe, as stored.  Re-deriving them from the text
+    columns would lose what only the structured columns hold (a servings span and its note).
+    An archive that predates the columns carries none of them; for that alone the text is parsed.
+    """
+    if not any(k in pr.model_fields_set for k in _SPAN_KEYS if k != "base_servings"):
+        return duration_columns(pr.prep_time, pr.cook_time, None, pr.base_servings)
+    return {k: getattr(pr, k) for k in _SPAN_KEYS}
+
+
+def _restore_fields(pr: "CayenneRecipe | IngestResponse") -> RestoreFields:
+    """The favourite, chosen measures, picture origin and stale flag a Cayenne export carried."""
+    return RestoreFields(
+        is_favourite=bool(pr.is_favourite),
+        source_uom_system=pr.source_uom_system,
+        image_source=pr.image_source,
+        stale=bool(pr.stale),
     )

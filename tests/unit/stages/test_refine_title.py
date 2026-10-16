@@ -29,12 +29,12 @@ def test_a_mixed_case_title_is_normalised_too():
     assert result.title == "Chicken Tikka Masala with BBQ Naan"
 
 
-def test_a_paprika_restore_skips_refine_and_is_still_title_cased():
+def test_a_paprika_restore_skips_refine_and_keeps_the_cooks_title():
     pr = CayenneRecipe(
         title="CHICKEN TIKKA MASALA", structured_ingredients=[],
         tokenized_directions=[TokenizedDirection(step=1, text="Cook.")],
     )
-    assert _pre_parsed_to_refinement(pr).title == "Chicken Tikka Masala"
+    assert _pre_parsed_to_refinement(pr).title == "CHICKEN TIKKA MASALA"
 
 
 def test_a_restored_recipe_keeps_its_tins_and_bake():

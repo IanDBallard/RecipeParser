@@ -93,6 +93,16 @@ class SourceMeta:
         self.rating = rating or None
 
 
+@dataclass(frozen=True)
+class RestoreFields:
+    """What a Cayenne export carries that a normal ingest never sets (_cayenne_meta v2)."""
+
+    is_favourite: bool = False
+    source_uom_system: Optional[str] = None
+    image_source: Optional[str] = None
+    stale: bool = False
+
+
 @dataclass
 class Chunk:
     """

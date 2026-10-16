@@ -246,6 +246,78 @@ def write_recipe_categories(
             on_link_refused(link)
 
 
+_UOM_SYSTEMS = frozenset({"US", "UK", "EU", "AU", "Imperial"})
+
+
+def _recipe_row(recipe: IngestResponse, user_id: str, rid: str) -> dict:
+    """The ``recipes`` row for an IngestResponse (no HTTP, so a test can read it)."""
+    return {
+        "id": rid,
+        "user_id": user_id,
+        "title": recipe.title,
+        "prep_time": recipe.prep_time,
+        "cook_time": recipe.cook_time,
+        "base_servings": recipe.base_servings,
+        "source_url": recipe.source_url,
+        "image_url": recipe.image_url,
+        # Plain text and smallint - not jsonb, so the array rule below does not
+        # apply. rating is null when unrated; the column's check rejects 0.
+        "source": recipe.source,
+        "notes": recipe.notes,
+        "rating": recipe.rating,
+        "nutritional_info": recipe.nutritional_info,
+        "description": recipe.description,
+        "difficulty": recipe.difficulty,
+        # Citation columns (migration recipe_source_citation in the Cayenne repo).
+        "source_kind": recipe.source_kind,
+        "source_key": recipe.source_key,
+        "source_title": recipe.source_title,
+        "source_author": recipe.source_author,
+        # What REFINE detected (verbatim ingestion D5, Cayenne migration verbatim_ingestion).
+        "source_uom_system_detected": recipe.source_uom_system_detected,
+        "source_uom_system_evidence": recipe.source_uom_system_evidence,
+        # Tins (pan-aware scaling): pans is jsonb, so a real list of dicts like the two below;
+        # bake_type is text and bake_step an integer >= 0.
+        "pans": [p.model_dump() for p in recipe.pans],
+        "bake_type": recipe.bake_type,
+        "bake_step": recipe.bake_step,
+        # Restore fields (_cayenne_meta v2). is_favourite is NOT NULL; the other two are check-constrained.
+        "is_favourite": bool(recipe.is_favourite),
+        "source_uom_system": recipe.source_uom_system if recipe.source_uom_system in _UOM_SYSTEMS else None,
+        "image_source": "generated" if recipe.image_source == "generated" else None,
+        # jsonb columns — send the list itself. json.dumps()ing it here handed
+        # Postgres a JSON *string* containing an array, and that is what jsonb
+        # stored: on 2026-09-06 jsonb_typeof reported 'string' for all 786 rows
+        # in the live library, with no arrays in the table at all. It went
+        # unnoticed because the Cayenne client compensates (kitchenRecipe.ts's
+        # parseArrayColumn parses twice). PostgREST takes a real list for jsonb,
+        # exactly as it already does for the pgvector embedding below.
+        "structured_ingredients": [ing.model_dump() for ing in recipe.structured_ingredients],
+        "tokenized_directions": [d.model_dump() for d in recipe.tokenized_directions],
+        # vector(1536) — PostgREST accepts a JSON array for pgvector columns
+        "embedding": recipe.embedding,
+        # Raw, user-owned body + derived bookkeeping (spec 3.2/3.3). A freshly
+        # ingested recipe is never stale: body_rev == derived_rev == 0.
+        "ingredient_lines": list(recipe.ingredient_lines),
+        "direction_steps": list(recipe.direction_steps),
+        # A stale restore (Cayenne had edited the body since it last derived) asks the regen worker to
+        # re-derive: body_rev ahead of derived_rev.
+        "body_rev": 1 if recipe.stale else 0,
+        "derived_rev": 0,
+        "amount_overrides": {},
+        # Structured durations and servings (spec 3.6).
+        "prep_min_minutes": recipe.prep_min_minutes,
+        "prep_max_minutes": recipe.prep_max_minutes,
+        "prep_note": recipe.prep_note,
+        "cook_min_minutes": recipe.cook_min_minutes,
+        "cook_max_minutes": recipe.cook_max_minutes,
+        "cook_note": recipe.cook_note,
+        "servings_min": recipe.servings_min,
+        "servings_max": recipe.servings_max,
+        "servings_note": recipe.servings_note,
+    }
+
+
 def write_recipe_to_supabase(
     recipe: IngestResponse,
     user_id: str,
@@ -291,65 +363,7 @@ def write_recipe_to_supabase(
     supabase_url, service_key = _get_creds()
     rid = recipe_id or str(uuid.uuid4())
 
-    row = {
-        "id": rid,
-        "user_id": user_id,
-        "title": recipe.title,
-        "prep_time": recipe.prep_time,
-        "cook_time": recipe.cook_time,
-        "base_servings": recipe.base_servings,
-        "source_url": recipe.source_url,
-        "image_url": recipe.image_url,
-        # Plain text and smallint - not jsonb, so the array rule below does not
-        # apply. rating is null when unrated; the column's check rejects 0.
-        "source": recipe.source,
-        "notes": recipe.notes,
-        "rating": recipe.rating,
-        "nutritional_info": recipe.nutritional_info,
-        "description": recipe.description,
-        "difficulty": recipe.difficulty,
-        # Citation columns (migration recipe_source_citation in the Cayenne repo).
-        "source_kind": recipe.source_kind,
-        "source_key": recipe.source_key,
-        "source_title": recipe.source_title,
-        "source_author": recipe.source_author,
-        # What REFINE detected (verbatim ingestion D5, Cayenne migration verbatim_ingestion).
-        "source_uom_system_detected": recipe.source_uom_system_detected,
-        "source_uom_system_evidence": recipe.source_uom_system_evidence,
-        # Tins (pan-aware scaling): pans is jsonb, so a real list of dicts like the two below;
-        # bake_type is text and bake_step an integer >= 0.
-        "pans": [p.model_dump() for p in recipe.pans],
-        "bake_type": recipe.bake_type,
-        "bake_step": recipe.bake_step,
-        # jsonb columns — send the list itself. json.dumps()ing it here handed
-        # Postgres a JSON *string* containing an array, and that is what jsonb
-        # stored: on 2026-09-06 jsonb_typeof reported 'string' for all 786 rows
-        # in the live library, with no arrays in the table at all. It went
-        # unnoticed because the Cayenne client compensates (kitchenRecipe.ts's
-        # parseArrayColumn parses twice). PostgREST takes a real list for jsonb,
-        # exactly as it already does for the pgvector embedding below.
-        "structured_ingredients": [ing.model_dump() for ing in recipe.structured_ingredients],
-        "tokenized_directions": [d.model_dump() for d in recipe.tokenized_directions],
-        # vector(1536) — PostgREST accepts a JSON array for pgvector columns
-        "embedding": recipe.embedding,
-        # Raw, user-owned body + derived bookkeeping (spec 3.2/3.3). A freshly
-        # ingested recipe is never stale: body_rev == derived_rev == 0.
-        "ingredient_lines": list(recipe.ingredient_lines),
-        "direction_steps": list(recipe.direction_steps),
-        "body_rev": 0,
-        "derived_rev": 0,
-        "amount_overrides": {},
-        # Structured durations and servings (spec 3.6).
-        "prep_min_minutes": recipe.prep_min_minutes,
-        "prep_max_minutes": recipe.prep_max_minutes,
-        "prep_note": recipe.prep_note,
-        "cook_min_minutes": recipe.cook_min_minutes,
-        "cook_max_minutes": recipe.cook_max_minutes,
-        "cook_note": recipe.cook_note,
-        "servings_min": recipe.servings_min,
-        "servings_max": recipe.servings_max,
-        "servings_note": recipe.servings_note,
-    }
+    row = _recipe_row(recipe, user_id, rid)
 
     headers = {
         "Authorization": f"Bearer {service_key}",

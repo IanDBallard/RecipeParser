@@ -7,11 +7,11 @@ into a final IngestResponse.  Makes zero API calls.
 No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from recipeparser.core.citation import Citation
 from recipeparser.core.durations import duration_columns
-from recipeparser.core.models import SourceMeta
+from recipeparser.core.models import RestoreFields, SourceMeta
 from recipeparser.core.regen import raw_lines_from_derived
 from recipeparser.models import CayenneRefinement, IngestResponse
 
@@ -35,6 +35,8 @@ def assemble(
     description: Optional[str] = None,
     nutritional_info: Optional[str] = None,
     notes: Optional[str] = None,
+    spans: Optional[Dict[str, Any]] = None,
+    restore: Optional[RestoreFields] = None,
 ) -> IngestResponse:
     """
     Assemble the final IngestResponse from stage outputs.
@@ -77,6 +79,12 @@ def assemble(
         nutritional_info: The nutrition line the extractor read. As above.
         notes:            The author's notes or headnote the extractor read. A source's own
                           statement (meta) wins over it, as for description.
+        spans:            The ten span columns (the nine span fields plus
+                          base_servings) exactly as a Cayenne export carried them.
+                          When given they replace the duration_columns() result.
+        restore:          What a Cayenne export carries beyond a normal ingest
+                          (favourite, chosen measures, picture origin, stale);
+                          copied onto the response.
 
     Returns:
         A fully-populated ``IngestResponse`` ready for persistence.
@@ -108,7 +116,10 @@ def assemble(
     # A page that states only a total ("Total Time 8 to 10 hours") gets that
     # as its cook span; the cook_time text stays what the page said for cook.
     # durations.py is untouched, so its rules stay those of the Cayenne twin.
-    cols = duration_columns(prep_time, cook_time or total_time, servings_text, recipe.base_servings)
+    if spans is not None:
+        cols = spans
+    else:
+        cols = duration_columns(prep_time, cook_time or total_time, servings_text, recipe.base_servings)
 
     result = IngestResponse(
         title=recipe.title,
@@ -154,6 +165,12 @@ def assemble(
         servings_min=cols["servings_min"],
         servings_max=cols["servings_max"],
         servings_note=cols["servings_note"],
+        **({} if restore is None else dict(
+            is_favourite=restore.is_favourite,
+            source_uom_system=restore.source_uom_system,
+            image_source=restore.image_source,
+            stale=restore.stale,
+        )),
     )
 
     log.info(
