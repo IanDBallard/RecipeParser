@@ -17,6 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+from recipeparser import usage
 from recipeparser.core.citation import host_of
 from recipeparser.core.regen import build_extraction, build_update
 from recipeparser.core.stages.embed import embed
@@ -44,6 +45,8 @@ class RegenWorker:
         batch: int = 5,
         concurrency: int = 2,
         clock: Callable[[], float] = time.monotonic,
+        ai_allowed: Callable[[str], bool] = lambda _u: True,
+        usage_client: Callable[[], Any] = lambda: None,
     ) -> None:
         self._sb = supabase
         self._client = gemini_client
@@ -52,6 +55,8 @@ class RegenWorker:
         self._batch = max(1, batch)
         self._concurrency = max(1, concurrency)
         self._clock = clock
+        self._ai_allowed = ai_allowed
+        self._usage_client = usage_client
 
     # ── one poll ─────────────────────────────────────────────────────────
 
@@ -75,41 +80,48 @@ class RegenWorker:
         # and abandon every other row in the batch. rid/read_rev are seeded for
         # the log so a malformed row is still identifiable.
         rid, read_rev = row.get("id", "?"), -1
-        try:
-            rid, read_rev = row["id"], int(row["body_rev"])
-            refinement = self._refine(
-                build_extraction(row),
-                self._client,
-                source_host=host_of(row["source_url"]) if row.get("source_url") else None,
-            )
-            vector = self._embed(recipe=refinement, client=self._client)
-            # A tin the cook edited must survive regen. Best-effort: a failed read writes REFINE's tins.
-            current_pans: Any = None
+        owner = str(row.get("user_id") or "")
+        if not self._ai_allowed(owner):
+            # Paused (AI caps D5), and the owner is not exempt: let the row go back to the
+            # queue for after the pause, rather than spend a REFINE on it now.
+            self._release_claim(rid, claimed_at)
+            return
+        with usage.attributed(owner, "regen", get_client=self._usage_client):
             try:
-                current = self._sb.table("recipes").select("pans").eq("id", rid).single().execute().data
-                current_pans = current.get("pans") if isinstance(current, dict) else None
-            except Exception as exc:  # noqa: BLE001 — the guard must not fail the regen
-                log.warning("regen: %s: could not read current tins (%s); writing REFINE's", rid, exc)
-            payload = build_update(
-                refinement, vector, read_rev,
-                current_pans=current_pans if isinstance(current_pans, list) else None,
-            )
-            res = (
-                self._sb.table("recipes")
-                .update(payload)
-                .eq("id", rid)
-                .eq("body_rev", read_rev)
-                .execute()
-            )
-            if not res.data:
-                log.info("regen: %s was edited again during the run (rev %d) — result dropped.",
-                         rid, read_rev)
-                self._release_claim(rid, claimed_at)
-            else:
-                log.info("regen: %s regenerated at rev %d.", rid, read_rev)
-        except Exception as exc:  # noqa: BLE001 — every failure is recorded, never fatal
-            log.warning("regen: %s failed at rev %d: %s", rid, read_rev, exc, exc_info=True)
-            self._record_failure(rid, exc)
+                rid, read_rev = row["id"], int(row["body_rev"])
+                refinement = self._refine(
+                    build_extraction(row),
+                    self._client,
+                    source_host=host_of(row["source_url"]) if row.get("source_url") else None,
+                )
+                vector = self._embed(recipe=refinement, client=self._client)
+                # A tin the cook edited must survive regen. Best-effort: a failed read writes REFINE's tins.
+                current_pans: Any = None
+                try:
+                    current = self._sb.table("recipes").select("pans").eq("id", rid).single().execute().data
+                    current_pans = current.get("pans") if isinstance(current, dict) else None
+                except Exception as exc:  # noqa: BLE001 — the guard must not fail the regen
+                    log.warning("regen: %s: could not read current tins (%s); writing REFINE's", rid, exc)
+                payload = build_update(
+                    refinement, vector, read_rev,
+                    current_pans=current_pans if isinstance(current_pans, list) else None,
+                )
+                res = (
+                    self._sb.table("recipes")
+                    .update(payload)
+                    .eq("id", rid)
+                    .eq("body_rev", read_rev)
+                    .execute()
+                )
+                if not res.data:
+                    log.info("regen: %s was edited again during the run (rev %d) — result dropped.",
+                             rid, read_rev)
+                    self._release_claim(rid, claimed_at)
+                else:
+                    log.info("regen: %s regenerated at rev %d.", rid, read_rev)
+            except Exception as exc:  # noqa: BLE001 — every failure is recorded, never fatal
+                log.warning("regen: %s failed at rev %d: %s", rid, read_rev, exc, exc_info=True)
+                self._record_failure(rid, exc)
 
     def _release_claim(self, rid: str, claimed_at: float) -> None:
         """

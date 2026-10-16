@@ -65,9 +65,10 @@ def _refinement():
     )
 
 
-def _worker(fake, refine_fn=None, embed_fn=None, clock=None):
+def _worker(fake, refine_fn=None, embed_fn=None, clock=None, **kwargs):
     from recipeparser.adapters.regen_worker import RegenWorker
     extra = {"clock": clock} if clock else {}
+    extra.update(kwargs)
     return RegenWorker(
         fake, gemini_client=MagicMock(),
         refine_fn=refine_fn or MagicMock(return_value=_refinement()),
@@ -485,3 +486,30 @@ def test_a_non_list_pans_column_is_ignored():
     )
     _worker(fake, refine_fn=MagicMock(return_value=_tin_refinement())).run_once()
     assert [p["id"] for p in _ops(fake, "recipes")[0][0][1][0]["pans"]] == ["pan_01", "pan_02"]
+
+
+def test_paused_non_exempt_row_is_released_not_refined():
+    # AI caps D5: while paused a non-exempt owner's row goes back to the queue.
+    refine = MagicMock()
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row(rev=3)]})
+    w = _worker(fake, refine_fn=refine, ai_allowed=lambda u: False)
+    assert w.run_once() == 1
+    refine.assert_not_called()
+    ops = _ops(fake, "recipes")
+    assert len(ops) == 1 and ops[0][0] == ("update", ({"claimed_at": None},), {})
+    assert not any(n == "regen_failed" for n, _ in fake.rpcs)
+
+
+def test_regen_calls_are_attributed_to_the_rows_owner():
+    from recipeparser import usage
+    seen = []
+
+    def refine(*a, **k):
+        ctx = usage.ai_context.get()
+        seen.append((ctx.user_id, ctx.action))
+        raise RuntimeError("stop here")
+
+    row = dict(_row(), user_id="u9")
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [row]})
+    _worker(fake, refine_fn=refine).run_once()
+    assert seen == [("u9", "regen")]

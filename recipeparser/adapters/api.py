@@ -248,8 +248,16 @@ async def _lifespan(_app: FastAPI):
         from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
         from recipeparser.adapters.share_worker import ShareWorker  # noqa: PLC0415
         workers: list = [
-            _rw.RegenWorker(supabase, _get_client()),
-            RecatWorker(supabase, _get_client()),
+            _rw.RegenWorker(
+                supabase, _get_client(),
+                ai_allowed=_ai_gate.ai_allowed,
+                usage_client=lambda: _get_supabase_service_client(),
+            ),
+            RecatWorker(
+                supabase, _get_client(),
+                ai_allowed=_ai_gate.ai_allowed,
+                usage_client=lambda: _get_supabase_service_client(),
+            ),
             ShareWorker(supabase, SupabaseImageStore()),
         ]
         task = asyncio.create_task(_rw.run_workers(workers, stop, polls=_worker_polls))
