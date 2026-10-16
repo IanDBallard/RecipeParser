@@ -1,4 +1,3 @@
-# tests/unit/test_ai_gate.py
 from unittest.mock import MagicMock
 
 import pytest
@@ -114,3 +113,39 @@ def test_a_settings_read_error_counts_as_paused() -> None:
     sb = MagicMock()
     sb.table.side_effect = RuntimeError("down")
     assert AiGate(lambda: sb).paused() is True
+
+
+def test_exempt_passes_the_embed_check_while_paused() -> None:
+    AiGate(lambda: _sb(paused=True, row={**ROW, "exempt": True})).check("u1", embed=True)
+
+
+def test_ai_allowed_matrix() -> None:
+    assert AiGate(lambda: _sb(paused=False, row=ROW)).ai_allowed("u1") is True
+    assert AiGate(lambda: _sb(paused=True, row={**ROW, "exempt": True})).ai_allowed("u1") is True
+    assert AiGate(lambda: _sb(paused=True, row=ROW)).ai_allowed("u1") is False
+    assert AiGate(lambda: _sb(paused=True, row=None)).ai_allowed("u1") is False
+
+
+def test_ai_allowed_is_false_when_paused_and_the_allowance_read_raises() -> None:
+    sb = _sb(paused=True, row=ROW)
+    real_table = sb.table.side_effect
+
+    def table(name):
+        if name == "ai_allowance":
+            raise RuntimeError("down")
+        return real_table(name)
+
+    sb.table.side_effect = table
+    assert AiGate(lambda: sb).ai_allowed("u1") is False
+
+
+def test_a_raising_client_factory_fails_closed() -> None:
+    def boom():
+        raise RuntimeError("no client")
+
+    gate = AiGate(boom)
+    with pytest.raises(HTTPException) as e:
+        gate.check("u1", imports=True)
+    assert e.value.status_code == 503
+    assert gate.paused() is True
+    assert gate.consume_recipe("u1") is False

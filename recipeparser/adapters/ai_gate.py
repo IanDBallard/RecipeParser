@@ -1,4 +1,3 @@
-# recipeparser/adapters/ai_gate.py
 """The AI gate (AI caps spec §2): the kill switch, the recipe cap and the search rate limit.
 
 All three read state from Postgres through the service role (plan A's tables).
@@ -65,16 +64,16 @@ class AiGate:
         with self._lock:
             if self._paused_at is not None and now - self._paused_at < self._paused_ttl:
                 return self._paused_value
-        sb = self._client()
-        if sb is None:
-            value = False
-        else:
-            try:
+        try:
+            sb = self._client()
+            if sb is None:
+                value = False
+            else:
                 rows = sb.table("ai_settings").select("paused").eq("id", True).limit(1).execute().data or []
                 value = bool(rows[0]["paused"]) if rows else False
-            except Exception:  # noqa: BLE001
-                log.exception("ai_gate: could not read ai_settings; treating AI as paused.")
-                value = True
+        except Exception:  # noqa: BLE001
+            log.exception("ai_gate: could not read ai_settings; treating AI as paused.")
+            value = True
         with self._lock:
             self._paused_at, self._paused_value = now, value
         return value
@@ -137,10 +136,10 @@ class AiGate:
 
     def consume_recipe(self, user_id: str) -> bool:
         """Spend one recipe of the allowance; false at the cap, and false on any error (fail closed)."""
-        sb = self._client()
-        if sb is None:
-            return True
         try:
+            sb = self._client()
+            if sb is None:
+                return True
             return bool(sb.rpc("consume_recipe_allowance", {"p_user": user_id}).execute().data)
         except Exception:  # noqa: BLE001
             log.exception("ai_gate: consume_recipe_allowance failed for %s; stopping at the cap.", user_id)

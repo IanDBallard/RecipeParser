@@ -1,4 +1,3 @@
-# tests/unit/test_ai_gate_endpoints.py
 """Every AI endpoint is gated and attributed; nothing else is gated."""
 from unittest.mock import MagicMock, patch
 
@@ -62,8 +61,8 @@ def test_embed_is_gated_with_the_rate_limit(client, monkeypatch) -> None:
 
 def test_status_and_cancel_are_not_gated(client, monkeypatch) -> None:
     monkeypatch.setattr(api._ai_gate, "check", _refuse(503, ai_gate.PAUSED_DETAIL))
-    assert client.get("/jobs/nope").status_code != 503
-    assert client.post("/jobs/nope/cancel").status_code != 503
+    assert client.get("/jobs/nope").status_code == 404
+    assert client.post("/jobs/nope/cancel").status_code == 404
 
 
 def test_embed_records_under_search(client, monkeypatch) -> None:
@@ -80,3 +79,65 @@ def test_embed_records_under_search(client, monkeypatch) -> None:
          patch("recipeparser.gemini.get_embeddings", return_value=[0.0] * 1536):
         client.post("/embed", json={"text": "cake"})
     assert captured == [("u1", "search")]
+
+
+def test_each_endpoint_uses_its_own_gate_variant(client, monkeypatch) -> None:
+    calls = []
+
+    def check(user_id, *, imports=False, embed=False):
+        calls.append((imports, embed))
+        raise HTTPException(503, detail=ai_gate.PAUSED_DETAIL)
+
+    monkeypatch.setattr(api._ai_gate, "check", check)
+    expected = {
+        "/jobs": (True, False),
+        "/jobs/file": (True, False),
+        "/embed": (False, True),
+        "/jobs/recategorize": (False, False),
+        "/recipes/r1/image/generate": (False, False),
+        "/shopping/classify": (False, False),
+    }
+    for path, flags in expected.items():
+        calls.clear()
+        if path == "/jobs/file":
+            client.post(path, files={"file": ("a.txt", b"x", "text/plain")})
+        else:
+            client.post(path, json={"text": "x", "title": "x"})
+        assert calls == [flags], path
+
+
+def _real_gate(*, exempt: bool) -> ai_gate.AiGate:
+    sb = MagicMock()
+
+    def table(name):
+        q = MagicMock()
+        data = [{"paused": True}] if name == "ai_settings" else [
+            {"recipes_processed": 9999, "recipe_cap": 5, "exempt": exempt}
+        ]
+        q.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = data
+        return q
+
+    sb.table.side_effect = table
+    return ai_gate.AiGate(lambda: sb)
+
+
+@pytest.mark.parametrize("path", ["/embed", "/jobs/recategorize", "/jobs/file"])
+def test_exempt_user_passes_every_dependency_while_paused(client, monkeypatch, path) -> None:
+    # /embed -> _require_ai_embed, /jobs/recategorize -> _require_ai, /jobs/file -> _require_ai_import
+    monkeypatch.setattr(api, "_ai_gate", _real_gate(exempt=True))
+    if path == "/jobs/file":
+        resp = client.post(path, files={"file": ("a.txt", b"x", "text/plain")})
+    else:
+        resp = client.post(path, json={"text": "cake", "category_ids": []})
+    assert resp.status_code != 503 or resp.json().get("detail") != ai_gate.PAUSED_DETAIL
+    assert resp.status_code != 429
+
+
+@pytest.mark.parametrize("path", ["/embed", "/jobs/recategorize", "/jobs/file"])
+def test_non_exempt_user_is_refused_by_every_dependency_while_paused(client, monkeypatch, path) -> None:
+    monkeypatch.setattr(api, "_ai_gate", _real_gate(exempt=False))
+    if path == "/jobs/file":
+        resp = client.post(path, files={"file": ("a.txt", b"x", "text/plain")})
+    else:
+        resp = client.post(path, json={"text": "cake", "category_ids": []})
+    assert (resp.status_code, resp.json()["detail"]) == (503, ai_gate.PAUSED_DETAIL)
