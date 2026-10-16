@@ -178,7 +178,11 @@ class RecatWorker:
                 return 1                          # finished at the start, nothing to run
         held = self._held
         if not self._ai_allowed(held.user_id):
-            return 0  # paused and not exempt: the job waits, held, for the pause to lift
+            # Paused and not exempt: the job waits, held, for the pause to lift. It writes
+            # nothing meanwhile, so its updated_at is not refreshed; that relies on the
+            # single API process (spec D9) -- a second worker process could reclaim it
+            # through the stale-running path after a long pause.
+            return 0
         try:
             with usage.attributed(held.user_id, "recat", held.job_id, get_client=self._usage_client):
                 finished = self._step(held)

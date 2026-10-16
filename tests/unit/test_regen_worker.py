@@ -488,16 +488,25 @@ def test_a_non_list_pans_column_is_ignored():
     assert [p["id"] for p in _ops(fake, "recipes")[0][0][1][0]["pans"]] == ["pan_01", "pan_02"]
 
 
-def test_paused_non_exempt_row_is_released_not_refined():
-    # AI caps D5: while paused a non-exempt owner's row goes back to the queue.
+def test_paused_non_exempt_row_is_left_to_its_lease_not_refined():
+    # AI caps D5: the claim is left to lapse, so the queue moves on to other owners.
     refine = MagicMock()
     fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row(rev=3)]})
     w = _worker(fake, refine_fn=refine, ai_allowed=lambda u: False)
     assert w.run_once() == 1
     refine.assert_not_called()
-    ops = _ops(fake, "recipes")
-    assert len(ops) == 1 and ops[0][0] == ("update", ({"claimed_at": None},), {})
+    assert _ops(fake, "recipes") == []
     assert not any(n == "regen_failed" for n, _ in fake.rpcs)
+
+
+def test_paused_batch_refines_only_the_exempt_owners_row():
+    refine = MagicMock(return_value=_refinement())
+    rows = [dict(_row(rid="a"), user_id="plain"), dict(_row(rid="b"), user_id="exempt")]
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": rows})
+    _worker(fake, refine_fn=refine, ai_allowed=lambda u: u == "exempt").run_once()
+    assert refine.call_count == 1
+    touched = {o[1] for ops in _ops(fake, "recipes") for o in ops if o[0] == "eq" and o[1][0] == "id"}
+    assert touched == {("id", "b")}
 
 
 def test_regen_calls_are_attributed_to_the_rows_owner():
@@ -513,3 +522,4 @@ def test_regen_calls_are_attributed_to_the_rows_owner():
     fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [row]})
     _worker(fake, refine_fn=refine).run_once()
     assert seen == [("u9", "regen")]
+    assert usage.ai_context.get() is None

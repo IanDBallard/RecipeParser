@@ -82,9 +82,8 @@ class RegenWorker:
         rid, read_rev = row.get("id", "?"), -1
         owner = str(row.get("user_id") or "")
         if not self._ai_allowed(owner):
-            # Paused (AI caps D5), and the owner is not exempt: let the row go back to the
-            # queue for after the pause, rather than spend a REFINE on it now.
-            self._release_claim(rid, claimed_at)
+            # Paused (AI caps D5), owner not exempt: leave the claim to lapse so the queue
+            # moves on to other owners' rows; it is re-checked when its lease expires.
             return
         with usage.attributed(owner, "regen", get_client=self._usage_client):
             try:

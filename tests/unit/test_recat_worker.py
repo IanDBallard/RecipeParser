@@ -686,3 +686,4 @@ def test_recat_calls_are_attributed_with_the_jobs_id():
     fake = _fake_with_job(["running"] * 5, _recipes(5), count=5)
     assert _worker(fake, cat).run_once() == 1
     assert seen == [("u1", "recat", "j1")]
+    assert usage.ai_context.get() is None
