@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.15.0] — 2026-10-16
+
+Households (Cayenne spec `2026-10-01-household-shopping-design.md`, Part 3; plan `2026-10-14-household-stage-3b-recipeparser.md`). Six endpoints let a household of Cayenne accounts share one shopping list. Each is one JWT-verified call to one Cayenne database function, which is the transaction.
+
+### ⚠️ Requires — apply the Cayenne migration **before** deploying this version
+- `20261016090000_household_membership.sql` (Cayenne Stage 3a, [Cayenne#303](https://github.com/IanDBallard/Cayenne/pull/303)): `household_invites`, `household_links` and the membership functions. It is already live in production (2026-10-15). Order: Cayenne 3a live, then this deploy, then Cayenne 3c (the client).
+
+### ✨ Added
+- `recipeparser/adapters/household_api.py`, registered from `api.py` with one `include_router`. It shares the share endpoints' recipient-check limiter (20 lookups an hour) and their idempotency cache. The endpoints:
+  - `POST /household/invites`
+  - `POST /household/invites/{id}/accept`, `/decline` and `/cancel`
+  - `POST /household/leave`
+  - `POST /household/members/{user_id}/remove`
+  - `POST /household/copy`
+- Each Postgres refusal maps to its own status and sentence (409 already a member or already invited; 422 household full; 409 leaving a household of one). Any other database error is a 503, never a misleading 404.
+- The share worker's sweep also expires and purges household invites, on the share timers (every 15 minutes, and daily).
+
+---
+
 ## [9.14.0] — 2026-10-15
 
 AI caps for the beta (Cayenne spec `2026-10-15-ai-caps-and-invite-gate-design.md`, D2–D10). Every Gemini call is recorded in `ai_usage` against its user and action. The kill switch (`ai_settings.paused`) refuses AI work for everyone but exempt accounts. An import stops at the account's `recipe_cap` and finishes `done` with a note (a Cayenne restore never counts against it). Search embeds are limited to 60 a minute per user.
