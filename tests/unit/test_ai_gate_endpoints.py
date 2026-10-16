@@ -155,7 +155,7 @@ from recipeparser.core.fsm import PipelineController  # noqa: E402
 from recipeparser.core.models import Chunk, InputType  # noqa: E402
 
 
-def _fake_db(*, paused=False, processed=10, cap=10, exempt=False):
+def _fake_db(*, paused=False, processed=0, cap=10, exempt=False):
     sb = MagicMock()
 
     def table(name):
@@ -178,7 +178,7 @@ def _flow_a_chunk() -> Chunk:
     return Chunk(text="Cake. Mix.", input_type=InputType.PAPRIKA_LEGACY)
 
 
-def _upload(client, monkeypatch, name, **db):
+def _upload(client, monkeypatch, name, tmp_path=None, **db):
     """POST /jobs/file with a real gate over a fake database; the job itself is recorded, not run."""
     monkeypatch.setattr(api, "_ai_gate", AiGate(lambda: _fake_db(**db)))
     started = []
@@ -188,33 +188,35 @@ def _upload(client, monkeypatch, name, **db):
 
     monkeypatch.setattr(api, "_run_ingestion_job", fake_run)
     monkeypatch.setattr(api, "_create_ingestion_job", lambda *a, **k: None)
+    if tmp_path is not None:  # the stub never reads, and the read owns the unlink
+        monkeypatch.setattr(api.tempfile, "tempdir", str(tmp_path))
     resp = client.post("/jobs/file", files={"file": (name, b"x", "application/octet-stream")})
     return resp, started
 
 
 @pytest.mark.parametrize("name", ["lib.paprikarecipes", "LIB.PaprikaRecipes"])
 @pytest.mark.parametrize("db", [{"paused": True}, {"processed": 10, "cap": 10}])
-def test_a_paprikarecipes_upload_is_not_refused_at_the_endpoint(client, monkeypatch, name, db) -> None:
-    resp, started = _upload(client, monkeypatch, name, **db)
+def test_a_paprikarecipes_upload_is_not_refused_at_the_endpoint(client, monkeypatch, tmp_path, name, db) -> None:
+    resp, started = _upload(client, monkeypatch, name, tmp_path, **db)
     assert resp.status_code == 202
     assert len(started) == 1
     assert started[0][1].get("gate_after_read") is True
 
 
-def test_a_pdf_at_the_cap_is_still_refused_at_the_endpoint(client, monkeypatch) -> None:
-    resp, started = _upload(client, monkeypatch, "book.pdf", processed=10, cap=10)
+def test_a_pdf_at_the_cap_is_still_refused_at_the_endpoint(client, monkeypatch, tmp_path) -> None:
+    resp, started = _upload(client, monkeypatch, "book.pdf", tmp_path, processed=10, cap=10)
     assert (resp.status_code, resp.json()["detail"]) == (429, ai_gate.CAP_DETAIL.format(cap=10))
     assert started == []
 
 
-def test_a_paprikarecipes_upload_still_needs_a_valid_jwt(monkeypatch) -> None:
+def test_a_paprikarecipes_upload_still_needs_a_valid_jwt(monkeypatch, tmp_path) -> None:
     def reject():
         raise HTTPException(401, detail="bad token")
 
     api.app.dependency_overrides[api._verify_supabase_jwt] = reject
     try:
         anon = TestClient(api.app, raise_server_exceptions=False)
-        resp, started = _upload(anon, monkeypatch, "lib.paprikarecipes")
+        resp, started = _upload(anon, monkeypatch, "lib.paprikarecipes", tmp_path)
     finally:
         api.app.dependency_overrides.clear()
     assert resp.status_code == 401
@@ -312,3 +314,25 @@ def test_needs_ai_is_the_stage_decision_that_sets_ai_processed() -> None:
     for chunk in odd:
         assert chunk_needs_ai(chunk) == ("REFINE" in pipeline._get_stages(chunk))
     assert [chunk_needs_ai(c) for c in odd] == [False, False, False, True, True]
+
+
+def _embedding_less_restore() -> Chunk:
+    return Chunk(text="", input_type=InputType.PAPRIKA_CAYENNE, pre_parsed=MagicMock())
+
+
+def test_an_embedding_less_restore_while_paused_ends_in_the_paused_sentence(monkeypatch) -> None:
+    pipeline_cls, finalized = _run_deferred(monkeypatch, [_embedding_less_restore()], paused=True)
+    pipeline_cls.return_value.run.assert_not_called()
+    assert (finalized[0]["status"], finalized[0]["error_message"]) == ("error", ai_gate.PAUSED_DETAIL)
+
+
+def test_an_embedding_less_restore_at_the_cap_still_runs(monkeypatch) -> None:
+    pipeline_cls, finalized = _run_deferred(monkeypatch, [_embedding_less_restore()], processed=10, cap=10)
+    pipeline_cls.return_value.run.assert_called_once()
+    assert finalized[0]["status"] == "done"
+
+
+def test_chunk_calls_ai_is_any_stage_but_assemble() -> None:
+    from recipeparser.core.pipeline import chunk_calls_ai
+
+    assert [chunk_calls_ai(c) for c in (_restore_chunk(), _embedding_less_restore(), _flow_a_chunk())] == [False, True, True]

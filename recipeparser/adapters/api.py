@@ -63,7 +63,7 @@ from recipeparser.core.clock import utc_timestamp
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
-from recipeparser.core.pipeline import RecipePipeline, chunk_needs_ai
+from recipeparser.core.pipeline import RecipePipeline, chunk_calls_ai, chunk_needs_ai
 from recipeparser.core.taxonomy import descendants_of
 from recipeparser.exceptions import UnreadableInputError
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
@@ -619,7 +619,7 @@ def _require_ai_import_upload(
     """The /jobs/file gate: the import check now, except for a .paprikarecipes upload.
 
     Returns True when the check was deferred to the job (``_run_ingestion_job`` makes it after the read),
-    because a Cayenne restore makes no AI call and must run at the cap and while paused.
+    because a Cayenne restore never counts against the cap, and one with stored embeddings makes no AI call at all.
     """
     if _defers_ai_gate(file.filename):
         return True
@@ -632,11 +632,20 @@ class _AiRefusal(Exception):
 
 
 def _check_ai_after_read(user_id: str, chunks: List[Chunk]) -> None:
-    """The import gate for a deferred job: only when some chunk needs AI; a refusal is the job's error."""
-    if not any(chunk_needs_ai(c) for c in chunks):
+    """The gate for a deferred job; a refusal is the job's error.
+
+    Some chunk runs REFINE: the full import check (pause and cap). Otherwise some chunk still calls
+    Gemini (a restore without a stored embedding runs EMBED): the pause only, since restores never count.
+    Otherwise (every restore has its embedding) no check.
+    """
+    if any(chunk_needs_ai(c) for c in chunks):
+        imports = True
+    elif any(chunk_calls_ai(c) for c in chunks):
+        imports = False
+    else:
         return
     try:
-        _ai_gate.check(user_id, imports=True)
+        _ai_gate.check(user_id, imports=imports)
     except HTTPException as exc:
         raise _AiRefusal(exc.detail) from exc
 
@@ -1047,8 +1056,9 @@ async def _run_ingestion_job(
     ``failure_name`` (the URL or the file name).
 
     ``gate_after_read`` is set for a .paprikarecipes upload, which the endpoint did not gate:
-    once the chunks are read, the import gate runs if any of them needs AI, so a Cayenne restore
-    (no AI call) runs at the cap and while paused.
+    once the chunks are read, the import gate runs if any of them needs AI, and the pause alone if
+    only an EMBED call is left. A restore with stored embeddings (no AI call) runs at the cap and
+    while paused; one without them is covered by the pause but never by the cap.
     """
     # NOTE: Do NOT call controller.transition("start") here.
     # RecipePipeline.run() calls it internally (IDLE → RUNNING).
@@ -1118,7 +1128,10 @@ async def _run_ingestion_job(
                 sink.finalize_payload(True, cancelled=controller.cancel_requested),
             )
         except Exception as exc:
-            logger.error("%s %s failed: %s", log_label, job_id, exc, exc_info=True)
+            if isinstance(exc, _AiRefusal):
+                logger.warning("%s %s refused by the AI gate: %s", log_label, job_id, exc)
+            else:
+                logger.error("%s %s failed: %s", log_label, job_id, exc, exc_info=True)
             # Transition to IDLE via "error" event.  The FSM allows this from
             # RUNNING, PAUSING, and RESUMING states.  If the pipeline never
             # started (e.g. a reader raised before pipeline.run()), the controller

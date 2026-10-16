@@ -79,6 +79,14 @@ def chunk_needs_ai(chunk: Chunk) -> bool:
     return "REFINE" in chunk_stages(chunk)
 
 
+def chunk_calls_ai(chunk: Chunk) -> bool:
+    """True when any stage of the chunk calls Gemini: EXTRACT, REFINE, EMBED and TAG do, ASSEMBLE does not.
+
+    The kill switch covers all of these; only a chunk that ``chunk_needs_ai`` (REFINE) counts against the cap.
+    """
+    return any(stage != "ASSEMBLE" for stage in chunk_stages(chunk))
+
+
 class RecipePipeline:
     """
     Orchestrator that processes a list of Chunks through the appropriate
