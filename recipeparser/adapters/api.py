@@ -697,6 +697,15 @@ def _get_supabase_service_client() -> Any:
     return create_client(supabase_url, supabase_key)
 
 
+def _picture_source() -> Any:
+    """The bucket-picture source a Cayenne restore copies pictures with, or None without credentials."""
+    client = _get_supabase_service_client()
+    if client is None:
+        return None
+    from recipeparser.io.writers.picture_copy import BucketPictures
+    return BucketPictures(os.environ.get("SUPABASE_URL", ""), client)
+
+
 def _create_ingestion_job(
     job_id: str,
     user_id: str,
@@ -1177,6 +1186,7 @@ async def _run_ingestion_job(
                 controller=controller,
                 category_source=category_source,
                 image_store=SupabaseImageStore(),
+                picture_source=_picture_source(),
             )
             await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
             await asyncio.to_thread(

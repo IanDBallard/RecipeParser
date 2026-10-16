@@ -1169,3 +1169,74 @@ def test_restore_carries_restore_fields_and_spans():
     assert (r.is_favourite, r.source_uom_system, r.image_source, r.stale) == (True, "UK", "generated", True)
     assert (r.servings_min, r.servings_max, r.servings_note, r.base_servings) == (10, 12, "cakes", 10)
     assert (r.prep_min_minutes, r.prep_max_minutes, r.prep_note) == (30, 45, "overnight")
+
+# --- Cayenne restore pictures (plan B task 5) --------------------------------
+
+_OLD_BUCKET_URL = "https://old.supabase.co/storage/v1/object/public/recipe-images/abc.jpg?v=1"
+
+
+def _restore_pipeline(client, store):
+    from recipeparser.io.writers.picture_copy import BucketPictures
+
+    GlobalRateLimiter().reset()
+    return RecipePipeline(
+        client=MagicMock(), controller=PipelineController(), category_source=_FakeCategorySource(),
+        rpm=9999, image_store=store, picture_source=BucketPictures("https://old.supabase.co", client),
+        categorize_fn=lambda rows, axes, client, parents=None, limiter=None: {},
+    )
+
+
+def _picture_client(data=b"picbytes", error=None):
+    client = MagicMock()
+    bucket = client.storage.from_.return_value
+    if error:
+        bucket.download.side_effect = error
+    else:
+        bucket.download.return_value = data
+    return client
+
+
+def test_restore_without_photo_data_copies_bucket_picture():
+    store = _FakeImageStore()
+    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL)
+    skipped: list = []
+    results = _restore_pipeline(_picture_client(), store).run([chunk], on_skip=skipped.append)
+    assert store.calls == [b"picbytes"]
+    assert results[0].image_url == "https://example.test/stored.jpg"
+    assert skipped == []
+
+
+def test_restore_picture_copy_failure_drops_old_url(caplog):
+    import logging
+
+    store = _FakeImageStore()
+    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL)
+    skipped: list = []
+    with caplog.at_level(logging.WARNING):
+        results = _restore_pipeline(_picture_client(error=RuntimeError("gone")), store).run(
+            [chunk], on_skip=skipped.append)
+    assert len(results) == 1
+    assert results[0].image_url is None
+    assert skipped == []
+    assert store.calls == []
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_restore_keeps_a_foreign_image_url():
+    store = _FakeImageStore()
+    client = _picture_client()
+    chunk = _restore_chunk(image_url="https://example.com/p.jpg")
+    results = _restore_pipeline(client, store).run([chunk])
+    assert results[0].image_url == "https://example.com/p.jpg"
+    client.storage.from_.assert_not_called()
+
+
+def test_restore_with_embedded_bytes_does_not_download():
+    store = _FakeImageStore()
+    client = _picture_client()
+    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL)
+    chunk.image_bytes = b"embedded"
+    results = _restore_pipeline(client, store).run([chunk])
+    assert store.calls == [b"embedded"]
+    client.storage.from_.assert_not_called()
+    assert results[0].image_url == "https://example.test/stored.jpg"

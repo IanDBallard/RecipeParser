@@ -119,6 +119,7 @@ class RecipePipeline:
         rpm: Optional[int] = None,
         image_store: Optional[ImageStore] = None,
         categorize_fn: Optional[Callable[..., Dict[str, List[str]]]] = None,
+        picture_source: Optional[Any] = None,
     ) -> None:
         """
         Args:
@@ -133,6 +134,11 @@ class RecipePipeline:
                                 dropped, which is what shipped before.
             categorize_fn:      The TAG stage's model call, ``gemini.categorize_batch``
                                 by default; a test passes a fake.
+            picture_source:     Optional bucket-picture source (``owns(url)`` and
+                                ``download(url)``): a Cayenne restore whose export
+                                names a picture without carrying its bytes has it
+                                copied into the new account.  Without one the
+                                address is kept as it is.
         """
         self._client = client
         self._controller = controller
@@ -140,6 +146,7 @@ class RecipePipeline:
         self._cap = max(1, concurrency)
         self._image_store = image_store
         self._categorize_fn = categorize_fn or categorize_batch
+        self._picture_source = picture_source
         # Initialise (or retrieve) the process-level rate limiter.
         if rpm is not None:
             self._limiter = GlobalRateLimiter(rpm=rpm)
@@ -239,6 +246,7 @@ class RecipePipeline:
                 chunk.image_url = self._image_store.put(
                     chunk.image_bytes, str(uuid.uuid4()), chunk.image_content_type
                 )
+            self._restore_bucket_picture(chunk)
             stages = self._get_stages(chunk)
             return self._process_chunk(chunk, stages)
 
@@ -384,6 +392,32 @@ class RecipePipeline:
     # ──────────────────────────────────────────────────────────────────────────
     # Per-chunk processing
     # ──────────────────────────────────────────────────────────────────────────
+
+    def _restore_bucket_picture(self, chunk: Chunk) -> None:
+        """Make a Cayenne restore's bucket picture its own, or drop the address (R1).
+
+        The export names the old account's object; it is downloaded and stored again unless
+        the chunk already carries bytes.  If that fails the recipe goes without a picture:
+        the old address dies with the old account, so it is never kept.
+        """
+        source = self._picture_source
+        pr = chunk.pre_parsed
+        if source is None or pr is None or chunk.input_type != InputType.PAPRIKA_CAYENNE:
+            return
+        old_url = getattr(pr, "image_url", None)
+        if not old_url or not source.owns(old_url):
+            return
+        if not chunk.image_url and not chunk.image_bytes and self._image_store is not None:
+            try:
+                got = source.download(old_url)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("restore: could not copy the picture %s (%s).", old_url, exc)
+                got = None
+            if got is not None:
+                chunk.image_url = self._image_store.put(got[0], str(uuid.uuid4()), got[1])
+        if not chunk.image_url:
+            log.warning("restore: the recipe %r goes without its picture.", chunk.label or pr.title)
+            pr.image_url = None
 
     def _process_chunk(
         self,
