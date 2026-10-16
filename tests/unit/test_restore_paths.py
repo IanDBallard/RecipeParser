@@ -25,6 +25,7 @@ class _Db:
         self.posts = []
 
     def get(self, url, **kw):
+        assert kw["params"]["user_id"] == f"eq.{U}"
         return _resp([dict(r) for r in self.rows])
 
     def post(self, url, **kw):
@@ -90,3 +91,10 @@ def test_refuses_in_a_test_run():
 
 def test_restore_grid_is_sorted_and_deduplicated():
     assert rp.restore_grid(["b", "a", "b"]) == {"restore": ["a", "b"]}
+
+
+def test_a_five_long_new_path_creates_four_nodes_and_places_the_fourth():
+    db = _Db()
+    out = _run(db, [["A", "B", "C", "D", "E"]])
+    assert [r["name"] for p in db.posts for r in p] == ["A", "B", "C", "D"]
+    assert out == {("A", "B", "C", "D", "E"): "D"}
