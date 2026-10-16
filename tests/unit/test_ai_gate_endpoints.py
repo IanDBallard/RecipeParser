@@ -336,3 +336,79 @@ def test_chunk_calls_ai_is_any_stage_but_assemble() -> None:
     from recipeparser.core.pipeline import chunk_calls_ai
 
     assert [chunk_calls_ai(c) for c in (_restore_chunk(), _embedding_less_restore(), _flow_a_chunk())] == [False, True, True]
+
+
+# ── Categories created on restore (plan B task 4) ────────────────────────────
+
+def _cayenne_chunk(paths, grid=None) -> Chunk:
+    from recipeparser.models import CayenneRecipe
+
+    pre = CayenneRecipe(
+        title="Cake", structured_ingredients=[], tokenized_directions=[],
+        category_paths=paths, grid_categories=grid or {},
+    )
+    return Chunk(text="", input_type=InputType.PAPRIKA_CAYENNE, pre_parsed=pre, pre_parsed_embedding=[0.0])
+
+
+def _drive_restore(monkeypatch, chunks, ensure, calls):
+    monkeypatch.setattr(api, "ensure_category_paths", ensure)
+    monkeypatch.setattr(api, "_get_creds", lambda: ("https://x", "k"))
+    monkeypatch.setattr(api, "_ai_gate", AiGate(lambda: _fake_db()))
+    finalized = []
+    monkeypatch.setattr(api, "_finalize_ingestion_job", lambda jid, payload: finalized.append(payload))
+    monkeypatch.setattr(api, "_update_total_chunks", lambda *a, **k: None)
+    monkeypatch.setattr(api, "_make_progress_writer", lambda jid: (lambda pct: None))
+    monkeypatch.setattr(api.usage, "attributed", lambda *a, **k: nullcontext())
+    with patch.object(api, "RecipePipeline") as pipeline_cls, \
+         patch.object(api, "SupabaseCategorySource") as cat_src, \
+         patch.object(api, "SupabaseImageStore"):
+        cat_src.return_value.load_category_ids.side_effect = lambda uid: calls.append("load") or {}
+
+        async def _read():
+            return MagicMock(), chunks
+
+        asyncio.run(api._run_ingestion_job(
+            "job-1", "user-1", PipelineController(), _read, "lib.paprikarecipes", "File job", gate_after_read=True,
+        ))
+    return pipeline_cls, finalized
+
+
+def test_run_ingestion_job_creates_categories_before_loading_ids(monkeypatch) -> None:
+    calls = []
+
+    def ensure(uid, paths, *, supabase_url, service_key):
+        calls.append("ensure")
+        assert uid == "user-1"
+        return {tuple(p): p[-1] for p in paths}
+
+    chunk = _cayenne_chunk([["Course", "Dessert", "Cake"], ["Course", "Soup"]])
+    pipeline_cls, finalized = _drive_restore(monkeypatch, [chunk], ensure, calls)
+    assert calls == ["ensure", "load"]
+    assert chunk.pre_parsed.grid_categories == {"restore": ["Cake", "Soup"]}
+    assert finalized[0]["status"] == "done"
+
+
+def test_v1_archive_links_through_grid_categories(monkeypatch) -> None:
+    calls = []
+    chunk = _cayenne_chunk([], grid={"Cuisine": ["Italian"]})
+    _drive_restore(monkeypatch, [chunk], lambda *a, **k: calls.append("ensure"), calls)
+    assert calls == ["load"]
+    assert chunk.pre_parsed.grid_categories == {"Cuisine": ["Italian"]}
+
+
+def test_a_path_cut_short_by_depth_is_reported_as_a_refused_link(monkeypatch) -> None:
+    calls = []
+    written = []
+    monkeypatch.setattr(api, "write_recipe_to_supabase", lambda recipe, uid, **kw: written.append(recipe) or "rid")
+    chunk = _cayenne_chunk([["A", "B", "C", "D", "E"], ["A", "B", "C", "D", "E"]])
+    pipeline_cls, _ = _drive_restore(
+        monkeypatch, [chunk], lambda uid, paths, **k: {tuple(p): "D" for p in paths}, calls,
+    )
+    assert chunk.pre_parsed.grid_categories == {"restore": ["D"]}
+    sink = pipeline_cls.return_value.run.call_args.kwargs["on_result"].__self__
+    sink.on_result(MagicMock(title="Cake"), ai_processed=False)
+    sink.on_result(MagicMock(title="Pie"), ai_processed=False)
+    assert len(written) == 2
+    assert sink.refused_link_count == 1
+    assert sink.refused_links[0]["reason"] == "category 'E' is nested too deep to restore"
+    assert sink.skipped_count == 0

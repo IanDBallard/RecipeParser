@@ -76,7 +76,8 @@ from recipeparser.io.readers.url import PAGE_USER_AGENT as _PAGE_USER_AGENT
 from recipeparser.io.readers.url import PageMeta, UrlReader, looks_like_badge, page_meta_from_html
 from recipeparser.io.readers.url import is_unsafe_fetch_target as _is_unsafe_fetch_target
 from recipeparser.io.writers.image_store import SupabaseImageStore
-from recipeparser.io.writers.supabase import write_recipe_to_supabase
+from recipeparser.io.category_sources.restore_paths import ensure_category_paths, restore_grid
+from recipeparser.io.writers.supabase import _get_creds, write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
 
 # Before the first logger call in this module: uvicorn leaves the root logger
@@ -1039,6 +1040,61 @@ def _select_reader(filename: str, content_type: str) -> str:
 # The ingestion job both job endpoints start
 # ---------------------------------------------------------------------------
 
+def _create_restore_categories(user_id: str, chunks: List[Chunk]) -> List[str]:
+    """Create the categories a Cayenne restore needs and point each chunk at its leaves.
+
+    Reads every ``_cayenne_meta`` category path, creates the missing nodes, then replaces the
+    chunk's ``grid_categories`` with the leaves that were placed, so the writer's junction write
+    links them by name. A v1 archive has no paths and is left alone. Returns one sentence per path
+    that depth cut short, for the job to report as a refused link (never a skipped line).
+    """
+    wanted = []
+    for chunk in chunks:
+        paths = getattr(chunk.pre_parsed, "category_paths", None)
+        if chunk.input_type == InputType.PAPRIKA_CAYENNE and isinstance(paths, list) and paths:
+            wanted.append((chunk, [tuple(p) for p in paths if p]))
+    if not wanted:
+        return []
+    url, key = _get_creds()
+    placed = ensure_category_paths(
+        user_id, [p for _, ps in wanted for p in ps], supabase_url=url, service_key=key,
+    )
+    too_deep: List[str] = []
+    for chunk, paths in wanted:
+        names = []
+        for path in paths:
+            name = placed.get(path)
+            if name is None:
+                continue
+            names.append(name)
+            if name != path[-1]:
+                reason = f"category '{path[-1]}' is nested too deep to restore"
+                if reason not in too_deep:
+                    too_deep.append(reason)
+        chunk.pre_parsed.grid_categories = restore_grid(names)
+    return too_deep
+
+
+def _reporting_deep_paths(write: Callable[..., Any], too_deep: List[str]) -> Callable[..., Any]:
+    """Wrap the recipe writer so the too-deep notes reach the job through ``on_link_refused``.
+
+    They go out once, after the first recipe is written, and are drained so a later recipe does
+    not repeat them. JobSink counts them with the recipe's other refused links.
+    """
+    pending = list(too_deep)
+
+    def _write(recipe: Any, user_id: str, **kwargs: Any) -> Any:
+        result = write(recipe, user_id, **kwargs)
+        refuse = kwargs.get("on_link_refused")
+        while pending:
+            reason = pending.pop(0)
+            if refuse is not None:
+                refuse({"category_id": "", "reason": reason})
+        return result
+
+    return _write
+
+
 async def _run_ingestion_job(
     job_id: str,
     user_id: str,
@@ -1071,13 +1127,14 @@ async def _run_ingestion_job(
             if gate_after_read:
                 await asyncio.to_thread(_check_ai_after_read, user_id, chunks)
 
+            too_deep = await asyncio.to_thread(_create_restore_categories, user_id, chunks)
             category_source = SupabaseCategorySource()
             category_ids = category_source.load_category_ids(user_id)
             sink = JobSink(
                 job_id=job_id,
                 user_id=user_id,
                 category_ids=category_ids,
-                write=write_recipe_to_supabase,
+                write=_reporting_deep_paths(write_recipe_to_supabase, too_deep),
                 consume=_ai_gate.consume_recipe,
                 on_cap=controller.request_cancel,
             )
