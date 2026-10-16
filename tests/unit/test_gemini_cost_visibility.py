@@ -18,7 +18,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from recipeparser.config import THINKING_LEVEL
+from recipeparser import gemini, usage
 from recipeparser.gemini import _call_with_retry, _finalize_config, _log_usage_metadata
+
+
+def _usage_reply():
+    reply = MagicMock()
+    reply.usage_metadata = SimpleNamespace(prompt_token_count=7, candidates_token_count=3, thoughts_token_count=0, total_token_count=10)
+    return reply
 
 
 def _client(*replies, side_effect=None):
@@ -73,7 +80,7 @@ def test_log_usage_metadata_logs_the_real_token_counts(caplog):
     response = SimpleNamespace(usage_metadata=usage)
 
     with caplog.at_level("INFO"):
-        _log_usage_metadata(response, "Gemini extraction")
+        _log_usage_metadata(response, "Gemini extraction", "some-model")
 
     assert any(
         "Gemini extraction usage" in r.message and "prompt=120" in r.message and "total=165" in r.message
@@ -87,7 +94,7 @@ def test_log_usage_metadata_is_a_silent_no_op_without_usage_metadata():
     never a hard dependency of the call path."""
     response = SimpleNamespace(text="ok")
 
-    _log_usage_metadata(response, "Gemini extraction")  # must not raise
+    _log_usage_metadata(response, "Gemini extraction", "some-model")  # must not raise
 
 
 def test_call_with_retry_logs_usage_on_a_successful_call(caplog):
@@ -103,3 +110,22 @@ def test_call_with_retry_logs_usage_on_a_successful_call(caplog):
         _call_with_retry(client, model="some-model", contents="hi", config={}, what="Table normalisation")
 
     assert any("Table normalisation usage" in r.message for r in caplog.records)
+
+
+def test_call_with_retry_records_the_call_under_the_context() -> None:
+    client = MagicMock()
+    client.models.generate_content.return_value = _usage_reply()
+    with usage.attributed("u1", "import", "j1", get_client=lambda: None) as ctx:
+        gemini._call_with_retry(client, "model-a", "hi", {}, what="Refine")
+        assert [(r["step"], r["model"], r["prompt_tokens"]) for r in ctx.records] == [("Refine", "model-a", 7)]
+
+
+def test_embeddings_record_with_the_embedding_model() -> None:
+    client = MagicMock()
+    reply = _usage_reply()
+    reply.embeddings = [SimpleNamespace(values=[0.0] * 1536)]
+    client.models.embed_content.return_value = reply
+    with usage.attributed("u1", "search", get_client=lambda: None) as ctx:
+        gemini.get_embeddings("q", client, max_retries=0)
+        assert ctx.records[0]["model"] == gemini.GEMINI_EMBEDDING_MODEL
+        assert ctx.records[0]["step"] == "Embedding"

@@ -107,3 +107,20 @@ class TestToJpeg:
     def test_undecodable_bytes_raise_no_picture(self) -> None:
         with pytest.raises(NoPictureError):
             to_jpeg(b"not an image")
+
+
+def test_generate_picture_records_the_call() -> None:
+    from recipeparser import usage
+
+    part = SimpleNamespace(inline_data=SimpleNamespace(data=b"img", mime_type="image/png"))
+    reply = SimpleNamespace(
+        prompt_feedback=None,
+        candidates=[SimpleNamespace(content=SimpleNamespace(parts=[part]))],
+        usage_metadata=SimpleNamespace(prompt_token_count=4, candidates_token_count=1290, thoughts_token_count=None),
+    )
+    client = MagicMock()
+    client.models.generate_content.return_value = reply
+    with usage.attributed("u1", "picture", get_client=lambda: None) as ctx:
+        generate_picture(client, "a cake")
+        assert len(ctx.records) == 1
+        assert (ctx.records[0]["step"], ctx.records[0]["model"], ctx.records[0]["output_tokens"]) == ("picture", GEMINI_IMAGE_MODEL, 1290)

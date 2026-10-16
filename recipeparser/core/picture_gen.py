@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 from typing import Any, Optional, Sequence, Tuple
 
+from recipeparser import usage
 from recipeparser.config import GEMINI_IMAGE_MODEL, PICTURE_TIMEOUT_SECS
 
 MAX_TITLE_CHARS = 200
@@ -66,6 +67,9 @@ def generate_picture(client: Any, prompt: str) -> Tuple[bytes, str]:
             http_options=types.HttpOptions(timeout=PICTURE_TIMEOUT_SECS * 1000),
         ),
     )
+    # This call does not go through _call_with_retry (see the module docstring),
+    # so it records itself (AI caps D8).
+    usage.record("picture", GEMINI_IMAGE_MODEL, getattr(response, "usage_metadata", None))
     feedback = getattr(response, "prompt_feedback", None)
     block = getattr(feedback, "block_reason", None) if feedback is not None else None
     if block:

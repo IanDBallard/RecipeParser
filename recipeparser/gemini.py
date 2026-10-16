@@ -26,6 +26,7 @@ from recipeparser.config import (
     PARSE_RETRY_DELAY_SECS,
     THINKING_LEVEL,
 )
+from recipeparser import usage
 from recipeparser.core.pans import BAKE_TYPES, HINT_KEYS, PAN_FAMILIES, PAN_SHAPES
 from recipeparser.exceptions import ExtractionParseError
 from recipeparser.models import (
@@ -199,24 +200,26 @@ def _finalize_config(config: dict) -> dict:
     }
 
 
-def _log_usage_metadata(response: object, what: str) -> None:
-    """Best-effort log of the token accounting a Gemini reply carries.
+def _log_usage_metadata(response: object, what: str, model: str) -> None:
+    """Best-effort log of the token accounting a Gemini reply carries, and its record.
 
     Nothing in this module previously looked at ``usage_metadata``, so every
     cost estimate for the ingestion pipeline was a guess from prompt length
     alone. This puts the real per-call numbers — including any thinking
-    tokens, when THINKING_LEVEL allows them — into the log instead.
+    tokens, when THINKING_LEVEL allows them — into the log, and into ai_usage
+    under the caller's attribution (recipeparser/usage.py, AI caps D8).
     """
-    usage = getattr(response, "usage_metadata", None)
-    if usage is None:
+    usage_meta = getattr(response, "usage_metadata", None)
+    usage.record(what, model, usage_meta)
+    if usage_meta is None:
         return
     log.info(
         "%s usage: prompt=%s candidates=%s thoughts=%s total=%s",
         what,
-        getattr(usage, "prompt_token_count", None),
-        getattr(usage, "candidates_token_count", None),
-        getattr(usage, "thoughts_token_count", None),
-        getattr(usage, "total_token_count", None),
+        getattr(usage_meta, "prompt_token_count", None),
+        getattr(usage_meta, "candidates_token_count", None),
+        getattr(usage_meta, "thoughts_token_count", None),
+        getattr(usage_meta, "total_token_count", None),
     )
 
 
@@ -256,7 +259,7 @@ def _call_with_retry(
             contents=contents,
             config=_finalize_config(config),
         )
-        _log_usage_metadata(response, what)
+        _log_usage_metadata(response, what, model)
         return response
 
     return _with_backoff(_once, limiter=limiter, max_retries=max_retries)
@@ -370,7 +373,7 @@ def verify_connectivity(client) -> bool:
             contents="Reply with the single word OK.",
             config=_finalize_config({"max_output_tokens": 5}),
         )
-        _log_usage_metadata(response, "Connectivity check")
+        _log_usage_metadata(response, "Connectivity check", GEMINI_MODEL)
         log.info("Gemini connectivity check passed (response: %s).", response.text.strip())
         return True
     except Exception as e:
@@ -408,7 +411,7 @@ def get_embeddings(
                 http_options={"timeout": _HTTP_TIMEOUT_MS},
             ),
         )
-        _log_usage_metadata(response, "Embedding")
+        _log_usage_metadata(response, "Embedding", GEMINI_EMBEDDING_MODEL)
         return response
 
     try:
