@@ -3,10 +3,13 @@ One-off: give every existing recipe its servings_source, and correct a base_serv
 (Cayenne scale-sheet redesign; spec D44-D51).
 
 Each recipe is classified from its stored columns: the yield text is rebuilt from ``servings_min``,
-``servings_max`` and ``servings_note``, the directions' text comes from ``tokenized_directions``. The
+``servings_max`` and ``servings_note``; the directions are ``direction_steps``, as ingest reads them, else
+the text of ``tokenized_directions`` with its tokens stripped. The
 deterministic rule runs first (``core.servings.servings_for_recipe``: the recipe's words, then its tins).
 Gemini (``gemini.estimate_servings``) is asked only when both give nothing. Written: ``base_servings``,
-``servings_source`` and, rescaled by new/old, ``cook_servings`` (a cook's saved scale keeps its meaning).
+``servings_source`` and, rescaled by new/old, ``cook_servings`` (a cook's saved scale keeps its meaning; a
+null old base is read as 1, as the client reads it). A tin that does not validate is skipped, not the row;
+a ``pans`` or directions column that is not a list (double-encoded jsonb) reads as empty.
 
 Statuses: stale (``derived_rev < body_rev``; the regeneration worker re-derives it), stated (the row
 already says ``stated``: never touched, ``--force`` or not), unchanged, set (rule or tin), model (set by
@@ -40,13 +43,17 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pydantic import ValidationError  # noqa: E402
+
 from recipeparser.core.durations import Span  # noqa: E402
-from recipeparser.core.servings import servings_for_recipe, text_from_span  # noqa: E402
+from recipeparser.core.fat_tokens import strip_fat_tokens  # noqa: E402
+from recipeparser.core.regen import raw_body_column  # noqa: E402
+from recipeparser.core.servings import SERVING_WORDS_RE, servings_for_recipe, text_from_span  # noqa: E402
 from recipeparser.models import RecipePan  # noqa: E402
 
 PAGE = 500
 COLUMNS = (
-    "id,title,ingredient_lines,tokenized_directions,servings_min,servings_max,servings_note,"
+    "id,title,ingredient_lines,direction_steps,tokenized_directions,servings_min,servings_max,servings_note,"
     "base_servings,servings_source,pans,bake_type,cook_servings,body_rev,derived_rev"
 )
 CHECK_PCT = 25
@@ -69,13 +76,43 @@ class RowResult:
     notes: List[str] = field(default_factory=list)
     old_source: Optional[str] = None
     old_cook: Optional[float] = None
+    # The old row read as stated: a bare number equal to its base, or a serving word in the note.
+    looked_stated: bool = False
 
 
 def _directions(row: Dict[str, Any]) -> List[str]:
+    """The steps ingest classifies: the raw ``direction_steps``, else the tokenized text, tokens stripped."""
+    try:
+        steps = raw_body_column(row, "direction_steps")
+    except TypeError:  # double-encoded jsonb: read as empty, as the tokenized column is
+        steps = []
+    if steps:
+        return steps
     raw = row.get("tokenized_directions")
     if not isinstance(raw, list):
         return []
-    return [str(d["text"]) for d in raw if isinstance(d, dict) and d.get("text")]
+    return [strip_fat_tokens(str(d["text"])) for d in raw if isinstance(d, dict) and d.get("text")]
+
+
+def _pans(row: Dict[str, Any]) -> List[RecipePan]:
+    """Each tin validated on its own: a bad one is skipped, never the row."""
+    raw = row.get("pans")
+    if not isinstance(raw, list):
+        return []
+    pans: List[RecipePan] = []
+    for p in raw:
+        try:
+            pans.append(RecipePan.model_validate(p))
+        except ValidationError:
+            continue
+    return pans
+
+
+def _looked_stated(row: Dict[str, Any]) -> bool:
+    note = row.get("servings_note")
+    if note and SERVING_WORDS_RE.search(str(note).lower()):
+        return True
+    return not note and row.get("servings_min") is not None and row.get("servings_min") == row.get("base_servings")
 
 
 def _ingredients(row: Dict[str, Any]) -> List[str]:
@@ -89,7 +126,7 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
     result = RowResult(
         id=row["id"], title=str(row.get("title") or ""), status="set", old_base=old_base,
         old_source=row.get("servings_source"), old_cook=row.get("cook_servings"),
-        new_cook=row.get("cook_servings"),
+        new_cook=row.get("cook_servings"), looked_stated=_looked_stated(row),
     )
     if (row.get("derived_rev") or 0) < (row.get("body_rev") or 0):
         result.status = "stale"
@@ -103,7 +140,7 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
         result.new_base, result.source = old_base, row.get("servings_source")
         return result
     try:
-        pans = [RecipePan.model_validate(p) for p in (row.get("pans") or [])]
+        pans = _pans(row)
         result.yield_text = text_from_span(
             Span(row.get("servings_min"), row.get("servings_max"), row.get("servings_note"))
         )
@@ -125,8 +162,10 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
         result.status = "unchanged"
         return result
     cook = row.get("cook_servings")
-    if cook is not None and old_base and old_base > 0:
-        result.new_cook = round(cook * found.base / old_base, 4)
+    if cook is not None:
+        # The client reads a null (or unusable) base as 1, so the saved scale was against 1.
+        was = old_base if old_base and old_base > 0 else 1
+        result.new_cook = round(cook * found.base / was, 4)
     result.status = "model" if found.source == "estimated" else "set"
     return result
 
@@ -164,8 +203,15 @@ def write_review(path: Path, results: Sequence[RowResult]) -> None:
             writer.writerow([
                 r.id, r.title, r.status, _cell(r.old_base), _cell(r.new_base), r.source or "", r.yield_text,
                 _cell(r.new_cook), "yes" if r.used_model else "", "" if pct is None else pct,
-                "check" if pct is not None and pct > CHECK_PCT else "",
+                "check" if _check(r, pct) else "",
             ])
+
+
+def _check(r: RowResult, pct: Optional[int]) -> bool:
+    """Moves more than CHECK_PCT, or read as stated and now falls to the tins or the model (same base or not)."""
+    if pct is not None and pct > CHECK_PCT:
+        return True
+    return r.status in ("set", "model") and r.looked_stated and r.source in ("tin", "estimated")
 
 
 def _cell(value: Any) -> Any:

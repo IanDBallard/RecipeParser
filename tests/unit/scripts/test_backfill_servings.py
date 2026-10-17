@@ -90,10 +90,82 @@ def test_cook_servings_rescales():
     assert r.new_base == 16 and r.new_cook == 24.0
 
 
-def test_cook_servings_left_alone_without_an_old_base():
+def test_cook_servings_rescale_from_one_without_an_old_base():
+    # The client reads a null base as 1, so the saved 1.5 meant 1.5 x 1 serving (I4).
     r = bs.plan_row(row(servings_min=16, servings_max=16, servings_note="cookies",
                         base_servings=None, cook_servings=1.5), no_ask)
-    assert r.new_cook == 1.5
+    assert r.new_base == 16 and r.new_cook == 24.0
+
+
+# --- the directions ingest reads (I5) -----------------------------------------
+
+
+def test_directions_are_the_raw_steps_when_present():
+    seen = []
+    r = bs.plan_row(row(direction_steps=["Divide between 2 tins.", "Bake."],
+                        tokenized_directions=[{"step": 1, "text": "ignored"}]),
+                    lambda t, i, d: seen.append(d) or 12)
+    assert r.source == "estimated" and seen == [["Divide between 2 tins.", "Bake."]]
+
+
+def test_directions_fall_back_to_the_tokenized_text_with_its_tokens_stripped():
+    seen = []
+    tokenized = [{"step": 1, "text": "Divide between {{pan_01|2 tins}}."},
+                 {"step": 2, "text": "Stir in {{ing_01|0.5 cup|all}} milk."}]
+    bs.plan_row(row(direction_steps=None, tokenized_directions=tokenized),
+                lambda t, i, d: seen.append(d) or 12)
+    assert seen == [["Divide between 2 tins.", "Stir in 0.5 cup milk."]]
+
+
+def test_a_method_count_is_read_through_the_tokens():
+    tokenized = [{"step": 1, "text": "Cut {{pan_01|the slab}} into 16 squares."}]
+    r = bs.plan_row(row(servings_min=None, servings_max=None, servings_note=None,
+                        direction_steps=[], tokenized_directions=tokenized), no_ask)
+    assert (r.source, r.new_base) == ("counted", 16)
+
+
+def test_columns_select_direction_steps():
+    assert "direction_steps" in bs.COLUMNS.split(",")
+
+
+# --- bad jsonb never costs the row (M4) ----------------------------------------
+
+
+def test_a_bad_tin_is_skipped_and_the_good_one_kept():
+    r = bs.plan_row(row(pans=[{"raw": "no id"}, "junk", TIN], bake_type="butter-cake"), no_ask)
+    assert (r.status, r.source, r.new_base) == ("set", "tin", 8)
+
+
+def test_string_pans_and_string_directions_read_as_empty():
+    calls = []
+    r = bs.plan_row(row(pans='[{"id": "pan_01"}]', tokenized_directions='[{"text": "Mix."}]',
+                        direction_steps='["Mix."]'), asker(12, calls))
+    assert (r.status, r.source, r.new_base) == ("model", "estimated", 12) and calls == ["Cake"]
+
+
+# --- the review flags a stated-looking row that falls to the tins or the model (I6) ---
+
+
+def _flags(tmp_path, results):
+    path = tmp_path / "review.csv"
+    bs.write_review(path, results)
+    with path.open(newline="", encoding="utf-8") as fh:
+        return {line["id"]: line["flag"] for line in csv.DictReader(fh)}
+
+
+def test_review_checks_a_stated_looking_row_that_becomes_tin_or_estimated(tmp_path):
+    # A bare number equal to the base read as stated. Only a number below one (no number, M3) can
+    # now fall to the tins: "0" with a tin.
+    bare_tin = bs.plan_row(row(id="a", servings_min=0, servings_max=0, servings_note=None, base_servings=0,
+                               pans=[TIN], bake_type="butter-cake"), no_ask)
+    assert (bare_tin.source, bare_tin.new_base) == ("tin", 8)
+    # A serving-word note, now estimated.
+    word = bs.plan_row(row(id="b", servings_min=None, servings_max=None, servings_note="serves a crowd",
+                           base_servings=12), asker(12))
+    assert (word.source, word.new_base) == ("estimated", 12)
+    # A bake note ("1 cake") never looked stated: same base, no check.
+    bake = bs.plan_row(row(id="c", base_servings=12), asker(12))
+    assert _flags(tmp_path, [bare_tin, word, bake]) == {"a": "check", "b": "check", "c": ""}
 
 
 class FakeTable:
