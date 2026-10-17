@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.17.0] — 2026-10-17
+
+Servings at import, with their provenance (Cayenne spec `docs/superpowers/specs/2026-10-16-scale-sheet-redesign-design.md` in IanDBallard/Cayenne, D44, D47, D50 and *Estimating servings*). Every recipe now leaves ingest with a `base_servings` and a `servings_source` saying how it was reached: `stated` (the recipe says so), `counted` (it counts items), `tin` (worked out from the tins it names) or `estimated` (the model's guess, the last resort). Merging deploys (container restart). Deploy order: the Cayenne migration, then this version, then the backfill.
+
+### ⚠️ Requires — apply the Cayenne migration **before** deploying this version
+- `servings_source` on `recipes` (Cayenne scale-sheet plan, PR A). Every INSERT now writes the column, so against a schema without it PostgREST rejects the row and every ingest fails.
+
+### ✨ Added
+- `core/servings.py`: the deterministic yield rule. It classifies the yield text as stated, counted, the bake itself or none, and composes that with the tin table and the model's estimate. It shares `tests/fixtures/servings_source_cases.json` with the Cayenne TypeScript twin.
+- `core/tin_servings.py`: the tin table (`HINT_TINS`, equal to `tests/fixtures/hint_tins.json`, which Cayenne's drift test reads) and `estimate_from_tins`.
+- `servings_source` on `CayenneRecipe` and in the Supabase row; `ServingsSource` in the models.
+- `gemini.estimate_servings`, and `scripts/backfill_servings.py`, which gives every existing recipe its `servings_source` and corrects a `base_servings` that was a guess. The deterministic rule runs first; the model is asked only when the recipe's words and its tins give nothing.
+
+### ⚠️ Changed
+- REFINE's `base_servings` is now the model's estimate and is used only when the yield gives nothing.
+- A Cayenne restore derives `servings_source` from the entry without the model, so it still makes no AI call and spends no allowance.
+- Singular item nouns are recognised at a count of one (cookie, brownie, blondie).
+- The Paprika contract archive fixture carries `servings_source` (regenerated).
+
+### 🔧 Operational
+- Run the backfill in this order. Nothing is written until the third step.
+  1. Dry run: `python scripts/backfill_servings.py --all-users --review ../backfill-records/servings-review-<date>.csv`
+  2. Read the CSV and review the `check` rows (those that move more than 25%).
+  3. For real: `python scripts/backfill_servings.py --all-users --live --record ../backfill-records/servings-before-<date>.csv`
+- Without `--force`, a re-run skips rows that already have a source; a `stated` row is never touched, `--force` or not. `--restore <record> --live` undoes a run from its record.
+
+---
+
 ## [9.16.0] — 2026-10-16
 
 Lossless Cayenne restore (Cayenne spec `docs/superpowers/specs/2026-10-16-paprika-export-design.md` in IanDBallard/Cayenne, plan B). A `.paprikarecipes` file exported by Cayenne now restores into a fresh account exactly as it was written, with no AI call and no allowance spent. Merging deploys (container restart); deploy before the owner's restore check (export, then restore into a fresh account, with no AI usage recorded). It can merge before or after the Cayenne client PR: older clients never send version 2.

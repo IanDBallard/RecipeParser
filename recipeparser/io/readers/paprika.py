@@ -210,9 +210,9 @@ class PaprikaReader(RecipeReader):
                 directions = entry.get("directions", "")
 
                 # Servings is free text in Paprika ("Serves 4", "8 to 12", "1 or 2
-                # loaves"), so it goes to the extractor as a line of the recipe and
-                # refine turns it into a numeric base_servings, exactly as it already
-                # does for a book. No servings parser lives in this repository.
+                # loaves"), so it goes to the extractor as a line of the recipe, as it
+                # does for a book. core/servings.py classifies the extracted yield into
+                # base_servings and servings_source; the model's estimate is the last resort.
                 servings = str(entry.get("servings") or "").strip()
                 servings_line = f"Servings: {servings}\n\n" if servings else ""
                 text = (
