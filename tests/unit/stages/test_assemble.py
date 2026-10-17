@@ -176,6 +176,17 @@ def test_assemble_a_bake_of_one_without_a_tin_takes_the_models_estimate_not_the_
     assert r.servings_min == 1
 
 
+def test_assemble_a_bake_of_one_with_no_tin_and_no_estimate_leaves_base_servings_null():
+    # The yield's "1" counts the cake: with nothing else, base_servings stays null (the spec's parse
+    # failure) for the next backfill, never the servings_min fallback.
+    refined = _refined()
+    refined.base_servings = None
+    r = assemble(recipe=refined, embedding=[0.0] * 1536, source_url=None, image_url=None, grid_categories={},
+                 servings_text="1 cake")
+    assert (r.base_servings, r.servings_source) == (None, None)
+    assert r.servings_min == 1
+
+
 def test_assemble_given_spans_carries_their_servings_source():
     r = _assemble(spans={**_SPANS, "servings_source": "tin"})
     assert (r.base_servings, r.servings_source) == (10, "tin")

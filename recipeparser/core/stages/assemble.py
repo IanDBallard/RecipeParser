@@ -136,7 +136,9 @@ def assemble(
         title=recipe.title,
         prep_time=prep_time,
         cook_time=cook_time,
-        base_servings=sv.base if sv.base is not None else cols["base_servings"],
+        # Null stays null: the spec's parse failure, picked up by the next backfill. Never the
+        # yield's servings_min, which for "1 cake" is the cake.
+        base_servings=sv.base,
         servings_source=sv.source,
         source_url=source_url,
         image_url=image_url,
