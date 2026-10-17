@@ -1,0 +1,199 @@
+[
+  {
+    "key": "uk-loaf-1lb",
+    "family": "loaf",
+    "shape": "loaf",
+    "dims_mm": {
+      "l": 200,
+      "w": 100,
+      "depth": 60
+    },
+    "capacity_ml": {
+      "min": 750,
+      "max": 1000
+    }
+  },
+  {
+    "key": "uk-loaf-2lb",
+    "family": "loaf",
+    "shape": "loaf",
+    "dims_mm": {
+      "l": 230,
+      "w": 130,
+      "depth": 70
+    },
+    "capacity_ml": {
+      "min": 1100,
+      "max": 1600
+    }
+  },
+  {
+    "key": "us-bundt-6",
+    "family": "ring",
+    "shape": "ring",
+    "dims_mm": {
+      "d": 200,
+      "depth": 80
+    },
+    "capacity_ml": {
+      "min": 1420,
+      "max": 1420
+    }
+  },
+  {
+    "key": "us-bundt-10",
+    "family": "ring",
+    "shape": "ring",
+    "dims_mm": {
+      "d": 241,
+      "depth": 91
+    },
+    "capacity_ml": {
+      "min": 2370,
+      "max": 2370
+    }
+  },
+  {
+    "key": "us-bundt-12",
+    "family": "ring",
+    "shape": "ring",
+    "dims_mm": {
+      "d": 254,
+      "depth": 89
+    },
+    "capacity_ml": {
+      "min": 2840,
+      "max": 2840
+    }
+  },
+  {
+    "key": "us-tube-10",
+    "family": "ring",
+    "shape": "ring",
+    "dims_mm": {
+      "d": 254,
+      "depth": 102
+    },
+    "capacity_ml": {
+      "min": 3790,
+      "max": 3790
+    }
+  },
+  {
+    "key": "us-jellyroll",
+    "family": "sheet",
+    "shape": "sheet",
+    "dims_mm": {
+      "l": 381,
+      "w": 254,
+      "depth": 25
+    }
+  },
+  {
+    "key": "us-quarter-sheet",
+    "family": "sheet",
+    "shape": "sheet",
+    "dims_mm": {
+      "l": 307,
+      "w": 224,
+      "depth": 28
+    }
+  },
+  {
+    "key": "us-half-sheet",
+    "family": "sheet",
+    "shape": "sheet",
+    "dims_mm": {
+      "l": 419,
+      "w": 289,
+      "depth": 25
+    }
+  },
+  {
+    "key": "us-rect-13x9",
+    "family": "traybake",
+    "shape": "rect",
+    "dims_mm": {
+      "l": 330,
+      "w": 229,
+      "depth": 51
+    }
+  },
+  {
+    "key": "uk-traybake-30x23",
+    "family": "traybake",
+    "shape": "rect",
+    "dims_mm": {
+      "l": 300,
+      "w": 230,
+      "depth": 40
+    }
+  },
+  {
+    "key": "uk-swissroll-33x23",
+    "family": "sheet",
+    "shape": "sheet",
+    "dims_mm": {
+      "l": 330,
+      "w": 230,
+      "depth": 20
+    }
+  },
+  {
+    "key": "eu-blech-40x30",
+    "family": "sheet",
+    "shape": "sheet",
+    "dims_mm": {
+      "l": 400,
+      "w": 300,
+      "depth": 25
+    }
+  },
+  {
+    "key": "eu-gugelhupf-22",
+    "family": "ring",
+    "shape": "ring",
+    "dims_mm": {
+      "d": 220,
+      "depth": 100
+    },
+    "capacity_ml": {
+      "min": 2500,
+      "max": 2500
+    }
+  },
+  {
+    "key": "au-lamington-30x20",
+    "family": "traybake",
+    "shape": "rect",
+    "dims_mm": {
+      "l": 300,
+      "w": 200,
+      "depth": 30
+    }
+  },
+  {
+    "key": "au-slab-30x20",
+    "family": "traybake",
+    "shape": "rect",
+    "dims_mm": {
+      "l": 300,
+      "w": 200,
+      "depth": 45
+    }
+  },
+  {
+    "key": "au-bar-25x8",
+    "family": "loaf",
+    "shape": "loaf",
+    "dims_mm": {
+      "l": 250,
+      "w": 80,
+      "depth": 70
+    },
+    "capacity_ml": {
+      "min": 1400,
+      "max": 1400
+    }
+  }
+]
