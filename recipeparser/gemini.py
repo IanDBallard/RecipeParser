@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Type, TypeVar
 
 from google.genai import errors as genai_errors
 from pydantic import BaseModel, Field, ValidationError
@@ -1218,6 +1218,51 @@ def tag_pans(
     if answer.bake_step is not None:
         answer.bake_step = answer.bake_step - 1 if answer.bake_step >= 1 else None
     return answer
+
+
+def build_servings_prompt(title: str, ingredients: Sequence[str], directions: Sequence[str]) -> str:
+    """The prompt asking how many people one batch of a recipe feeds."""
+    steps = "\n".join(f"  {n}. {t}" for n, t in enumerate(directions, 1))
+    lines = "\n".join(f"  - {i}" for i in ingredients)
+    return (
+        "Estimate how many servings this recipe makes: the number of people one batch comfortably feeds, "
+        "or the number of items (cookies, slices) it yields. Answer with one whole number from 1 to 200.\n\n"
+        f"TITLE: {title}\n\nINGREDIENTS:\n{lines}\n\nDIRECTIONS:\n{steps}\n"
+    )
+
+
+def estimate_servings(
+    client: Any,
+    title: str,
+    ingredients: Sequence[str],
+    directions: Sequence[str],
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
+) -> Optional[int]:
+    """The model's estimate of a recipe's servings, or None on any failure. Never raises."""
+    try:
+        response: Any = _call_with_retry(
+            client,
+            model=GEMINI_MODEL,
+            contents=build_servings_prompt(title, ingredients, directions),
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": {
+                    "type": "object",
+                    "properties": {"servings": {"type": "integer"}},
+                    "required": ["servings"],
+                },
+                "temperature": 0,
+            },
+            what="Servings",
+            limiter=limiter,
+        )
+        n = json.loads(response.text)["servings"]
+        if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 200:
+            return None
+        return n
+    except Exception:  # noqa: BLE001
+        return None
 
 
 class _RecipeTags(BaseModel):
