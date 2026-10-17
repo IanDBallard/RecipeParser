@@ -817,6 +817,78 @@
       "directions": [],
       "source": "counted",
       "base": 1
+    },
+    {
+      "servings": "2 cups (about 24 truffles)",
+      "directions": [],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": "1 jar, about 12 servings",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "1 jar, about 12",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "4 cups, makes 16 muffins",
+      "directions": [],
+      "source": "counted",
+      "base": 16
+    },
+    {
+      "servings": "4 cups, 16 muffins",
+      "directions": [],
+      "source": "counted",
+      "base": 16
+    },
+    {
+      "servings": "1 x 1.2 litre pudding basin",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 pudding basin",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "a 2 litre dish",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2 x 1 litre dishes",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes 2 moulds",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2 moulds",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 mold",
+      "directions": [],
+      "source": "bake",
+      "base": null
     }
   ]
 }

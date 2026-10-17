@@ -56,8 +56,24 @@ def test_container_yield_names_its_noun(text, noun):
     assert (got.source, got.noun) == ("counted", noun)
 
 
-def test_non_container_yield_has_no_noun():
-    assert classify_servings("Makes 24 cookies", []).noun is None
+def test_stated_yield_has_no_noun():
+    assert classify_servings("Serves 4 (makes 2 cups)", []).noun is None
+
+
+@pytest.mark.parametrize(
+    "text, noun",
+    [("2 cups (about 24 truffles)", "truffles"), ("4 cups, makes 16 muffins", "muffins"),
+     ("Makes 24 cookies", "cookies")],
+)
+def test_item_count_beats_container_and_names_its_noun(text, noun):
+    # Coordinator ruling on D52: an item count beats a container count.
+    got = classify_servings(text, [])
+    assert (got.source, got.noun) == ("counted", noun)
+
+
+def test_basins_and_moulds_are_bake_vessels():
+    for noun in ("basin", "basins", "mould", "moulds", "mold", "molds", "pudding basin", "dish", "dishes"):
+        assert noun in BAKE_NOUNS
 
 
 # --- Composing the yield, the tins and the model (Task 3) ---------------------

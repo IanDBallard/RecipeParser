@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Literal, Optional, Sequence
+from typing import Literal, Optional, Sequence, Tuple
 
 from recipeparser.core.durations import Span, _normalise, _number, parse_servings
 from recipeparser.core.tin_servings import estimate_from_tins
@@ -30,7 +30,9 @@ ITEM_NOUNS = (
 BAKE_NOUNS = (
     "cake", "cakes", "loaf", "loaves", "pan", "pans", "tin", "tins", "pie",
     "tart", "pizza", "pizzas", "cheesecake", "bundt", "ring", "sheet", "tray",
-    "traybake", "dish", "batch", "swiss roll", "swiss rolls",
+    "traybake", "dish", "dishes", "batch", "swiss roll", "swiss rolls",
+    # Vessels sized by volume stay bakes, never containers (D52): "1 x 1.2 litre pudding basin".
+    "basin", "basins", "pudding basin", "mould", "moulds", "mold", "molds",
 )
 
 # Containers and volumes (D52): a yield in one keeps its own count and unit and never reaches
@@ -87,7 +89,7 @@ _SERVES_RES = (
 # Never a count of a bake noun that ends in an item noun: "2 swiss rolls".
 _NOT_BAKE = rf"(?!(?:{_alternation(BAKE_NOUNS)})\b)"
 # The number attached to an item noun, anywhere in the yield (C2c): "2 loaves (24 slices)".
-_COUNT_RE = re.compile(rf"\b(\d+){_RANGE}(\s+dozen)?\s+{_NOT_BAKE}{_ADJ}(?:{_alternation(ITEM_NOUNS)})\b")
+_COUNT_RE = re.compile(rf"\b(\d+){_RANGE}(\s+dozen)?\s+{_NOT_BAKE}{_ADJ}({_alternation(ITEM_NOUNS)})\b")
 _A_DOZEN_COUNT_RE = re.compile(rf"\ba\s+dozen\s+{_NOT_BAKE}{_ADJ}(?:{_alternation(ITEM_NOUNS)})\b")
 # "N dozen" or "a dozen" with no number parse_servings could read: "Makes about 2 dozen".
 _DOZEN_ANY_RE = re.compile(r"\b(\d+|a)\s+dozen\b")
@@ -97,7 +99,11 @@ _SEPARATE_RE = re.compile(r"^(?:[(,;]|(?:one|a|an)\s)")
 # A phrase that holds only a bare number, the trace of a stripped serving word ("12 ( 6)",
 # "24 cookies ( 12)", "1 pie, 8"), or a second number straight after the first ("12 24 bars"):
 # which number serves is lost, so the yield is the bake (the tins or the model place it).
-_BARE_NUMBER_RE = re.compile(r"(?:^|[(,;])\s*\d+(?:\s*(?:-|to)\s*\d+)?\s*(?=\)|[,;]|$)|^\d+\s")
+# An approximate bare number counts too: a stored "1 jar, about 12" (from "about 12 servings").
+_BARE_NUMBER_RE = re.compile(
+    r"(?:^|[(,;])\s*(?:(?:about|approx\.?|approximately|roughly|around|up to)\s+)?\d+"
+    r"(?:\s*(?:-|to)\s*\d+)?\s*(?=\)|[,;]|$)|^\d+\s"
+)
 # ...but not a parenthesised size of the bake the number counts: "2 (9-inch) loaves".
 _PAREN_SIZE_RE = re.compile(rf"^\([^)]*\)\s*(?:{_alternation(BAKE_NOUNS + CONTAINER_NOUNS)})\b")
 _LEADING_APPROX_RE = re.compile(r"^(?:(?:about|approx\.?|approximately|roughly|around)\s+)+")
@@ -133,7 +139,7 @@ class Classified:
     source: Literal["stated", "counted", "bake", "none"]
     base: Optional[int]
     span: Span
-    noun: Optional[str] = None  # the container or volume a counted yield steps in (D52)
+    noun: Optional[str] = None  # what a counted yield counts: the item ("cookies") or container ("jars")
 
 
 def _first(matches: Sequence[Optional["re.Match[str]"]]) -> Optional["re.Match[str]"]:
@@ -147,12 +153,15 @@ def _stated_number(text: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
-def _counted_number(text: str) -> Optional[int]:
-    """The first count of one or more attached to an item noun ("2 dozen cookies" is 24), or None."""
+def _counted_number(text: str) -> Optional[Tuple[int, str]]:
+    """
+    The first count of one or more attached to an item noun, with the noun ("2 dozen cookies" is
+    24 cookies), or None.
+    """
     for m in _COUNT_RE.finditer(text):
         n = int(m.group(1)) * (12 if m.group(2) else 1)
         if n >= 1:
-            return n
+            return n, m.group(3)
     return None
 
 
@@ -209,23 +218,23 @@ def classify_servings(
             return Classified("bake", None, span)
         if not note or (_SEPARATE_RE.match(note) and not _PAREN_SIZE_RE.match(note)):
             return Classified("stated", n, span)
+        counted = _counted_number(text)  # an item count beats a container count (D52)
+        if counted is not None:
+            return Classified("counted", counted[0], span, counted[1])
         container = _container(text, Span(n, span.max, span.note))
         if container is not None:
             return container
-        counted = _counted_number(text)
-        if counted is not None:
-            return Classified("counted", counted, span)
         if _BAKE_RE.search(note):  # before the singular item noun: "1 swiss roll", "1 bar cake"
             return Classified("bake", None, span)
         if _ITEM_RE.search(note) or (n == 1 and _ITEM_SINGULAR_RE.search(note)):
             return Classified("counted", n, span)
         return Classified("stated", n, span)
+    counted = _counted_number(text)
+    if counted is not None:
+        return Classified("counted", counted[0], span, counted[1])
     container = _container(text, span)
     if container is not None:
         return container
-    counted = _counted_number(text)
-    if counted is not None:
-        return Classified("counted", counted, span)
     if _A_DOZEN_COUNT_RE.search(text):  # "a dozen cookies"
         return Classified("counted", 12, span)
     dozen = _DOZEN_ANY_RE.search(text)
