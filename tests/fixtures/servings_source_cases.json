@@ -523,6 +523,144 @@
       "directions": [],
       "source": "bake",
       "base": null
+    },
+    {
+      "servings": "Serves 8 (16 slices)",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "8 (16 slices)",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "Serves 8 (makes 16 slices)",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "8 ( 16 slices)",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "Serves 12, 24 bars",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "12 24 bars",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Serves 6; makes 12 cookies",
+      "directions": [],
+      "source": "stated",
+      "base": 6
+    },
+    {
+      "servings": "6 ; 12 cookies",
+      "directions": [],
+      "source": "stated",
+      "base": 6
+    },
+    {
+      "servings": "Makes 24 cookies (serves 12)",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "24 cookies ( 12)",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes 12 muffins (6 servings)",
+      "directions": [],
+      "source": "stated",
+      "base": 6
+    },
+    {
+      "servings": "12 muffins (6 )",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes 12 (serves 6)",
+      "directions": [],
+      "source": "stated",
+      "base": 6
+    },
+    {
+      "servings": "12 ( 6)",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "12, 6",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "12 6",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes about 2 dozen",
+      "directions": [],
+      "source": "stated",
+      "base": 24
+    },
+    {
+      "servings": "Yield: 2 dozen",
+      "directions": [],
+      "source": "stated",
+      "base": 24
+    },
+    {
+      "servings": "a dozen cookies",
+      "directions": [],
+      "source": "counted",
+      "base": 12
+    },
+    {
+      "servings": "Makes about 2 dozen cookies",
+      "directions": [],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": "Makes 2 loaves; serves a crowd",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2 loaves; a crowd",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2 swiss rolls",
+      "directions": [],
+      "source": "bake",
+      "base": null
     }
   ]
 }

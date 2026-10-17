@@ -33,6 +33,7 @@ BAKE_NOUNS = (
     "tart", "pizza", "pizzas", "cheesecake", "bundt", "ring", "sheet", "tray",
     "traybake", "dish", "batch", "quart", "quarts", "cup", "cups", "litre",
     "litres", "liter", "liters", "jar", "jars", "pint", "pints", "swiss roll",
+    "swiss rolls",
 )
 
 # What a method may cut or divide a bake into: the item nouns but "pieces" (butter and chicken
@@ -77,10 +78,20 @@ _SERVES_RES = (
     re.compile(rf"\b(?:servings?|portions?)\b\s*:?\s*{_APPROX}(\d+)"),
     re.compile(rf"\b(\d+){_RANGE}\s+{_ADJ}(?:servings?|people|persons?|portions?)\b"),
 )
+# Never a count of a bake noun that ends in an item noun: "2 swiss rolls".
+_NOT_BAKE = rf"(?!(?:{_alternation(BAKE_NOUNS)})\b)"
 # The number attached to an item noun, anywhere in the yield (C2c): "2 loaves (24 slices)".
-_COUNT_RE = re.compile(rf"\b(\d+){_RANGE}(\s+dozen)?\s+{_ADJ}(?:{_alternation(ITEM_NOUNS)})\b")
-# A note that is a separate phrase naming the bake (C1): "12 one 9-inch pan", "8 (one 20 cm cake)".
-_SEPARATE_RE = re.compile(r"^(?:[(,]|(?:one|a|an)\s)")
+_COUNT_RE = re.compile(rf"\b(\d+){_RANGE}(\s+dozen)?\s+{_NOT_BAKE}{_ADJ}(?:{_alternation(ITEM_NOUNS)})\b")
+_A_DOZEN_COUNT_RE = re.compile(rf"\ba\s+dozen\s+{_NOT_BAKE}{_ADJ}(?:{_alternation(ITEM_NOUNS)})\b")
+# "N dozen" or "a dozen" with no number parse_servings could read: "Makes about 2 dozen".
+_DOZEN_ANY_RE = re.compile(r"\b(\d+|a)\s+dozen\b")
+# A note that is a separate phrase after the number (C1): "12 one 9-inch pan", "8 (one 20 cm cake)",
+# "8 (16 slices)", "6 ; 12 cookies" -- the number is servings even when the phrase holds a count.
+_SEPARATE_RE = re.compile(r"^(?:[(,;]|(?:one|a|an)\s)")
+# A phrase that holds only a bare number, the trace of a stripped serving word ("12 ( 6)",
+# "24 cookies ( 12)", "1 pie, 8"), or a second number straight after the first ("12 24 bars"):
+# which number serves is lost, so the yield is the bake (the tins or the model place it).
+_BARE_NUMBER_RE = re.compile(r"(?:^|[(,;])\s*\d+(?:\s*(?:-|to)\s*\d+)?\s*(?=\)|[,;]|$)|^\d+\s")
 # ...but not a parenthesised size of the bake the number counts: "2 (9-inch) loaves".
 _PAREN_SIZE_RE = re.compile(rf"^\([^)]*\)\s*(?:{_alternation(BAKE_NOUNS)})\b")
 _LEADING_APPROX_RE = re.compile(r"^(?:(?:about|approx\.?|approximately|roughly|around)\s+)+")
@@ -88,12 +99,13 @@ _DOZEN_RE = re.compile(r"^dozen\b\s*")
 
 _METHOD_COUNT_RES = (
     re.compile(
-        rf"\b(?:cut|slice|divide|portion)\b[^.;]{{0,40}}?\binto\b\s+(\d{{1,3}})(\s+dozen)?\s+{_ADJ}"
+        rf"\b(?:cut|slice|divide|portion)\b[^.;]{{0,40}}?\binto\b\s+(\d{{1,3}})(\s+dozen)?\s+{_NOT_BAKE}{_ADJ}"
         rf"(?:{_alternation(PORTION_NOUNS)})\b",
         re.IGNORECASE,
     ),
     re.compile(
-        rf"\b(?:makes|yields)\s+{_APPROX}(\d{{1,3}})(\s+dozen)?\s+{_ADJ}(?:{_alternation(PORTION_NOUNS)})\b",
+        rf"\b(?:makes|yields)\s+{_APPROX}(\d{{1,3}})(\s+dozen)?\s+{_NOT_BAKE}{_ADJ}"
+        rf"(?:{_alternation(PORTION_NOUNS)})\b",
         re.IGNORECASE,
     ),
 )
@@ -134,21 +146,31 @@ def classify_servings(
     stated = _stated_number(text)
     if stated is not None:
         return Classified("stated", stated, span)
-    counted = _counted_number(text)
-    if counted is not None:
-        return Classified("counted", counted, span)
     if span.min is not None and span.min >= 1:  # below one is no number (M3)
         n = span.min
         note = _LEADING_APPROX_RE.sub("", span.note or "")
         if _DOZEN_RE.match(note):  # "about 3 dozen" is 36
             n, note = n * 12, _DOZEN_RE.sub("", note)
+        if _BARE_NUMBER_RE.search(note):  # "12 ( 6)": which number serves is lost
+            return Classified("bake", None, span)
         if not note or (_SEPARATE_RE.match(note) and not _PAREN_SIZE_RE.match(note)):
             return Classified("stated", n, span)
+        counted = _counted_number(text)
+        if counted is not None:
+            return Classified("counted", counted, span)
         if _BAKE_RE.search(note):  # before the singular item noun: "1 swiss roll", "1 bar cake"
             return Classified("bake", None, span)
         if _ITEM_RE.search(note) or (n == 1 and _ITEM_SINGULAR_RE.search(note)):
             return Classified("counted", n, span)
         return Classified("stated", n, span)
+    counted = _counted_number(text)
+    if counted is not None:
+        return Classified("counted", counted, span)
+    if _A_DOZEN_COUNT_RE.search(text):  # "a dozen cookies"
+        return Classified("counted", 12, span)
+    dozen = _DOZEN_ANY_RE.search(text)
+    if dozen and dozen.group(1) != "0":  # "Makes about 2 dozen", "Yield: 2 dozen"
+        return Classified("stated", 12 * (1 if dozen.group(1) == "a" else int(dozen.group(1))), span)
     for step in directions:
         for pattern in _METHOD_COUNT_RES:
             m = pattern.search(step)
