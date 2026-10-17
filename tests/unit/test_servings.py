@@ -1,4 +1,5 @@
 """Yield classifier - every case in the shared fixture (D44, D47, D50)."""
+import hashlib
 import json
 from pathlib import Path
 
@@ -6,9 +7,15 @@ import pytest
 
 from recipeparser.core.servings import BAKE_NOUNS, CONTAINER_NOUNS, ITEM_NOUNS, classify_servings
 
-_CASES = json.loads(
-    (Path(__file__).parent.parent / "fixtures" / "servings_source_cases.json").read_text("utf-8")
-)["cases"]
+_FIXTURE = Path(__file__).parent.parent / "fixtures" / "servings_source_cases.json"
+_CASES = json.loads(_FIXTURE.read_text("utf-8"))["cases"]
+# The fixture is one file kept in two repositories: this constant also lives in Cayenne
+# cayenne-web/tests/unit/domain/servingsSource.test.ts, and both change together with the fixture.
+_FIXTURE_SHA256 = "68d24b54f4b4f3f989f95c572e6722b33a6f5cbfb4503e57fcef1a5b2cd2c34f"
+
+
+def test_fixture_is_byte_identical_to_the_copy_cayenne_runs():
+    assert hashlib.sha256(_FIXTURE.read_bytes()).hexdigest() == _FIXTURE_SHA256
 
 
 @pytest.mark.parametrize(
