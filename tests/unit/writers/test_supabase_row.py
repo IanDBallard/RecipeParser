@@ -124,7 +124,7 @@ def test_contract_round_trip_rows():
     from recipeparser.core.rate_limiter import GlobalRateLimiter
     from recipeparser.io.readers.paprika import PaprikaReader
     from recipeparser.io.writers.supabase import _recipe_row
-    from tests.fixtures.cayenne_contract_rows import CONTRACT_ROWS, RESTORE_DERIVES
+    from tests.fixtures.cayenne_contract_rows import CONTRACT_ROWS
 
     path = Path(__file__).resolve().parents[2] / "fixtures" / "cayenne-export-contract.paprikarecipes"
     chunks = PaprikaReader().read(str(path))
@@ -138,8 +138,7 @@ def test_contract_round_trip_rows():
     for chunk in chunks:
         result = pipeline._process_chunk(chunk, chunk_stages(chunk)).results[0]
         row = _recipe_row(result, "u1", "r1")
-        # A pre-9.17 archive carries no servings_source: the restore derives it without the model.
-        want = {**CONTRACT_ROWS[row["title"]], **RESTORE_DERIVES.get(row["title"], {})}
+        want = CONTRACT_ROWS[row["title"]]
         seen.add(row["title"])
 
         for key in (
