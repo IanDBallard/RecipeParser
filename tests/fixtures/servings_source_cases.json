@@ -191,6 +191,24 @@
       "directions": [],
       "source": "none",
       "base": null
+    },
+    {
+      "servings": "1 cookie",
+      "directions": [],
+      "source": "counted",
+      "base": 1
+    },
+    {
+      "servings": "1 brownie",
+      "directions": [],
+      "source": "counted",
+      "base": 1
+    },
+    {
+      "servings": "1 sausage roll",
+      "directions": [],
+      "source": "counted",
+      "base": 1
     }
   ]
 }

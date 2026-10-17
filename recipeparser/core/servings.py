@@ -49,11 +49,9 @@ def _singular(noun: str) -> Optional[str]:
     """The singular of a plural item noun, or None when it is ambiguous."""
     if noun == "pies":  # plural only: "pie" is a bake noun
         return None
-    if noun.endswith("ies"):
-        one = noun[:-3] + "y"
-    elif noun.endswith("ves"):
-        one = noun[:-3] + "f"
-    elif noun.endswith("s"):
+    if noun == "pasties":  # the only item noun whose singular is "-y"
+        one = "pasty"
+    elif noun.endswith("s"):  # cookies -> cookie, brownies -> brownie
         one = noun[:-1]
     else:
         one = noun
