@@ -209,3 +209,11 @@ def test_restore_writes_three_columns(tmp_path):
     log = []
     bs._restore(SimpleNamespace(table=lambda name: FakeTable([], log)), rec, live=True)
     assert log[0][1] == {"base_servings": None, "servings_source": "tin", "cook_servings": None}
+
+
+def test_a_sourced_row_is_unchanged_without_force_and_asked_with_it():
+    sourced = row(servings_source="estimated", base_servings=12)
+    assert bs.plan_row(sourced, no_ask).status == "unchanged"
+    calls = []
+    r = bs.plan_row(sourced, asker(10, calls), force=True)
+    assert calls == ["Cake"] and (r.status, r.new_base) == ("model", 10)
