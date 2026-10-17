@@ -308,8 +308,9 @@ class CayenneRefinement(BaseModel):
     title: str
     base_servings: Optional[int] = Field(
         description=(
-            "How many servings the recipe makes. When the recipe states it, that number; "
-            "otherwise your best estimate for a home cook from the whole recipe."
+            "How many people one batch of this recipe serves. When the recipe states servings, that "
+            "number; otherwise your best estimate for a home cook from the whole recipe. Never the "
+            "number of cakes, loaves, tins, pans or jars it makes."
         ),
     )
     structured_ingredients: List[StructuredIngredient]

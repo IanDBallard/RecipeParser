@@ -1007,7 +1007,7 @@
             'type': 'null',
           }),
         ]),
-        'description': 'How many servings the recipe makes. When the recipe states it, that number; otherwise your best estimate for a home cook from the whole recipe.',
+        'description': 'How many people one batch of this recipe serves. When the recipe states servings, that number; otherwise your best estimate for a home cook from the whole recipe. Never the number of cakes, loaves, tins, pans or jars it makes.',
         'title': 'Base Servings',
       }),
       'pans': dict({
