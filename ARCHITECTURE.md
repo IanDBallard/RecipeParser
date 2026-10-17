@@ -790,7 +790,7 @@ The client edits **raw** columns only (`title`, `ingredient_lines`, `direction_s
 | Module | Role |
 |--------|------|
 | `core/durations.py` | Deterministic prep/cook/servings parser. Shares `tests/fixtures/duration_cases.json` with the Cayenne TypeScript parser. |
-| `core/servings.py` | Pure: classifies a yield as stated, counted, the bake itself or none, and composes that with the tin table and the model's estimate into `base_servings` and `servings_source` (stated, counted, tin, estimated). Shares `tests/fixtures/servings_source_cases.json` with the Cayenne TypeScript twin. |
+| `core/servings.py` | Pure: classifies a yield as stated, counted, the bake itself or none, and composes that with the tin table and the model's estimate into `base_servings` and `servings_source` (stated, counted, tin, estimated). A yield in a container or volume (`CONTAINER_NOUNS`: jars, bottles, pots, tubs, cups, pints, quarts, gallons, litres, ml, fl oz) keeps its own count and unit and is `counted`, never sent to the tins or the model (D52, 9.17.1). Shares `tests/fixtures/servings_source_cases.json` with the Cayenne TypeScript twin. |
 | `core/tin_servings.py` | The tin table (`HINT_TINS`, equal to `tests/fixtures/hint_tins.json`): serving footprints per tin, first matching rule wins; `estimate_from_tins`. |
 | `core/regen.py` | Pure: REFINE input from a row, write-back payload, raw lines from derived data. |
 | `adapters/regen_worker.py` | `RegenWorker.run_once()`: `claim_stale_recipes` RPC → REFINE → EMBED → `update … where id = ? and body_rev = ?`. Failures via `regen_failed` RPC. `run_workers()` is the shared poll loop. |
