@@ -109,6 +109,7 @@ def test_build_update_payload():
     }
     # base_servings, grid_categories and title are user-owned after ingest (D3, 3.6)
     assert "base_servings" not in payload and "title" not in payload
+    assert "servings_source" not in payload
 
 
 def test_strip_fat_tokens_drops_the_use_field():

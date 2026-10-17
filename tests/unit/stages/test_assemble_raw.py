@@ -36,6 +36,7 @@ def test_durations_and_servings_parsed():
     assert (r.cook_min_minutes, r.cook_max_minutes) == (60, 120)
     assert (r.servings_min, r.servings_max) == (2, 4)
     assert r.base_servings == 2          # servings_min wins over REFINE's 8
+    assert r.servings_source == "stated"
 
 
 def test_base_servings_falls_back_to_refinement():

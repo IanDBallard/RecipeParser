@@ -1,5 +1,5 @@
 """Pydantic models for structured Gemini output."""
-from typing import Dict, List, Literal, NamedTuple, Optional
+from typing import Dict, List, Literal, NamedTuple, Optional, get_args
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
@@ -306,7 +306,12 @@ class PanAnswer(BaseModel):
 class CayenneRefinement(BaseModel):
     """Internal refinement pass output."""
     title: str
-    base_servings: Optional[int]
+    base_servings: Optional[int] = Field(
+        description=(
+            "How many servings the recipe makes. When the recipe states it, that number; "
+            "otherwise your best estimate for a home cook from the whole recipe."
+        ),
+    )
     structured_ingredients: List[StructuredIngredient]
     tokenized_directions: List[TokenizedDirection]
     grid_categories: Dict[str, List[str]] = Field(
@@ -337,12 +342,21 @@ class CayenneRefinement(BaseModel):
     bake_step: Optional[int] = Field(default=None, description=_BAKE_STEP_DESC)
 
 
+# Where a recipe's base_servings came from (scale-sheet redesign D44).
+ServingsSource = Literal["stated", "counted", "tin", "estimated"]
+_SERVINGS_SOURCES = frozenset(get_args(ServingsSource))
+
+
 class CayenneRecipe(BaseModel):
     """Canonical recipe shape for Project Cayenne."""
     title: str
     prep_time: Optional[str] = None
     cook_time: Optional[str] = None
     base_servings: Optional[int] = None
+    # Where base_servings came from (scale-sheet redesign D44): the recipe stated it, counted
+    # its items, the tin table, or the model's estimate; None when unknown. Written at insert,
+    # never by the regen worker.
+    servings_source: Optional[str] = None
     source_url: Optional[str] = None
     image_url: Optional[str] = None  # Supabase Storage public URL; None when no photo available
     source: Optional[str] = Field(
@@ -382,6 +396,11 @@ class CayenneRecipe(BaseModel):
     source_uom_system: Optional[str] = None
     image_source: Optional[str] = None
     stale: bool = False
+
+    @field_validator("servings_source", mode="before")
+    @classmethod
+    def _unknown_servings_source_is_none(cls, v):
+        return v if isinstance(v, str) and v in _SERVINGS_SOURCES else None
 
     @field_validator("category_paths", mode="before")
     @classmethod

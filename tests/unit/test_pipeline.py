@@ -1170,6 +1170,46 @@ def test_restore_carries_restore_fields_and_spans():
     assert (r.servings_min, r.servings_max, r.servings_note, r.base_servings) == (10, 12, "cakes", 10)
     assert (r.prep_min_minutes, r.prep_max_minutes, r.prep_note) == (30, 45, "overnight")
 
+_NINE_INCH = [{"id": "pan_01", "raw": "one 9-inch pan", "family": "round-cake", "dims_mm": {"d": 229}}]
+
+
+def test_restore_carries_servings_source():
+    chunk = _restore_chunk(servings_min=1, servings_max=1, servings_note="9-inch pan", base_servings=12,
+                           servings_source="tin")
+    r = _make_pipeline()._process_chunk(chunk, ["ASSEMBLE"]).results[0]
+    assert (r.base_servings, r.servings_source) == (12, "tin")
+
+
+def test_restore_carries_a_null_servings_source_as_null():
+    chunk = _restore_chunk(servings_min=1, servings_max=1, servings_note="9-inch pan", base_servings=1,
+                           servings_source=None, pans=_NINE_INCH, bake_type="butter-cake")
+    r = _make_pipeline()._process_chunk(chunk, ["ASSEMBLE"]).results[0]
+    assert (r.base_servings, r.servings_source) == (1, None)
+
+
+def test_restore_without_servings_source_uses_the_tin_table():
+    from recipeparser.core.tin_servings import estimate_from_tins
+    from recipeparser.models import RecipePan
+
+    chunk = _restore_chunk(servings_min=None, servings_max=None, servings_note="one 9-inch pan", base_servings=1,
+                           pans=_NINE_INCH, bake_type="butter-cake")
+    r = _make_pipeline()._process_chunk(chunk, ["ASSEMBLE"]).results[0]
+    want = estimate_from_tins([RecipePan.model_validate(p) for p in _NINE_INCH], "butter-cake")
+    assert want is not None and want > 1
+    assert (r.base_servings, r.servings_source) == (want, "tin")
+    assert (r.servings_min, r.servings_note) == (None, "one 9-inch pan")
+
+
+def test_restore_without_servings_source_never_asks_the_model():
+    chunk = _restore_chunk(servings_min=10, servings_max=12, servings_note="as a starter", base_servings=8)
+    chunk.pre_parsed_embedding = None
+    pipeline = _make_pipeline()
+    with patch("recipeparser.core.pipeline.embed", return_value=FAKE_EMBEDDING):
+        r = pipeline._process_chunk(chunk, ["EMBED", "ASSEMBLE"]).results[0]
+    assert (r.base_servings, r.servings_source) == (8, None)
+    assert pipeline._client.mock_calls == []
+
+
 # --- Cayenne restore pictures (plan B task 5) --------------------------------
 
 _OLD_BUCKET_URL = "https://old.supabase.co/storage/v1/object/public/recipe-images/abc.jpg?v=1"

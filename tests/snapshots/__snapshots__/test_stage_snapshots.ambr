@@ -46,6 +46,7 @@
     'servings_max': None,
     'servings_min': None,
     'servings_note': None,
+    'servings_source': 'estimated',
     'source': None,
     'source_author': None,
     'source_key': None,

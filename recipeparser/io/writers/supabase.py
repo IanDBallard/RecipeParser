@@ -258,6 +258,7 @@ def _recipe_row(recipe: IngestResponse, user_id: str, rid: str) -> dict:
         "prep_time": recipe.prep_time,
         "cook_time": recipe.cook_time,
         "base_servings": recipe.base_servings,
+        "servings_source": recipe.servings_source,
         "source_url": recipe.source_url,
         "image_url": recipe.image_url,
         # Plain text and smallint - not jsonb, so the array rule below does not

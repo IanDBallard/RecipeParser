@@ -13,6 +13,7 @@ from recipeparser.core.citation import Citation
 from recipeparser.core.durations import duration_columns
 from recipeparser.core.models import RestoreFields, SourceMeta
 from recipeparser.core.regen import raw_lines_from_derived
+from recipeparser.core.servings import Servings, servings_for_recipe
 from recipeparser.models import CayenneRefinement, IngestResponse
 
 log = logging.getLogger(__name__)
@@ -66,7 +67,9 @@ def assemble(
         direction_steps:  Raw direction steps from EXTRACT. When None or empty,
                           derived from the tokenized text with tokens stripped.
         servings_text:    The extracted servings string ("4", "2-4"). Parsed into
-                          servings_min/max/note; servings_min becomes base_servings.
+                          servings_min/max/note; with the method, the tins and
+                          REFINE's estimate it settles base_servings and
+                          servings_source (core.servings.servings_for_recipe).
         citation:         What the reader and the model settled about the source
                           (core.citation.resolve_citation). Fills the four
                           citation columns and, when nothing else supplies
@@ -79,9 +82,10 @@ def assemble(
         nutritional_info: The nutrition line the extractor read. As above.
         notes:            The author's notes or headnote the extractor read. A source's own
                           statement (meta) wins over it, as for description.
-        spans:            The ten span columns (the nine span fields plus
-                          base_servings) exactly as a Cayenne export carried them.
-                          When given they replace the duration_columns() result.
+        spans:            The span columns (the nine span fields plus
+                          base_servings and servings_source) as a Cayenne restore
+                          settled them. When given they replace the
+                          duration_columns() result and the servings composition.
         restore:          What a Cayenne export carries beyond a normal ingest
                           (favourite, chosen measures, picture origin, stale);
                           copied onto the response.
@@ -120,12 +124,20 @@ def assemble(
         cols = spans
     else:
         cols = duration_columns(prep_time, cook_time or total_time, servings_text, recipe.base_servings)
+    # The recipe's own yield, then its tins, then REFINE's estimate (D44). The estimate is
+    # recipe.base_servings, not cols["base_servings"]: for "Makes 1 cake" the latter is the 1.
+    # A restore's spans already carry the pair, settled by the pipeline without the model.
+    if spans is None:
+        sv = servings_for_recipe(servings_text, steps, recipe.pans, recipe.bake_type, recipe.base_servings)
+    else:
+        sv = Servings(cols["base_servings"], cols.get("servings_source"))
 
     result = IngestResponse(
         title=recipe.title,
         prep_time=prep_time,
         cook_time=cook_time,
-        base_servings=cols["base_servings"],
+        base_servings=sv.base if sv.base is not None else cols["base_servings"],
+        servings_source=sv.source,
         source_url=source_url,
         image_url=image_url,
         categories=flat_categories,

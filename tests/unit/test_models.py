@@ -205,3 +205,25 @@ def test_cayenne_recipe_reads_null_paths_and_stale_as_defaults():
     )
     assert r.category_paths == []
     assert r.stale is False
+
+
+def test_cayenne_recipe_servings_source_defaults_to_none_and_keeps_the_four():
+    base = {"title": "T", "structured_ingredients": [], "tokenized_directions": []}
+    assert CayenneRecipe.model_validate(base).servings_source is None
+    for v in ("stated", "counted", "tin", "estimated"):
+        assert CayenneRecipe.model_validate({**base, "servings_source": v}).servings_source == v
+
+
+def test_cayenne_recipe_nulls_an_unknown_servings_source():
+    base = {"title": "T", "structured_ingredients": [], "tokenized_directions": []}
+    assert CayenneRecipe.model_validate({**base, "servings_source": "guessed"}).servings_source is None
+    assert CayenneRecipe.model_validate({**base, "servings_source": 3}).servings_source is None
+    assert CayenneRecipe.model_validate({**base, "servings_source": ["tin"]}).servings_source is None
+
+
+def test_refinement_base_servings_says_stated_or_estimated():
+    desc = CayenneRefinement.model_fields["base_servings"].description
+    assert desc == (
+        "How many servings the recipe makes. When the recipe states it, that number; "
+        "otherwise your best estimate for a home cook from the whole recipe."
+    )

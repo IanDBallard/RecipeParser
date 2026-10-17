@@ -1007,6 +1007,7 @@
             'type': 'null',
           }),
         ]),
+        'description': 'How many servings the recipe makes. When the recipe states it, that number; otherwise your best estimate for a home cook from the whole recipe.',
         'title': 'Base Servings',
       }),
       'pans': dict({

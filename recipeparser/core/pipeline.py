@@ -25,10 +25,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from recipeparser.core.citation import Citation, host_of, resolve_citation
-from recipeparser.core.durations import duration_columns
+from recipeparser.core.durations import Span, duration_columns
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, RestoreFields, SourceMeta
 from recipeparser.core.rate_limiter import GlobalRateLimiter
+from recipeparser.core.servings import servings_for_restore
 from recipeparser.core.stages.assemble import assemble
 from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.extract import extract
@@ -685,19 +686,37 @@ _SPAN_KEYS = (
     "prep_min_minutes", "prep_max_minutes", "prep_note",
     "cook_min_minutes", "cook_max_minutes", "cook_note",
     "servings_min", "servings_max", "servings_note",
-    "base_servings",
+    "base_servings", "servings_source",
 )
+_SERVINGS_KEYS = ("base_servings", "servings_source")
 
 
 def _restore_spans(pr: "CayenneRecipe | IngestResponse") -> Dict[str, Any]:
     """
-    The ten span columns of a pre-parsed recipe, as stored.  Re-deriving them from the text
+    The span columns of a pre-parsed recipe, as stored.  Re-deriving them from the text
     columns would lose what only the structured columns hold (a servings span and its note).
     An archive that predates the columns carries none of them; for that alone the text is parsed.
+
+    servings_source is kept as exported when the archive carries it (even as null).  An archive
+    from before 9.17 has none, so it is derived here without the model (a restore makes no AI
+    call): the tin table may replace base_servings; otherwise the exported number stays.
     """
-    if not any(k in pr.model_fields_set for k in _SPAN_KEYS if k != "base_servings"):
-        return duration_columns(pr.prep_time, pr.cook_time, None, pr.base_servings)
-    return {k: getattr(pr, k) for k in _SPAN_KEYS}
+    if not any(k in pr.model_fields_set for k in _SPAN_KEYS if k not in _SERVINGS_KEYS):
+        cols = duration_columns(pr.prep_time, pr.cook_time, None, pr.base_servings)
+    else:
+        cols = {k: getattr(pr, k) for k in _SPAN_KEYS if k != "servings_source"}
+    if "servings_source" in pr.model_fields_set:
+        cols["servings_source"] = pr.servings_source
+        return cols
+    sv = servings_for_restore(
+        Span(cols["servings_min"], cols["servings_max"], cols["servings_note"]),
+        list(getattr(pr, "direction_steps", None) or []),
+        list(getattr(pr, "pans", None) or []),
+        getattr(pr, "bake_type", None),
+        cols["base_servings"],
+    )
+    cols["base_servings"], cols["servings_source"] = sv.base, sv.source
+    return cols
 
 
 def _restore_fields(pr: "CayenneRecipe | IngestResponse") -> RestoreFields:

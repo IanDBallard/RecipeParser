@@ -28,6 +28,7 @@ _NO_SPANS = {
     "prep_min_minutes": None, "prep_max_minutes": None, "prep_note": None,
     "cook_min_minutes": None, "cook_max_minutes": None, "cook_note": None,
     "servings_min": None, "servings_max": None, "servings_note": None,
+    "servings_source": None,
 }
 
 LEMON = {
@@ -108,3 +109,11 @@ SCONES = {
 }
 
 CONTRACT_ROWS = {r["title"]: r for r in (LEMON, XMAS, SCONES)}
+
+# The archive predates servings_source (9.16), so a restore derives it without the model.
+# XMAS states its yield ("10 to 12 as a starter") and SCONES states none and names no tin:
+# both keep the exported base_servings with servings_source null. LEMON states no yield but
+# bakes in one 20 cm tin (the 23 cm one is removed), so the tin table replaces its base.
+RESTORE_DERIVES = {
+    LEMON["title"]: {"base_servings": 6, "servings_source": "tin"},
+}

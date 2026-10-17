@@ -145,3 +145,38 @@ def test_assemble_carries_restore_fields():
 
     r = _assemble(restore=RestoreFields(is_favourite=True, source_uom_system="UK", image_source="generated", stale=True))
     assert (r.is_favourite, r.source_uom_system, r.image_source, r.stale) == (True, "UK", "generated", True)
+
+
+# --- servings_source (servings at ingest, D44) --------------------------------
+
+
+def test_assemble_sets_servings_source():
+    r = _assemble(servings_text="Serves 2")
+    assert (r.base_servings, r.servings_source) == (2, "stated")
+    r = _assemble(servings_text=None)
+    assert (r.base_servings, r.servings_source) == (2, "estimated")
+
+
+def test_assemble_a_bake_with_a_tin_takes_the_tin():
+    refined = _refined()
+    refined.pans = [RecipePan(id="pan_01", raw="two 20 cm tins", count=2, family="round-cake", dims_mm={"d": 200})]
+    refined.bake_type = "butter-cake"
+    r = assemble(recipe=refined, embedding=[0.0] * 1536, source_url=None, image_url=None, grid_categories={},
+                 servings_text="Makes one cake")
+    assert (r.base_servings, r.servings_source) == (8, "tin")
+
+
+def test_assemble_a_bake_of_one_without_a_tin_takes_the_models_estimate_not_the_one():
+    # "Makes 1 cake" parses to servings_min 1; the estimate is REFINE's, not the yield's count.
+    refined = _refined()
+    refined.base_servings = 10
+    r = assemble(recipe=refined, embedding=[0.0] * 1536, source_url=None, image_url=None, grid_categories={},
+                 servings_text="1 cake")
+    assert (r.base_servings, r.servings_source) == (10, "estimated")
+    assert r.servings_min == 1
+
+
+def test_assemble_given_spans_carries_their_servings_source():
+    r = _assemble(spans={**_SPANS, "servings_source": "tin"})
+    assert (r.base_servings, r.servings_source) == (10, "tin")
+    assert _assemble(spans=_SPANS).servings_source is None

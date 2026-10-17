@@ -19,7 +19,7 @@ def _recipe() -> IngestResponse:
         direction_steps=["Mix flour."],
         prep_time="15 mins",
         prep_min_minutes=15, prep_max_minutes=15, prep_note=None,
-        servings_min=2, servings_max=4, servings_note=None,
+        servings_min=2, servings_max=4, servings_note=None, servings_source="stated",
         source_kind="book", source_key="cake book", source_title="Cake Book", source_author="A. Baker",
         pans=[RecipePan(id="pan_01", raw="a 20 cm tin", shape="round", family="round-cake", dims_mm={"d": 200})],
         bake_type="sponge",
@@ -51,6 +51,10 @@ def test_row_has_structured_durations(posted):
     assert (posted["prep_min_minutes"], posted["prep_max_minutes"], posted["prep_note"]) == (15, 15, None)
     assert (posted["servings_min"], posted["servings_max"]) == (2, 4)
     assert posted["cook_min_minutes"] is None
+
+
+def test_row_has_servings_source(posted):
+    assert (posted["base_servings"], posted["servings_source"]) == (2, "stated")
 
 
 def test_line_index_serialised(posted):
@@ -120,7 +124,7 @@ def test_contract_round_trip_rows():
     from recipeparser.core.rate_limiter import GlobalRateLimiter
     from recipeparser.io.readers.paprika import PaprikaReader
     from recipeparser.io.writers.supabase import _recipe_row
-    from tests.fixtures.cayenne_contract_rows import CONTRACT_ROWS
+    from tests.fixtures.cayenne_contract_rows import CONTRACT_ROWS, RESTORE_DERIVES
 
     path = Path(__file__).resolve().parents[2] / "fixtures" / "cayenne-export-contract.paprikarecipes"
     chunks = PaprikaReader().read(str(path))
@@ -134,11 +138,12 @@ def test_contract_round_trip_rows():
     for chunk in chunks:
         result = pipeline._process_chunk(chunk, chunk_stages(chunk)).results[0]
         row = _recipe_row(result, "u1", "r1")
-        want = CONTRACT_ROWS[row["title"]]
+        # A pre-9.17 archive carries no servings_source: the restore derives it without the model.
+        want = {**CONTRACT_ROWS[row["title"]], **RESTORE_DERIVES.get(row["title"], {})}
         seen.add(row["title"])
 
         for key in (
-            "title", "base_servings", "prep_min_minutes", "prep_max_minutes", "prep_note",
+            "title", "base_servings", "servings_source", "prep_min_minutes", "prep_max_minutes", "prep_note",
             "cook_min_minutes", "cook_max_minutes", "cook_note", "servings_min", "servings_max",
             "servings_note", "rating", "is_favourite", "source_uom_system", "source_uom_system_detected",
             "image_source", "ingredient_lines", "direction_steps", "body_rev", "derived_rev",
