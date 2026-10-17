@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [9.17.0] — 2026-10-17
+## [9.17.0] — 2026-10-16
 
 Servings at import, with their provenance (Cayenne spec `docs/superpowers/specs/2026-10-16-scale-sheet-redesign-design.md` in IanDBallard/Cayenne, D44, D47, D50 and *Estimating servings*). Every recipe now leaves ingest with a `base_servings` and a `servings_source` saying how it was reached: `stated` (the recipe says so), `counted` (it counts items), `tin` (worked out from the tins it names) or `estimated` (the model's guess, the last resort). Merging deploys (container restart). Deploy order: the Cayenne migration, then this version, then the backfill.
 
@@ -20,16 +20,16 @@ Servings at import, with their provenance (Cayenne spec `docs/superpowers/specs/
 
 ### ⚠️ Changed
 - REFINE's `base_servings` is now the model's estimate and is used only when the yield gives nothing.
-- A Cayenne restore derives `servings_source` from the entry without the model, so it still makes no AI call and spends no allowance.
+- A Cayenne restore keeps an exported `servings_source`; for an archive that predates it, it derives one without the model, so it still makes no AI call.
 - Singular item nouns are recognised at a count of one (cookie, brownie, blondie).
 - The Paprika contract archive fixture carries `servings_source` (regenerated).
 
 ### 🔧 Operational
 - Run the backfill in this order. Nothing is written until the third step.
   1. Dry run: `python scripts/backfill_servings.py --all-users --review ../backfill-records/servings-review-<date>.csv`
-  2. Read the CSV and review the `check` rows (those that move more than 25%).
+  2. The dry run still calls Gemini for rows the rule cannot place, so it needs `GOOGLE_API_KEY` (with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`). Rows that are `stale` (`derived_rev < body_rev`) are skipped and left to the regen worker, so they are absent from the review CSV. Read the CSV and review the `check` rows (those that move more than 25%).
   3. For real: `python scripts/backfill_servings.py --all-users --live --record ../backfill-records/servings-before-<date>.csv`
-- Without `--force`, a re-run skips rows that already have a source; a `stated` row is never touched, `--force` or not. `--restore <record> --live` undoes a run from its record.
+- Without `--force`, a re-run skips rows that already have a source; a `stated` row is never touched, `--force` or not. To undo a run: `python scripts/backfill_servings.py --all-users --restore ../backfill-records/servings-before-<date>.csv --live`.
 
 ---
 
