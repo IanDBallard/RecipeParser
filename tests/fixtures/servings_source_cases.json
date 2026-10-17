@@ -1,0 +1,196 @@
+{
+  "cases": [
+    {
+      "servings": "Serves 6",
+      "directions": [],
+      "source": "stated",
+      "base": 6
+    },
+    {
+      "servings": "4 servings",
+      "directions": [],
+      "source": "stated",
+      "base": 4
+    },
+    {
+      "servings": "6-8 as a starter",
+      "directions": [],
+      "source": "stated",
+      "base": 6
+    },
+    {
+      "servings": "about 4",
+      "directions": [],
+      "source": "stated",
+      "base": 4
+    },
+    {
+      "servings": "8",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "Makes 8",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "4 generous portions",
+      "directions": [],
+      "source": "stated",
+      "base": 4
+    },
+    {
+      "servings": "Makes 24 cookies",
+      "directions": [],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": "makes 12 cookies",
+      "directions": [],
+      "source": "counted",
+      "base": 12
+    },
+    {
+      "servings": "Yields 16 bars",
+      "directions": [],
+      "source": "counted",
+      "base": 16
+    },
+    {
+      "servings": "24 small pancakes",
+      "directions": [],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": "6 mini pies",
+      "directions": [],
+      "source": "counted",
+      "base": 6
+    },
+    {
+      "servings": "Serves 12, one 9-inch pan",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "serves 8 (one 20 cm cake)",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "Makes 1 loaf",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2 loaves",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "One 8-inch round layer cake",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Yields one 9-inch-square pan of brownies",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes 4 cups",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "3 jars",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 cake",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "one 9-inch-square pan",
+      "directions": [
+        "Cut into 16 squares."
+      ],
+      "source": "counted",
+      "base": 16
+    },
+    {
+      "servings": "a crowd",
+      "directions": [
+        "Divide the dough into 12 balls."
+      ],
+      "source": "counted",
+      "base": 12
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Makes 24 muffins."
+      ],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Cut into 1-inch cubes."
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Cut into 2 cm pieces."
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Makes 3 cups of sauce."
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": "a crowd",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": "",
+      "directions": [],
+      "source": "none",
+      "base": null
+    }
+  ]
+}
