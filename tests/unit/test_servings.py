@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from recipeparser.core.servings import BAKE_NOUNS, ITEM_NOUNS, classify_servings
+from recipeparser.core.servings import BAKE_NOUNS, CONTAINER_NOUNS, ITEM_NOUNS, classify_servings
 
 _CASES = json.loads(
     (Path(__file__).parent.parent / "fixtures" / "servings_source_cases.json").read_text("utf-8")
@@ -41,6 +41,25 @@ def test_item_and_bake_nouns_are_disjoint():
     assert not set(ITEM_NOUNS) & set(BAKE_NOUNS)
 
 
+def test_container_nouns_are_neither_item_nor_bake_nouns():
+    # D52: a container or volume keeps its own count; it is no longer a bake noun.
+    assert not set(CONTAINER_NOUNS) & (set(BAKE_NOUNS) | set(ITEM_NOUNS))
+
+
+@pytest.mark.parametrize(
+    "text, noun",
+    [("3-4 jars", "jars"), ("a jar", "jar"), ("3 × 1½ lb jars", "jars"), ("750 ml", "ml"),
+     ("Makes about 1 litre", "litre"), ("1 bottle", "bottle")],
+)
+def test_container_yield_names_its_noun(text, noun):
+    got = classify_servings(text, [])
+    assert (got.source, got.noun) == ("counted", noun)
+
+
+def test_non_container_yield_has_no_noun():
+    assert classify_servings("Makes 24 cookies", []).noun is None
+
+
 # --- Composing the yield, the tins and the model (Task 3) ---------------------
 
 from recipeparser.core.durations import Span  # noqa: E402
@@ -61,6 +80,11 @@ def test_compose_stated_ignores_tins_and_model():
 
 def test_compose_counted_from_the_note():
     assert servings_for_recipe("Makes 24 cookies", [], _TIN, None, 12) == Servings(24, "counted")
+
+
+def test_compose_container_never_reaches_tins_or_model():
+    # D52: "3-4 jars" keeps its own count; a 40-serving model estimate is never used.
+    assert servings_for_recipe("3-4 jars", [], _TIN, "butter-cake", 40) == Servings(3, "counted")
 
 
 def test_compose_bake_takes_tin():

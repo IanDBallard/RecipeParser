@@ -54,6 +54,16 @@ def test_counted_from_note_sets_without_the_model():
     assert (r.status, r.source, r.new_base, r.old_base, r.used_model) == ("set", "counted", 24, 1, False)
 
 
+def test_container_yield_sets_counted_without_the_model():
+    # D52: the 9.17.0 dry run sent jars to the model ("3-4 jars" -> 40); now counted 3.
+    r = bs.plan_row(
+        row(servings_min=3, servings_max=4, servings_note="jars", base_servings=3,
+            pans=[TIN], bake_type="butter-cake"),
+        no_ask,
+    )
+    assert (r.status, r.source, r.new_base, r.used_model) == ("set", "counted", 3, False)
+
+
 def test_bake_with_tin_sets_tin():
     r = bs.plan_row(row(pans=[TIN], bake_type="butter-cake"), no_ask)
     assert (r.status, r.source, r.new_base) == ("set", "tin", 8)

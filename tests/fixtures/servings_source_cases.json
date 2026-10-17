@@ -111,14 +111,14 @@
     {
       "servings": "Makes 4 cups",
       "directions": [],
-      "source": "bake",
-      "base": null
+      "source": "counted",
+      "base": 4
     },
     {
       "servings": "3 jars",
       "directions": [],
-      "source": "bake",
-      "base": null
+      "source": "counted",
+      "base": 3
     },
     {
       "servings": "1 cake",
@@ -267,8 +267,8 @@
     {
       "servings": "4 cups",
       "directions": [],
-      "source": "bake",
-      "base": null
+      "source": "counted",
+      "base": 4
     },
     {
       "servings": "2 (9-inch) loaves",
@@ -661,6 +661,162 @@
       "directions": [],
       "source": "bake",
       "base": null
+    },
+    {
+      "servings": "1 cup",
+      "directions": [],
+      "source": "counted",
+      "base": 1
+    },
+    {
+      "servings": "2 cups",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "3-4 jars",
+      "directions": [],
+      "source": "counted",
+      "base": 3
+    },
+    {
+      "servings": "3 × 1½ lb jars",
+      "directions": [],
+      "source": "counted",
+      "base": 3
+    },
+    {
+      "servings": "3 × 1 1/2 lb jars",
+      "directions": [],
+      "source": "counted",
+      "base": 3
+    },
+    {
+      "servings": "2 × 500 ml jars",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "2 (500 ml) jars",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "Makes about 1 litre",
+      "directions": [],
+      "source": "counted",
+      "base": 1
+    },
+    {
+      "servings": "makes 4 cups soup",
+      "directions": [],
+      "source": "counted",
+      "base": 4
+    },
+    {
+      "servings": "4 cups soup",
+      "directions": [],
+      "source": "counted",
+      "base": 4
+    },
+    {
+      "servings": "a jar",
+      "directions": [],
+      "source": "counted",
+      "base": 1
+    },
+    {
+      "servings": "Makes 6 small pots",
+      "directions": [],
+      "source": "counted",
+      "base": 6
+    },
+    {
+      "servings": "6 small pots",
+      "directions": [],
+      "source": "counted",
+      "base": 6
+    },
+    {
+      "servings": "Serves 4 (makes 2 cups)",
+      "directions": [],
+      "source": "stated",
+      "base": 4
+    },
+    {
+      "servings": "4 ( 2 cups)",
+      "directions": [],
+      "source": "stated",
+      "base": 4
+    },
+    {
+      "servings": "750 ml",
+      "directions": [],
+      "source": "counted",
+      "base": 750
+    },
+    {
+      "servings": "750ml",
+      "directions": [],
+      "source": "counted",
+      "base": 750
+    },
+    {
+      "servings": "1 bottle",
+      "directions": [],
+      "source": "counted",
+      "base": 1
+    },
+    {
+      "servings": "about 2 cups",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "2 about cups",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "1.5 litres",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "2 litres",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "1 x 2 litre dish",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2.5 litres",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "Makes about 2.5 litres",
+      "directions": [],
+      "source": "counted",
+      "base": 2
+    },
+    {
+      "servings": "a 500 ml jar",
+      "directions": [],
+      "source": "counted",
+      "base": 1
     }
   ]
 }

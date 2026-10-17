@@ -4,7 +4,7 @@ and its servings_source.
 
 Pure and deterministic: no I/O, no model call (the model's estimate is passed in). The shared fixture
 ``tests/fixtures/servings_source_cases.json`` is the contract; the Cayenne
-client runs a TypeScript twin against a verbatim copy of it (D44, D47, D50).
+client runs a TypeScript twin against a verbatim copy of it (D44, D47, D50, D52).
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal, Optional, Sequence
 
-from recipeparser.core.durations import Span, _normalise, parse_servings
+from recipeparser.core.durations import Span, _normalise, _number, parse_servings
 from recipeparser.core.tin_servings import estimate_from_tins
 from recipeparser.models import RecipePan, ServingsSource
 
@@ -27,13 +27,19 @@ ITEM_NOUNS = (
     "sausage rolls",
 )
 
-# "volumes and containers" (builder-check item 8) fall to the model as well.
 BAKE_NOUNS = (
     "cake", "cakes", "loaf", "loaves", "pan", "pans", "tin", "tins", "pie",
     "tart", "pizza", "pizzas", "cheesecake", "bundt", "ring", "sheet", "tray",
-    "traybake", "dish", "batch", "quart", "quarts", "cup", "cups", "litre",
-    "litres", "liter", "liters", "jar", "jars", "pint", "pints", "swiss roll",
-    "swiss rolls",
+    "traybake", "dish", "batch", "swiss roll", "swiss rolls",
+)
+
+# Containers and volumes (D52): a yield in one keeps its own count and unit and never reaches
+# the tins or the model -- "3-4 jars" steps in jars, "750 ml" in millilitres.
+CONTAINER_NOUNS = (
+    "jar", "jars", "bottle", "bottles", "pot", "pots", "tub", "tubs", "cup", "cups",
+    "pint", "pints", "quart", "quarts", "gallon", "gallons", "litre", "litres", "liter",
+    "liters", "l", "ml", "millilitre", "millilitres", "milliliter", "milliliters",
+    "fl oz", "fl. oz", "fluid ounce", "fluid ounces",
 )
 
 # What a method may cut or divide a bake into: the item nouns but "pieces" (butter and chicken
@@ -93,9 +99,20 @@ _SEPARATE_RE = re.compile(r"^(?:[(,;]|(?:one|a|an)\s)")
 # which number serves is lost, so the yield is the bake (the tins or the model place it).
 _BARE_NUMBER_RE = re.compile(r"(?:^|[(,;])\s*\d+(?:\s*(?:-|to)\s*\d+)?\s*(?=\)|[,;]|$)|^\d+\s")
 # ...but not a parenthesised size of the bake the number counts: "2 (9-inch) loaves".
-_PAREN_SIZE_RE = re.compile(rf"^\([^)]*\)\s*(?:{_alternation(BAKE_NOUNS)})\b")
+_PAREN_SIZE_RE = re.compile(rf"^\([^)]*\)\s*(?:{_alternation(BAKE_NOUNS + CONTAINER_NOUNS)})\b")
 _LEADING_APPROX_RE = re.compile(r"^(?:(?:about|approx\.?|approximately|roughly|around)\s+)+")
 _DOZEN_RE = re.compile(r"^dozen\b\s*")
+
+# A container or volume noun (D52), also straight after a number: "750ml", "1l".
+_CONTAINER_RE = re.compile(rf"(?<![a-z])({_alternation(CONTAINER_NOUNS)})(?![a-z])")
+_CNUM = r"(\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?)"
+_LEAD_WORDS = r"(?:(?:makes|yields?|about|approx\.?|approximately|roughly|around|up to)\s*:?\s*)*"
+# The yield's leading count: "3 x 1 1/2 lb jars" is 3 jars, never the size inside.
+_LEADING_COUNT_RE = re.compile(rf"^{_LEAD_WORDS}{_CNUM}")
+_LEADING_ONE_RE = re.compile(rf"^{_LEAD_WORDS}(?:a|an|one)\b")
+_ATTACHED_COUNT_RE = re.compile(rf"{_CNUM}\s*{_ADJ}(?:{_alternation(CONTAINER_NOUNS)})(?![a-z])")
+_ATTACHED_ONE_RE = re.compile(rf"\b(?:a|an|one)\s+{_ADJ}(?:{_alternation(CONTAINER_NOUNS)})(?![a-z])")
+_HEAD_RE = re.compile(r"^[^(,;]*")
 
 _METHOD_COUNT_RES = (
     re.compile(
@@ -116,6 +133,7 @@ class Classified:
     source: Literal["stated", "counted", "bake", "none"]
     base: Optional[int]
     span: Span
+    noun: Optional[str] = None  # the container or volume a counted yield steps in (D52)
 
 
 def _first(matches: Sequence[Optional["re.Match[str]"]]) -> Optional["re.Match[str]"]:
@@ -138,6 +156,42 @@ def _counted_number(text: str) -> Optional[int]:
     return None
 
 
+def _whole(x: float) -> int:
+    """Python's round() (half to even), as parse_servings rounds, so "2.5 litres" is 2 either way."""
+    return int(round(x))
+
+
+def _container(text: str, span: Span) -> Optional[Classified]:
+    """
+    A yield in a container or volume keeps its own count and unit (D52); None when the yield
+    names no container, or names a bake as well ("1 x 2 litre dish": the litres size the dish,
+    and the tins or the model place it). The count is a parsed span's number (so the stored form
+    classifies the same), else the yield's leading number ("makes about 1 litre" is 1), else
+    "a jar" is 1, else the number on the noun ("enough for 2 cups" is 2). "3-4 jars" is 3 and
+    "3 x 1 1/2 lb jars" is 3: the leading count, never the size inside.
+    """
+    if _BAKE_RE.search(text):
+        return None
+    head = _HEAD_RE.match(text).group(0)  # type: ignore[union-attr]
+    nouns = _CONTAINER_RE.findall(head) or _CONTAINER_RE.findall(text)
+    if not nouns:
+        return None
+    n: Optional[int] = None
+    if span.min is not None:
+        n = span.min
+    elif (lead := _LEADING_COUNT_RE.match(text)) is not None:
+        n = _whole(_number(lead.group(1)))
+    elif _LEADING_ONE_RE.match(text):
+        n = 1
+    elif (attached := _ATTACHED_COUNT_RE.search(text)) is not None:
+        n = _whole(_number(attached.group(1)))
+    elif _ATTACHED_ONE_RE.search(text):
+        n = 1
+    if n is None or n < 1:  # below one is no number (M3)
+        return None
+    return Classified("counted", n, span, nouns[-1])
+
+
 def classify_servings(
     servings_text: Optional[str], directions: Sequence[str]
 ) -> Classified:
@@ -155,6 +209,9 @@ def classify_servings(
             return Classified("bake", None, span)
         if not note or (_SEPARATE_RE.match(note) and not _PAREN_SIZE_RE.match(note)):
             return Classified("stated", n, span)
+        container = _container(text, Span(n, span.max, span.note))
+        if container is not None:
+            return container
         counted = _counted_number(text)
         if counted is not None:
             return Classified("counted", counted, span)
@@ -163,6 +220,9 @@ def classify_servings(
         if _ITEM_RE.search(note) or (n == 1 and _ITEM_SINGULAR_RE.search(note)):
             return Classified("counted", n, span)
         return Classified("stated", n, span)
+    container = _container(text, span)
+    if container is not None:
+        return container
     counted = _counted_number(text)
     if counted is not None:
         return Classified("counted", counted, span)
