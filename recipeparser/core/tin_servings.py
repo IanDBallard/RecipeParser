@@ -47,6 +47,8 @@ _LOAF_CM = 2.2
 _RING_ML = 240.0
 _DEEP_MM = 75.0
 _CAKE_GROUP = ("round-cake", "square", "traybake", "sheet")
+# Only these stack as layers; a traybake or sheet is one layer however many tins (M2).
+_LAYER_FAMILIES = ("round-cake", "square")
 
 
 def _area_cm2(dims: Dict[str, Any]) -> Optional[float]:
@@ -60,6 +62,16 @@ def _area_cm2(dims: Dict[str, Any]) -> Optional[float]:
 
 def _has_geometry(dims: Any) -> bool:
     return bool(dims.d or (dims.l and dims.w))
+
+
+def _positive(x: Optional[float]) -> bool:
+    return x is not None and math.isfinite(x) and x > 0
+
+
+def _sound(p: RecipePan) -> bool:
+    """A tin the table can use: counted at least once, every stated size and capacity a real positive number."""
+    dims = (p.dims_mm.d, p.dims_mm.w, p.dims_mm.l, p.dims_mm.depth)
+    return p.count >= 1 and all(v is None or _positive(v) for v in (*dims, p.capacity_ml))
 
 
 def _resolve(p: RecipePan) -> Tuple[Optional[str], Dict[str, Any], Optional[float]]:
@@ -77,8 +89,8 @@ def _resolve(p: RecipePan) -> Tuple[Optional[str], Dict[str, Any], Optional[floa
     return p.family or (hint["family"] if hint else None), dims, capacity
 
 
-def _score(x: float) -> int:
-    return max(1, round(x))
+def _score(x: float) -> Optional[int]:
+    return max(1, round(x)) if math.isfinite(x) and x > 0 else None
 
 
 def estimate_from_tins(pans: Sequence[RecipePan], bake_type: Optional[str]) -> Optional[int]:
@@ -86,7 +98,7 @@ def estimate_from_tins(pans: Sequence[RecipePan], bake_type: Optional[str]) -> O
         return None
     tins: List[Tuple[RecipePan, Optional[str], Dict[str, Any], Optional[float]]] = []
     for p in pans:
-        if p.removed:
+        if p.removed or not _sound(p):
             continue
         family, dims, capacity = _resolve(p)
         if dims or capacity is not None:
@@ -103,10 +115,10 @@ def estimate_from_tins(pans: Sequence[RecipePan], bake_type: Optional[str]) -> O
 
     if kind == "loaf":
         total = sum(p.count * ((dims.get("l") or dims.get("d") or 0) / 10) / _LOAF_CM for p, _, dims, _ in tins)
-        return _score(total) if total > 0 else None
+        return _score(total)
     if kind == "ring":
         total = sum(p.count * cap / _RING_ML for p, _, _, cap in tins if cap)
-        return _score(total) if total > 0 else None
+        return _score(total)
 
     areas = [(p.count, a, dims) for p, _, dims, _ in tins if (a := _area_cm2(dims)) is not None]
     if not areas:
@@ -121,6 +133,7 @@ def estimate_from_tins(pans: Sequence[RecipePan], bake_type: Optional[str]) -> O
     sizes = {round(a, 3) for _, a, _ in areas}
     count = sum(n for n, _, _ in areas)
     depth = areas[0][2].get("depth") or 0
-    if len(sizes) == 1 and (count >= 2 or depth >= _DEEP_MM):
+    layered = families <= set(_LAYER_FAMILIES)
+    if layered and len(sizes) == 1 and (count >= 2 or depth >= _DEEP_MM):
         return _score(areas[0][1] / _LAYER_CAKE_CM2)
     return _score(total_area / _SINGLE_LAYER_CM2)

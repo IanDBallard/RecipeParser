@@ -105,3 +105,40 @@ def test_no_geometry_is_none():
 
 def test_at_least_one():
     assert estimate_from_tins([_pan(d=50, family="tart")], "pie-fruit") == 1
+
+
+# --- whole-branch review: layer rule and bad tins (M1, M2) ---------------------
+
+
+def test_two_13x9_traybakes_take_the_single_layer_footprint():
+    # A traybake or sheet is never a layer cake: two 13x9 tins are 2 x 759 cm2 / 55 = 28.
+    assert estimate_from_tins([_pan(2, l=330, w=230, family="traybake")], "butter-cake") == 28
+
+
+def test_a_deep_sheet_is_not_a_layer_cake():
+    assert estimate_from_tins([_pan(l=330, w=230, depth=80, family="sheet")], "butter-cake") == 14
+
+
+def test_two_square_tins_are_a_layer_cake():
+    assert estimate_from_tins([_pan(2, l=200, w=200, family="square")], "butter-cake") == 11
+
+
+def test_a_tin_counted_below_one_is_skipped():
+    assert estimate_from_tins([_pan(0, d=200, family="round-cake")], "butter-cake") is None
+    assert estimate_from_tins([_pan(-2, d=200, family="round-cake")], "butter-cake") is None
+    good = _pan(1, d=200, depth=40, family="round-cake")
+    assert estimate_from_tins([_pan(0, d=900, family="round-cake"), good], "butter-cake") == 6
+
+
+def test_non_finite_or_non_positive_dims_are_skipped():
+    nan, inf = float("nan"), float("inf")
+    for bad in (_pan(d=nan, family="round-cake"), _pan(d=inf, family="round-cake"),
+                _pan(d=-200, family="round-cake"), _pan(l=330, w=0, family="traybake"),
+                _pan(l=inf, w=230, family="traybake")):
+        assert estimate_from_tins([bad], "butter-cake") is None, bad
+    assert estimate_from_tins([_pan(l=nan, w=100, family="loaf")], None) is None
+
+
+def test_non_finite_or_non_positive_capacity_is_skipped():
+    for cap in (float("nan"), float("inf"), 0.0, -1000.0):
+        assert estimate_from_tins([_pan(capacity_ml=cap, family="ring")], None) is None, cap
