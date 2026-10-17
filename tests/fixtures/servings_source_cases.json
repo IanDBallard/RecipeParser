@@ -209,6 +209,320 @@
       "directions": [],
       "source": "counted",
       "base": 1
+    },
+    {
+      "servings": "Serves 10 (Makes one 9-inch loaf)",
+      "directions": [],
+      "source": "stated",
+      "base": 10
+    },
+    {
+      "servings": "12 one 9-inch pan",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "10 (one 9-inch loaf)",
+      "directions": [],
+      "source": "stated",
+      "base": 10
+    },
+    {
+      "servings": "10 ( one 9-inch loaf)",
+      "directions": [],
+      "source": "stated",
+      "base": 10
+    },
+    {
+      "servings": "8 (one 20 cm cake)",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "Serves 12, a 9x13 pan",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "12 a 9x13 pan",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "1 loaf",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 9-inch cake",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "4 cups",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2 (9-inch) loaves",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 (9-inch) pie",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2 one-pound loaves",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes 1 loaf (serves 10)",
+      "directions": [],
+      "source": "stated",
+      "base": 10
+    },
+    {
+      "servings": "1 loaf ( 10)",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 cake, serves 8-10",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "1 cake, 8-10",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes 1 pie, 8 servings",
+      "directions": [],
+      "source": "stated",
+      "base": 8
+    },
+    {
+      "servings": "1 pie, 8",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 9-inch cake (12 servings)",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "1 9-inch cake (12 )",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes one 9-inch cake; serves 12",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "One 23cm cake, serves 12",
+      "directions": [],
+      "source": "stated",
+      "base": 12
+    },
+    {
+      "servings": "1 9-inch square cake",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes 1 Swiss roll",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 swiss roll",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "Makes 1 square pan",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 square pan",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1 bar cake",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "2 loaves (24 slices)",
+      "directions": [],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": "1 x 900g loaf tin, about 10 slices",
+      "directions": [],
+      "source": "counted",
+      "base": 10
+    },
+    {
+      "servings": "Makes one 9x13 pan (24 bars)",
+      "directions": [],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": "One 9-inch cake, 12 slices",
+      "directions": [],
+      "source": "counted",
+      "base": 12
+    },
+    {
+      "servings": "Makes 16 wedges",
+      "directions": [],
+      "source": "counted",
+      "base": 16
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Cut the cold butter into 8 pieces."
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Divide the dough into 2 loaves."
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Divide the dough into 2 equal pieces"
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Cut the chicken into 8 pieces."
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Cut into 3 x 2 inch bars."
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Makes 2 loaves."
+      ],
+      "source": "none",
+      "base": null
+    },
+    {
+      "servings": null,
+      "directions": [
+        "Cut into 16 squares."
+      ],
+      "source": "counted",
+      "base": 16
+    },
+    {
+      "servings": "Makes 2 dozen cookies",
+      "directions": [],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": "2 dozen cookies",
+      "directions": [],
+      "source": "counted",
+      "base": 24
+    },
+    {
+      "servings": "about 3 dozen",
+      "directions": [],
+      "source": "stated",
+      "base": 36
+    },
+    {
+      "servings": "3 about dozen",
+      "directions": [],
+      "source": "stated",
+      "base": 36
+    },
+    {
+      "servings": "1 dozen muffins",
+      "directions": [],
+      "source": "counted",
+      "base": 12
+    },
+    {
+      "servings": "0 servings",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "0",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "1/2 cake",
+      "directions": [],
+      "source": "bake",
+      "base": null
+    },
+    {
+      "servings": "0 cake",
+      "directions": [],
+      "source": "bake",
+      "base": null
     }
   ]
 }

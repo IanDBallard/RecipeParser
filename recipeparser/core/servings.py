@@ -21,7 +21,7 @@ SERVING_WORDS_RE = re.compile(r"\b(?:serves|servings?|people|persons?|portions?)
 ITEM_NOUNS = (
     "cookies", "biscuits", "muffins", "cupcakes", "scones", "buns", "rolls",
     "bagels", "pretzels", "crackers", "bars", "squares", "brownies",
-    "blondies", "slices", "pieces", "tarts", "tartlets", "pies", "pancakes",
+    "blondies", "slices", "wedges", "pieces", "tarts", "tartlets", "pies", "pancakes",
     "crêpes", "crepes", "waffles", "doughnuts", "donuts", "macarons",
     "meringues", "truffles", "balls", "dumplings", "pasties", "empanadas",
     "sausage rolls",
@@ -32,20 +32,13 @@ BAKE_NOUNS = (
     "cake", "cakes", "loaf", "loaves", "pan", "pans", "tin", "tins", "pie",
     "tart", "pizza", "pizzas", "cheesecake", "bundt", "ring", "sheet", "tray",
     "traybake", "dish", "batch", "quart", "quarts", "cup", "cups", "litre",
-    "litres", "liter", "liters", "jar", "jars", "pint", "pints",
+    "litres", "liter", "liters", "jar", "jars", "pint", "pints", "swiss roll",
 )
 
-_METHOD_COUNT_RES = (
-    re.compile(
-        r"\b(?:cut|slice|divide|portion)\b[^.;]{0,40}?\binto\b\s+(\d{1,3})\b"
-        r"(?!\s*[-–]?\s*(?:inch|in\b|cm|mm|centimet|millimet|\"))",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\b(?:makes|yields)\s+(\d{1,3})\b"
-        r"(?!\s*(?:cup|cups|quart|litre|liter|ml|g\b|kg|oz|lb))",
-        re.IGNORECASE,
-    ),
+# What a method may cut or divide a bake into: the item nouns but "pieces" (butter and chicken
+# are cut into pieces too), and the cuts that only a method names.
+PORTION_NOUNS = tuple(n for n in ITEM_NOUNS if n != "pieces") + (
+    "triangles", "fingers", "servings", "portions",
 )
 
 
@@ -72,6 +65,39 @@ _ITEM_SINGULAR_RE = re.compile(
 )
 _BAKE_RE = re.compile(rf"\b(?:{_alternation(BAKE_NOUNS)})\b")
 
+# One optional word between a number and its noun ("4 generous portions", "24 small pancakes"),
+# never a dimension ("3 x 2 inch bars", "2 cm pieces").
+_ADJ = r"(?:(?!(?:x|by|inch|inches|in|cm|mm)\b)[a-z]+\s+)?"
+_RANGE = r"(?:\s*-\s*\d+|\s+to\s+\d+)?"
+_APPROX = r"(?:(?:about|approx\.?|approximately|roughly|around|up to)\s+)?"
+
+# The number adjacent to a serving word (C2a): "serves 10", "servings: 4", "8-10 servings".
+_SERVES_RES = (
+    re.compile(rf"\bserves\b\s*:?\s*{_APPROX}(\d+)"),
+    re.compile(rf"\b(?:servings?|portions?)\b\s*:?\s*{_APPROX}(\d+)"),
+    re.compile(rf"\b(\d+){_RANGE}\s+{_ADJ}(?:servings?|people|persons?|portions?)\b"),
+)
+# The number attached to an item noun, anywhere in the yield (C2c): "2 loaves (24 slices)".
+_COUNT_RE = re.compile(rf"\b(\d+){_RANGE}(\s+dozen)?\s+{_ADJ}(?:{_alternation(ITEM_NOUNS)})\b")
+# A note that is a separate phrase naming the bake (C1): "12 one 9-inch pan", "8 (one 20 cm cake)".
+_SEPARATE_RE = re.compile(r"^(?:[(,]|(?:one|a|an)\s)")
+# ...but not a parenthesised size of the bake the number counts: "2 (9-inch) loaves".
+_PAREN_SIZE_RE = re.compile(rf"^\([^)]*\)\s*(?:{_alternation(BAKE_NOUNS)})\b")
+_LEADING_APPROX_RE = re.compile(r"^(?:(?:about|approx\.?|approximately|roughly|around)\s+)+")
+_DOZEN_RE = re.compile(r"^dozen\b\s*")
+
+_METHOD_COUNT_RES = (
+    re.compile(
+        rf"\b(?:cut|slice|divide|portion)\b[^.;]{{0,40}}?\binto\b\s+(\d{{1,3}})(\s+dozen)?\s+{_ADJ}"
+        rf"(?:{_alternation(PORTION_NOUNS)})\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"\b(?:makes|yields)\s+{_APPROX}(\d{{1,3}})(\s+dozen)?\s+{_ADJ}(?:{_alternation(PORTION_NOUNS)})\b",
+        re.IGNORECASE,
+    ),
+)
+
 
 @dataclass(frozen=True)
 class Classified:
@@ -80,27 +106,54 @@ class Classified:
     span: Span
 
 
+def _first(matches: Sequence[Optional["re.Match[str]"]]) -> Optional["re.Match[str]"]:
+    found = [m for m in matches if m is not None]
+    return min(found, key=lambda m: m.start()) if found else None
+
+
+def _stated_number(text: str) -> Optional[int]:
+    """The first number of one or more adjacent to a serving word, or None."""
+    m = _first([next((m for m in r.finditer(text) if int(m.group(1)) >= 1), None) for r in _SERVES_RES])
+    return int(m.group(1)) if m else None
+
+
+def _counted_number(text: str) -> Optional[int]:
+    """The first count of one or more attached to an item noun ("2 dozen cookies" is 24), or None."""
+    for m in _COUNT_RE.finditer(text):
+        n = int(m.group(1)) * (12 if m.group(2) else 1)
+        if n >= 1:
+            return n
+    return None
+
+
 def classify_servings(
     servings_text: Optional[str], directions: Sequence[str]
 ) -> Classified:
     span = parse_servings(servings_text)
     text = _normalise(servings_text or "")
-    if span.min is not None:
-        if SERVING_WORDS_RE.search(text):
-            return Classified("stated", span.min, span)
-        note = span.note or ""
-        if _ITEM_RE.search(note) or (
-            span.min == 1 and _ITEM_SINGULAR_RE.search(note)
-        ):
-            return Classified("counted", span.min, span)
-        if _BAKE_RE.search(note):
+    stated = _stated_number(text)
+    if stated is not None:
+        return Classified("stated", stated, span)
+    counted = _counted_number(text)
+    if counted is not None:
+        return Classified("counted", counted, span)
+    if span.min is not None and span.min >= 1:  # below one is no number (M3)
+        n = span.min
+        note = _LEADING_APPROX_RE.sub("", span.note or "")
+        if _DOZEN_RE.match(note):  # "about 3 dozen" is 36
+            n, note = n * 12, _DOZEN_RE.sub("", note)
+        if not note or (_SEPARATE_RE.match(note) and not _PAREN_SIZE_RE.match(note)):
+            return Classified("stated", n, span)
+        if _BAKE_RE.search(note):  # before the singular item noun: "1 swiss roll", "1 bar cake"
             return Classified("bake", None, span)
-        return Classified("stated", span.min, span)
+        if _ITEM_RE.search(note) or (n == 1 and _ITEM_SINGULAR_RE.search(note)):
+            return Classified("counted", n, span)
+        return Classified("stated", n, span)
     for step in directions:
         for pattern in _METHOD_COUNT_RES:
             m = pattern.search(step)
             if m and int(m.group(1)) >= 2:
-                return Classified("counted", int(m.group(1)), span)
+                return Classified("counted", int(m.group(1)) * (12 if m.group(2) else 1), span)
     if text:
         return Classified("bake", None, span)
     return Classified("none", None, span)

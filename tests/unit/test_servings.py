@@ -19,6 +19,20 @@ def test_classify_fixture(case):
     assert (got.source, got.base) == (case["source"], case["base"])
 
 
+@pytest.mark.parametrize(
+    "case", _CASES, ids=lambda c: f"{c['servings']!r}|{'/'.join(c['directions'])}"
+)
+def test_stored_form_never_reads_as_a_different_number(case):
+    # The database keeps parse_servings' span, not the text: rebuilt, it must classify the same,
+    # or fall to the tins and the model (bake/none) -- never to a different stated or counted number.
+    from recipeparser.core.durations import parse_servings
+    from recipeparser.core.servings import text_from_span
+
+    raw = classify_servings(case["servings"], case["directions"])
+    stored = classify_servings(text_from_span(parse_servings(case["servings"])), case["directions"])
+    assert (stored.source, stored.base) == (raw.source, raw.base) or stored.source in ("bake", "none")
+
+
 def test_classify_keeps_span_note():
     assert classify_servings("Makes 24 cookies", []).span.note == "cookies"
 
