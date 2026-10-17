@@ -97,6 +97,11 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
     if row.get("servings_source") == "stated":
         result.status = "stated"
         return result
+    if not force and row.get("servings_source") is not None:
+        # Already sourced (counted, tin or estimated): skipped, so a re-run costs nothing.
+        result.status = "unchanged"
+        result.new_base, result.source = old_base, row.get("servings_source")
+        return result
     try:
         pans = [RecipePan.model_validate(p) for p in (row.get("pans") or [])]
         result.yield_text = text_from_span(
