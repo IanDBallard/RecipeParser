@@ -27,7 +27,7 @@ Servings at import, with their provenance (Cayenne spec `docs/superpowers/specs/
 ### 🔧 Operational
 - Run the backfill in this order. Nothing is written until the third step.
   1. Dry run: `python scripts/backfill_servings.py --all-users --review ../backfill-records/servings-review-<date>.csv`
-  2. The dry run still calls Gemini for rows the rule cannot place, so it needs `GOOGLE_API_KEY` (with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`). Rows that are `stale` (`derived_rev < body_rev`) are skipped and left to the regen worker, so they are absent from the review CSV. Read the CSV and review the `check` rows (those that move more than 25%).
+  2. The dry run still calls Gemini for rows the rule cannot place, so it needs `GOOGLE_API_KEY` (with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`). Rows that are `stale` (`derived_rev < body_rev`) are skipped, not written, and appear in the review CSV with status `stale` and no moved_pct, for the regen worker to re-derive. Read the CSV and review the `check` rows (those that move more than 25%).
   3. For real: `python scripts/backfill_servings.py --all-users --live --record ../backfill-records/servings-before-<date>.csv`
 - Without `--force`, a re-run skips rows that already have a source; a `stated` row is never touched, `--force` or not. To undo a run: `python scripts/backfill_servings.py --all-users --restore ../backfill-records/servings-before-<date>.csv --live`.
 
