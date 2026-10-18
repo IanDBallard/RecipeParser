@@ -27,9 +27,17 @@ jobs:
     # VM to serialise across both. A pull request only builds, so it gets a
     # group of its own per branch rather than queueing behind master's deploys
     # (Fix Roadmap F-059, 2026-09-29).
+    #
+    # The group serialises runs but does not order them, so a run whose commit
+    # is no longer master's head skips its deploy (see "Deploy"; Cayenne's
+    # Fix Roadmap F-410).
     concurrency:
       group: ${{ github.event_name == 'push' && 'recipeparser-deploy' || format('recipeparser-pr-{0}', github.ref) }}
       cancel-in-progress: false
+    # The build takes a few minutes and the deploy seconds. A hung deploy on
+    # 2026-10-17 held Cayenne's job for 23 minutes until it was cancelled by
+    # hand (Cayenne's Fix Roadmap F-412).
+    timeout-minutes: 30
     # packages: write is exercised only on a push (the ghcr login and push
     # steps below); a pull-request run never reaches either.
     permissions:
@@ -91,13 +99,36 @@ jobs:
       # summary, as Cayenne's deploy step does (Fix Roadmap F-139). pipefail
       # makes status the ssh call's, not tee's: a step with no `shell:` runs
       # as `bash -e`, without it.
+      #
+      # --sha is this run's own commit, the one its image is tagged with, so a
+      # run must not deploy once master has moved past it: the concurrency
+      # group serialises runs but does not order them, and on 2026-10-17 two
+      # Cayenne merges 23 seconds apart deployed oldest-last and rolled the
+      # site back (Cayenne's F-410). A run whose commit is no longer master's
+      # head skips with a summary line, and the newer merge's run deploys. A
+      # re-run of the newest commit still deploys. The VM cannot refuse an
+      # older api sha itself, since it has no checkout of this repository
+      # (Cayenne's F-413), so this check is the only guard.
+      #
+      # deploy.sh bounds each docker call and its whole run at ten minutes
+      # (Cayenne's F-412), so the step's limit sits above that and the VM's
+      # own error reaches this log. The keepalives end the call if the VM
+      # stops answering at all.
       - name: Deploy
         if: github.event_name == 'push' && env.CAYENNE_VM_HOST != ''
+        timeout-minutes: 12
         run: |
           set -o pipefail
+          git fetch --quiet origin master
+          tip="$(git rev-parse origin/master)"
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            echo "master has moved on to $tip; that merge's run deploys it, so this run's older $GITHUB_SHA is not deployed."
+            echo "**Deploy skipped:** superseded by \`$tip\`, master's head, which that merge's run deploys. The image for \`$GITHUB_SHA\` was pushed; nothing was deployed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           out="$RUNNER_TEMP/deploy.out"
           status=0
-          tailscale ssh "$CAYENNE_VM_HOST" \
+          tailscale ssh "$CAYENNE_VM_HOST" -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
             "sudo bash -c 'set -a; . /opt/cayenne/site.env; set +a; /opt/cayenne/deploy.sh --service api --sha ${{ github.sha }} --ci'" |
             tee "$out" || status=$?
           if grep -q -e '^auto-deploy is OFF on the VM' "$out"; then
