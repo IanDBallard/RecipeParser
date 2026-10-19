@@ -61,12 +61,13 @@ from recipeparser.config import MAX_UPLOAD_BYTES
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
 from recipeparser.core.clock import utc_timestamp
-from recipeparser.core.fsm import PipelineController
+from recipeparser.core import job_signal
+from recipeparser.core.fsm import PipelineController, PipelineStatus
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
 from recipeparser.core.pipeline import RecipePipeline, chunk_calls_ai, chunk_needs_ai
 from recipeparser.core.taxonomy import descendants_of
-from recipeparser.exceptions import UnreadableInputError
+from recipeparser.exceptions import AIServiceTimeoutError, JobCancelledError, UnreadableInputError
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
@@ -279,7 +280,7 @@ async def _lifespan(_app: FastAPI):
     if liveness_sb is not None:
         from recipeparser.adapters import ingest_liveness as _il  # noqa: PLC0415
         liveness = asyncio.create_task(
-            _il.run_liveness(liveness_sb, lambda: list(_active_jobs), stop)
+            _il.run_liveness(liveness_sb, _liveness_view, stop)
         )
     else:
         logger.warning(
@@ -763,8 +764,9 @@ def _job_error_message(name: Optional[str], exc: BaseException) -> str:
     so the two join as a sentence. Anything else keeps the "<name>: <error>"
     shape. A pasted-text job has no name and reports the error alone.
     """
-    if isinstance(exc, _AiRefusal):
-        return str(exc)  # the gate's own sentence, as the endpoint would have sent it
+    if isinstance(exc, (_AiRefusal, AIServiceTimeoutError)):
+        # A sentence of its own, as the endpoint (or the vision OCR) worded it for the cook.
+        return str(exc)
     if not name:
         return str(exc)
     if isinstance(exc, UnreadableInputError):
@@ -786,7 +788,13 @@ def _finalize_ingestion_job(job_id: str, payload: dict[str, Any]) -> None:
         logger.warning("Job %s: Supabase credentials not set — skipping ingestion_jobs finalize.", job_id)
         return
     try:
-        sb.table("ingestion_jobs").update(payload).eq("id", job_id).execute()
+        # Never over a row already ended as an error by someone else: the liveness tick ends a
+        # hung job's row and cancels the job, and a job that wakes later must not overwrite
+        # that ending with its own. 'cancelled' stays writable: the cancel endpoint writes the
+        # status first and the job adds its counts here (Cayenne F-426).
+        sb.table("ingestion_jobs").update(payload).eq("id", job_id).in_(
+            "status", ["pending", "running", "cancelled"]
+        ).execute()
         logger.info(
             "Job %s: finalized — status=%s, recipes=%s, skipped=%s.",
             job_id, payload.get("status"), payload.get("recipe_count"), payload.get("skipped_count"),
@@ -811,6 +819,7 @@ def _make_stage_callback(job_id: str) -> Callable[[str], None]:
     supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
     def _on_stage_change(stage: str) -> None:
+        job_signal.touch()
         if _live_writes_blocked():
             logger.warning("Test run: skipping the stage update for job %s.", job_id)
             return
@@ -823,11 +832,13 @@ def _make_stage_callback(job_id: str) -> Callable[[str], None]:
         try:
             from supabase import create_client  # type: ignore[import-not-found]
             sb = create_client(supabase_url, supabase_key)
+            # Only while the row is still running: the cancel endpoint writes 'cancelled'
+            # first, and a stage write must not flip it back (Cayenne F-426).
             sb.table("ingestion_jobs").update({
                 "stage": stage,
                 "status": "running",
                 "updated_at": utc_timestamp(),
-            }).eq("id", job_id).execute()
+            }).eq("id", job_id).in_("status", ["pending", "running"]).execute()
             logger.debug("Job %s: stage → %s", job_id, stage)
         except Exception:
             logger.exception(
@@ -850,6 +861,7 @@ def _make_progress_writer(job_id: str) -> Callable[[int], None]:
     whole import over nothing worse than a stale progress bar.
     """
     def _write(pct: int) -> None:
+        job_signal.touch()
         if _live_writes_blocked():
             return
         try:
@@ -939,6 +951,31 @@ def _update_total_chunks(job_id: str, total: int, source_hint: Optional[str] = N
 # The user id is kept so the control endpoints can refuse a job the caller does
 # not own; without it any caller who reached the API could cancel any import.
 _active_jobs: Dict[str, tuple[str, PipelineController]] = {}
+
+# job_id → the job's JobSignal (Cayenne F-426): the cancel the endpoint can reach in every
+# phase of the job, including the read, before the controller has left IDLE, and the
+# activity clock the liveness loop reads to tell a hung job from a slow one.
+_job_signals: Dict[str, job_signal.JobSignal] = {}
+
+
+def _register_job(job_id: str, user_id: str) -> PipelineController:
+    """Put a new ingest job in both registries; ``_run_ingestion_job`` removes it from both."""
+    controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
+    _job_signals[job_id] = job_signal.JobSignal()
+    _active_jobs[job_id] = (user_id, controller)
+    return controller
+
+
+def _liveness_view() -> Dict[str, Optional[job_signal.JobSignal]]:
+    """This process's jobs for the liveness tick: each with its signal, or None when paused.
+
+    A paused job is waiting for its owner, not hung, so it must never count as stalled.
+    """
+    view: Dict[str, Optional[job_signal.JobSignal]] = {}
+    for job_id, (_user, controller) in list(_active_jobs.items()):
+        paused = controller.status in (PipelineStatus.PAUSING, PipelineStatus.PAUSED)
+        view[job_id] = None if paused else _job_signals.get(job_id)
+    return view
 
 
 # ---------------------------------------------------------------------------
@@ -1146,9 +1183,14 @@ async def _run_ingestion_job(
     # RecipePipeline.run() calls it internally (IDLE → RUNNING).
     # Calling it here first would cause an invalid double-transition.
     sink = None
-    with usage.attributed(user_id, "import", job_id, get_client=_get_supabase_service_client):
+    signal = _job_signals.setdefault(job_id, job_signal.JobSignal())
+    with usage.attributed(user_id, "import", job_id, get_client=_get_supabase_service_client), \
+            job_signal.active(signal):
         try:
             client, chunks = await read()
+            # The read can be most of a photo's job (its OCR is the read): stop here if it was
+            # cancelled meanwhile, before any recipe is written.
+            job_signal.checkpoint()
             if gate_after_read:
                 await asyncio.to_thread(_check_ai_after_read, user_id, chunks)
 
@@ -1210,9 +1252,21 @@ async def _run_ingestion_job(
                 _finalize_ingestion_job,
                 job_id,
                 # The controller is back at IDLE by now, so the flag is the only
-                # thing that still knows the user pressed Cancel (spec 5.1).
-                sink.finalize_payload(True, cancelled=controller.cancel_requested),
+                # thing that still knows the user pressed Cancel (spec 5.1). The signal
+                # also knows a cancel that came before the controller left IDLE.
+                sink.finalize_payload(True, cancelled=controller.cancel_requested or signal.cancelled),
             )
+        except JobCancelledError:
+            # Stopped by its owner at a checkpoint (Cayenne F-426): not a failure. The row
+            # already reads 'cancelled' (the endpoint wrote it); this adds the counts, and
+            # the recipes written before the cancel stay.
+            logger.info("%s %s stopped: cancelled by its owner.", log_label, job_id)
+            payload = (
+                sink.finalize_payload(True, cancelled=True)
+                if sink is not None
+                else {"status": "cancelled", "stage": "DONE", "updated_at": utc_timestamp()}
+            )
+            await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         except Exception as exc:
             if isinstance(exc, _AiRefusal):
                 logger.warning("%s %s refused by the AI gate: %s", log_label, job_id, exc)
@@ -1232,6 +1286,7 @@ async def _run_ingestion_job(
             await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:
             _active_jobs.pop(job_id, None)
+            _job_signals.pop(job_id, None)
 
 
 
@@ -1270,8 +1325,7 @@ async def submit_job(
         if slot.replay is not None:
             return AsyncJobResponse(**slot.replay)
         job_id = str(uuid.uuid4())
-        controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
-        _active_jobs[job_id] = (user_id, controller)
+        controller = _register_job(job_id, user_id)
 
         async def _read() -> Tuple[Any, List[Chunk]]:
             client = _get_client()
@@ -1385,8 +1439,7 @@ async def submit_file_job(
                 detail=_too_large_sentence(size),
             )
         job_id = str(uuid.uuid4())
-        controller = PipelineController(on_stage_change=_make_stage_callback(job_id))
-        _active_jobs[job_id] = (user_id, controller)
+        controller = _register_job(job_id, user_id)
 
         async def _read() -> Tuple[Any, List[Chunk]]:
             try:
@@ -1588,20 +1641,37 @@ def resume_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)
 
 @app.post("/jobs/{job_id}/cancel", status_code=200)
 def cancel_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)) -> dict[str, str]:
-    """Cancel the caller's job.
+    """Cancel the caller's job: 200 when it is now cancelled, 404 or 409 when nothing could be.
 
-    Two kinds, two mechanisms. An ingest job runs in this process, so it is
-    cancelled through its in-memory controller, exactly as before. A
-    recategorise job runs in the background worker -- possibly in a different
-    process, and possibly not started yet -- so the only thing both sides can
-    see is the row, and cancelling means writing `status = 'cancelled'` to it.
-    The worker reads that between batches.
+    The row is the one source of truth (Cayenne F-426). Cancelling writes
+    ``status = 'cancelled'`` to it at once, for both kinds:
 
-    The client cannot make that write itself: `ingestion_jobs` is SELECT-only
-    to it (philosophy spec 6.3, amended 2026-09-13), and the value was not even
-    storable until Cayenne's 20260913125453 migration widened the CHECK.
+    - a recategorise job runs in the background worker, possibly in another process and
+      possibly not started yet, which reads the row between batches;
+    - an ingest job runs in this process, so its ``JobSignal`` is set as well and the job
+      stops at its next checkpoint: between stages, between chunks, between Gemini
+      retries and inside a back-off wait. Recipes it already wrote stay; it then adds its
+      counts to the row. Another instance running it learns from the row on its next
+      liveness tick.
+
+    Until 2026-10-18 an ingest cancel only asked the job's in-memory controller, which
+    ignored it while the job was still reading its source (``invalid transition (idle,
+    'cancel')``) — the whole of a photo's OCR — and answered 200 regardless. Now 404 means
+    no such job of the caller's (never 403: someone else's job must not be told apart from
+    none), and 409 means it has already finished.
+
+    The client cannot make the row write itself: ``ingestion_jobs`` is SELECT-only to it
+    (philosophy spec 6.3, amended 2026-09-13).
     """
-    row = _recategorize_row(job_id, user)
+    sub = user.get("sub", "")
+    if _blank_subject(sub):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job '{job_id}' not found.")
+    entry = _active_jobs.get(job_id)
+    local = entry is not None and entry[0] == sub
+    row = _owned_job_row(job_id, sub)
+    if row is None and not local:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job '{job_id}' not found.")
+
     if row is not None:
         current = row.get("status")
         if current not in ("pending", "running"):
@@ -1610,38 +1680,44 @@ def cancel_job(job_id: str, user: dict[str, Any] = Depends(_verify_supabase_jwt)
                 detail=f"Job '{job_id}' has already finished ({current}).",
             )
         sb = _get_supabase_service_client()
-        sb.table("ingestion_jobs").update({
-            "status": "cancelled",
-            "updated_at": utc_timestamp(),
-        }).eq("id", job_id).eq("user_id", user.get("sub", "")).execute()
-        logger.info("Recategorise job %s cancelled by its owner.", job_id)
-        return {"job_id": job_id, "status": "cancelled"}
+        if sb is not None:
+            sb.table("ingestion_jobs").update({
+                "status": "cancelled",
+                "updated_at": utc_timestamp(),
+            }).eq("id", job_id).eq("user_id", sub).in_("status", ["pending", "running"]).execute()
+        if row.get("kind") == "recategorize":
+            logger.info("Recategorise job %s cancelled by its owner.", job_id)
+            return {"job_id": job_id, "status": "cancelled"}
 
-    controller = _owned_controller(job_id, user)
-    controller.request_cancel()
-    return {"job_id": job_id, "status": controller.status.value}
+    if local:
+        signal = _job_signals.get(job_id)
+        if signal is not None:
+            signal.cancel()
+        assert entry is not None
+        controller = entry[1]
+        # The controller only takes a cancel once the pipeline is running; before that the
+        # signal alone stops the job, and asking the controller would only log a warning.
+        if controller.status != PipelineStatus.IDLE:
+            controller.request_cancel()
+    logger.info("Ingest job %s cancelled by its owner%s.", job_id, "" if local else " (not running here)")
+    return {"job_id": job_id, "status": "cancelled"}
 
 
-def _recategorize_row(job_id: str, user: dict[str, Any]) -> Optional[dict[str, Any]]:
-    """The caller's own recategorise job row, or None.
+def _owned_job_row(job_id: str, sub: str) -> Optional[dict[str, Any]]:
+    """The caller's own job row (any kind), or None.
 
-    None covers three cases deliberately: not a recategorise job, not the
-    caller's, and no Supabase configured. The first falls through to the
-    in-memory controller path; the other two end at `_owned_controller`, which
-    answers 404 rather than 403 -- someone else's job must not be
-    distinguishable from one that does not exist, or the registry becomes
-    enumerable. That reasoning is `_owned_controller`'s and it holds here too.
+    None covers: no such row, not the caller's, and no Supabase configured (tests, the
+    desktop app). A failed read is None too: the in-process registry still answers for a
+    job running here, and anything else is a 404 the client words as "couldn't be
+    cancelled" — better than a 500 for a read that may succeed a moment later.
     """
-    sub = user.get("sub", "")
-    if _blank_subject(sub):
-        return None
     sb = _get_supabase_service_client()
     if sb is None:
         return None
     try:
         rows = (
             sb.table("ingestion_jobs").select("id,status,kind")
-            .eq("id", job_id).eq("user_id", sub).eq("kind", "recategorize")
+            .eq("id", job_id).eq("user_id", sub)
             .limit(1).execute().data or []
         )
     except Exception:  # noqa: BLE001

@@ -18,6 +18,9 @@ def test_finalize_takes_a_payload(monkeypatch):
         def eq(self, *_a):
             return self
 
+        def in_(self, *_a):
+            return self
+
         def execute(self):
             return None
 
@@ -130,6 +133,9 @@ def _capturing_client(sent: dict):
             return self
 
         def eq(self, *_a):
+            return self
+
+        def in_(self, *_a):
             return self
 
         def execute(self):

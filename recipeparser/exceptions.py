@@ -93,3 +93,24 @@ class ExtractionParseError(RecipeParserError):
     counts it. The message carries the reply's finish reason and first line,
     which is what separates truncation from malformed content.
     """
+
+
+class JobCancelledError(RecipeParserError):
+    """Raised at a job checkpoint once its owner has cancelled it (Cayenne F-426).
+
+    Not a failure: the job ends with status 'cancelled' and keeps the recipes it
+    already wrote. Raised from ``recipeparser.core.job_signal`` between stages,
+    between chunks and between Gemini retries, so every ``except Exception`` on
+    the way out must let it through rather than recording it as a skip or an
+    unreadable file.
+    """
+
+
+class AIServiceTimeoutError(RuntimeError):
+    """The AI service kept timing out (504 DEADLINE_EXCEEDED, or our own per-call
+    timeout) until the retry budget ran out.
+
+    The message is the sentence the cook sees on the job row. A RuntimeError so
+    the readers that already let ``extract_text_via_vision``'s RuntimeError
+    through pass this one through unchanged too.
+    """

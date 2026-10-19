@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.18.0] — 2026-10-19
+
+A real cancel for imports, bounded Gemini retries, and photos sent at a sane size (Cayenne Fix Roadmap F-426, the first beta bug report: "When I press cancel the process does not stop"). On 2026-10-18 a tester's 4.1 MB, 3000x4000 phone photo was rendered at 2x (6000x8000) and sent as a lossless PNG; Gemini answered 504 DEADLINE_EXCEEDED four times, three cancels answered 200 and did nothing, and the API was OOM-killed (1.48 GB RSS) on the fifth attempt. Merging deploys (container restart). No schema change. Pairs with the Cayenne PR that shows "Cancelling…"; deploy this first.
+
+### ✨ Added
+- `recipeparser/core/job_signal.py`: one job's cancel flag and activity clock, carried in a ContextVar to the reader, the chunk workers and the Gemini retry ladder. Outside a job every call is a no-op.
+- The job stops at a checkpoint between stages, between chunks, before every Gemini attempt and inside every back-off wait; recipes already written stay, and a cancelled job is not reported as skipped chunks. Tagging the recipes already written is shielded from the cancel (design D1).
+
+### ⚠️ Changed
+- `POST /jobs/{id}/cancel` writes `status = 'cancelled'` to the row at once for ingest jobs as well as recategorise, then signals the job. It answers 404 for no such job of the caller's and 409 for a finished one, never a 200 that does nothing; a 200 now says `"status": "cancelled"`. A cancel during a photo's OCR (the job's read, before the controller leaves IDLE) now lands.
+- A stage write no longer flips a cancelled row back to `running`, and the final write never overwrites a row already ended as an error.
+- A photo is sent upright (EXIF orientation applied), as a JPEG at quality 85 with its long edge at most 2000 px. The tester's photo goes from a 6000x8000 PNG to a 1500x2000 JPEG of 549 KB. PDF pages keep the 2x render, capped at the same 2000 px. Each vision call logs the size it sends.
+- The vision call has its own 90 s timeout, and a transient server error is retried only within a 180 s budget per call (rate limits keep their full ladder). A photo or scan that keeps timing out ends with "The AI service took too long to read this photo. Try again in a few minutes." (or "…this document…").
+- The liveness tick ends a job this process runs but has heard nothing from for 10 minutes with "The import stopped responding…", and cancels it. "The import stopped when the server restarted…" is kept for a row no live process owns. A row cancelled on another instance stops the job here at the next tick.
+
+---
+
 ## [9.17.1] — 2026-10-17
 
 Container and volume yields keep their own count and unit (Cayenne spec `docs/superpowers/specs/2026-10-16-scale-sheet-redesign-design.md` in IanDBallard/Cayenne, the owner's ruling D52). The 9.17.0 backfill's dry run over the live library (1,700 rows: 1,364 set, 336 by the model, 142 flagged for review) gave condiments, spice blends and preserves large model estimates: Garam Masala "1 cup" → 40, Tomato Ketchup "2 cups" → 32, marmalade "3–4 jars" → 40. Merging deploys (container restart). No schema change.

@@ -10,8 +10,9 @@ import json
 import logging
 import re
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Type, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Type, TypeVar
 
+import httpx
 from google.genai import errors as genai_errors
 from pydantic import BaseModel, Field, ValidationError
 
@@ -25,10 +26,14 @@ from recipeparser.config import (
     MAX_RETRIES,
     PARSE_RETRY_DELAY_SECS,
     THINKING_LEVEL,
+    TRANSIENT_RETRY_BUDGET_SECS,
+    VISION_MAX_EDGE_PX,
+    VISION_TIMEOUT_SECS,
 )
 from recipeparser import usage
+from recipeparser.core import job_signal
 from recipeparser.core.pans import BAKE_TYPES, HINT_KEYS, PAN_FAMILIES, PAN_SHAPES
-from recipeparser.exceptions import ExtractionParseError
+from recipeparser.exceptions import AIServiceTimeoutError, ExtractionParseError, JobCancelledError
 from recipeparser.models import (
     CayenneRefinement,
     DirectionMention,
@@ -46,6 +51,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+# The retry budget's clock: its own name so a test can move it without moving every
+# other monotonic clock in the process.
+_clock = time.monotonic
 
 
 def _strip_additional_properties(obj: Any) -> Any:
@@ -282,14 +291,26 @@ def _with_backoff(
     ``limiter`` is as for ``_call_with_retry``: every attempt after the first takes a slot.
     """
     delay = BACKOFF_BASE_SECS
+    started = _clock()
     for attempt in range(1, max_retries + 2):
+        # A cancelled job stops here, before spending another call (Cayenne F-426).
+        job_signal.checkpoint()
         if attempt > 1 and limiter is not None:
             limiter.wait_then_record_start()
         try:
             return call()
         except Exception as exc:
-            retryable = _is_rate_limit_error(exc) or _is_transient_server_error(exc)
+            rate_limited = _is_rate_limit_error(exc)
+            retryable = rate_limited or _is_transient_server_error(exc)
             if retryable and attempt <= max_retries:
+                spent = _clock() - started
+                if not rate_limited and spent + delay > TRANSIENT_RETRY_BUDGET_SECS:
+                    log.warning(
+                        "Transient error hit (attempt %d/%d) after %.0fs — retry budget of %.0fs spent, "
+                        "giving up: %s",
+                        attempt, max_retries, spent, TRANSIENT_RETRY_BUDGET_SECS, exc,
+                    )
+                    raise
                 log.warning(
                     "Transient error hit (attempt %d/%d) — waiting %ds before retry: %s",
                     attempt,
@@ -297,7 +318,12 @@ def _with_backoff(
                     delay,
                     exc,
                 )
-                time.sleep(delay)
+                # Cut short by a cancel (which then raises), and a sign of life for the
+                # liveness loop either side of the wait.
+                if job_signal.current() is None:
+                    time.sleep(delay)
+                else:
+                    job_signal.sleep(delay)
                 delay = min(delay * 2, BACKOFF_MAX_SECS)
             else:
                 raise
@@ -625,67 +651,131 @@ def extract_recipes(
     )
 
 
-def extract_text_via_vision(doc, client) -> str:
+#: What the vision OCR is told, for a scanned PDF page and a photo alike.
+VISION_PROMPT = (
+    "You are an OCR assistant. The image is a page from a recipe document. "
+    "Transcribe ALL text exactly as it appears — including the recipe title, "
+    "ingredient quantities and names, and every numbered direction step. "
+    "Preserve line breaks between sections. "
+    "Do NOT add commentary, summaries, or any text not present in the image."
+)
+
+
+class VisionImage(NamedTuple):
+    """One image as the vision OCR sends it: the bytes, their type, and their size in pixels."""
+    data: bytes
+    mime_type: str
+    width: int
+    height: int
+
+
+def ai_timeout_sentence(what: str) -> str:
+    """The job row's error_message when the AI service kept timing out (Cayenne F-426)."""
+    return f"The AI service took too long to read this {what}. Try again in a few minutes."
+
+
+def _is_deadline_error(exc: BaseException) -> bool:
+    """A 504 / DEADLINE_EXCEEDED from the service, or this side's own transport timeout."""
+    if isinstance(exc, genai_errors.APIError):
+        status = (getattr(exc, "status", None) or "").upper()
+        return getattr(exc, "code", None) == 504 or status == "DEADLINE_EXCEEDED"
+    if isinstance(exc, (httpx.TimeoutException, TimeoutError)):
+        return True
+    return "timeout" in type(exc).__name__.lower()
+
+
+def render_page_for_vision(page: Any) -> VisionImage:
+    """Render one PyMuPDF page for the vision OCR, its long edge capped at VISION_MAX_EDGE_PX.
+
+    A PDF page is 72 DPI in points, so the 2x render (144 DPI) is kept for legibility —
+    but never past the cap: a page whose points are already pixels (a photo PyMuPDF
+    opened as a document, 3000x4000) was doubled to 6000x8000 and sent as a lossless
+    PNG, 144 MB decoded, which OOM-killed the API on 2026-10-18 (Cayenne F-426).
+    """
+    import fitz  # PyMuPDF — already a dependency; imported here to keep gemini.py PDF-agnostic
+
+    rect = page.rect
+    long_edge = max(float(rect.width), float(rect.height)) or 1.0
+    scale = min(2.0, VISION_MAX_EDGE_PX / long_edge)
+    pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
+    return VisionImage(pixmap.tobytes("png"), "image/png", pixmap.width, pixmap.height)
+
+
+def extract_text_via_vision(doc, client, *, what: str = "document") -> str:
     """
     OCR fallback for scanned PDFs that contain no extractable text.
 
-    Renders each page to a PNG pixmap via PyMuPDF and sends the images to
-    Gemini's vision input.  Returns the concatenated plain-text transcript
-    of all pages, separated by double newlines.
+    Renders each page to a PNG via ``render_page_for_vision`` (2x, long edge capped)
+    and sends it to Gemini's vision input.  Returns the concatenated plain-text
+    transcript of all pages, separated by double newlines.
 
     Args:
         doc:    An open ``fitz.Document`` (PyMuPDF).  Must NOT be closed
                 before this function returns.
         client: An initialised ``google.genai.Client`` instance.
+        what:   What the cook sent, for the timeout sentence ("document", "photo").
 
     Returns:
-        A non-empty string of extracted text, or raises ``RuntimeError`` if
-        Gemini returns nothing useful for every page.
+        A non-empty string of extracted text. Raises ``AIServiceTimeoutError`` if
+        every page failed and at least one timed out, ``RuntimeError`` if Gemini
+        returned nothing useful for every page, and ``JobCancelledError`` at once
+        if the job was cancelled.
     """
-    import fitz  # PyMuPDF — already a dependency; imported here to keep gemini.py PDF-agnostic
+    pages = (render_page_for_vision(doc[page_num]) for page_num in range(doc.page_count))
+    return extract_text_from_images(pages, client, count=doc.page_count, what=what)
+
+
+def extract_text_from_images(
+    images: Iterable[VisionImage],
+    client: Any,
+    *,
+    count: int,
+    what: str = "document",
+) -> str:
+    """Transcribe each image with one vision call and join the transcripts.
+
+    ``images`` may be lazy: a page is rendered only when its turn comes, so a
+    render failure surfaces from here as it always did. Each call carries
+    VISION_TIMEOUT_SECS and the transient-error retry budget; a cancel stops the
+    loop between pages and inside the retry ladder.
+    """
     from google.genai import types as genai_types
 
-    VISION_PROMPT = (
-        "You are an OCR assistant. The image is a page from a recipe document. "
-        "Transcribe ALL text exactly as it appears — including the recipe title, "
-        "ingredient quantities and names, and every numbered direction step. "
-        "Preserve line breaks between sections. "
-        "Do NOT add commentary, summaries, or any text not present in the image."
-    )
-
     page_texts: List[str] = []
-    for page_num in range(doc.page_count):
-        page = doc[page_num]
-        # Render at 2× scale (144 DPI) for legibility — good balance of quality vs. token cost.
-        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-        image_bytes = pixmap.tobytes("png")
-
+    timed_out = 0
+    for page_num, image in enumerate(images, start=1):
+        job_signal.checkpoint()
+        log.info(
+            "Vision OCR page %d/%d: sending %sx%s %s, %s bytes.",
+            page_num, count, image.width, image.height, image.mime_type, len(image.data),
+        )
         try:
             response = _call_with_retry(
                 client,
                 model=GEMINI_MODEL,
                 contents=[
-                    genai_types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                    genai_types.Part.from_bytes(data=image.data, mime_type=image.mime_type),
                     VISION_PROMPT,
                 ],
-                config={},
-                what=f"Vision OCR page {page_num + 1}/{doc.page_count}",
+                config={"http_options": {"timeout": VISION_TIMEOUT_SECS * 1000}},
+                what=f"Vision OCR page {page_num}/{count}",
             )
             page_text = (response.text or "").strip()
             if page_text:
                 page_texts.append(page_text)
-                log.info(
-                    "Vision OCR page %d/%d: extracted %d chars.",
-                    page_num + 1,
-                    doc.page_count,
-                    len(page_text),
-                )
+                log.info("Vision OCR page %d/%d: extracted %d chars.", page_num, count, len(page_text))
             else:
-                log.warning("Vision OCR page %d/%d: empty response.", page_num + 1, doc.page_count)
+                log.warning("Vision OCR page %d/%d: empty response.", page_num, count)
+        except JobCancelledError:
+            raise
         except Exception as exc:
-            log.warning("Vision OCR page %d/%d failed: %s", page_num + 1, doc.page_count, exc)
+            if _is_deadline_error(exc):
+                timed_out += 1
+            log.warning("Vision OCR page %d/%d failed: %s", page_num, count, exc)
 
     if not page_texts:
+        if timed_out:
+            raise AIServiceTimeoutError(ai_timeout_sentence(what))
         raise RuntimeError(
             "Gemini Vision returned no text for any page of the document. "
             "It may contain non-recipe imagery or be unreadable."

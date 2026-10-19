@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recipeparser"
-version = "9.17.1"
+version = "9.18.0"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -128,6 +128,8 @@ select = ["E", "F", "I", "TID"]
 "tests/unit/test_taxonomy.py" = ["TID"]
 # The tagging-scope tests hold the recategorise worker's offer to the ingest's (Cayenne F-205).
 "tests/unit/test_tagging_scope.py" = ["TID"]
+# The cancel tests drive the API's cancel endpoint, job runner and liveness tick directly (Cayenne F-426).
+"tests/unit/test_ingest_cancel.py" = ["TID"]
 # Picture generation test has long assertion lines that cannot easily be split.
 "tests/unit/test_picture_gen.py" = ["E501"]
 
