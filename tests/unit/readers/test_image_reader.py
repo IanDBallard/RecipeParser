@@ -42,14 +42,15 @@ def test_a_photo_becomes_one_image_chunk_from_the_transcript(tmp_path):
     assert chunk.label == "IMG_4021.png"
 
 
-def test_the_vision_call_carries_the_photo_as_png_bytes(tmp_path):
+def test_the_vision_call_carries_the_photo_as_jpeg_bytes(tmp_path):
     client = _client("something")
     ImageReader(client).read(_png(tmp_path))
     client.models.generate_content.assert_called_once()
     contents = client.models.generate_content.call_args.kwargs["contents"]
     assert len(contents) == 2                # the image part, then the OCR prompt
     assert getattr(contents[0], "inline_data", None) is not None
-    assert contents[0].inline_data.mime_type == "image/png"
+    # Re-encoded by Pillow, upright and capped (Cayenne F-426), whatever the upload was.
+    assert contents[0].inline_data.mime_type == "image/jpeg"
 
 
 def test_a_file_pymupdf_cannot_open_is_an_image_extraction_error(tmp_path):

@@ -119,6 +119,26 @@ PARSE_RETRY_DELAY_SECS: float = 1.0
 BACKOFF_BASE_SECS: float = 2.0
 BACKOFF_MAX_SECS: float = 120.0
 
+# A transient server error (504 DEADLINE_EXCEEDED, 503, 500) is retried on the
+# ladder above only while the call has spent less than this many seconds, waits
+# included (Cayenne F-426). Each 504 came back after 35-45 s on 2026-10-18, so the
+# five-retry ladder alone could hold one call for several minutes while the cook
+# watched 0%. A rate-limit ladder is not cut short by this: a 429 says "later",
+# not "never".
+TRANSIENT_RETRY_BUDGET_SECS: float = 180.0
+
+# The vision OCR call's own HTTP timeout (seconds): tighter than HTTP_TIMEOUT_SECS,
+# because one page image that has not been read in this long is not going to be.
+VISION_TIMEOUT_SECS: int = 90
+
+# The longest edge, in pixels, of any image the vision OCR sends (Cayenne F-426).
+# A phone photo is 3000x4000 already; the old 2x render made it 6000x8000 and a
+# lossless PNG (144 MB decoded), which is what OOM-killed the API on 2026-10-18.
+# 2000 px keeps cookbook body text legible to the model.
+VISION_MAX_EDGE_PX: int = 2000
+# The JPEG quality a photo is re-encoded at once it is downscaled.
+VISION_JPEG_QUALITY: int = 85
+
 # ---------------------------------------------------------------------------
 # Pipeline concurrency
 # ---------------------------------------------------------------------------

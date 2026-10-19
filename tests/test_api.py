@@ -707,7 +707,9 @@ class TestControlEndpoints:
         resp = client.post(f"/jobs/{job_id}/cancel")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["status"] == PipelineStatus.CANCELLING.value  # "cancelling"
+        # The answer is the row's state, which the endpoint has already written (Cayenne F-426);
+        # the controller winds down behind it.
+        assert body["status"] == "cancelled"
         assert controller.status == PipelineStatus.CANCELLING
 
     def test_cancel_unknown_job_returns_404(self, client: TestClient) -> None:
