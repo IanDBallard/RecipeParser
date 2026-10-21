@@ -6,7 +6,7 @@ own behaviour is proved by Cayenne's CI probes, not here.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import pytest
 from fastapi.testclient import TestClient
@@ -162,34 +162,61 @@ def test_an_empty_share_is_422_before_any_lookup(client, fake):
     assert fake.rpc_calls == []
 
 
-def test_more_than_two_hundred_recipes_is_422(client, fake):
-    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(201)]
+# Owner, 2026-10-21 (Cayenne F-461): up from 200. Cayenne's create_recipe_share and the
+# recipe_shares.item_count check carry the same number; the two must move together.
+MAX_RECIPES = 2000
+# The parse-time bound (F-175): twice the limit, room for the duplicates the endpoint removes.
+MAX_PARSED_IDS = 2 * MAX_RECIPES
+
+
+def test_more_than_two_thousand_recipes_is_422(client, fake):
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(MAX_RECIPES + 1)]
     response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": ids})
     assert response.status_code == 422
-    assert "200" in response.json()["detail"]
+    assert response.json()["detail"] == "A share holds at most 2,000 recipes."
     assert fake.rpc_calls == []
 
 
-def test_two_hundred_after_duplicates_are_removed_is_allowed(client, fake):
+def test_two_thousand_recipes_are_allowed_and_all_reach_the_function(client, fake):
+    seen: List[Any] = []
+    fake.rpcs["create_recipe_share"] = lambda p: seen.append(p["p_recipe_ids"]) or SHARE
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(MAX_RECIPES)]
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": ids})
+    assert response.status_code == 201
+    assert seen == [ids]
+
+
+def test_two_thousand_after_duplicates_are_removed_is_allowed(client, fake):
     fake.rpcs["create_recipe_share"] = lambda p: SHARE
-    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(200)]
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(MAX_RECIPES)]
     response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com",
                                                         "recipe_ids": ids + ids[:5]})
     assert response.status_code == 201
 
 
+def test_a_skip_list_of_two_thousand_is_read(client, fake):
+    # Accept all but every one of a whole library's items: the list reaches the function, which
+    # is the one that refuses a share with nothing left to take.
+    seen: List[Any] = []
+    fake.rpcs["accept_recipe_share"] = lambda p: seen.append(p["p_skip"]) or JOB
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(MAX_RECIPES - 1)]
+    response = _as(client, RECIPIENT).post(f"/shares/{SHARE}/accept", json={"skip_item_ids": ids})
+    assert response.status_code == 202
+    assert seen == [ids]
+
+
 def test_a_list_far_over_the_limit_is_refused_before_it_is_read(client, fake):
     # Fix Roadmap F-175: the id list had no size limit at parse time, so a body of any length
-    # was read, de-duplicated and counted before the 200 check ran. Twice the limit leaves
+    # was read, de-duplicated and counted before the limit check ran. Twice the limit leaves
     # room for the duplicates the endpoint removes; beyond it the body is refused unread.
-    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(401)]
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(MAX_PARSED_IDS + 1)]
     response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": ids})
     assert response.status_code == 422
     assert fake.rpc_calls == []
 
 
 def test_a_skip_list_far_over_the_limit_is_refused_before_it_is_read(client, fake):
-    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(401)]
+    ids = [f"55555555-5555-4555-8555-{i:012d}" for i in range(MAX_PARSED_IDS + 1)]
     response = _as(client, RECIPIENT).post(f"/shares/{SHARE}/accept", json={"skip_item_ids": ids})
     assert response.status_code == 422
     assert fake.rpc_calls == []

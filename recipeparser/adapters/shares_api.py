@@ -1,5 +1,5 @@
 """
-recipeparser/adapters/shares_api.py — the recipe-sharing endpoints (Cayenne's recipe-sharing
+recipeparser/adapters/shares_api.py â€” the recipe-sharing endpoints (Cayenne's recipe-sharing
 design, Part 2).
 
 A share hands another Cayenne user a copy of some recipes; they accept it, all or some, and
@@ -30,8 +30,11 @@ from recipeparser.adapters.idempotency import IdempotencyCache
 log = logging.getLogger(__name__)
 
 CHECKS_PER_HOUR = 20
-MAX_RECIPES = 200
+# A whole library in one share (owner, 2026-10-21; Cayenne F-461). Cayenne's create_recipe_share
+# and recipe_shares.item_count check carry the same number, from migration 20261021090000.
+MAX_RECIPES = 2000
 # What a request body may carry before it is read: room for the duplicates the endpoints remove.
+# 4,000 ids are about 160 KB of JSON; nothing in front of the API bounds a body below that.
 MAX_PARSED_IDS = 2 * MAX_RECIPES
 
 NO_ACCOUNT = "No Cayenne account uses that email."
@@ -191,7 +194,7 @@ def build_router(
                                 detail="Choose at least one recipe to share.")
         if len(ids) > MAX_RECIPES:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                detail=f"A share holds at most {MAX_RECIPES} recipes.")
+                                detail=f"A share holds at most {MAX_RECIPES:,} recipes.")
         sender_email = normalise_email(user.get("email") or "")
         if not sender_email:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

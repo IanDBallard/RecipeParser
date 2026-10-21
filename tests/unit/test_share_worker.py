@@ -521,3 +521,168 @@ def test_a_failing_invite_sweep_does_not_stop_the_share_sweep():
     fake.rpcs["expire_household_invites"] = down
     _worker(fake).run_once()
     assert len(shares) == 1
+
+
+# ── a whole library: 2,000 items (owner, 2026-10-21; Cayenne F-461) ──────────
+
+def _many(n: int, status: str = "pending", start: int = 0) -> List[Dict[str, Any]]:
+    return [{"id": f"99999999-9999-4999-8999-{i:012d}", "share_id": SHARE, "sender_id": SENDER,
+             "recipient_id": RECIPIENT, "source_recipe_id": f"55555555-5555-4555-8555-{i:012d}",
+             "status": status, "position": i + 1, "copied_recipe_id": None}
+            for i in range(start, start + n)]
+
+
+def _originals(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [_recipe(i["source_recipe_id"]) for i in items]
+
+
+def test_progress_counts_every_item_past_postgrests_row_cap():
+    # PostgREST answers at most 1,000 rows. The job used to list the items to count them, so a
+    # 2,000-item share held 1,000 and reported 99% half way. Counted instead, half is half.
+    fake = FakeSupabase()
+    fake.server_max_rows = 1000
+    done, left = _many(1000, status="accepted"), _many(1000, start=1000)
+    _seed(fake, done + left, _originals(left))
+    fake.tables["recipe_shares"][0]["accepted_count"] = 1000
+    _worker(fake).run_once()
+    job = _job(fake)
+    assert job["progress_pct"] == 50                   # 1,001 of 2,000, not 1,001 of 1,000
+    assert job["recipe_count"] == 1001                 # accepted so far, written with each item
+
+
+def test_a_resumed_two_thousand_item_share_takes_up_where_it_stopped():
+    # After a restart the lease brings the job back to a fresh worker, which counts what the
+    # first one settled (past the row cap) and copies only what is left.
+    fake = FakeSupabase()
+    fake.server_max_rows = 1000
+    done, left = _many(1500, status="accepted"), _many(500, start=1500)
+    left[0]["status"] = "copying"                      # the item the first worker died on
+    _seed(fake, done + left, _originals(left), job_status="running")
+    fake.tables["recipe_shares"][0]["accepted_count"] = 1500
+    _worker(fake).run_once()
+    assert _job(fake)["progress_pct"] == 75            # 1,501 of 2,000
+    assert [p["p_item"] for p in fake.calls("copy_shared_item")] == [left[0]["id"]]
+
+
+def test_each_item_writes_progress_and_the_count_so_far():
+    fake = FakeSupabase()
+    _seed(fake, [_item(1, A), _item(2, B), _item(3, C)], [_recipe(A), _recipe(C)])
+    worker = _worker(fake)
+    seen = []
+    for _ in range(3):
+        worker.run_once()
+        seen.append((_job(fake)["progress_pct"], _job(fake)["recipe_count"]))
+    assert seen == [(33, 1), (66, 1), (99, 2)]         # B's original is gone: unavailable, not counted
+    worker.run_once()
+    assert (_job(fake)["status"], _job(fake)["progress_pct"], _job(fake)["recipe_count"]) == ("done", 100, 2)
+
+
+def test_pictures_are_copied_one_at_a_time():
+    # One item per poll, its picture read and stored before the next: memory holds one picture
+    # whatever the share's size (the 2 GB VM, RP#122).
+    fake = FakeSupabase()
+    images = FakeImageStore()
+    items = _many(5)
+    for i in items:
+        fake.objects[f"{i['source_recipe_id']}.jpg"] = b"jpeg-bytes"
+    _seed(fake, items, [_recipe(i["source_recipe_id"], image_url=f"{PUBLIC_PREFIX}{i['source_recipe_id']}.jpg")
+                        for i in items])
+    worker = _worker(fake, images)
+    for polls in range(1, 6):
+        worker.run_once()
+        assert len(images.puts) == polls
+
+
+def test_a_restart_mid_copy_with_pictures_leaves_one_copy_and_one_picture_key_per_item():
+    fake = FakeSupabase()
+    images = FakeImageStore()
+    items = _many(4)
+    for i in items:
+        fake.objects[f"{i['source_recipe_id']}.jpg"] = b"jpeg-bytes"
+    _seed(fake, items, [_recipe(i["source_recipe_id"], image_url=f"{PUBLIC_PREFIX}{i['source_recipe_id']}.jpg")
+                        for i in items])
+    first = _worker(fake, images)
+    first.run_once()
+    first.run_once()                                   # two copied; then it dies mid-item 3,
+    items_now = sorted(fake.tables["recipe_share_items"], key=lambda i: i["position"])
+    items_now[2]["status"] = "copying"                 # its picture stored, its copy not made
+    images.put(b"jpeg-bytes", copy_id(items_now[2]["id"]), "image/jpeg")
+    _job(fake)["updated_at"] = LONG_AGO                # and the lease lapses
+
+    _run_to_end(_worker(fake, images), fake)
+    assert _status(fake) == ["accepted"] * 4
+    assert sorted(r["id"] for r in _copies(fake)) == sorted(copy_id(i["id"]) for i in items)
+    assert {key for _, key, _ in images.puts} == {copy_id(i["id"]) for i in items}
+    assert fake.tables["recipe_shares"][0]["accepted_count"] == 4
+    assert (_job(fake)["status"], _job(fake)["recipe_count"]) == ("done", 4)
+
+
+# ── the per-job cancel (Cayenne F-426), between items ────────────────────────
+
+def test_a_cancel_mid_copy_stops_after_the_item_in_hand_and_keeps_what_was_copied():
+    fake = FakeSupabase()
+    _seed(fake, [_item(1, A), _item(2, B), _item(3, C)], [_recipe(A), _recipe(B), _recipe(C)])
+    worker = _worker(fake)
+    worker.run_once()                                  # item 1 copied
+    _job(fake)["status"] = "cancelled"                 # POST /jobs/{id}/cancel writes the row
+    assert worker.run_once() == 1                      # item 2 finishes, then the job stops
+
+    assert _status(fake) == ["accepted", "accepted", "skipped"]
+    assert len(_copies(fake)) == 2
+    share = fake.tables["recipe_shares"][0]
+    assert (share["status"], share["accepted_count"]) == ("accepted", 2)
+    job = _job(fake)
+    assert (job["status"], job["stage"], job["recipe_count"]) == ("cancelled", "DONE", 2)
+    assert worker.run_once() == 0                      # nothing left to do or to claim
+    assert len(fake.calls("copy_shared_item")) == 2
+
+
+def test_a_job_cancelled_before_any_worker_held_it_is_wound_down():
+    fake = FakeSupabase()
+    _seed(fake, [_item(1, A), _item(2, B)], [_recipe(A), _recipe(B)], job_status="cancelled")
+    assert _worker(fake).run_once() == 1
+    assert fake.calls("copy_shared_item") == []
+    assert _status(fake) == ["skipped", "skipped"]
+    assert fake.tables["recipe_shares"][0]["status"] == "accepted"   # not stranded in accepting
+    assert (_job(fake)["status"], _job(fake)["stage"], _job(fake)["recipe_count"]) == ("cancelled", "DONE", 0)
+    assert _worker(fake).run_once() == 0
+
+
+def test_a_cancel_removes_the_picture_a_crashed_attempt_left():
+    fake = FakeSupabase()
+    images = FakeImageStore()
+    stranded = _item(1, A, status="copying")
+    _seed(fake, [stranded, _item(2, B)], [_recipe(A), _recipe(B)], job_status="cancelled")
+    _worker(fake, images).run_once()
+    assert images.removed == [copy_id(stranded["id"])]
+    assert _status(fake) == ["skipped", "skipped"]
+
+
+def test_a_cancel_after_the_last_item_keeps_the_cancel_and_the_count():
+    fake = FakeSupabase()
+    _seed(fake, [_item(1, A)], [_recipe(A)])
+    worker = _worker(fake)
+    worker.run_once()                                  # the only item copied
+    real = fake.rpcs["finish_recipe_share"]
+
+    def cancelled_meanwhile(p):
+        _job(fake)["status"] = "cancelled"
+        return real(p)
+
+    fake.rpcs["finish_recipe_share"] = cancelled_meanwhile
+    worker.run_once()
+    job = _job(fake)
+    assert (job["status"], job["stage"], job["recipe_count"]) == ("cancelled", "DONE", 1)
+    assert fake.tables["recipe_shares"][0]["status"] == "accepted"
+
+
+def test_a_row_ended_by_something_else_is_let_go_without_a_wind_down():
+    fake = FakeSupabase()
+    _seed(fake, [_item(1, A), _item(2, B)], [_recipe(A), _recipe(B)])
+    worker = _worker(fake)
+    worker.run_once()
+    _job(fake)["status"] = "error"
+    worker.run_once()
+    assert _status(fake) == ["accepted", "accepted"]   # the item in hand finishes
+    assert fake.tables["recipe_shares"][0]["status"] == "accepting"
+    assert worker.run_once() == 0

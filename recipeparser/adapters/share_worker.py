@@ -10,6 +10,19 @@ function copy_shared_item, which writes the recipe, its categories, the item and
 count in one transaction. The copy's id is uuid5(SHARE_NAMESPACE, item id), so a redo after
 a crash lands on the same row and the same object key.
 
+A share holds up to 2,000 recipes (owner, 2026-10-21; Cayenne F-461), a job of half an hour
+or more, so (9.19.0):
+
+- its counts are read as counts, never as a list of items, which PostgREST cuts at 1,000 rows;
+- every item writes progress_pct and recipe_count (accepted so far) and so touches updated_at,
+  which is the job's heartbeat: a share job is resumed after the lease, never reaped as dead;
+- the row is the one source of truth for a cancel (Cayenne F-426): ``POST /jobs/{id}/cancel``
+  writes ``cancelled``, and the progress write after each item only lands on a ``running``
+  row, so the job stops between items. What was copied stays; the rest of the items become
+  ``skipped`` and the share ends ``accepted`` with the count it reached ("Accepted 600 of
+  2,000"). A job cancelled before any worker held it is wound down the same way;
+- one item is one picture, read and stored before the next, so memory stays flat.
+
 The same worker runs the sweep: pending shares past expires_at become expired every fifteen
 minutes, and shares resolved more than thirty days ago are deleted once a day.
 """
@@ -76,6 +89,8 @@ class _HeldJob:
     recipient_id: str
     total: int
     settled: int
+    # Items that ended accepted or duplicate, as recipe_shares.accepted_count counts them.
+    accepted: int = 0
 
 
 class ShareWorker:
@@ -114,6 +129,10 @@ class ShareWorker:
             job = self._claim()
             if job is None:
                 return 0
+            if job.get("status") == "cancelled":
+                # Cancelled before any worker held it: its share is still `accepting`.
+                self._wind_down(job["id"], str((job.get("params") or {}).get("share_id") or ""))
+                return 1
             try:
                 self._held = self._start(job)
             except Exception:
@@ -145,7 +164,13 @@ class ShareWorker:
             jobs = self._stale_running_jobs()
             prior_status = "running"
         if not jobs:
-            return None
+            # A cancel the endpoint wrote that no worker has wound down yet: the wind-down is
+            # what writes stage DONE, so IDLE marks one still owed. Idempotent, so not claimed.
+            return next(iter(
+                self._sb.table("ingestion_jobs").select("*")
+                .eq("kind", "share_accept").eq("status", "cancelled").eq("stage", "IDLE")
+                .order("created_at").limit(1).execute().data or []
+            ), None)
         job = jobs[0]
         # `stage` is left as queued (IDLE): ingestion_jobs' stage check has no copying value,
         # and no screen reads a share job's stage — the client follows the items instead.
@@ -173,7 +198,7 @@ class ShareWorker:
     def _start(self, job: Dict[str, Any]) -> Optional[_HeldJob]:
         share_id = str((job.get("params") or {}).get("share_id") or "")
         shares = (
-            self._sb.table("recipe_shares").select("id,sender_id,recipient_id,status")
+            self._sb.table("recipe_shares").select("id,sender_id,recipient_id,status,accepted_count")
             .eq("id", share_id).limit(1).execute().data or []
         ) if share_id else []
         if not shares or shares[0]["recipient_id"] != job["user_id"]:
@@ -186,15 +211,24 @@ class ShareWorker:
             # it would hand over recipes the sender cancelled or the recipient declined.
             self._finish(job["id"], "error", error="The share is not being accepted")
             return None
-        items = (self._sb.table("recipe_share_items").select("id,status")
-                 .eq("share_id", share_id).execute().data or [])
-        taken = [i for i in items if i["status"] != "skipped"]
+        # Counted, not listed: PostgREST answers at most max_rows (1,000) rows, so a list of a
+        # 2,000-item share's items held half of them, and progress reached 99% half way.
         return _HeldJob(
             job_id=job["id"], share_id=share_id,
             sender_id=share["sender_id"], recipient_id=share["recipient_id"],
-            total=max(1, len(taken)),
-            settled=sum(1 for i in taken if i["status"] in _SETTLED),
+            total=max(1, self._count_items(share_id, not_status="skipped")),
+            settled=self._count_items(share_id, statuses=sorted(_SETTLED)),
+            accepted=int(share.get("accepted_count") or 0),
         )
+
+    def _count_items(self, share_id: str, *, statuses: Optional[List[str]] = None,
+                     not_status: Optional[str] = None) -> int:
+        query = self._sb.table("recipe_share_items").select("id", count="exact").eq("share_id", share_id)
+        if statuses is not None:
+            query = query.in_("status", statuses)
+        if not_status is not None:
+            query = query.neq("status", not_status)
+        return int(query.limit(1).execute().count or 0)
 
     def _step(self, held: _HeldJob) -> bool:
         """Copy the next item, or finish the share and the job. True when finished."""
@@ -207,7 +241,10 @@ class ShareWorker:
             self._sb.rpc("finish_recipe_share", {"p_share": held.share_id}).execute()
             share = (self._sb.table("recipe_shares").select("accepted_count")
                      .eq("id", held.share_id).limit(1).execute().data or [{}])[0]
-            self._finish(held.job_id, "done", progress=100, count=int(share.get("accepted_count") or 0))
+            if not self._finish(held.job_id, "done", progress=100, count=int(share.get("accepted_count") or 0)):
+                # Cancelled after the last item: everything was copied, but the row keeps the
+                # cancel and gets the wind-down's stage and count (a no-op on any other status).
+                self._wind_down(held.job_id, held.share_id)
             return True
 
         item = items[0]
@@ -222,12 +259,47 @@ class ShareWorker:
              .eq("id", item["id"]).in_("status", _OPEN).execute())
             outcome = "failed"
         held.settled += 1
+        if outcome in ("accepted", "duplicate"):
+            held.accepted += 1
         log.info("share %s: item %s %s.", held.share_id, item["id"], outcome)
-        self._sb.table("ingestion_jobs").update({
+        # The progress, the count so far and the heartbeat, and the checkpoint between items:
+        # it lands only on a running row, so a cancel written meanwhile stops the job here.
+        live = (self._sb.table("ingestion_jobs").update({
             "progress_pct": min(99, int(100 * held.settled / held.total)),
+            "recipe_count": held.accepted,
             "updated_at": _now(),
-        }).eq("id", held.job_id).execute()
-        return False
+        }).eq("id", held.job_id).eq("status", "running").execute().data)
+        if live:
+            return False
+        rows = (self._sb.table("ingestion_jobs").select("status").eq("id", held.job_id)
+                .limit(1).execute().data or [{}])
+        if rows[0].get("status") == "cancelled":
+            log.info("share job %s cancelled after %d of %d item(s).", held.job_id, held.settled, held.total)
+            self._wind_down(held.job_id, held.share_id)
+        else:
+            # Ended by something else (or gone): not this worker's to go on with.
+            log.warning("share job %s is no longer running (%s); letting it go.", held.job_id, rows[0].get("status"))
+        return True
+
+    def _wind_down(self, job_id: str, share_id: str) -> None:
+        """A cancelled job's end: the copies made stay, every item not yet copied is skipped,
+        and the share ends accepted with the count it reached. Safe to run twice."""
+        if share_id:
+            # An item left `copying` by a crashed attempt may have stored its picture; no recipe
+            # will use it now (the F-174 rule).
+            stranded = (self._sb.table("recipe_share_items").select("id")
+                        .eq("share_id", share_id).eq("status", "copying").execute().data or [])
+            (self._sb.table("recipe_share_items").update({"status": "skipped"})
+             .eq("share_id", share_id).in_("status", _OPEN).execute())
+            for item in stranded:
+                self._discard(copy_id(item["id"]))
+            self._sb.rpc("finish_recipe_share", {"p_share": share_id}).execute()
+        share = (self._sb.table("recipe_shares").select("accepted_count")
+                 .eq("id", share_id).limit(1).execute().data or [{}])[0] if share_id else {}
+        # Status stays `cancelled`; stage DONE and the count are what the job reached.
+        (self._sb.table("ingestion_jobs").update({
+            "stage": "DONE", "recipe_count": int(share.get("accepted_count") or 0), "updated_at": _now(),
+        }).eq("id", job_id).eq("status", "cancelled").execute())
 
     def _copy(self, held: _HeldJob, item: Dict[str, Any]) -> str:
         new_id = copy_id(item["id"])
@@ -298,7 +370,8 @@ class ShareWorker:
         return (stored, source, True) if stored else (None, None, False)
 
     def _finish(self, job_id: str, status: str, *, progress: Optional[int] = None,
-                count: Optional[int] = None, error: Optional[str] = None) -> None:
+                count: Optional[int] = None, error: Optional[str] = None) -> bool:
+        """End a running job's row; False when the row was no longer running."""
         payload: Dict[str, Any] = {
             "status": status,
             "stage": "ERROR" if status == "error" else "DONE",
@@ -310,7 +383,8 @@ class ShareWorker:
             payload["recipe_count"] = count
         if error:
             payload["error_message"] = error
-        self._sb.table("ingestion_jobs").update(payload).eq("id", job_id).eq("status", "running").execute()
+        return bool(self._sb.table("ingestion_jobs").update(payload)
+                    .eq("id", job_id).eq("status", "running").execute().data)
 
     # ── the sweep (Part 4) ───────────────────────────────────────────────
 
