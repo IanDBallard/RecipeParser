@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.19.0] — 2026-10-21
+
+A share holds up to 2,000 recipes, so a whole library goes in one share (the owner's ruling of 2026-10-21; Cayenne Fix Roadmap F-461), and the `share_accept` copy job is made to last a job of that size. Merging deploys (container restart). No schema change here: **deploy Cayenne's migration `20261021090000_share_limit_2000.sql` first**, since until it lands the database still refuses a share over 200 (a 422 "That share could not be made…").
+
+### ⚠️ Changed
+- `POST /shares` refuses more than 2,000 distinct recipes (was 200) with "A share holds at most 2,000 recipes."; `MAX_RECIPES` stays the one constant, and the parse-time bound on `recipe_ids` and `skip_item_ids` (F-175) follows it at twice that, 4,000 ids, about 160 KB of JSON.
+- The copy job counts a share's items with exact counts instead of listing them. PostgREST answers at most 1,000 rows, so a share over 1,000 items held only the first 1,000 and its progress reached 99% half way.
+- Every item writes `recipe_count` (accepted so far, as `accepted_count` counts) beside `progress_pct`, and that write is the job's heartbeat.
+
+### ✨ Added
+- The job honours `POST /jobs/{id}/cancel` between items: the progress write lands only on a `running` row, so a cancelled row stops the job after the item in hand. The copies made stay, every item not yet copied becomes `skipped`, the share ends `accepted` with the count it reached, and the row keeps `cancelled` with stage `DONE` and that count. A job cancelled before any worker held it is wound down the same way rather than leaving its share `accepting` for good; a picture left by a crashed attempt on a stranded item is removed.
+
+### 🔧 Fixed
+- `installer.iss` carries the version again: 9.18.0 left it at 9.17.1, which the installer build's version check refuses.
+
+---
+
 ## [9.18.0] — 2026-10-19
 
 A real cancel for imports, bounded Gemini retries, and photos sent at a sane size (Cayenne Fix Roadmap F-426, the first beta bug report: "When I press cancel the process does not stop"). On 2026-10-18 a tester's 4.1 MB, 3000x4000 phone photo was rendered at 2x (6000x8000) and sent as a lossless PNG; Gemini answered 504 DEADLINE_EXCEEDED four times, three cancels answered 200 and did nothing, and the API was OOM-killed (1.48 GB RSS) on the fifth attempt. Merging deploys (container restart). No schema change. Pairs with the Cayenne PR that shows "Cancelling…"; deploy this first.

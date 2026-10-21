@@ -27,9 +27,10 @@ class Query:
         self.filters: List[Callable[[Dict[str, Any]], bool]] = []
         self.sort: Optional[Tuple[str, bool]] = None
         self.max_rows: Optional[int] = None
+        self.count: Optional[str] = None
 
     def select(self, _columns: str = "*", count: Optional[str] = None) -> "Query":
-        self.op = "select"
+        self.op, self.count = "select", count
         return self
 
     def update(self, payload: Dict[str, Any]) -> "Query":
@@ -38,6 +39,10 @@ class Query:
 
     def eq(self, column: str, value: Any) -> "Query":
         self.filters.append(lambda row, c=column, v=value: row.get(c) == v)
+        return self
+
+    def neq(self, column: str, value: Any) -> "Query":
+        self.filters.append(lambda row, c=column, v=value: row.get(c) != v)
         return self
 
     def in_(self, column: str, values: List[Any]) -> "Query":
@@ -71,9 +76,14 @@ class Query:
         if self.sort is not None:
             column, desc = self.sort
             hit = sorted(hit, key=lambda r: r.get(column), reverse=desc)
+        # count="exact" counts every match, as PostgREST's Content-Range does, before any cut.
+        total = len(hit) if self.count == "exact" else None
         if self.max_rows is not None:
             hit = hit[: self.max_rows]
-        return Result([dict(r) for r in hit])
+        # PostgREST's own cap ([api] max_rows, 1,000 on Supabase), whatever the query asked for.
+        if self.fake.server_max_rows is not None:
+            hit = hit[: self.fake.server_max_rows]
+        return Result([dict(r) for r in hit], total)
 
 
 class Rpc:
@@ -117,6 +127,8 @@ class FakeSupabase:
         self.log: List[Tuple[str, str, Any]] = []
         self.rpc_calls: List[Tuple[str, Dict[str, Any]]] = []
         self.storage = _Storage(self)
+        # Set to 1000 to answer selects as Supabase's PostgREST does (supabase/config.toml).
+        self.server_max_rows: Optional[int] = None
 
     def table(self, name: str) -> Query:
         return Query(self, name)
