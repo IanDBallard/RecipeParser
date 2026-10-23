@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.20.0] — 2026-10-22
+
+Every recipe an import writes records the job that wrote it, so Cayenne's Recent imports can open exactly what a job made: the one recipe, or the library filtered to that job (the owner's request of 2026-10-22; Cayenne Fix Roadmap F-473). Merging deploys (container restart). **Deploy Cayenne's migration `20261022120000_recipe_ingestion_job.sql` first**: until it lands the `recipes` table has no `ingestion_job_id`, and PostgREST refuses every recipe insert that names it, so every import would fail.
+
+### ✨ Added
+- `write_recipe_to_supabase` takes `ingestion_job_id` and writes it to `recipes.ingestion_job_id`; `JobSink.on_result` passes its job's id for every recipe a job writes. A recipe written outside a job (the CLI) stores null. The column is not exported: `_cayenne_meta` and the zip leave it out, so a restored recipe belongs to the job that restored it.
+
+---
+
 ## [9.19.0] — 2026-10-21
 
 A share holds up to 2,000 recipes, so a whole library goes in one share (the owner's ruling of 2026-10-21; Cayenne Fix Roadmap F-461), and the `share_accept` copy job is made to last a job of that size. Merging deploys (container restart). No schema change here: **deploy Cayenne's migration `20261021090000_share_limit_2000.sql` first**, since until it lands the database still refuses a share over 200 (a 422 "That share could not be made…").

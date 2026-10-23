@@ -34,8 +34,13 @@ def posted(monkeypatch):
     monkeypatch.setenv("ALLOW_LIVE_WRITES_IN_TESTS", "1")
     resp = MagicMock(status_code=201, text="")
     with patch("recipeparser.io.writers.supabase.httpx.post", return_value=resp) as post:
-        write_recipe_to_supabase(_recipe(), user_id="u1", recipe_id="r1")
+        write_recipe_to_supabase(_recipe(), user_id="u1", recipe_id="r1", ingestion_job_id="job-7")
         yield post.call_args.kwargs["json"]
+
+
+def test_row_carries_the_job_that_wrote_it(posted):
+    # Cayenne F-473: Recent imports opens exactly the recipes a job wrote by this column.
+    assert posted["ingestion_job_id"] == "job-7"
 
 
 def test_row_has_raw_body_and_bookkeeping(posted):
