@@ -249,11 +249,14 @@ def write_recipe_categories(
 _UOM_SYSTEMS = frozenset({"US", "UK", "EU", "AU", "Imperial"})
 
 
-def _recipe_row(recipe: IngestResponse, user_id: str, rid: str) -> dict:
+def _recipe_row(recipe: IngestResponse, user_id: str, rid: str, ingestion_job_id: Optional[str] = None) -> dict:
     """The ``recipes`` row for an IngestResponse (no HTTP, so a test can read it)."""
     return {
         "id": rid,
         "user_id": user_id,
+        # The import job that wrote it (Cayenne F-473, migration recipe_ingestion_job): Recent
+        # imports opens exactly a job's recipes by it. None outside a job (the CLI).
+        "ingestion_job_id": ingestion_job_id,
         "title": recipe.title,
         "prep_time": recipe.prep_time,
         "cook_time": recipe.cook_time,
@@ -325,6 +328,7 @@ def write_recipe_to_supabase(
     recipe_id: Optional[str] = None,
     category_ids: Optional[Dict[str, str]] = None,
     on_link_refused: Optional[Callable[[RefusedLink], None]] = None,
+    ingestion_job_id: Optional[str] = None,
 ) -> str:
     """
     Persist a completed IngestResponse to the Supabase `recipes` table,
@@ -346,6 +350,8 @@ def write_recipe_to_supabase(
         on_link_refused: Optional callback, called once for each category link
                        the junction write could not make (Fix Roadmap F-115).
                        The recipe row is written either way.
+        ingestion_job_id: The ``ingestion_jobs`` row this recipe was written by, stored on
+                       ``recipes.ingestion_job_id`` (Cayenne F-473). None outside a job.
 
     Returns:
         The UUID string of the inserted recipe row.
@@ -364,7 +370,7 @@ def write_recipe_to_supabase(
     supabase_url, service_key = _get_creds()
     rid = recipe_id or str(uuid.uuid4())
 
-    row = _recipe_row(recipe, user_id, rid)
+    row = _recipe_row(recipe, user_id, rid, ingestion_job_id)
 
     headers = {
         "Authorization": f"Bearer {service_key}",

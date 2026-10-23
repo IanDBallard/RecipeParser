@@ -19,7 +19,7 @@ def _sink(**kwargs: Any) -> JobSink:
         job_id="job-1",
         user_id="user-1",
         category_ids={},
-        write=lambda recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None: (
+        write=lambda recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None, ingestion_job_id=None: (
             written.append(recipe)
         ),
         now=kwargs.pop("now", lambda: "fixed-ts"),
@@ -46,7 +46,7 @@ def test_each_result_is_written_immediately_and_counted():
 
 
 def test_a_failed_write_is_counted_as_a_skip_not_raised():
-    def _boom(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
+    def _boom(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None, ingestion_job_id=None):
         raise RuntimeError("insert rejected")
 
     sink = JobSink(job_id="j", user_id="u", category_ids={}, write=_boom, now=lambda: "fixed-ts")
@@ -68,7 +68,7 @@ def test_write_receives_category_ids_by_keyword_and_recipe_id_stays_none():
     """
     calls: List[Dict[str, Any]] = []
 
-    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
+    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None, ingestion_job_id=None):
         calls.append({"recipe_id": recipe_id, "category_ids": category_ids})
 
     sink = JobSink(
@@ -244,7 +244,7 @@ def test_finalize_omits_the_hint_when_no_recipe_carried_a_key():
 
 
 def test_a_recipe_whose_write_failed_does_not_vote():
-    def _boom(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
+    def _boom(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None, ingestion_job_id=None):
         raise RuntimeError("no")
 
     sink = JobSink(job_id="job-1", user_id="user-1", category_ids={}, write=_boom, now=lambda: "t")
@@ -257,7 +257,7 @@ def test_a_recipe_whose_write_failed_does_not_vote():
 
 def _refusing_write(*refused_ids: str):
     """A write with the real arity that keeps the recipe but refuses some links."""
-    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
+    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None, ingestion_job_id=None):
         for cid in refused_ids:
             on_link_refused({"category_id": cid, "reason": "409: violates foreign key"})
     return _write
@@ -301,7 +301,7 @@ class _Tagged:
 
 
 def _tag_sink(write_links, row_id: Optional[str] = "row-1") -> JobSink:
-    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None):
+    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None, ingestion_job_id=None):
         if row_id is None:
             raise RuntimeError("insert rejected")
         return row_id
@@ -447,3 +447,18 @@ def test_on_result_returns_false_only_for_a_recipe_refused_at_the_cap():
     assert sink.on_result(_Recipe("A"), True) is None
     assert sink.on_result(_Recipe("B"), True) is False  # the refusing call
     assert sink.on_result(_Recipe("C"), False) is False  # every call after the cap
+
+
+def test_each_recipe_is_written_with_the_job_id_by_keyword():
+    """Cayenne F-473: recipes.ingestion_job_id is how Recent imports opens exactly a job's recipes."""
+    seen: List[Optional[str]] = []
+
+    def _write(recipe, user_id, recipe_id=None, category_ids=None, on_link_refused=None, ingestion_job_id=None):
+        seen.append(ingestion_job_id)
+        return "rid-" + recipe.title
+
+    sink = JobSink(job_id="job-42", user_id="user-1", category_ids={}, write=_write, now=lambda: "t")
+    sink.on_result(_Recipe("A"))
+    sink.on_result(_Recipe("B"))
+
+    assert seen == ["job-42", "job-42"]

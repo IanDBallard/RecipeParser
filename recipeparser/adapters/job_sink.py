@@ -115,6 +115,7 @@ class JobSink:
             rid = self._write(
                 recipe, self._user_id,
                 category_ids=self._category_ids, on_link_refused=_link_refused,
+                ingestion_job_id=self._job_id,
             )
         except Exception as exc:
             log.exception(
