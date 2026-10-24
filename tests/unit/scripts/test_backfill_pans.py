@@ -244,6 +244,27 @@ def test_dry_run_never_writes(monkeypatch):
     assert log == []
 
 
+def test_bake_type_reruns_only_those_types_and_counts_the_changes(monkeypatch, capsys):
+    # Cayenne F-487: the dry run that re-asks the pies and cheesecakes alone, and says how many would move.
+    log = []
+    pie = row(id="r1", title="Banana Cream Pie", bake_type="pie-custard", bake_step=2)
+    tart = row(id="r2", title="Leek Tart", bake_type="pie-savoury", bake_step=3)
+    cake = row(id="r3", title="Cake", bake_type="sponge", bake_step=1)
+    argv = ["--all-users", "--force", "--bake-type", "pie-custard", "--bake-type", "pie-savoury"]
+    assert _run_main(monkeypatch, argv, [pie, tart, cake], log, ans=answer(bake_type=None, bake_step=None)) == 0
+    out = capsys.readouterr().out
+    assert log == []
+    assert "2 recipes read" in out
+    assert "bake type changes:" in out
+    assert "pie-custard -> none" in out and "pie-savoury -> none" in out
+    assert "sponge" not in out.split("bake type changes:")[1]
+
+
+def test_bake_type_must_be_a_known_type(monkeypatch):
+    with pytest.raises(SystemExit):
+        _run_main(monkeypatch, ["--all-users", "--bake-type", "pie"], [row()], [])
+
+
 def test_live_without_record_refuses(monkeypatch):
     log = []
     with pytest.raises(SystemExit) as exc:
