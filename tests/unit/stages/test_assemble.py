@@ -191,3 +191,24 @@ def test_assemble_given_spans_carries_their_servings_source():
     r = _assemble(spans={**_SPANS, "servings_source": "tin"})
     assert (r.base_servings, r.servings_source) == (10, "tin")
     assert _assemble(spans=_SPANS).servings_source is None
+
+
+def test_assemble_wraps_the_counts_the_method_writes():
+    # Cayenne scaling text audit (2026-10-24): "all four of the eggs" and "Cut into 16 squares" scale.
+    recipe = CayenneRefinement(
+        title="Brownies",
+        base_servings=16,
+        structured_ingredients=[
+            StructuredIngredient(id="ing_01", kind="ingredient", amount=4, unit="large", name="eggs", fallback_string="4 large eggs", line_index=0)
+        ],
+        tokenized_directions=[
+            TokenizedDirection(step=1, text="Stir in all four of the {{ing_01|eggs|none}}."),
+            TokenizedDirection(step=2, text="Cut into 16 squares."),
+        ],
+    )
+    r = assemble(recipe=recipe, embedding=[0.0] * 1536, source_url=None, image_url=None, grid_categories={},
+                 servings_text="Yields one 9-inch-square pan of brownies", direction_steps=["Stir in all four of the eggs.", "Cut into 16 squares."])
+    assert [d.text for d in r.tokenized_directions] == [
+        "Stir in all {{ing_01|four|4}} of the {{ing_01|eggs|none}}.",
+        "Cut into {{yield:16|16}} squares.",
+    ]

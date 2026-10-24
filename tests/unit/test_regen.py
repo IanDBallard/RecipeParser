@@ -198,3 +198,17 @@ def test_a_list_with_only_a_tombstone_unwraps_every_pan_token():
     payload = build_update(_two_tin_refinement(), [0.1] * 3, read_rev=1, current_pans=current)
     assert payload["pans"] == current
     assert "{{pan_" not in payload["tokenized_directions"][0]["text"]
+
+
+def test_build_update_wraps_the_counts_against_the_rows_own_yield():
+    ref = CayenneRefinement(
+        title="Brownies",
+        base_servings=99,
+        structured_ingredients=[StructuredIngredient(id="ing_01", kind="ingredient", amount=4, unit=None, name="eggs", fallback_string="4 eggs")],
+        tokenized_directions=[TokenizedDirection(step=1, text="Beat all four of the {{ing_01|eggs|none}}, then cut into 16 squares.")],
+    )
+    payload = build_update(ref, [0.1] * 3, read_rev=1, yields={16})
+    assert payload["tokenized_directions"][0]["text"] == "Beat all {{ing_01|four|4}} of the {{ing_01|eggs|none}}, then cut into {{yield:16|16}} squares."
+    # Without the row's yield (a failed read) only the ingredient count is wrapped.
+    payload = build_update(ref, [0.1] * 3, read_rev=1)
+    assert payload["tokenized_directions"][0]["text"] == "Beat all {{ing_01|four|4}} of the {{ing_01|eggs|none}}, then cut into 16 squares."
