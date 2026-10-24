@@ -1568,6 +1568,8 @@ class TestUnreadableInputMessages:
 
         assert captured["status"] == "error"
         assert captured["error_message"] == "https://example.com/gone could not be fetched (HTTP 404)."
+        # Not a refusal: nothing for the client to name (F-480).
+        assert "error_reason" not in captured
 
     def test_a_url_blocked_by_bot_protection_is_named_in_one_sentence(self, monkeypatch: Any) -> None:
         """
@@ -1608,8 +1610,10 @@ class TestUnreadableInputMessages:
 
         assert captured["status"] == "error"
         assert captured["error_message"] == (
-            "https://example.com/some-recipe is blocked by the site's bot-protection challenge page."
+            "https://example.com/some-recipe is blocked by the site's bot-protection challenge page. "
+            "Open it in your browser, copy the recipe and paste its text in place of the link."
         )
+        assert captured["error_reason"] == {"code": "site_blocked", "host": "example.com"}
 
     def test_a_site_that_refuses_automated_readers_says_to_paste_the_text(self, monkeypatch: Any) -> None:
         """
@@ -1640,6 +1644,8 @@ class TestUnreadableInputMessages:
             "https://example.com/soup refuses automated readers (HTTP 402). "
             "Open it in your browser, copy the recipe and paste its text in place of the link."
         )
+        # A typed reason (F-480): Cayenne names the site and offers a screenshot or the text.
+        assert captured["error_reason"] == {"code": "site_blocked", "host": "example.com"}
 
 
 class TestCors:

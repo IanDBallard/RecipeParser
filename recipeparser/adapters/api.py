@@ -67,7 +67,7 @@ from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
 from recipeparser.core.pipeline import RecipePipeline, chunk_calls_ai, chunk_needs_ai
 from recipeparser.core.taxonomy import descendants_of
-from recipeparser.exceptions import AIServiceTimeoutError, JobCancelledError, UnreadableInputError
+from recipeparser.exceptions import AIServiceTimeoutError, JobCancelledError, SiteRefusedError, UnreadableInputError
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
@@ -774,6 +774,19 @@ def _job_error_message(name: Optional[str], exc: BaseException) -> str:
     return f"{name}: {exc}"
 
 
+def _job_error_reason(exc: BaseException) -> Optional[dict[str, str]]:
+    """The job row's error_reason: why it failed, typed, for the client to act on (Cayenne F-480).
+
+    Only a site that refuses automated readers has one so far: ``site_blocked``
+    with the host, so Cayenne names the site and offers a screenshot or the
+    recipe's text instead of parsing ``error_message``. Every other failure has
+    none, and its sentence stays the whole account.
+    """
+    if isinstance(exc, SiteRefusedError):
+        return {"code": "site_blocked", "host": exc.host}
+    return None
+
+
 def _finalize_ingestion_job(job_id: str, payload: dict[str, Any]) -> None:
     """UPDATE ingestion_jobs to the terminal state the JobSink built.
 
@@ -1283,6 +1296,9 @@ async def _run_ingestion_job(
                 if sink is not None
                 else {"status": "error", "stage": "ERROR", "error_message": message}
             )
+            reason = _job_error_reason(exc)
+            if reason is not None:
+                payload["error_reason"] = reason
             await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:
             _active_jobs.pop(job_id, None)
