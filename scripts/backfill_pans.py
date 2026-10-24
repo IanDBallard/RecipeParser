@@ -58,6 +58,7 @@ from recipeparser.core.fat_tokens import (  # noqa: E402
     strip_fat_tokens,
 )
 from recipeparser.core.pans import (  # noqa: E402
+    BAKE_TYPES,
     check_bake,
     check_pan_tokens,
     heading_steps,
@@ -245,6 +246,15 @@ def write_review(path: Path, results: Sequence[RowResult]) -> None:
                 writer.writerow(head + tail + [" | ".join(r.notes) if n == 0 else ""])
 
 
+def bake_type_changes(results: Sequence[RowResult]) -> Counter:
+    """(old, new) bake type -> how many tagged recipes it would move; "none" is no bake type."""
+    return Counter(
+        (r.before_bake_type or "none", r.bake_type or "none")
+        for r in results
+        if r.status == "tagged" and r.before_bake_type != r.bake_type
+    )
+
+
 def _creds() -> Tuple[str, str]:
     url = os.environ.get("SUPABASE_URL", "").rstrip("/")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -316,6 +326,9 @@ def main() -> int:
     ap.add_argument("--force", action="store_true",
                     help="Look again at recipes that already have a bake type, tins or a tin token "
                          "(a cook-edited tin is still never touched).")
+    ap.add_argument("--bake-type", action="append", choices=BAKE_TYPES, metavar="TYPE",
+                    help="Only recipes whose stored bake type is this one (repeatable). With --force, re-asks "
+                         "them under the current rules; the summary counts each change of bake type.")
     ap.add_argument("--verbose", action="store_true", help="Print every tagged recipe's new steps.")
     ap.add_argument("--progress", type=int, default=50, help="Print a progress line every N recipes (0: none).")
     args = ap.parse_args()
@@ -340,6 +353,8 @@ def main() -> int:
         return tag_pans(steps, ingredients, system, gemini_client, limiter=limiter)
 
     rows = _read_rows(sb, args.user_id, args.recipe_id)
+    if args.bake_type:
+        rows = [r for r in rows if r.get("bake_type") in args.bake_type]
     by_id = {r["id"]: r for r in rows}
 
     # Probe every row with a stub model first (cheap), so --limit counts the recipes that will call
@@ -426,6 +441,11 @@ def main() -> int:
         print(f"  {status:15s} {statuses.get(status, 0):5d}")
     print(f"  tins found:                                       {tins}")
     print(f"  notes (dropped mentions, core not marked, ...):   {notes}")
+    changes = bake_type_changes(results)
+    if changes:
+        print("bake type changes:")
+        for (before, after), n in sorted(changes.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"  {before} -> {after}  {n:5d}")
     if args.limit is not None and sent >= args.limit:
         print(f"  stopped at --limit {args.limit}; the rest were not sent to the model")
     if args.review:

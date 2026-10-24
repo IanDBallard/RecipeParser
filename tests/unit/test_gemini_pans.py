@@ -129,6 +129,24 @@ def test_sweet_suet_puddings_and_fruit_pastries_are_pie_fruit_and_savoury_galett
     assert "savoury tarts and galettes" in p
 
 
+def test_a_pie_whose_filling_never_bakes_has_no_bake_type():
+    # Cayenne F-487: Banana Cream, Lime Chiffon and Mango Pie were pie-custard with the crust's bake as
+    # their bake step, so the app showed a custard's set cue under a crumb crust.
+    p = _bake_rule()
+    assert "Only when the filling bakes in it" in p
+    assert "only a meringue is browned on top, is null" in p
+    assert "banana cream, chiffon and banoffee pie" in p
+    assert "a no-bake cheesecake is null" in p
+    assert "lemon meringue" not in p
+
+
+def test_a_savoury_tart_set_with_egg_and_cream_is_pie_custard():
+    # Cayenne F-487: Leek and Caerphilly, Shallot Onion and Chive and the creamy leek tart were pie-savoury.
+    p = _bake_rule()
+    assert "quiche, any savoury tart filled with eggs and cream" in p
+    assert "savoury tarts and galettes not filled with eggs and cream" in p
+
+
 def test_a_baking_dish_takes_the_family_of_its_shape_and_a_choice_takes_the_first_size():
     # The live library had 13 dimensioned dishes with no family ("an ovenproof dish, about 18 x 23cm"),
     # so no recipe baked in one could be fitted: the vocabulary named tins and pans, never dishes.

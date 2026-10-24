@@ -865,18 +865,22 @@ _TINS_BAKE = """\
    - "bake_type": one of {bake_types}, or null. Decide by how the item is made, not by its name, and
      take the first that fits, in this order:
      1. pizza: a yeast-dough base baked flat under its toppings.
-     2. cheesecake: a filling that is mostly soft cheese (cream cheese, ricotta, quark) set with eggs.
+     2. cheesecake: a filling that is mostly soft cheese (cream cheese, ricotta, quark) set with eggs
+        as it bakes; a no-bake cheesecake is null.
      3. a pie or tart, never a recipe for pastry or dough alone: a pastry or crumb crust holds the
-        filling, or a lid of pastry, a suet crust or mashed potato covers it. A sweet filling is never
+        filling, or a lid of pastry, a suet crust or mashed potato covers it. Only when the filling
+        bakes in it: a filling cooked on the hob or set in the fridge, so that only the crust is baked
+        (blind, or a crumb crust) or only a meringue is browned on top, is null (banana cream, chiffon
+        and banoffee pie, a curd or pastry cream spooned into a baked case). A sweet filling is never
         pie-savoury, whatever the crust (hot water, suet or shortcrust).
         pie-custard: the filling is mostly egg with milk or cream and sets as it bakes (custard tart,
-        quiche, pumpkin and sweet potato pie, lemon meringue). pie-nut: a sugar-syrup, nut or frangipane
+        quiche, any savoury tart filled with eggs and cream, pumpkin and sweet potato pie). pie-nut: a sugar-syrup, nut or frangipane
         filling (pecan pie, treacle tart, butter tart, Bakewell tart). pie-fruit: a sweet fruit filling
         (apple pie, mince pies, tarte tatin, sweet fruit galettes), sweet suet puddings and fruit-filled
         pastries (Sussex pond pudding, Eccles cakes, black bun), and fruit baked under a crumble, crisp or
         cobbler topping with no crust. pie-savoury: a savoury filling in or under pastry, a suet crust or
         mashed potato (meat and pot pies, pasties, empanadas, sausage rolls, beef Wellington, steak and
-        kidney pudding, savoury tarts and galettes), and fish or meat under a mashed-potato lid (shepherd's,
+        kidney pudding, savoury tarts and galettes not filled with eggs and cream), and fish or meat under a mashed-potato lid (shepherd's,
         cottage and fish pie): a mashed-potato lid is not a topping. Never pie-savoury: a dish topped with cheese, sauce or breadcrumbs (lasagne,
         moussaka, enchiladas, gratins, aubergine parmigiana), or anything sweet.
      4. custard: an egg-set liquid baked with no crust (baked custard, crème caramel, crème brûlée,
