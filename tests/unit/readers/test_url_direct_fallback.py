@@ -170,6 +170,30 @@ def test_a_site_that_refuses_the_direct_fetch_is_named_with_what_to_do(public_dn
     assert str(excinfo.value) == f"refuses automated readers (HTTP {status}). {_PASTE}"
 
 
+def test_a_refusal_carries_the_host_that_refused(public_dns: Any) -> None:
+    """Cayenne F-480: the client names the site from a typed reason, never by parsing the sentence."""
+    with patch(
+        "recipeparser.io.readers.url.requests.get",
+        side_effect=[_jina_refusal(451), _page("Forbidden", status=403, content_type="text/html")],
+    ):
+        with pytest.raises(SiteRefusedError) as excinfo:
+            UrlReader().read("https://www.allrecipes.com/recipe/10813/best-chocolate-chip-cookies/")
+    assert excinfo.value.host == "allrecipes.com"
+
+
+def test_a_challenge_page_jina_rendered_is_a_refusal_too(public_dns: Any) -> None:
+    """Jina challenged by the site's bot protection, the direct fetch failing otherwise: still a block (F-480)."""
+    challenge = MagicMock(status_code=200, text="Title: Just a moment...\n\nRay ID: a4030a307d38d990")
+    challenge.raise_for_status.return_value = None
+    with patch(
+        "recipeparser.io.readers.url.requests.get",
+        side_effect=[challenge, _page("Not Found", status=404)],
+    ):
+        with pytest.raises(SiteRefusedError) as excinfo:
+            UrlReader().read(SOURCE)
+    assert excinfo.value.host == "seriouseats.com"
+    assert str(excinfo.value) == f"is blocked by the site's bot-protection challenge page. {_PASTE}"
+
 def test_any_other_direct_failure_reports_jinas_failure(public_dns: Any) -> None:
     with patch(
         "recipeparser.io.readers.url.requests.get",

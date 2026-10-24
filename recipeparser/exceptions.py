@@ -52,12 +52,21 @@ class UrlFetchError(UnreadableInputError):
 
 class SiteRefusedError(UrlFetchError):
     """A page whose site refuses automated readers: a 401, 402, 403 or 451, or a
-    bot-protection challenge page, answered to the reader's direct fetch.
+    bot-protection challenge page, answered to the reader's direct fetch or
+    rendered by Jina in place of the article.
 
     No retry from the server will get past it, so the message tells the person
     what does: their own browser can read the page, and the import box takes
     the recipe's text.
+
+    ``host`` is the site that refused, lower-cased without a leading www., so
+    the job row carries a typed reason (``site_blocked``) that the client names
+    the site from, rather than parsing this sentence (Cayenne Fix Roadmap F-480).
     """
+
+    def __init__(self, message: str, host: str = "") -> None:
+        super().__init__(message)
+        self.host = host
 
 
 class ExportError(RecipeParserError):

@@ -729,7 +729,7 @@ def test_url_reader_refuses_a_bot_protection_challenge_page() -> None:
     not silently treated as a zero-recipe page — see thewoksoflife.com,
     2026-09-24.
     """
-    from recipeparser.exceptions import UrlFetchError
+    from recipeparser.exceptions import SiteRefusedError, UrlFetchError
 
     challenge_body = (
         "Title: Just a moment...\n\n"
@@ -747,4 +747,10 @@ def test_url_reader_refuses_a_bot_protection_challenge_page() -> None:
     with patch("recipeparser.io.readers.url.requests.get", return_value=response):
         with pytest.raises(UrlFetchError) as excinfo:
             UrlReader().read("https://example.com/some-recipe")
-    assert str(excinfo.value) == "is blocked by the site's bot-protection challenge page."
+    # A refusal of automated readers since Cayenne F-480: typed, with the host, and saying what works.
+    assert isinstance(excinfo.value, SiteRefusedError)
+    assert excinfo.value.host == "example.com"
+    assert str(excinfo.value) == (
+        "is blocked by the site's bot-protection challenge page. "
+        "Open it in your browser, copy the recipe and paste its text in place of the link."
+    )

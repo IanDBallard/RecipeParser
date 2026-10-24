@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.21.0] — 2026-10-24
+
+A site that refuses automated readers is a typed reason on the job's row, so Cayenne names the site and offers a screenshot or the recipe's text instead of "The import failed" (Cayenne bug report 37a013af, Allrecipes answering HTTP 403; the owner's ruling of 2026-10-24: no evasion of bot protection; Cayenne Fix Roadmap F-480). Merging deploys (container restart). **Deploy Cayenne's migration `20261024130000_ingestion_job_error_reason.sql` first**: until it lands `ingestion_jobs` has no `error_reason`, PostgREST refuses the finalize that names it, and a refused site's job row would hang at running.
+
+### ✨ Added
+- `ingestion_jobs.error_reason` on a failed job: `{"code": "site_blocked", "host": "allrecipes.com"}` when the reader raised `SiteRefusedError` (`_job_error_reason`). Every other failure writes none, and `error_message` stays the job's sentence for older clients.
+- `SiteRefusedError.host`: the refusing site, lower-cased without www. (the redirect's final host for the direct fetch).
+
+### ⚠️ Changed
+- A bot-protection challenge page that Jina renders in place of the article is a `SiteRefusedError` too, with the same "Open it in your browser, copy the recipe and paste its text in place of the link." as the direct fetch's refusal (was a plain `UrlFetchError` with no advice).
+
+---
+
 ## [9.20.0] — 2026-10-22
 
 Every recipe an import writes records the job that wrote it, so Cayenne's Recent imports can open exactly what a job made: the one recipe, or the library filtered to that job (the owner's request of 2026-10-22; Cayenne Fix Roadmap F-473). Merging deploys (container restart). **Deploy Cayenne's migration `20261022120000_recipe_ingestion_job.sql` first**: until it lands the `recipes` table has no `ingestion_job_id`, and PostgREST refuses every recipe insert that names it, so every import would fail.

@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 import requests  # type: ignore[import-untyped]
 from bs4 import BeautifulSoup  # type: ignore[import-untyped]
 
-from recipeparser.core.citation import web_citation
+from recipeparser.core.citation import host_of, web_citation
 from recipeparser.core.models import Chunk, InputType
 from recipeparser.io.readers import RecipeReader
 
@@ -464,7 +464,7 @@ class UrlReader(RecipeReader):
 
     def _read_via_jina(self, source: str) -> str:
         """The page as Jina renders it, or a UrlFetchError saying why not."""
-        from recipeparser.exceptions import UrlFetchError
+        from recipeparser.exceptions import SiteRefusedError, UrlFetchError
 
         jina_url = f"{_JINA_PREFIX}{source}"
         log.info("UrlReader: fetching %s via %s", source, jina_url)
@@ -489,7 +489,11 @@ class UrlReader(RecipeReader):
         if not text.strip():
             raise UrlFetchError("contains no readable text.")
         if looks_like_bot_challenge(text):
-            raise UrlFetchError("is blocked by the site's bot-protection challenge page.")
+            # The site's bot protection challenged Jina: a refusal of automated readers, so the
+            # job names the site and what to do, as the direct fetch's refusal does (F-480).
+            raise SiteRefusedError(
+                f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}", host=host_of(source)
+            )
         log.info("UrlReader: received %d chars for %s", len(text), source)
         return text
 
@@ -523,7 +527,9 @@ class UrlReader(RecipeReader):
             raise UrlFetchError("redirected too many times.")
 
         if response.status_code in _REFUSING_STATUSES:
-            raise SiteRefusedError(f"refuses automated readers (HTTP {response.status_code}). {_PASTE_INSTEAD}")
+            raise SiteRefusedError(
+                f"refuses automated readers (HTTP {response.status_code}). {_PASTE_INSTEAD}", host=host_of(url)
+            )
         if not 200 <= response.status_code < 300:
             raise UrlFetchError(f"could not be fetched (HTTP {response.status_code}).")
         content_type = response.headers.get("content-type") or ""
@@ -531,7 +537,9 @@ class UrlReader(RecipeReader):
             raise UrlFetchError("is not a web page.")
         html = response.text[:_MAX_HTML_CHARS]
         if looks_like_html_challenge(html):
-            raise SiteRefusedError(f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}")
+            raise SiteRefusedError(
+                f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}", host=host_of(url)
+            )
         text = page_text_from_html(html)
         if not text.strip():
             raise UrlFetchError("contains no readable text.")
