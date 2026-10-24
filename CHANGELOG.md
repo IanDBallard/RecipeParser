@@ -19,6 +19,19 @@ The counts a method writes scale with the recipe (Cayenne scaling text audit 202
 
 ---
 
+## [9.21.1] — 2026-10-24
+
+The bake type rules no longer give a pie whose filling never bakes a filling's bake type, and a savoury tart set with eggs and cream is `pie-custard` (Cayenne Fix Roadmap F-487: a custard's set cue under a crumb crust, a pot pie's under an open tart). Merging deploys (container restart). Stored bake types change only when the owner runs the backfill below.
+
+### ⚠️ Changed
+- `_TINS_BAKE` (REFINE and the pans prompt): a pie or tart is one only when its filling bakes in it; a filling cooked on the hob or set in the fridge, with only the crust (blind or crumb) baked or only a meringue browned, is null (banana cream, chiffon and banoffee pie, a curd in a baked case); "lemon meringue" leaves the `pie-custard` examples. A no-bake cheesecake is null. "Any savoury tart filled with eggs and cream" is `pie-custard`; `pie-savoury` keeps the savoury tarts and galettes that are not. Proved by `scripts/probe_bake_types.py --runs 2` with 15 new cases (71): 68/71 and 67/71; every new case as expected in both runs but Gypsy Tart (`pie-nut` once). The misses are Moussaka (not read), Turkey Enchiladas (`pie-savoury`; already unstable under the old rules, which gave none then `pie-savoury` on a re-probe) and Black Bun (the recorded F-302 miss). Under the old rules Banana Cream Pie, Mango Pie and Leek and Caerphilly Tart missed in both runs.
+
+### ✨ Added
+- `scripts/backfill_pans.py --bake-type TYPE` (repeatable): only recipes stored with that bake type. The summary counts each change of bake type. The F-487 dry run, which writes nothing:
+  `python scripts/backfill_pans.py --all-users --force --bake-type pie-custard --bake-type pie-savoury --bake-type pie-nut --bake-type pie-fruit --bake-type cheesecake --review bake-types-review.csv`
+
+---
+
 ## [9.21.0] — 2026-10-24
 
 A site that refuses automated readers is a typed reason on the job's row, so Cayenne names the site and offers a screenshot or the recipe's text instead of "The import failed" (Cayenne bug report 37a013af, Allrecipes answering HTTP 403; the owner's ruling of 2026-10-24: no evasion of bot protection; Cayenne Fix Roadmap F-480). Merging deploys (container restart). **Deploy Cayenne's migration `20261024130000_ingestion_job_error_reason.sql` first**: until it lands `ingestion_jobs` has no `error_reason`, PostgREST refuses the finalize that names it, and a refused site's job row would hang at running.
