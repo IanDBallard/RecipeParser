@@ -458,7 +458,7 @@ def test_regen_reads_the_rows_current_tins_and_keeps_an_edited_one():
         {"pans": cooks}, rpc_responses={"claim_stale_recipes": [_row()]}, responses={"recipes": [{"id": "r1"}]}
     )
     _worker(fake, refine_fn=MagicMock(return_value=_tin_refinement())).run_once()
-    assert _selects(fake, "recipes") == [[("select", ("pans",), {}), ("eq", ("id", "r1"), {}), ("single", (), {})]]
+    assert _selects(fake, "recipes") == [[("select", ("pans,base_servings,servings_min,servings_max,servings_note",), {}), ("eq", ("id", "r1"), {}), ("single", (), {})]]
     payload = _ops(fake, "recipes")[0][0][1][0]
     assert payload["pans"] == cooks
     assert payload["tokenized_directions"][0]["text"] == "Bake in {{pan_01|two tins}} and a tray."

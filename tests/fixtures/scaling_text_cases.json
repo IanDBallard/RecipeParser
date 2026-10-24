@@ -1,0 +1,84 @@
+{
+	"about": "Scaling text design 2026-10-24 (Cayenne F-491, F-492). Real directions from the 2026-10-24 audit, cut to the steps that matter, no ids or owners. RecipeParser's core/count_tokens.py turns each case's `before` into its `after`; Cayenne's client renders `after`. Kept identical in both repositories (tests/fixtures/scaling_text_cases.json).",
+	"cases": [
+		{
+			"name": "Rich, Fudgy Brownies: all four of the eggs; Cut into 16 squares",
+			"ingredients": [
+				{ "id": "ing_01", "amount": 8, "unit": "oz.", "name": "unsalted butter" },
+				{ "id": "ing_02", "amount": 3, "unit": "oz.", "name": "unbleached all-purpose flour" },
+				{ "id": "ing_03", "amount": 2, "unit": "cups", "name": "granulated sugar" },
+				{ "id": "ing_04", "amount": 4, "unit": "large", "name": "eggs" },
+				{ "id": "ing_05", "amount": 0.5, "unit": "tsp.", "name": "pure vanilla extract" }
+			],
+			"yield": { "base": 16, "min": null, "max": null, "note": "Yields one 9-inch-square pan of brownies" },
+			"before": [
+				"Position a rack in the center of the oven and heat the oven to {{temp:350F,oven|350°F}}. Butter and {{ing_02|flour|none}} a {{pan_01|9-inch-square metal baking pan}}, tapping out the excess {{ing_02|flour|none}}.",
+				"Melt the {{ing_01|butter|all}} in a medium saucepan over medium heat. Remove the pan from the heat. Whisk or stir in the {{ing_03|sugar|all}}, followed by all four of the {{ing_04|eggs|none}} and the {{ing_05|vanilla|all}}.",
+				"Cut into 16 squares. Keep the brownies at room temperature, well wrapped. You can freeze them, too."
+			],
+			"after": [
+				"Position a rack in the center of the oven and heat the oven to {{temp:350F,oven|350°F}}. Butter and {{ing_02|flour|none}} a {{pan_01|9-inch-square metal baking pan}}, tapping out the excess {{ing_02|flour|none}}.",
+				"Melt the {{ing_01|butter|all}} in a medium saucepan over medium heat. Remove the pan from the heat. Whisk or stir in the {{ing_03|sugar|all}}, followed by all {{ing_04|four|4}} of the {{ing_04|eggs|none}} and the {{ing_05|vanilla|all}}.",
+				"Cut into {{yield:16|16}} squares. Keep the brownies at room temperature, well wrapped. You can freeze them, too."
+			]
+		},
+		{
+			"name": "Tangy Lemon Bars: a yield count written as a word, a dimension before the noun",
+			"ingredients": [{ "id": "ing_09", "amount": 3, "unit": "large", "name": "eggs" }],
+			"yield": { "base": 16, "min": 16, "max": 16, "note": "2 inch bars" },
+			"before": ["Lift the ends of the foil liner and transfer to a cutting board. Use a long sharp knife to cut into sixteen 2 inch bars."],
+			"after": ["Lift the ends of the foil liner and transfer to a cutting board. Use a long sharp knife to cut into {{yield:16|sixteen}} 2 inch bars."]
+		},
+		{
+			"name": "Doughnuts: dough divided into the yield",
+			"ingredients": [{ "id": "ing_01", "amount": 300, "unit": "g", "name": "strong white bread flour" }],
+			"yield": { "base": 12, "min": 12, "max": 12, "note": null },
+			"before": ["Scrape the dough out onto a lightly floured surface. Divide into 12 pieces and roll each into a ball."],
+			"after": ["Scrape the dough out onto a lightly floured surface. Divide into {{yield:12|12}} pieces and roll each into a ball."]
+		},
+		{
+			"name": "Crumble cake: a share of the eggs, written in digits",
+			"ingredients": [{ "id": "ing_12", "amount": 3, "unit": null, "name": "free-range eggs" }],
+			"yield": { "base": 4, "min": 2, "max": 2, "note": "small loaves ( 4 to 6)" },
+			"before": ["Separate 2 of the {{ing_12|eggs|none}}, keeping the whites separate while mixing the yolks with the third egg."],
+			"after": ["Separate {{ing_12|2|2}} of the {{ing_12|eggs|none}}, keeping the whites separate while mixing the yolks with the third egg."]
+		},
+		{
+			"name": "Banana cake: the whole count before the ingredient, a unit that is the food itself",
+			"ingredients": [{ "id": "ing_04", "amount": 3, "unit": "bananas", "name": "bananas ripe" }],
+			"yield": { "base": 1, "min": 1, "max": 1, "note": null },
+			"before": ["Peel approximately 3 {{ing_04|bananas|none}} (325 grams peeled) and cut in half lengthwise and crosswise."],
+			"after": ["Peel approximately {{ing_04|3|3}} {{ing_04|bananas|none}} (325 grams peeled) and cut in half lengthwise and crosswise."]
+		},
+		{
+			"name": "Left alone: a count per piece, a count of an ingredient measured by volume, a cut of each item, a number that is not the yield",
+			"ingredients": [
+				{ "id": "ing_07", "amount": 0.25, "unit": "cup", "name": "raisins" },
+				{ "id": "ing_05", "amount": 2, "unit": null, "name": "oranges" },
+				{ "id": "ing_01", "amount": 5, "unit": "lb.", "name": "tart apples" }
+			],
+			"yield": { "base": 6, "min": 6, "max": 8, "note": null },
+			"before": [
+				"Drain the {{ing_07|raisins|none}} and place seven or eight {{ing_07|raisins|none}} in each chilled tart shell.",
+				"Cut each orange horizontally into 6 slices.",
+				"Set aside four of the {{ing_01|apple|none}} halves.",
+				"Cut the butter into 3 pieces and the cake into 10 squares.",
+				"Add one {{ing_05|orange|none}} at a time."
+			],
+			"after": [
+				"Drain the {{ing_07|raisins|none}} and place seven or eight {{ing_07|raisins|none}} in each chilled tart shell.",
+				"Cut each orange horizontally into 6 slices.",
+				"Set aside four of the {{ing_01|apple|none}} halves.",
+				"Cut the butter into 3 pieces and the cake into 10 squares.",
+				"Add one {{ing_05|orange|none}} at a time."
+			]
+		},
+		{
+			"name": "Already tokenised: running the pass twice changes nothing",
+			"ingredients": [{ "id": "ing_04", "amount": 4, "unit": "large", "name": "eggs" }],
+			"yield": { "base": 16, "min": null, "max": null, "note": null },
+			"before": ["Followed by all {{ing_04|four|4}} of the {{ing_04|eggs|none}}. Cut into {{yield:16|16}} squares."],
+			"after": ["Followed by all {{ing_04|four|4}} of the {{ing_04|eggs|none}}. Cut into {{yield:16|16}} squares."]
+		}
+	]
+}

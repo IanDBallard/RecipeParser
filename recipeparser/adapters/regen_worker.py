@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from recipeparser import usage
 from recipeparser.core.citation import host_of
+from recipeparser.core.count_tokens import yield_numbers
 from recipeparser.core.regen import build_extraction, build_update
 from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.refine import refine
@@ -95,15 +96,24 @@ class RegenWorker:
                 )
                 vector = self._embed(recipe=refinement, client=self._client)
                 # A tin the cook edited must survive regen. Best-effort: a failed read writes REFINE's tins.
+                # The row's own yield, which the method's yield counts are wrapped against (Cayenne
+                # scaling text audit): servings are the cook's, so they are read here, never REFINE's.
                 current_pans: Any = None
+                yields = None
                 try:
-                    current = self._sb.table("recipes").select("pans").eq("id", rid).single().execute().data
-                    current_pans = current.get("pans") if isinstance(current, dict) else None
+                    current = self._sb.table("recipes").select(
+                        "pans,base_servings,servings_min,servings_max,servings_note"
+                    ).eq("id", rid).single().execute().data
+                    if isinstance(current, dict):
+                        current_pans = current.get("pans")
+                        yields = yield_numbers(current.get("base_servings"), current.get("servings_min"),
+                                               current.get("servings_max"), current.get("servings_note"))
                 except Exception as exc:  # noqa: BLE001 — the guard must not fail the regen
                     log.warning("regen: %s: could not read current tins (%s); writing REFINE's", rid, exc)
                 payload = build_update(
                     refinement, vector, read_rev,
                     current_pans=current_pans if isinstance(current_pans, list) else None,
+                    yields=yields,
                 )
                 res = (
                     self._sb.table("recipes")

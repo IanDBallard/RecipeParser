@@ -17,6 +17,10 @@ A token whose id starts ``pan_`` is a tin (Cayenne pan-aware scaling D21): ``{{p
 tins}}``; no ``use``, names no ingredient. A ``temp:`` value may end ``,core``: an internal
 temperature, the source's own doneness figure (D24).
 
+A token whose id starts ``yield:`` is a count of what the recipe makes, ``Cut into {{yield:16|16}} squares``
+(Cayenne scaling text audit, 2026-10-24): the value is the count, the words are the source's own
+("16", "sixteen"); the client scales it with the servings in whole pieces. ``core/count_tokens.py`` writes it.
+
 Pure: no I/O, no imports from recipeparser.io or recipeparser.adapters.
 """
 from __future__ import annotations
@@ -37,6 +41,7 @@ _PART_SLACK = 1.05
 
 TEMP_PREFIX = "temp:"
 PAN_PREFIX = "pan_"
+YIELD_PREFIX = "yield:"
 _TEMP_MAIN = re.compile(r"^(-?\d+(?:\.\d+)?)([CF])$", re.ASCII)
 _TEMP_GAS = re.compile(r"^gas(0\.25|0\.5|[1-9])$", re.ASCII)
 _TEMP_FAN = re.compile(r"^fan=(-?\d+(?:\.\d+)?)([CF])$", re.ASCII)
@@ -89,9 +94,14 @@ def is_pan_id(token_id: str) -> bool:
     return token_id.startswith(PAN_PREFIX)
 
 
+def is_yield_id(token_id: str) -> bool:
+    """Whether a token's first field names a yield count."""
+    return token_id.startswith(YIELD_PREFIX)
+
+
 def is_special_id(token_id: str) -> bool:
-    """A temperature or a tin: a token that names no ingredient."""
-    return is_temp_id(token_id) or is_pan_id(token_id)
+    """A temperature, a tin or a yield count: a token that names no ingredient."""
+    return is_temp_id(token_id) or is_pan_id(token_id) or is_yield_id(token_id)
 
 
 def temp_token(value: str, words: str) -> str:
@@ -100,6 +110,10 @@ def temp_token(value: str, words: str) -> str:
 
 def pan_token(pan_id: str, words: str) -> str:
     return "{{" + pan_id + "|" + words + "}}"
+
+
+def yield_token(count: int, words: str) -> str:
+    return "{{" + YIELD_PREFIX + str(count) + "|" + words + "}}"
 
 
 _UNIT_ALIASES: Dict[str, str] = {
@@ -183,6 +197,26 @@ QUANTITY_VOCABULARY = frozenset("""
 """.split())
 _NUMBER_RE = re.compile(r"\d+(?:[.,/]\d+)?|[¼½¾⅐-⅞]")
 
+# Words that name no one ingredient (Cayenne F-495): "Measure all the ingredients" is not the
+# butter. A whole amount there is one the source never wrote, so the use is demoted to none --
+# unless the ingredient's own name holds the word ("dough" for "raw pizza dough"). Cayenne's
+# domain/directionMentions.ts holds the same list (GENERIC_WORDS); keep them alike.
+GENERIC_WORDS = frozenset((
+    "ingredients", "dry ingredients", "wet ingredients", "remaining ingredients", "other ingredients",
+    "filling ingredients", "mixture", "mix", "batter", "dough", "filling", "sauce", "glaze", "topping",
+    "marinade", "base", "everything", "all", "them", "it", "lot", "rest",
+))
+_GENERIC_HEAD = re.compile(r"^(?:(?:all|both)\s+)?(?:(?:of\s+)?(?:the|your)\s+)?(.+)$", re.IGNORECASE)
+
+
+def names_no_ingredient(words: str, ingredient_name: str) -> bool:
+    """Whether a mention's words name no one ingredient, judged against that ingredient's own name."""
+    m = _GENERIC_HEAD.match(words.strip())
+    head = (m.group(1) if m else "").lower()
+    if head not in GENERIC_WORDS:
+        return False
+    return re.search(r"(?:^|[^a-z])" + re.escape(head) + r"(?:[^a-z]|$)", ingredient_name, re.IGNORECASE) is None
+
 
 def is_quantity(words: str) -> bool:
     """Whether ``words`` are a quantity and nothing more: "1/2 cup (60 g)", "two tablespoons", "120ml"."""
@@ -242,6 +276,8 @@ def check_mentions(
     cannot have. Returns the directions, rewritten where needed, and one line per change. In order:
 
     - an amount that does not parse becomes ``none``;
+    - ``all`` or ``rest`` on words that name no one ingredient ("all the ingredients", "the mixture")
+      becomes ``none``: the chip would insert an amount the source never wrote (Cayenne F-495);
     - an amount on words that hold a quantity and the name together ("1 cup freshly shelled peas")
       becomes ``none``: the chip would print the quantity alone and lose the name;
     - an amount on words that are not a quantity — the model put it on the ingredient's name —
@@ -269,6 +305,8 @@ def check_mentions(
         ing = by_id.get(m.ingredient_id)
         if use.kind == "invalid":
             effective.append((Use("none"), f"amount {m.raw!r} does not parse"))
+        elif use.kind in ("all", "rest") and ing is not None and names_no_ingredient(m.words, ing.name):
+            effective.append((Use("none"), "words that name no one ingredient"))
         elif use.kind == "part" and QUANTITY_WORDS.search(m.words) and not is_quantity(m.words):
             effective.append((Use("none"), "an amount on a quantity and the name together"))
         elif use.kind == "part" and not QUANTITY_WORDS.search(m.words):

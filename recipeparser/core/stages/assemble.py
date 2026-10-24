@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from recipeparser.core.citation import Citation
+from recipeparser.core.count_tokens import scalable_counts, yield_numbers
 from recipeparser.core.durations import duration_columns
 from recipeparser.core.models import RestoreFields, SourceMeta
 from recipeparser.core.regen import raw_lines_from_derived
@@ -131,6 +132,14 @@ def assemble(
         sv = servings_for_recipe(servings_text, steps, recipe.pans, recipe.bake_type, recipe.base_servings)
     else:
         sv = Servings(cols["base_servings"], cols.get("servings_source"))
+    directions = recipe.tokenized_directions
+    if spans is None:
+        # The counts the method writes scale (Cayenne scaling text audit 2026-10-24): against the
+        # yield just settled. A restore keeps the archive's directions as exported.
+        directions = scalable_counts(
+            directions, recipe.structured_ingredients,
+            yield_numbers(sv.base, cols["servings_min"], cols["servings_max"], cols["servings_note"]),
+        )
 
     result = IngestResponse(
         title=recipe.title,
@@ -145,7 +154,7 @@ def assemble(
         categories=flat_categories,
         grid_categories=grid_categories,
         structured_ingredients=recipe.structured_ingredients,
-        tokenized_directions=recipe.tokenized_directions,
+        tokenized_directions=directions,
         embedding=embedding,
         # rating and difficulty come only from a Paprika entry: nothing infers them
         # from a book or a web page. description, nutritional_info and notes are the

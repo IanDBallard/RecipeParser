@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.22.0] — 2026-10-24
+
+The counts a method writes scale with the recipe (Cayenne scaling text audit 2026-10-24; Cayenne Fix Roadmap F-491, F-492, F-495). The owner's report: "Rich, Fudgy Brownies" at ×1½ still said "all four of the eggs" and "Cut into 16 squares". No prompt changes and no model call: a deterministic pass after REFINE. Merging deploys (container restart); nothing to migrate. Existing recipes take the same pass through `scripts/backfill_count_tokens.py`, which the owner runs (dry run 2026-10-24 over 2,615 rows: 241 would change).
+
+### ✨ Added
+- `core/count_tokens.py`: a count of an ingredient before its mention becomes an amount token, `all {{ing_04|four|4}} of the {{ing_04|eggs|none}}`, when the ingredient is counted by the piece and the count is its whole amount or a share of it ("2 of the eggs"); never a range ("one or two") or a rate ("at a time", "each"). A count of what the recipe makes becomes a yield token, `Cut into {{yield:16|16}} squares`, only after a verb that cuts, divides or makes, before a word for the pieces, and only when the number is the recipe's own yield. ASSEMBLE runs it against the yield it just settled; the regeneration worker against the row's own servings, which it now reads with the tins.
+- The `yield:` token in the grammar (`is_yield_id`, `yield_token`); `strip_fat_tokens` gives its words back like any other.
+- `scripts/backfill_count_tokens.py`: the same pass over stored rows, dry run by default, `--rows-json` for rows exported read-only, `--live --record` and `--restore` as the other backfills.
+
+### ⚠️ Changed
+- `check_mentions` demotes `all` or `rest` on words that name no one ingredient ("Measure all the ingredients", "the mixture", "the dough" for the flour) to `none`, unless the ingredient's own name holds the word: the chip inserted an amount the source never wrote.
+
+---
+
 ## [9.21.1] — 2026-10-24
 
 The bake type rules no longer give a pie whose filling never bakes a filling's bake type, and a savoury tart set with eggs and cream is `pie-custard` (Cayenne Fix Roadmap F-487: a custard's set cue under a crumb crust, a pot pie's under an open tart). Merging deploys (container restart). Stored bake types change only when the owner runs the backfill below.

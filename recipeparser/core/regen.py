@@ -9,8 +9,9 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
+from recipeparser.core.count_tokens import scalable_counts
 from recipeparser.core.fat_tokens import TOKEN_RE, is_pan_id, strip_fat_tokens
 from recipeparser.core.pans import check_pan_tokens
 from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
@@ -101,6 +102,7 @@ def build_update(
     embedding: List[float],
     read_rev: int,
     current_pans: Optional[List[Any]] = None,
+    yields: Optional[Set[int]] = None,
 ) -> Dict[str, Any]:
     """
     The conditional write-back payload (spec 5.5).  Title, base_servings and
@@ -138,6 +140,9 @@ def build_update(
             return m.group(0)
 
         directions = [d.model_copy(update={"text": TOKEN_RE.sub(same_tin, d.text)}) for d in directions]
+    # The counts the method writes scale (Cayenne scaling text audit): yield counts against the row's
+    # own yield, which the worker reads; without it (a failed read) only the ingredient counts.
+    directions = scalable_counts(directions, refinement.structured_ingredients, yields or set())
     return {
         "structured_ingredients": [i.model_dump() for i in refinement.structured_ingredients],
         "tokenized_directions": [d.model_dump() for d in directions],
