@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.23.0] — 2026-10-25
+
+A picture an import would store is shown to the model first, and one that is not food is not stored (Cayenne Fix Roadmap F-209). The trigger: a beta tester's "Roast Duck Breasts with Pomegranate-Chile Sauce" (bug report cc9a6210, 2026-10-25), an Epicurious page saved as a PDF and uploaded (`POST /jobs/file`, a one-chunk book job), was stored with the page's stock photo of a family in an SUV: the model named that photo from the page's image markers, and the pixel checks (`photo_check.py`) cannot tell a car from a dish. Merging deploys (container restart); nothing to migrate. Pictures already stored are untouched (F-210 is a later pass, which can reuse the same check).
+
+### ✨ Added
+- `core/picture_check.py`: the policy, with the model call injected. `check_picture` downscales the picture to a 512 px JPEG and asks for a typed verdict, `FoodVerdict(kind=...)`, one of `dish`, `ingredients`, `cooking` (kept) or `people`, `vehicle`, `logo`, `advert`, `text`, `drawing`, `blank`, `decorative`, `other` (refused: the recipe goes without a picture and the app shows its placeholder). A check that cannot run (the call fails or times out, the bytes do not decode) keeps the picture, as before, and logs it; it never fails the import. `first_food_picture` tries a page's candidates in order and keeps the first that is food, asking about at most three.
+- `gemini.ask_is_food`: one call on `GEMINI_FOOD_CHECK_MODEL` (default `GEMINI_MODEL`, gemini-3.1-flash-lite) at `MEDIA_RESOLUTION_LOW`, bounded by `FOOD_CHECK_TIMEOUT_SECS` (20 s), one retry. Recorded in `ai_usage` under step `Picture food check`, in the import's attribution, like every other call. Measured on synthetic images: 391 prompt tokens and 11 output tokens a check, about $0.0001 at the model's list price.
+- `PageMeta.images`: the pictures a page's JSON-LD Recipe declares (a URL, an ImageObject, or a list of either), the candidates after its og:image.
+
+### ⚠️ Changed
+- Every import route asks before it stores. A web link tries its og/twitter image, then its JSON-LD images, then the scraper's markdown images (badges dropped by address first), fetching and checking each in turn. A book page (PDF, EPUB) checks the photo the model named; when the chunk holds that recipe alone, the page's other pictures follow it as candidates. A Paprika entry's embedded photo is checked before it is stored. `RecipePipeline` takes the call as `food_check` (none: every picture kept, the CLI's behaviour); each check takes a rate-limiter slot.
+- A Cayenne restore's picture is not checked: it is the cook's own library, and may be a picture the cook chose. A photo of a page (`ImageReader`) and pasted text carry no picture, so neither asks.
+
+### Known gaps
+- A Paprika entry with no embedded photo keeps its `image_url` address as Paprika recorded it, unfetched and unchecked, as before.
+- No golden set of real photographs: the verdicts on the owner's five calibration samples (F-209) are not recorded here, and third-party photographs are not committed. The tests use stubbed verdicts and synthesised images.
+
+---
+
 ## [9.22.0] — 2026-10-24
 
 The counts a method writes scale with the recipe (Cayenne scaling text audit 2026-10-24; Cayenne Fix Roadmap F-491, F-492, F-495). The owner's report: "Rich, Fudgy Brownies" at ×1½ still said "all four of the eggs" and "Cut into 16 squares". No prompt changes and no model call: a deterministic pass after REFINE. Merging deploys (container restart); nothing to migrate. Existing recipes take the same pass through `scripts/backfill_count_tokens.py`, which the owner runs (dry run 2026-10-24 over 2,615 rows: 241 would change).

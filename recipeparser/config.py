@@ -84,6 +84,15 @@ GEMINI_EMBEDDING_MODEL: str = os.environ.get(
 # its stable successor. Override with GEMINI_IMAGE_MODEL to try another.
 GEMINI_IMAGE_MODEL: str = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-3.1-flash-image")
 
+# The model asked whether a picture an import would store is food (Cayenne F-209,
+# core/picture_check.py): one small image at low media resolution and a one-word typed
+# answer, so the cheapest tier is enough. Override with GEMINI_FOOD_CHECK_MODEL.
+GEMINI_FOOD_CHECK_MODEL: str = os.environ.get("GEMINI_FOOD_CHECK_MODEL", GEMINI_MODEL)
+
+# The food check's own bound, in seconds. It runs inside an import, once per picture; one
+# that has not answered in this long keeps the picture unchecked rather than hold the job.
+FOOD_CHECK_TIMEOUT_SECS: int = 20
+
 # The picture call's own bound, in seconds. A cook is waiting on it, so it is
 # far shorter than HTTP_TIMEOUT_SECS and is never retried.
 PICTURE_TIMEOUT_SECS: int = 60

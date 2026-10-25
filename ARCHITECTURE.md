@@ -40,6 +40,7 @@ recipeparser/
 │   ├── taxonomy.py                # The one walk from a category to its axis
 │   ├── regen.py                   # Pure helpers for regenerating derived recipe data
 │   ├── picture_gen.py             # An AI picture of the finished dish: prompt, call, JPEG
+│   ├── picture_check.py           # Whether a picture an import would store is food (model call injected)
 │   ├── rate_limiter.py            # GlobalRateLimiter — the process-wide Gemini rate limit
 │   ├── clock.py                   # utc_timestamp — the one timestamp format written
 │   └── providers/                 # an empty __init__.py only: the provider layer of §5 and §6

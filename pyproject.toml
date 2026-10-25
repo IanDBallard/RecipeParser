@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recipeparser"
-version = "9.22.0"
+version = "9.23.0"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -100,6 +100,7 @@ select = ["E", "F", "I", "TID"]
 "scripts/**" = ["TID"]
 # This test file drives recipeparser.adapters and recipeparser.io directly by design.
 "tests/test_api.py" = ["TID"]
+"tests/test_api_food_check.py" = ["TID"]
 # Idempotency unit tests drive the recipeparser.adapters cache directly by design.
 "tests/unit/test_idempotency.py" = ["TID"]
 "tests/unit/test_idempotent_submits.py" = ["TID"]
@@ -108,6 +109,7 @@ select = ["E", "F", "I", "TID"]
 "tests/unit/readers/test_image_reader.py" = ["TID"]
 "tests/unit/readers/test_pdf_ocr_fallback.py" = ["TID"]
 "tests/unit/readers/test_page_meta.py" = ["TID"]
+"tests/unit/readers/test_page_meta_images.py" = ["TID"]
 "tests/unit/readers/test_book_images.py" = ["TID"]
 "tests/unit/readers/test_url_direct_fallback.py" = ["TID"]
 "tests/unit/readers/test_pdf_short_document.py" = ["TID"]

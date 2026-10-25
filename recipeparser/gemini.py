@@ -19,7 +19,9 @@ from pydantic import BaseModel, Field, ValidationError
 from recipeparser.config import (
     BACKOFF_BASE_SECS,
     BACKOFF_MAX_SECS,
+    FOOD_CHECK_TIMEOUT_SECS,
     GEMINI_EMBEDDING_MODEL,
+    GEMINI_FOOD_CHECK_MODEL,
     GEMINI_MODEL,
     HTTP_TIMEOUT_SECS,
     MAX_PARSE_RETRIES,
@@ -33,6 +35,7 @@ from recipeparser.config import (
 from recipeparser import usage
 from recipeparser.core import job_signal
 from recipeparser.core.pans import BAKE_TYPES, HINT_KEYS, PAN_FAMILIES, PAN_SHAPES
+from recipeparser.core.picture_check import FoodVerdict
 from recipeparser.exceptions import AIServiceTimeoutError, ExtractionParseError, JobCancelledError
 from recipeparser.models import (
     CayenneRefinement,
@@ -649,6 +652,50 @@ def extract_recipes(
         what="Gemini extraction",
         limiter=limiter,
     )
+
+
+#: The food check's ai_usage step (Cayenne F-209).
+FOOD_CHECK_STEP = "Picture food check"
+
+#: What the food check is told. Short on purpose: it is sent with every picture an import stores.
+FOOD_CHECK_PROMPT = (
+    "This picture would be shown as a recipe's photo. Say what it shows, as one kind.\n"
+    "Food: dish (a prepared or plated dish, a bake, a drink), ingredients (raw ingredients or "
+    "produce), cooking (food being prepared or cooked).\n"
+    "Not food: people, vehicle, logo, advert, text (a page, a menu, words), drawing (an "
+    "illustration, even of food), blank (empty or nearly uniform), decorative (a border, a "
+    "pattern, an ornament), other (any other scene or object).\n"
+    "If food is plainly the subject, it is food even with hands or people in the frame."
+)
+
+
+def ask_is_food(client: Any, data: bytes, mime_type: str) -> FoodVerdict:
+    """One vision call: the model's typed verdict on one (already downscaled) picture.
+
+    The policy (what is kept, what a failure means) is ``core.picture_check``'s; this only asks.
+    Bounded by FOOD_CHECK_TIMEOUT_SECS with one retry on a rate limit or server error, at the low
+    media resolution, and recorded in ai_usage under FOOD_CHECK_STEP like every other call.
+    Raises on any failure, including a reply that is not one of the kinds.
+    """
+    from google.genai import types as genai_types
+
+    response = _call_with_retry(
+        client,
+        model=GEMINI_FOOD_CHECK_MODEL,
+        contents=[genai_types.Part.from_bytes(data=data, mime_type=mime_type), FOOD_CHECK_PROMPT],
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": _schema_for_gemini(FoodVerdict),
+            "media_resolution": "MEDIA_RESOLUTION_LOW",
+            "http_options": {"timeout": FOOD_CHECK_TIMEOUT_SECS * 1000},
+        },
+        what=FOOD_CHECK_STEP,
+        max_retries=1,
+    )
+    text = (getattr(response, "text", "") or "").strip()
+    if not text:
+        raise RuntimeError("ask_is_food(): Gemini returned an empty response")
+    return FoodVerdict.model_validate(json.loads(text))
 
 
 #: What the vision OCR is told, for a scanned PDF page and a photo alike.

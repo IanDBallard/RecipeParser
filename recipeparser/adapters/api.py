@@ -29,6 +29,7 @@ Auth:
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 import re
@@ -64,6 +65,7 @@ from recipeparser.core.clock import utc_timestamp
 from recipeparser.core import job_signal
 from recipeparser.core.fsm import PipelineController, PipelineStatus
 from recipeparser.core.models import Chunk, InputType, SourceMeta
+from recipeparser.core.picture_check import MAX_PICTURE_CANDIDATES, AskFood, check_picture
 from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
 from recipeparser.core.pipeline import RecipePipeline, chunk_calls_ai, chunk_needs_ai
 from recipeparser.core.taxonomy import descendants_of
@@ -513,23 +515,68 @@ def html_to_text(markdown: str) -> str:
     return text.strip()
 
 
-async def _upload_image_to_storage(image_url: str, recipe_id: str) -> Optional[str]:
-    """Download *image_url* and store it, returning the public URL or None.
-
-    A thin wrapper over the same ImageStore the pipeline uses: this path exists
-    for URL submissions, which arrive with an address rather than bytes. Failures
-    are logged but never raised — a recipe without a picture, not a failed job.
-    """
+async def _fetch_picture(image_url: str) -> Optional[Tuple[bytes, str]]:
+    """The picture at *image_url* and its content type, or None if it cannot be had (logged)."""
     try:
         async with httpx.AsyncClient(timeout=30) as http:
             response = await http.get(image_url)
             response.raise_for_status()
             content_type = response.headers.get("content-type", "image/jpeg").split(";")[0].strip()
-            data = response.content
+            return response.content, content_type
     except Exception:
-        logger.exception("Could not fetch %s for recipe %s — continuing without an image.", image_url, recipe_id)
+        logger.exception("Could not fetch %s — continuing without it.", image_url)
         return None
+
+
+async def _upload_image_to_storage(
+    image_url: str, recipe_id: str, ask_food: Optional[AskFood] = None
+) -> Optional[str]:
+    """Download *image_url*, check it is food, and store it, returning the public URL or None.
+
+    A thin wrapper over the same ImageStore the pipeline uses: this path exists
+    for URL submissions, which arrive with an address rather than bytes. With
+    ``ask_food`` the picture is shown to the model first and one that is not food
+    is not stored (Cayenne F-209); a check that cannot run stores it, as before.
+    Failures are logged but never raised — a recipe without a picture, not a failed job.
+    """
+    fetched = await _fetch_picture(image_url)
+    if fetched is None:
+        return None
+    data, content_type = fetched
+    if ask_food is not None:
+        verdict = await asyncio.to_thread(check_picture, data, content_type, ask_food)
+        if not verdict.keep:
+            logger.info("Food check refused %s for recipe %s: %s.", image_url, recipe_id, verdict.reason)
+            return None
     return await asyncio.to_thread(SupabaseImageStore().put, data, recipe_id, content_type)
+
+
+def _url_picture_candidates(page_meta: PageMeta, markdown: str) -> List[str]:
+    """The pictures a URL import may store, in the order they are tried (Cayenne F-209).
+
+    The page's own og/twitter image first, then the pictures its JSON-LD Recipe declares, then
+    the scraper's markdown (its meta line, then its first images); badges and logos by their
+    address are dropped before any is fetched. Each once, at most MAX_PICTURE_CANDIDATES.
+    """
+    found: List[str] = []
+
+    def _add(url: Optional[str]) -> None:
+        if url and url not in found and not looks_like_badge(url):
+            found.append(url)
+
+    _add(page_meta.image_url)
+    for url in page_meta.images:
+        _add(url)
+    _add(_extract_image_url_from_markdown(markdown))
+    for md_match in re.finditer(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)", markdown):
+        if not looks_like_badge(md_match.group(2), md_match.group(1)):
+            _add(md_match.group(2))
+    return found[:MAX_PICTURE_CANDIDATES]
+
+
+def _food_check_for(client: Any) -> AskFood:
+    """The food check's model call, bound to this job's Gemini client."""
+    return functools.partial(_gemini_mod.ask_is_food, client)
 
 
 async def _fetch_page_meta(url: str) -> PageMeta:
@@ -1244,6 +1291,7 @@ async def _run_ingestion_job(
                 picture_source=_picture_source() if any(
                     c.input_type == InputType.PAPRIKA_CAYENNE for c in chunks
                 ) else None,
+                food_check=_food_check_for(client),
             )
             await asyncio.to_thread(_update_total_chunks, job_id, len(chunks), _source_key_of(chunks))
             await asyncio.to_thread(
@@ -1364,17 +1412,14 @@ async def submit_job(
                 # scraper's markdown second: the markdown dropped both on the
                 # NYT page of 2026-09-12 and offered a logo instead.
                 page_meta = await _fetch_page_meta(body.url)
-                page_image = (
-                    page_meta.image_url
-                    if page_meta.image_url and not looks_like_badge(page_meta.image_url)
-                    else None
-                )
-                image_url_candidate = page_image or _extract_image_url_from_markdown(markdown_text)
+                # Tried in order, the first that is food stored (F-209): a page whose og:image
+                # is its logo or an advert falls through to the recipe's own photo.
                 recipe_id_for_img = str(uuid.uuid4())
-                if image_url_candidate:
-                    stored_image_url = await _upload_image_to_storage(
-                        image_url_candidate, recipe_id_for_img
-                    )
+                ask_food = _food_check_for(client)
+                for candidate in _url_picture_candidates(page_meta, markdown_text):
+                    stored_image_url = await _upload_image_to_storage(candidate, recipe_id_for_img, ask_food)
+                    if stored_image_url:
+                        break
                 source_text = html_to_text(markdown_text)
             else:
                 source_text = (body.text or "").strip()
