@@ -29,6 +29,7 @@ from recipeparser.core.citation import Citation, host_of, resolve_citation
 from recipeparser.core.durations import Span, duration_columns
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, RestoreFields, SourceMeta
+from recipeparser.core.picture_check import AskFood, FoodVerdict, check_picture, first_food_picture
 from recipeparser.core.ports import CategorySource, ImageStore
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.servings import servings_for_restore
@@ -123,6 +124,7 @@ class RecipePipeline:
         image_store: Optional[ImageStore] = None,
         categorize_fn: Optional[Callable[..., Dict[str, List[str]]]] = None,
         picture_source: Optional[Any] = None,
+        food_check: Optional[AskFood] = None,
     ) -> None:
         """
         Args:
@@ -142,6 +144,13 @@ class RecipePipeline:
                                 names a picture without carrying its bytes has it
                                 copied into the new account.  Without one the
                                 address is kept as it is.
+            food_check:         Optional model call asked whether a picture is food
+                                (``core.picture_check``, Cayenne F-209), once per
+                                picture before it is stored: a book's photo and a
+                                Paprika entry's. A picture that is not food is not
+                                stored and does not ride the result. A Cayenne
+                                restore's picture is not asked about. Without one
+                                every picture is kept, which is what shipped before.
         """
         self._client = client
         self._controller = controller
@@ -150,6 +159,7 @@ class RecipePipeline:
         self._image_store = image_store
         self._categorize_fn = categorize_fn or categorize_batch
         self._picture_source = picture_source
+        self._food_check = food_check
         # Initialise (or retrieve) the process-level rate limiter.
         if rpm is not None:
             self._limiter = GlobalRateLimiter(rpm=rpm)
@@ -246,7 +256,14 @@ class RecipePipeline:
             job_signal.checkpoint()
             # A reader may have pulled a photograph out of the archive; store it
             # before ASSEMBLE so the assembled recipe carries a URL rather than
-            # raw bytes.
+            # raw bytes. A picture that is not food is dropped first (F-209); a
+            # Cayenne restore's is the cook's own and is kept as it is.
+            if (
+                chunk.image_bytes
+                and chunk.input_type != InputType.PAPRIKA_CAYENNE
+                and not self._is_food(chunk.image_bytes, chunk.image_content_type, chunk.label)
+            ):
+                chunk.image_bytes = None
             if chunk.image_bytes and not chunk.image_url and self._image_store is not None:
                 chunk.image_url = self._image_store.put(
                     chunk.image_bytes, str(uuid.uuid4()), chunk.image_content_type
@@ -438,6 +455,46 @@ class RecipePipeline:
             pr.image_url = None
             pr.image_source = None
 
+    def _ask_food(self, data: bytes, mime_type: str) -> FoodVerdict:
+        """The injected food check, taking its rate-limiter slot like every other call."""
+        assert self._food_check is not None
+        self._limiter.wait_then_record_start()
+        return self._food_check(data, mime_type)
+
+    def _is_food(self, data: bytes, content_type: str, label: Optional[str]) -> bool:
+        """True unless the food check says this picture is not food (F-209)."""
+        if self._food_check is None:
+            return True
+        verdict = check_picture(data, content_type, self._ask_food)
+        if not verdict.keep:
+            log.info("food check: %r goes without its picture: %s.", label, verdict.reason)
+        return verdict.keep
+
+    def _food_book_photo(
+        self, chunk: Chunk, named: Optional[Photo], *, alone: bool, label: Optional[str]
+    ) -> Optional[Photo]:
+        """The book photo to store for one recipe: the one the model named if it is food (F-209).
+
+        When the chunk holds this recipe alone, its other pictures follow the named one as
+        candidates, in page order (a web page saved as a PDF puts an advert first as often as
+        the dish); with several recipes in the chunk another picture may be a neighbour's, so
+        the named one is the only candidate. No photo named is no candidate at all.
+        """
+        if named is None or self._food_check is None:
+            return named
+        candidates = [named]
+        if alone:
+            candidates += [
+                Photo(data=data, content_type=mimetypes.guess_type(name)[0] or "image/jpeg", filename=name)
+                for name, data in chunk.images.items()
+                if name != named.filename
+            ]
+        picked = first_food_picture(candidates, lambda p: (p.data, p.content_type), self._ask_food)
+        if picked is None:
+            log.info("food check: %r goes without its picture: no candidate is food.", label)
+            return None
+        return picked[0]
+
     def _enter_stage(self, stage: str) -> None:
         """Stop here if the job was cancelled, else say which stage the chunk is entering."""
         job_signal.checkpoint()
@@ -565,7 +622,12 @@ class RecipePipeline:
 
                 # The photo the model picked from the book's markers, stored per
                 # recipe (one chunk can hold several); else the chunk's own.
-                photo = _book_photo(chunk, getattr(raw, "photo_filename", None))
+                photo = self._food_book_photo(
+                    chunk,
+                    _book_photo(chunk, getattr(raw, "photo_filename", None)),
+                    alone=len(extraction.recipes) == 1,
+                    label=getattr(raw, "name", None),
+                )
                 image_url = chunk.image_url
                 if photo is not None and self._image_store is not None:
                     image_url = (

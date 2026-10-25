@@ -32,7 +32,7 @@ import logging
 import re
 import socket
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import requests  # type: ignore[import-untyped]
@@ -116,10 +116,15 @@ def _resolves_to_public(host: str) -> bool:
 
 @dataclass(frozen=True)
 class PageMeta:
-    """What a page says about itself in its <head>: the hero image and the description."""
+    """What a page says about itself in its <head>: the hero image and the description.
+
+    ``images`` are the pictures its JSON-LD Recipe declares, in its own order: the candidates
+    after ``image_url`` when the food check refuses it (Cayenne F-209).
+    """
 
     image_url: Optional[str]
     description: Optional[str]
+    images: Tuple[str, ...] = ()
 
 
 _CHALLENGE_TITLE_RE = re.compile(r"^Title:\s*Just a moment", re.IGNORECASE)
@@ -346,7 +351,32 @@ def page_meta_from_html(html: str) -> PageMeta:
     if image is not None and not _is_absolute_http(image):
         image = None
     description = next((tags[k] for k in _DESCRIPTION_KEYS if k in tags), None)
-    return PageMeta(image_url=image, description=description)
+    return PageMeta(image_url=image, description=description, images=_json_ld_images(html))
+
+
+def _json_ld_images(html: str) -> Tuple[str, ...]:
+    """The absolute http(s) pictures the page's JSON-LD Recipe declares, in order, each once.
+
+    ``image`` is a URL, an ImageObject (``url`` or ``contentUrl``), or a list of either.
+    A page without a Recipe, or one whose JSON-LD will not parse, declares none.
+    """
+    if "ld+json" not in html.lower():
+        return ()
+    try:
+        recipe = find_json_ld_recipe(html)
+    except Exception:  # noqa: BLE001 -- a page's own markup never fails the job
+        return ()
+    if recipe is None:
+        return ()
+    value = recipe.get("image")
+    found: List[str] = []
+    for item in value if isinstance(value, list) else [value]:
+        url = item.get("url") or item.get("contentUrl") if isinstance(item, dict) else item
+        if isinstance(url, str):
+            url = html_mod.unescape(url).strip()
+            if _is_absolute_http(url) and url not in found:
+                found.append(url)
+    return tuple(found)
 
 
 _BADGE_WORDS = frozenset(
