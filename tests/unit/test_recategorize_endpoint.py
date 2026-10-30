@@ -25,6 +25,8 @@ CATS = [
     {"id": "F", "name": "Asian", "parent_id": "A"},
     {"id": "L", "name": "Thai", "parent_id": "F"},
     {"id": "Q", "name": "Quick", "parent_id": None},
+    {"id": "LR", "name": "Lists", "parent_id": None, "is_lists_root": True},
+    {"id": "TT", "name": "To try", "parent_id": "LR", "is_lists_root": False},
 ]
 
 
@@ -153,6 +155,19 @@ def test_an_unknown_id_is_refused_without_echoing_it(client, fake):
     assert "1 of 2" in detail
     assert "ghost" not in detail
     assert _inserted(fake) is None
+
+
+def test_recategorize_refuses_a_lists_pill(client, fake):
+    # Lists are the user's own bookkeeping: no AI path may tag them.
+    for pill in ("TT", "LR"):
+        response = _post(client, {"category_ids": [pill]})
+        assert response.status_code == 422
+        assert response.json() == {"detail": "Lists can't be tagged automatically."}
+        assert _inserted(fake) is None
+    # A mixed request is refused whole, not trimmed.
+    assert _post(client, {"category_ids": ["Q", "TT"]}).status_code == 422
+    assert _inserted(fake) is None
+    assert _post(client, {"category_ids": ["Q"]}).status_code == 202
 
 
 def test_an_empty_list_is_refused_rather_than_queued(client, fake):

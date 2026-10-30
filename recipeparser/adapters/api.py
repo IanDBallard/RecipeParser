@@ -68,7 +68,7 @@ from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.picture_check import MAX_PICTURE_CANDIDATES, AskFood, check_picture
 from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
 from recipeparser.core.pipeline import RecipePipeline, chunk_calls_ai, chunk_needs_ai
-from recipeparser.core.taxonomy import descendants_of
+from recipeparser.core.taxonomy import descendants_of, root_of
 from recipeparser.exceptions import AIServiceTimeoutError, JobCancelledError, SiteRefusedError, UnreadableInputError
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
@@ -1610,6 +1610,15 @@ def submit_recategorize_job(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"{len(unknown)} of {len(requested)} categories were not found.",
+        )
+
+    # Lists are the user's own bookkeeping, never a taxonomy: refuse the Lists
+    # root and anything under it before a job exists.
+    listed = {r["id"] for r in rows if r.get("id") and r.get("is_lists_root")}
+    if any(root_of(cid, rows) in listed for cid in requested) and listed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Lists can't be tagged automatically.",
         )
 
     # D4: a folder offers its subtree. Expanded here, with the same walk the
