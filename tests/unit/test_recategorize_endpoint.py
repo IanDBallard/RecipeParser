@@ -74,7 +74,15 @@ def fake(monkeypatch):
     # a missing one.
     def categories(q):
         wanted = next((o[1][1] for o in q.ops if o[0] == "eq" and o[1][0] == "user_id"), None)
-        return CATS if wanted == OWNER else []
+        if wanted != OWNER:
+            return []
+        # Honour the select string like PostgREST: only the named columns come back,
+        # so a column the endpoint forgets to select is absent here too.
+        cols = next((o[1][0] for o in q.ops if o[0] == "select"), "*")
+        if cols == "*":
+            return CATS
+        keep = [c.strip() for c in cols.split(",")]
+        return [{k: v for k, v in row.items() if k in keep} for row in CATS]
 
     f.handlers["categories"] = categories
     f.responses["ingestion_jobs"] = []

@@ -1599,7 +1599,7 @@ def submit_recategorize_job(
         )
 
     rows = (
-        sb.table("categories").select("id,name,parent_id").eq("user_id", user_id).execute().data or []
+        sb.table("categories").select("id,name,parent_id,is_lists_root").eq("user_id", user_id).execute().data or []
     )
     owned = {r["id"] for r in rows if r.get("id")}
     unknown = [cid for cid in requested if cid not in owned]
@@ -1615,7 +1615,7 @@ def submit_recategorize_job(
     # Lists are the user's own bookkeeping, never a taxonomy: refuse the Lists
     # root and anything under it before a job exists.
     listed = {r["id"] for r in rows if r.get("id") and r.get("is_lists_root")}
-    if any(root_of(cid, rows) in listed for cid in requested) and listed:
+    if any(root_of(cid, rows) in listed for cid in requested):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Lists can't be tagged automatically.",
