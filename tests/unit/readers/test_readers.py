@@ -245,6 +245,24 @@ def test_paprika_reader_cayenne_entry_without_embedding_returns_cayenne_type_no_
     assert chunk.pre_parsed_embedding is None
 
 
+def test_reader_defaults_list_paths() -> None:
+    """An entry without ``list_paths`` (an older export) reads as no lists; one with it keeps them."""
+    meta = {k: v for k, v in _INGEST_RESPONSE_PAYLOAD.items() if k != "embedding"}
+    with_lists = dict(meta, title="With lists", list_paths=[["For Sue"], ["Parties", "Birthday"]])
+    archive_path = _make_paprikarecipes([
+        {"name": "Old", "_cayenne_meta": meta},
+        {"name": "New", "_cayenne_meta": with_lists},
+    ])
+    try:
+        chunks = PaprikaReader().read(archive_path)
+    finally:
+        os.unlink(archive_path)
+
+    by_title = {c.pre_parsed.title: c.pre_parsed for c in chunks}
+    assert by_title[meta["title"]].list_paths == []
+    assert by_title["With lists"].list_paths == [["For Sue"], ["Parties", "Birthday"]]
+
+
 # ---------------------------------------------------------------------------
 # PaprikaReader — corrupt _cayenne_meta is a skipped line (D6)
 # ---------------------------------------------------------------------------

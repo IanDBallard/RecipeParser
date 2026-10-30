@@ -394,6 +394,8 @@ class CayenneRecipe(BaseModel):
     # _cayenne_meta version 2 (Paprika export): read back by a restore, never asked of the model.
     is_favourite: Optional[bool] = None
     category_paths: List[List[str]] = Field(default_factory=list)
+    # Each path starts BELOW the account's Lists root (Cayenne Lists); restored under that root.
+    list_paths: List[List[str]] = Field(default_factory=list)
     source_uom_system: Optional[str] = None
     image_source: Optional[str] = None
     stale: bool = False
@@ -403,7 +405,7 @@ class CayenneRecipe(BaseModel):
     def _unknown_servings_source_is_none(cls, v):
         return v if isinstance(v, str) and v in _SERVINGS_SOURCES else None
 
-    @field_validator("category_paths", mode="before")
+    @field_validator("category_paths", "list_paths", mode="before")
     @classmethod
     def _null_paths_are_empty(cls, v):
         return [] if v is None else v

@@ -1149,7 +1149,8 @@ def _select_reader(filename: str, content_type: str) -> str:
 def _create_restore_categories(user_id: str, chunks: List[Chunk]) -> Dict[str, List[Tuple[str, str]]]:
     """Create the categories a Cayenne restore needs and point each chunk at its leaves.
 
-    Reads every ``_cayenne_meta`` category path, creates the missing nodes, then replaces the
+    Reads every ``_cayenne_meta`` category path and list path (the latter start below the
+    account's Lists root), creates the missing nodes, then replaces the
     chunk's ``grid_categories`` with the leaves that were placed, so the writer's junction write
     links them by name. A v1 archive (no non-empty path) is left alone. A failure creating them
     is logged and the restore goes on: the leaves are linked by name wherever they already exist.
@@ -1160,29 +1161,33 @@ def _create_restore_categories(user_id: str, chunks: List[Chunk]) -> Dict[str, L
     wanted = []
     for chunk in chunks:
         raw = getattr(chunk.pre_parsed, "category_paths", None)
+        raw_lists = getattr(chunk.pre_parsed, "list_paths", None)
         if chunk.input_type != InputType.PAPRIKA_CAYENNE or not isinstance(raw, list):
             continue
         paths = [clean_path(p) for p in raw if isinstance(p, (list, tuple))]
         paths = [p for p in paths if p]
-        if paths:
-            wanted.append((chunk, paths))
+        lists = [clean_path(p) for p in raw_lists if isinstance(p, (list, tuple))] if isinstance(raw_lists, list) else []
+        lists = [p for p in lists if p]
+        if paths or lists:
+            wanted.append((chunk, paths, lists))
     if not wanted:
         return {}
     try:
         url, key = _get_creds()
         placed = ensure_category_paths(
-            user_id, [p for _, ps in wanted for p in ps], supabase_url=url, service_key=key,
+            user_id, [p for _, ps, _ in wanted for p in ps],
+            list_paths=[p for _, _, ls in wanted for p in ls], supabase_url=url, service_key=key,
         )
     except Exception:
         logger.warning(
             "Restore: could not create the categories for user %s; linking those that exist.",
             user_id, exc_info=True,
         )
-        placed = {p: p[-1] for _, ps in wanted for p in ps}
+        placed = {p: p[-1] for _, ps, ls in wanted for p in ps + ls}
     too_deep: Dict[str, List[Tuple[str, str]]] = {}
-    for chunk, paths in wanted:
+    for chunk, paths, lists in wanted:
         names = []
-        for path in paths:
+        for path in paths + lists:
             name = placed.get(path)
             if name is None:
                 continue
