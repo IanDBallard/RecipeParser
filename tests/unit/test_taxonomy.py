@@ -16,6 +16,7 @@ from recipeparser.core.taxonomy import (
     most_specific,
     parents_from_rows,
     root_of,
+    without_lists,
 )
 
 THREE_DEEP = [
@@ -155,3 +156,21 @@ def test_the_supabase_source_loads_parents_from_the_same_rows(monkeypatch):
     assert source.load_parents("u1") == {"Thai": "Asian"}
     monkeypatch.setattr(source, "_fetch_categories", lambda user_id: [])
     assert source.load_parents("u1") == {}
+
+
+WITH_LISTS = [
+    {"id": "C", "name": "Course", "parent_id": None},
+    {"id": "M", "name": "Main", "parent_id": "C"},
+    {"id": "LR", "name": "Lists", "parent_id": None, "is_lists_root": True},
+    {"id": "T", "name": "To try", "parent_id": "LR"},
+    {"id": "S", "name": "For Sue", "parent_id": "LR"},
+    {"id": "B", "name": "Birthday", "parent_id": "S"},
+]
+
+
+def test_without_lists_drops_root_and_descendants():
+    assert [r["id"] for r in without_lists(WITH_LISTS)] == ["C", "M"]
+
+
+def test_without_lists_counts_a_missing_key_as_false():
+    assert without_lists(THREE_DEEP) == THREE_DEEP

@@ -60,7 +60,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from recipeparser.adapters.recat_worker import resolve_new_axes  # noqa: E402
 from recipeparser.core.stages.categorize import chunked, filter_batch_result  # noqa: E402
 from recipeparser.core.stages.tag import TAG_BATCH_SIZE  # noqa: E402
-from recipeparser.core.taxonomy import descendants_of, parents_from_rows  # noqa: E402
+from recipeparser.core.taxonomy import descendants_of, parents_from_rows, without_lists  # noqa: E402
 
 log = logging.getLogger("retag-axis")
 
@@ -99,6 +99,7 @@ class Plan:
 
 def axis_offer(rows: Sequence[Mapping[str, Any]], axis_name: str) -> Offer:
     """The offer for the top-level category named ``axis_name``. Raises when there is not exactly one."""
+    rows = without_lists(list(rows))  # a Lists root is never an axis
     roots = [r for r in rows if not r.get("parent_id") and (r.get("name") or "").strip() == axis_name]
     if len(roots) != 1:
         raise ValueError(f"Expected one top-level category named {axis_name!r}, found {len(roots)}.")
@@ -258,7 +259,8 @@ def _plan(sb: Any, user_id: str, axis: str, path: str, since: Optional[datetime]
     from recipeparser.gemini import categorize_batch  # noqa: PLC0415
 
     client = _gemini()
-    rows = _paged(lambda: sb.table("categories").select("id,name,parent_id").eq("user_id", user_id))
+    rows = _paged(lambda: sb.table("categories").select("id,name,parent_id,is_lists_root").eq("user_id", user_id))
+    rows = without_lists(rows)  # Lists are never re-tagged
     try:
         offer = axis_offer(rows, axis)
     except ValueError as exc:

@@ -238,3 +238,13 @@ def test_the_retag_batches_as_the_import_tags():
     from scripts import retag_axis
 
     assert retag_axis.BATCH_SIZE == TAG_BATCH_SIZE
+
+
+def test_retag_axis_refuses_lists():
+    rows = ROWS + [
+        {"id": "lr", "name": "Lists", "parent_id": None, "is_lists_root": True},
+        {"id": "lt", "name": "To try", "parent_id": "lr"},
+    ]
+    with pytest.raises(ValueError):
+        axis_offer(rows, "Lists")
+    assert "To try" not in axis_offer(rows, "Protein").parents

@@ -48,6 +48,19 @@ def root_of(category_id: str, rows: Sequence[Mapping[str, Any]]) -> Optional[str
         current = parent
 
 
+def without_lists(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    ``rows`` minus the user's Lists root and everything under it.
+
+    Lists are the user's own bookkeeping, never a taxonomy: no AI path may offer,
+    propose or apply them.  A row without ``is_lists_root`` counts as false.
+    """
+    listed = {r["id"] for r in rows if r.get("id") and r.get("is_lists_root")}
+    if not listed:
+        return list(rows)
+    return [r for r in rows if not r.get("id") or root_of(r["id"], rows) not in listed]
+
+
 def axes_from_rows(rows: Sequence[Mapping[str, Any]]) -> Dict[str, List[str]]:
     """
     ``{axis name: [tag names]}`` for a whole taxonomy.
