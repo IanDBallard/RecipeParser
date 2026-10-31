@@ -34,6 +34,8 @@
       '1.5 cups flour',
     ]),
     'is_favourite': None,
+    'list_paths': list([
+    ]),
     'notes': None,
     'nutritional_info': None,
     'pans': list([
