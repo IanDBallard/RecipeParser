@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.24.0] — 2026-10-30
+
+Lists are hidden from tagging and re-tagging, and a Cayenne restore files a recipe's lists under the account's own Lists root (Cayenne Lists and bulk categories). **Deploy note:** needs Cayenne's `is_lists_root` column (PR A) applied first; the AI-path selects and the restore read it.
+
+### ✨ Added
+- `_cayenne_meta.list_paths` (`CayenneRecipe.list_paths: List[List[str]]`, default `[]`): each path starts below the Lists root, e.g. `[["For Sue"], ["Parties", "Birthday"]]`. An older export without the key reads as no lists.
+- `ensure_category_paths(..., list_paths=())`: creates the missing list pills under the account's Lists root, found by `is_lists_root` and never by name (the owner may have renamed it "My lists"). A name that exists anywhere in the account is reused, not duplicated (names are unique per user). The restored recipe is linked to each list's deepest placed pill, never to the root itself. An account with no Lists root skips its `list_paths` with a warning.
+
+### ⚠️ Changed
+- Lists never reach the tagging prompt or a re-tag; `/jobs/recategorize` refuses a Lists pill with 422 `Lists can't be tagged automatically.` and the AI-path category selects carry `is_lists_root`.
+- A restore's category read selects `is_lists_root`. `category_paths` in a new export no longer holds anything under Lists; they come back through `list_paths`.
+
+---
+
 ## [9.23.0] — 2026-10-25
 
 A picture an import would store is shown to the model first, and one that is not food is not stored (Cayenne Fix Roadmap F-209). The trigger: a beta tester's "Roast Duck Breasts with Pomegranate-Chile Sauce" (bug report cc9a6210, 2026-10-25), an Epicurious page saved as a PDF and uploaded (`POST /jobs/file`, a one-chunk book job), was stored with the page's stock photo of a family in an SUV: the model named that photo from the page's image markers, and the pixel checks (`photo_check.py`) cannot tell a car from a dish. Merging deploys (container restart); nothing to migrate. Pictures already stored are untouched (F-210 is a later pass, which can reuse the same check).

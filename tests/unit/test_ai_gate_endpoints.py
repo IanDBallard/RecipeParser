@@ -341,12 +341,12 @@ def test_chunk_calls_ai_is_any_stage_but_assemble() -> None:
 
 # ── Categories created on restore (plan B task 4) ────────────────────────────
 
-def _cayenne_chunk(paths, grid=None, title="Cake") -> Chunk:
+def _cayenne_chunk(paths, grid=None, title="Cake", lists=()) -> Chunk:
     from recipeparser.models import CayenneRecipe
 
     pre = CayenneRecipe(
         title=title, structured_ingredients=[], tokenized_directions=[],
-        category_paths=paths, grid_categories=grid or {},
+        category_paths=paths, list_paths=list(lists), grid_categories=grid or {},
     )
     return Chunk(text="", input_type=InputType.PAPRIKA_CAYENNE, pre_parsed=pre, pre_parsed_embedding=[0.0])
 
@@ -377,7 +377,7 @@ def _drive_restore(monkeypatch, chunks, ensure, calls):
 def test_run_ingestion_job_creates_categories_before_loading_ids(monkeypatch) -> None:
     calls = []
 
-    def ensure(uid, paths, *, supabase_url, service_key):
+    def ensure(uid, paths, *, list_paths=(), supabase_url, service_key):
         calls.append("ensure")
         assert uid == "user-1"
         return {tuple(p): p[-1] for p in paths}
@@ -387,6 +387,31 @@ def test_run_ingestion_job_creates_categories_before_loading_ids(monkeypatch) ->
     assert calls == ["ensure", "load"]
     assert chunk.pre_parsed.grid_categories == {"restore": ["Cake", "Soup"]}
     assert finalized[0]["status"] == "done"
+
+
+def test_list_paths_reach_the_restore_and_link_beside_the_categories(monkeypatch) -> None:
+    calls, seen = [], {}
+
+    def ensure(uid, paths, *, list_paths=(), supabase_url, service_key):
+        seen["paths"], seen["lists"] = list(paths), list(list_paths)
+        return {tuple(p): p[-1] for p in [*paths, *list_paths]}
+
+    chunk = _cayenne_chunk([["Course", "Cake"]], lists=[["For Sue"], ["Parties", "Birthday"]])
+    _drive_restore(monkeypatch, [chunk], ensure, calls)
+    assert seen == {
+        "paths": [("Course", "Cake")], "lists": [("For Sue",), ("Parties", "Birthday")],
+    }
+    assert chunk.pre_parsed.grid_categories == {"restore": ["Birthday", "Cake", "For Sue"]}
+
+
+def test_a_chunk_with_only_list_paths_is_restored(monkeypatch) -> None:
+    calls = []
+    chunk = _cayenne_chunk([], lists=[["To try"]])
+    _drive_restore(
+        monkeypatch, [chunk],
+        lambda uid, paths, *, list_paths=(), **k: {tuple(p): p[-1] for p in list_paths}, calls,
+    )
+    assert chunk.pre_parsed.grid_categories == {"restore": ["To try"]}
 
 
 def test_v1_archive_links_through_grid_categories(monkeypatch) -> None:

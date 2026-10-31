@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional, Set
 import httpx
 
 from recipeparser.io.category_sources.base import CategorySource
-from recipeparser.core.taxonomy import axes_from_rows, parents_from_rows
+from recipeparser.core.taxonomy import axes_from_rows, parents_from_rows, without_lists
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class SupabaseCategorySource(CategorySource):
         if not rows:
             return {}
 
-        axes = self._build_axes(rows)
+        axes = self._build_axes(without_lists(rows))
         log.info(
             "SupabaseCategorySource: loaded %d axes for user %s.",
             len(axes),
@@ -95,7 +95,7 @@ class SupabaseCategorySource(CategorySource):
         (``core.taxonomy.parents_from_rows``).  ``{}`` when the fetch fails,
         which costs only the pruning of a parent picked beside its child.
         """
-        return parents_from_rows(self._fetch_categories(user_id))
+        return parents_from_rows(without_lists(self._fetch_categories(user_id)))
 
     def load_category_ids(self, user_id: str = "") -> Dict[str, str]:
         """
@@ -160,7 +160,7 @@ class SupabaseCategorySource(CategorySource):
         }
         params = {
             "user_id": f"eq.{user_id}",
-            "select": "id,name,parent_id",
+            "select": "id,name,parent_id,is_lists_root",
             "order": "name.asc",
         }
 

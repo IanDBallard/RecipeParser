@@ -687,3 +687,28 @@ def test_recat_calls_are_attributed_with_the_jobs_id():
     assert _worker(fake, cat).run_once() == 1
     assert seen == [("u1", "recat", "j1")]
     assert usage.ai_context.get() is None
+
+
+LISTS_CATS = CATS + [
+    {"id": "lr", "name": "Lists", "parent_id": None, "is_lists_root": True},
+    {"id": "lt", "name": "To try", "parent_id": "lr"},
+]
+
+
+def test_recat_worker_drops_lists_ids_all_lists_errors():
+    fake = _fake_with_job(["running"], _recipes(5), count=5, category_ids=("lt", "lr"))
+    fake.responses["categories"] = LISTS_CATS
+    assert _run_to_end(_worker(fake, MagicMock()), fake) == 1
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "error"
+    assert final["error_message"] == "The categories no longer exist"
+
+
+def test_recat_worker_mixed_job_proceeds_on_the_rest():
+    fake = _fake_with_job(["running"], _recipes(5), count=5, category_ids=("t2", "lt"))
+    fake.responses["categories"] = LISTS_CATS
+    cat = MagicMock(return_value={_rid(0): ["Thai"]})
+    _run_to_end(_worker(fake, cat), fake)
+    offered = cat.call_args[0][1]
+    assert "To try" not in [t for tags in offered.values() for t in tags]
+    assert _ops(fake, "ingestion_jobs")[-1][0][1][0]["status"] == "done"

@@ -11,6 +11,8 @@ Rules (the starter-category trigger in Cayenne works the same way):
     ``resolution=ignore-duplicates``, so a concurrent job's insert is not an error;
     the next level re-reads to learn the ids that actually exist.
   * Depth is capped at 4 (root = 1); a node that would be deeper is not created.
+  * ``list_paths`` start BELOW the account's Lists root (the row with ``is_lists_root``, found
+    by that flag, never by its name: the owner may have renamed it) and are created under it.
 """
 
 import logging
@@ -36,7 +38,7 @@ def _read(user_id: str, supabase_url: str, service_key: str) -> Dict[str, Dict[s
     resp = httpx.get(
         f"{supabase_url}/rest/v1/categories",
         headers={"Authorization": f"Bearer {service_key}", "apikey": service_key},
-        params={"user_id": f"eq.{user_id}", "select": "id,name,parent_id", "order": "name.asc"},
+        params={"user_id": f"eq.{user_id}", "select": "id,name,parent_id,is_lists_root", "order": "name.asc"},
         timeout=10.0,
     )
     resp.raise_for_status()
@@ -65,12 +67,15 @@ def ensure_category_paths(
     user_id: str,
     paths: Iterable[Sequence[str]],
     *,
+    list_paths: Iterable[Sequence[str]] = (),
     supabase_url: str,
     service_key: str,
 ) -> Dict[Tuple[str, ...], str]:
     """Create the missing nodes of ``paths``; return each path's deepest placed name.
 
-    The value is the path's leaf, or a shallower node when depth forbade the rest.
+    The value is the path's leaf, or a shallower node when depth forbade the rest. A list path
+    is keyed by the path as given (below the Lists root); it is skipped, with a warning, when the
+    account has no Lists root, and never placed on the root itself.
     """
     if live_writes_blocked():
         raise RuntimeError(
@@ -82,10 +87,23 @@ def ensure_category_paths(
         t = clean_path(p)
         if t and t not in clean:
             clean.append(t)
-    if not clean:
+    lists: List[Tuple[str, ...]] = []
+    for p in list_paths:
+        t = clean_path(p)
+        if t and t not in lists:
+            lists.append(t)
+    if not clean and not lists:
         return {}
 
     by_name = _read(user_id, supabase_url, service_key)
+    root = next((r["name"] for r in by_name.values() if r.get("is_lists_root")), None)
+    if lists and root is None:
+        log.warning("Restore: user %s has no Lists root; skipping %d list path(s).", user_id, len(lists))
+        lists = []
+    below = {(root,) + t: t for t in lists}
+    clean = clean + [f for f in below if f not in clean]
+    if not clean:
+        return {}
     for level in range(max(len(p) for p in clean)):
         to_create: Dict[str, Optional[str]] = {}
         for path in clean:
@@ -128,6 +146,11 @@ def ensure_category_paths(
             if name not in by_name:
                 break
             deepest = name
-        if deepest is not None:
+        if deepest is None:
+            continue
+        if path in below:
+            if deepest != root:  # nothing below the Lists root was placed: nothing to link
+                placed[below[path]] = deepest
+        else:
             placed[path] = deepest
     return placed

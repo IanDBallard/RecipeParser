@@ -24,7 +24,7 @@ from recipeparser import usage
 from recipeparser.core.clock import utc_timestamp
 from recipeparser.core.stages.categorize import filter_batch_result
 from recipeparser.core.stages.tag import TAG_BATCH_SIZE
-from recipeparser.core.taxonomy import parents_from_rows, root_of
+from recipeparser.core.taxonomy import parents_from_rows, root_of, without_lists
 from recipeparser.gemini import categorize_batch
 
 log = logging.getLogger(__name__)
@@ -236,7 +236,8 @@ class RecatWorker:
         """Resolve the job's categories and size once, at claim. None if it finished here."""
         user_id = job["user_id"]
         params = dict(job.get("params") or {})
-        cat_rows = self._sb.table("categories").select("id,name,parent_id").eq("user_id", user_id).execute().data or []
+        cat_rows = self._sb.table("categories").select("id,name,parent_id,is_lists_root").eq("user_id", user_id).execute().data or []
+        cat_rows = without_lists(cat_rows)  # Lists are never tagged by the AI
         requested = list(params.get("category_ids") or [])
         new_axes, tag_ids = resolve_new_axes(cat_rows, requested)
         if not tag_ids:

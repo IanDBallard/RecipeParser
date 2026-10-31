@@ -105,3 +105,61 @@ def test_padded_names_are_cleaned_the_same_way_everywhere():
     db = _Db()
     out = _run(db, [[" Course ", "Cake "]])
     assert out == {("Course", "Cake"): "Cake"}
+
+
+class _ListsDb(_Db):
+    """_Db whose GET honours its select: is_lists_root is only returned when asked for."""
+
+    def get(self, url, **kw):
+        cols = kw["params"]["select"].split(",")
+        return _resp([{c: r.get(c) for c in cols} for r in self.rows])
+
+
+def _run_lists(db, paths, list_paths):
+    with patch.object(rp.httpx, "get", side_effect=db.get), patch.object(rp.httpx, "post", side_effect=db.post),          patch.object(rp, "live_writes_blocked", return_value=False):
+        return rp.ensure_category_paths(
+            U, paths, list_paths=list_paths, supabase_url="https://x", service_key="k",
+        )
+
+
+MY_LISTS = {"id": "L", "name": "My lists", "parent_id": None, "is_lists_root": True}
+
+
+def test_list_paths_land_under_the_lists_root():
+    db = _ListsDb(rows=[MY_LISTS])
+    out = _run_lists(db, [], [["For Sue"], ["Parties", "Birthday"]])
+    parents = {r["name"]: r["parent_id"] for p in db.posts for r in p}
+    ids = {r["name"]: r["id"] for r in db.rows}
+    assert parents == {"For Sue": "L", "Parties": "L", "Birthday": ids["Parties"]}
+    assert "Lists" not in {r["name"] for r in db.rows}
+    assert out[("For Sue",)] == "For Sue"
+    assert out[("Parties", "Birthday")] == "Birthday"
+
+
+def test_list_path_reuses_existing_pill():
+    db = _ListsDb(rows=[MY_LISTS, {"id": "t", "name": "To try", "parent_id": "L"}])
+    out = _run_lists(db, [], [["To try"]])
+    assert db.posts == []
+    assert out == {("To try",): "To try"}
+
+
+def test_list_path_reuses_a_name_elsewhere_in_the_tree():
+    db = _ListsDb(rows=[MY_LISTS, {"id": "c", "name": "Soup", "parent_id": None}])
+    out = _run_lists(db, [], [["Soup"]])
+    assert db.posts == []
+    assert out == {("Soup",): "Soup"}
+
+
+def test_list_paths_without_a_lists_root_are_skipped_and_logged(caplog):
+    db = _ListsDb(rows=[{"id": "c", "name": "Soup", "parent_id": None}])
+    out = _run_lists(db, [["Soup"]], [["For Sue"]])
+    assert db.posts == []
+    assert out == {("Soup",): "Soup"}
+    assert "Lists root" in caplog.text
+
+
+def test_categories_and_list_paths_restore_together():
+    db = _ListsDb(rows=[MY_LISTS])
+    out = _run_lists(db, [["Course", "Cake"]], [["For Sue"]])
+    assert out == {("Course", "Cake"): "Cake", ("For Sue",): "For Sue"}
+    assert {r["name"] for p in db.posts for r in p} == {"Course", "Cake", "For Sue"}
