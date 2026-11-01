@@ -121,7 +121,7 @@ def test_a_crust_alone_is_pie_shell_other_pastry_is_null_and_batter_puddings_are
     # read banana cream, chiffon and banoffee pie as pie-shell.
     p = _bake_rule()
     assert "3. a pie or tart, never a recipe for a crust or pastry alone (step 10):" in p
-    assert "is null and stops here (banana cream, chiffon and banoffee pie" in p
+    assert "is null and stops here, never pie-shell (banana cream, chiffon and banoffee pie" in p
     assert (
         "10. pie-shell: a recipe for a pie or tart crust alone (pastry or a crumb crust, baked empty or not baked);"
         " other pastry or dough alone is null. Only when the recipe makes no filling at all" in p
@@ -190,3 +190,25 @@ def test_a_choice_of_any_tins_or_a_range_of_sizes_is_one_tin_the_first():
         'When the recipe offers a choice of tins or a range of sizes ("8-inch square or round",'
         ' "9- or 10-inch springform"), list one tin: the first size and shape it names.' in p
     )
+
+
+def test_pie_savoury_needs_a_crust_or_lid_and_a_rolled_or_packed_filling_is_null():
+    # Owner, 2026-11-01 (pie tins dry run): Beef Enchiladas and Perfect Nut Roast were pie-savoury.
+    p = _bake_rule()
+    assert "Pie-savoury needs a crust or lid of pastry, suet or mashed potato" in p
+    assert (
+        "A filling rolled in tortillas, pasta or leaves, or packed into a loaf tin with no crust or lid"
+        " (enchiladas, cannelloni, a nut roast wrapped in cabbage leaves, meatloaf), is null." in p
+    )
+
+
+def test_a_torte_of_layered_pastry_is_null_never_pie_shell():
+    # Owner, 2026-11-01 (pie tins dry run): Friesentorte was pie-shell.
+    p = _bake_rule()
+    # In the closing null list the clause also turned a hazelnut meringue roulade into a sponge; in step
+    # 10 it does not.
+    assert (
+        "Puff pastry rounds or sheets baked flat to be stacked with cream and fruit into a torte"
+        " (Friesentorte, mille-feuille) are not a pie or tart crust: null." in p
+    )
+    assert p.index("(Friesentorte, mille-feuille)") > p.index("10. pie-shell:")

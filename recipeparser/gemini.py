@@ -922,7 +922,7 @@ _TINS_BAKE = """\
      3. a pie or tart, never a recipe for a crust or pastry alone (step 10): a pastry or crumb crust holds the
         filling, or a lid of pastry, a suet crust or mashed potato covers it. Only when the filling
         bakes in it: a filling cooked on the hob or set in the fridge, so that only the crust is baked
-        (blind, or a crumb crust) or only a meringue is browned on top, is null and stops here (banana cream, chiffon
+        (blind, or a crumb crust) or only a meringue is browned on top, is null and stops here, never pie-shell (banana cream, chiffon
         and banoffee pie, a curd or pastry cream spooned into a baked case). A sweet filling is never
         pie-savoury, whatever the crust (hot water, suet or shortcrust).
         pie-custard: the filling is mostly egg with milk or cream and sets as it bakes (custard tart,
@@ -934,7 +934,10 @@ _TINS_BAKE = """\
         mashed potato (meat and pot pies, pasties, empanadas, sausage rolls, beef Wellington, steak and
         kidney pudding, savoury tarts and galettes not filled with eggs and cream), and fish or meat under a mashed-potato lid (shepherd's,
         cottage and fish pie): a mashed-potato lid is not a topping. Never pie-savoury: a dish topped with cheese, sauce or breadcrumbs (lasagne,
-        moussaka, enchiladas, gratins, aubergine parmigiana), or anything sweet.
+        moussaka, enchiladas, gratins, aubergine parmigiana), or anything sweet. Pie-savoury needs a
+        crust or lid of pastry, suet or mashed potato (shepherd's, cottage and fish pie's mashed-potato
+        lid counts). A filling rolled in tortillas, pasta or leaves, or packed into a loaf tin with no
+        crust or lid (enchiladas, cannelloni, a nut roast wrapped in cabbage leaves, meatloaf), is null.
      4. custard: an egg-set liquid baked with no crust (baked custard, crème caramel, crème brûlée,
         bread and butter pudding, clafoutis, baked rice pudding).
      5. bread-enriched / bread-lean: risen with yeast or a sourdough starter. bread-enriched when the
@@ -953,7 +956,8 @@ _TINS_BAKE = """\
      10. pie-shell: a recipe for a pie or tart crust alone (pastry or a crumb crust, baked empty or not
         baked); other pastry or dough alone is null. Only when the recipe makes no filling at all: a
         recipe with a filling is never pie-shell, even when only its crust bakes (banana cream, chiffon
-        and banoffee pie are null by step 3).
+        and banoffee pie are null by step 3). Puff pastry rounds or sheets baked flat to be stacked with
+        cream and fruit into a torte (Friesentorte, mille-feuille) are not a pie or tart crust: null.
      null: anything else, including roast meat, casseroles, cookies baked as separate pieces,
      meringues and pavlova, granola, crackers, and anything cooked on the hob."""
 _TINS_VOCAB = _TINS_SIZES + "\n" + _TINS_BAKE
