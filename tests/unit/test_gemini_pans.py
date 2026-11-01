@@ -124,7 +124,7 @@ def test_a_crust_alone_is_pie_shell_other_pastry_is_null_and_batter_puddings_are
     assert "is null and stops here, never pie-shell (banana cream, chiffon and banoffee pie" in p
     assert (
         "10. pie-shell: a recipe for a pie or tart crust alone (pastry or a crumb crust, baked empty or not baked);"
-        " other pastry or dough alone is null. Only when the recipe makes no filling at all" in p
+        " other pastry or dough alone is null. The recipe's whole result is an empty crust" in p
     )
     assert p.index("10. pie-shell:") > p.index("9. bar:")
     assert "Yorkshire puddings and toad in the hole" in p
@@ -195,7 +195,7 @@ def test_a_choice_of_any_tins_or_a_range_of_sizes_is_one_tin_the_first():
 def test_pie_savoury_needs_a_crust_or_lid_and_a_rolled_or_packed_filling_is_null():
     # Owner, 2026-11-01 (pie tins dry run): Beef Enchiladas and Perfect Nut Roast were pie-savoury.
     p = _bake_rule()
-    assert "Pie-savoury needs a crust or lid of pastry, suet or mashed potato" in p
+    assert "Pie-savoury is for a savoury filling only, and needs a crust or lid of pastry, suet or mashed potato" in p
     assert (
         "A filling rolled in tortillas, pasta or leaves, or packed into a loaf tin with no crust or lid"
         " (enchiladas, cannelloni, a nut roast wrapped in cabbage leaves, meatloaf), is null." in p
@@ -212,3 +212,21 @@ def test_a_torte_of_layered_pastry_is_null_never_pie_shell():
         " (Friesentorte, mille-feuille) are not a pie or tart crust: null." in p
     )
     assert p.index("(Friesentorte, mille-feuille)") > p.index("10. pie-shell:")
+
+
+def test_filling_quote_is_asked_before_bake_type():
+    # Owner, 2026-11-01: step 10 must never catch a recipe that makes a filling (Mango Pie).
+    p = _bake_rule()
+    assert '"filling_quote": the words of the step that puts a filling or topping into or onto' in p
+    assert p.index('"filling_quote"') < p.index('"bake_type"')
+    assert "If the recipe also makes anything that goes into the crust" in p
+
+
+def test_meringue_is_never_sponge_meat_pies_are_savoury_and_gypsy_tart_is_custard():
+    # Owner, 2026-11-01: Strawberries and Cream Pavlova was sponge, Sweet and Spicy Beef and Pork Pie
+    # was pie-custard, and Gypsy Tart was pie-nut.
+    p = _bake_rule()
+    assert "A meringue, pavlova or dacquoise (egg whites beaten with sugar, no flour), even baked in cake tins" in p
+    assert "A filling that is mostly meat is pie-savoury, never pie-custard, even when eggs bind it" in p
+    assert "bacon pieces in an egg-and-cream quiche filling stay pie-custard" in p
+    assert "evaporated or condensed milk whisked with sugar and baked until set (Gypsy tart)" in p

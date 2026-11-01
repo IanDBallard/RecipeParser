@@ -914,6 +914,9 @@ _TINS_SIZES = """\
      {hints}.
    - A tin with no size and none of those names ("a cake tin", "a baking dish") is not listed."""
 _TINS_BAKE = """\
+   - "filling_quote": the words of the step that puts a filling or topping into or onto a pastry or
+     crumb crust (pours, spreads, spoons, divides or arranges a custard, mousse, gelatin, cream, fruit
+     or meat filling in it), copied exactly from that step; null when no step does or there is no crust.
    - "bake_type": one of {bake_types}, or null. Decide by how the item is made, not by its name, and
      take the first that fits, in this order:
      1. pizza: a yeast-dough base baked flat under its toppings.
@@ -926,7 +929,10 @@ _TINS_BAKE = """\
         and banoffee pie, a curd or pastry cream spooned into a baked case). A sweet filling is never
         pie-savoury, whatever the crust (hot water, suet or shortcrust).
         pie-custard: the filling is mostly egg with milk or cream and sets as it bakes (custard tart,
-        quiche, any savoury tart filled with eggs and cream, pumpkin and sweet potato pie). pie-nut: a sugar-syrup, nut or frangipane
+        quiche, any savoury tart filled with eggs and cream, pumpkin and sweet potato pie), or is
+        evaporated or condensed milk whisked with sugar and baked until set (Gypsy tart). A filling that
+        is mostly meat is pie-savoury, never pie-custard, even when eggs bind it or are baked on top;
+        bacon pieces in an egg-and-cream quiche filling stay pie-custard. pie-nut: a sugar-syrup, nut or frangipane
         filling (pecan pie, treacle tart, butter tart, Bakewell tart). pie-fruit: a sweet fruit filling
         (apple pie, mince pies, tarte tatin, sweet fruit galettes), sweet suet puddings and fruit-filled
         pastries (Sussex pond pudding, Eccles cakes, black bun), and fruit baked under a crumble, crisp or
@@ -934,8 +940,8 @@ _TINS_BAKE = """\
         mashed potato (meat and pot pies, pasties, empanadas, sausage rolls, beef Wellington, steak and
         kidney pudding, savoury tarts and galettes not filled with eggs and cream), and fish or meat under a mashed-potato lid (shepherd's,
         cottage and fish pie): a mashed-potato lid is not a topping. Never pie-savoury: a dish topped with cheese, sauce or breadcrumbs (lasagne,
-        moussaka, enchiladas, gratins, aubergine parmigiana), or anything sweet. Pie-savoury needs a
-        crust or lid of pastry, suet or mashed potato (shepherd's, cottage and fish pie's mashed-potato
+        moussaka, enchiladas, gratins, aubergine parmigiana), or anything sweet. Pie-savoury is for a
+        savoury filling only, and needs a crust or lid of pastry, suet or mashed potato (shepherd's, cottage and fish pie's mashed-potato
         lid counts). A filling rolled in tortillas, pasta or leaves, or packed into a loaf tin with no
         crust or lid (enchiladas, cannelloni, a nut roast wrapped in cabbage leaves, meatloaf), is null.
      4. custard: an egg-set liquid baked with no crust (baked custard, crème caramel, crème brûlée,
@@ -950,13 +956,15 @@ _TINS_BAKE = """\
         puddings). A creamed cake
         is butter-cake even when it is called a sponge (Victoria sponge).
      8. sponge: a cake risen by eggs whisked to a foam, with little or no fat (génoise, Swiss roll,
-        fatless sponge, angel food, chiffon).
+        fatless sponge, angel food, chiffon). A meringue, pavlova or dacquoise (egg whites beaten with
+        sugar, no flour), even baked in cake tins as layers, is never sponge: null.
      9. bar: a batter or dough baked in one pan and cut into pieces (brownies, blondies, flapjacks,
         shortbread slices).
      10. pie-shell: a recipe for a pie or tart crust alone (pastry or a crumb crust, baked empty or not
-        baked); other pastry or dough alone is null. Only when the recipe makes no filling at all: a
-        recipe with a filling is never pie-shell, even when only its crust bakes (banana cream, chiffon
-        and banoffee pie are null by step 3). Puff pastry rounds or sheets baked flat to be stacked with
+        baked); other pastry or dough alone is null. The recipe's whole result is an empty crust for
+        another recipe to fill. If the recipe also makes anything that goes into the crust (a custard,
+        mousse, gelatin or cream filling, fruit, meat), it is never pie-shell: step 3 decides it, and a
+        pie whose filling is not baked is null (banana cream, chiffon, mango and banoffee pie). Puff pastry rounds or sheets baked flat to be stacked with
         cream and fruit into a torte (Friesentorte, mille-feuille) are not a pie or tart crust: null.
      null: anything else, including roast meat, casseroles, cookies baked as separate pieces,
      meringues and pavlova, granola, crackers, and anything cooked on the hob."""

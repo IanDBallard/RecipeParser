@@ -273,6 +273,14 @@ class RecipePan(BaseModel):
 _BAKE_TYPE_DESC = (
     "What the recipe bakes, one word from the prompt's list of 14 bake types; null when nothing bakes."
 )
+# Cayenne pie tins (owner, 2026-11-01): asked before bake_type, so a recipe that fills its own crust
+# can never be pie-shell; core.pans.check_bake drops a pie-shell answer when a quote is given. A yes/no
+# field followed the model's own bake type; a quote has to be found in the steps.
+_FILLING_QUOTE_DESC = (
+    "The words of the step that puts a filling or topping into or onto a pastry or crumb crust (pours,"
+    " spreads, spoons, divides or arranges it), copied exactly from that step; null when no step does or"
+    " there is no crust."
+)
 _BAKE_STEP_DESC = (
     "0-based index into tokenized_directions of the step that bakes; null when nothing bakes."
 )
@@ -297,6 +305,7 @@ class CoreMention(BaseModel):
 class PanAnswer(BaseModel):
     """The pan pass's whole answer for one recipe."""
     pans: List[RecipePan] = Field(default_factory=list)
+    filling_quote: Optional[str] = Field(default=None, description=_FILLING_QUOTE_DESC)
     bake_type: Optional[str] = Field(default=None, description=_BAKE_TYPE_DESC)
     bake_step: Optional[int] = Field(default=None, description=_BAKE_STEP_DESC)
     mentions: List[PanMention] = Field(default_factory=list)
@@ -339,6 +348,7 @@ class CayenneRefinement(BaseModel):
     pans: List[RecipePan] = Field(
         default_factory=list, description="The tins the recipe bakes in; [] when none."
     )
+    filling_quote: Optional[str] = Field(default=None, description=_FILLING_QUOTE_DESC)
     bake_type: Optional[str] = Field(default=None, description=_BAKE_TYPE_DESC)
     bake_step: Optional[int] = Field(default=None, description=_BAKE_STEP_DESC)
 

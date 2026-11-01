@@ -394,3 +394,9 @@ def test_ids_file_and_recipe_id_cannot_be_given_together(monkeypatch, tmp_path):
     ids.write_text("r1\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         _run_main(monkeypatch, ["--all-users", "--recipe-id", "r1", "--ids-file", str(ids)], [row()], [])
+
+
+def test_plan_row_drops_pie_shell_when_the_model_says_the_recipe_fills_its_crust():
+    # Owner, 2026-11-01: Mango Pie (a gelatin filling in a baked crumb crust) was pie-shell.
+    r = bp.plan_row(row(), asker(answer(bake_type="pie-shell", filling_quote="Divide custard between cooled crusts")))
+    assert (r.bake_type, r.bake_step) == (None, None)

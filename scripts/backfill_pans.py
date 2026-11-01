@@ -182,7 +182,8 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False) -> RowResult:
     directions = [TokenizedDirection(step=d.step, text=t) for d, t in zip(old, texts)]
     directions, w = check_pan_tokens(directions, ids, "\n".join(plain))
     notes += w
-    bake_type, bake_step = check_bake(answer.bake_type, answer.bake_step, directions, heading_steps(directions))
+    bake_type, bake_step = check_bake(answer.bake_type, answer.bake_step, directions, heading_steps(directions),
+                                     answer.filling_quote)
     result.directions = directions
     result.pans = [p.model_dump() for p in pans]
     result.bake_type, result.bake_step = bake_type, bake_step

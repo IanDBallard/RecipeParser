@@ -48,4 +48,31 @@ def test_check_bake_keeps_pie_shell():
     from recipeparser.models import TokenizedDirection
 
     d = [TokenizedDirection(step=1, text="Line the plate."), TokenizedDirection(step=2, text="Bake 20 min.")]
-    assert check_bake("pie-shell", 1, d, set()) == ("pie-shell", 1)
+    assert check_bake("pie-shell", 1, d, set(), filling_quote=None) == ("pie-shell", 1)
+
+
+# Owner, 2026-11-01: step 10 (pie-shell) must never catch a recipe that makes any filling. The model
+# says so in its own field, and a pie-shell answer with a filling is dropped, as banana cream's is.
+def test_check_bake_drops_pie_shell_when_the_recipe_fills_its_crust():
+    from recipeparser.core.pans import check_bake
+    from recipeparser.models import TokenizedDirection
+
+    d = [TokenizedDirection(step=1, text="Press the crumbs into the pan."), TokenizedDirection(step=2, text="Bake 12 min.")]
+    assert check_bake("pie-shell", 1, d, set(), filling_quote="Divide custard between cooled crusts") == (None, None)
+    assert check_bake("pie-shell", 1, d, set(), filling_quote=None) == ("pie-shell", 1)
+    assert check_bake("pie-shell", 1, d, set(), filling_quote="  ") == ("pie-shell", 1)
+    assert check_bake("pie-custard", 1, d, set(), filling_quote="Divide custard between cooled crusts") == ("pie-custard", 1)
+
+
+def test_refine_drops_pie_shell_when_the_recipe_fills_its_crust():
+    from recipeparser.core.pans import apply_pan_checks
+    from recipeparser.models import CayenneRefinement, TokenizedDirection
+
+    r = CayenneRefinement(
+        title="Mango Pie", base_servings=8, structured_ingredients=[],
+        tokenized_directions=[TokenizedDirection(step=1, text="Press crumbs in."),
+                              TokenizedDirection(step=2, text="Bake 12 min.")],
+        bake_type="pie-shell", bake_step=1, filling_quote="Divide custard between cooled crusts",
+    )
+    apply_pan_checks(r, ["Press crumbs in.", "Bake 12 min."])
+    assert (r.bake_type, r.bake_step) == (None, None)

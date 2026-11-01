@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.26.0] — 2026-11-01
+
+The owner's second reading of the pie tins backfill dry run: a pie whose filling never bakes can no longer be a crust, a pavlova is never a sponge, a meat pie bound with egg is savoury, and a Gypsy tart is a custard tart (Cayenne pie tins). **Deploy note:** run the scoped pie tins backfill on this release, not on 9.25.0.
+
+### ✨ Added
+- `filling_quote` on REFINE's output and the pans pass's answer, asked before `bake_type`: the words of the step that puts a filling or topping into or onto a crust, or null. `check_bake(..., filling_quote=None)` drops `pie-shell` whenever a quote is given, so step 10 can never catch a recipe that makes a filling (Mango Pie). A yes/no field was tried first, and the model answered it to match its own bake type (Banoffee Pie: "no filling", `pie-shell`).
+
+### ⚠️ Changed
+- A meringue, pavlova or dacquoise is never `sponge`, even baked in cake tins as layers (Strawberries and Cream Pavlova).
+- A filling that is mostly meat is `pie-savoury`, never `pie-custard`, even when eggs bind it or are baked on top (Sweet and Spicy Beef and Pork Pie); bacon pieces in an egg-and-cream quiche stay `pie-custard`.
+- Evaporated or condensed milk whisked with sugar and baked until set is `pie-custard` (Gypsy Tart).
+- `pie-savoury` is for savoury fillings only: a sweet suet pond pudding had followed the crust-or-lid rule.
+- Step 10 says the recipe's whole result is an empty crust for another recipe to fill.
+- The probe set gains Strawberries and Cream Pavlova (null) and Sweet and Spicy Beef and Pork Pie (`pie-savoury`).
+
+---
+
 ## [9.25.0] — 2026-11-01
 
 Pie plates and pie dishes are their own tin family, a pie or tart crust alone is a bake type, a tray that only carries another tin is not a tin, and a choice of tins is the first (Cayenne pie tins, D57 and D59; bug report 18274a1a). **Deploy note:** needs Cayenne PR #427 first: its migration admits `pie-shell` to `recipes_bake_type_check`. The scoped backfill runs after this deploys, on the owner's OK.
