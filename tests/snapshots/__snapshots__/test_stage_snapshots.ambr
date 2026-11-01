@@ -131,6 +131,7 @@
     'bake_step': None,
     'bake_type': None,
     'base_servings': 4,
+    'filling_quote': None,
     'grid_categories': dict({
       'Cuisine': list([
         'Italian',
