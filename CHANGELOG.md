@@ -11,6 +11,7 @@ Pie plates and pie dishes are their own tin family, a pie or tart crust alone is
 
 ### ✨ Added
 - `PAN_FAMILIES` gains `pie` (a pie plate, pie dish, pie pan or pie tin); `BAKE_TYPES` gains `pie-shell` (a pie or tart crust alone, pastry or crumb, baked empty or not baked). The `RecipePan.family` description and the bake-type count (now 14) follow.
+- `scripts/backfill_pans.py --ids-file PATH`: restricts a run to the recipe ids listed one per line (blank lines ignored); it combines with `--force`, `--review`, `--record` and `--live` like `--recipe-id`, and the two cannot be given together. The run says how many listed ids were read and how many were not found (Cayenne pie tins D60).
 
 ### ⚠️ Changed
 - The tin rules REFINE and the pans-only prompt share: a pie plate, pie dish, pie pan or pie tin is `pie`, a tart, flan or quiche tin is `tart`; a pie dish named only by its capacity is `pie`, `round`, with `capacity_ml`; a baking sheet, tray or roasting tin that only holds another tin or dish (a pie plate on a baking sheet, a water bath, a drip tray) is not listed; a choice of tins or a range of sizes ("8-inch square or round", "9- or 10-inch springform") is one tin, the first size and shape named, for every tin rather than dishes only (F-367's first half).
