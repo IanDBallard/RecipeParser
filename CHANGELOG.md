@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.25.0] — 2026-11-01
+
+Pie plates and pie dishes are their own tin family, a pie or tart crust alone is a bake type, a tray that only carries another tin is not a tin, and a choice of tins is the first (Cayenne pie tins, D57 and D59; bug report 18274a1a). **Deploy note:** needs Cayenne PR #427 first: its migration admits `pie-shell` to `recipes_bake_type_check`. The scoped backfill runs after this deploys, on the owner's OK.
+
+### ✨ Added
+- `PAN_FAMILIES` gains `pie` (a pie plate, pie dish, pie pan or pie tin); `BAKE_TYPES` gains `pie-shell` (a pie or tart crust alone, pastry or crumb, baked empty or not baked). The `RecipePan.family` description and the bake-type count (now 14) follow.
+- `scripts/backfill_pans.py --ids-file PATH`: restricts a run to the recipe ids listed one per line (blank lines ignored); it combines with `--force`, `--review`, `--record` and `--live` like `--recipe-id`, and the two cannot be given together. The run says how many listed ids were read and how many were not found (Cayenne pie tins D60).
+
+### ⚠️ Changed
+- The tin rules REFINE and the pans-only prompt share: a pie plate, pie dish, pie pan or pie tin is `pie`, a tart, flan or quiche tin is `tart`; a pie dish named only by its capacity is `pie`, `round`, with `capacity_ml`; a baking sheet, tray or roasting tin that only holds another tin or dish (a pie plate on a baking sheet, a water bath, a drip tray) is not listed; a choice of tins or a range of sizes ("8-inch square or round", "9- or 10-inch springform") is one tin, the first size and shape named, for every tin rather than dishes only (F-367's first half).
+- Bake types: a recipe for a pie or tart crust alone is `pie-shell`, a new last step 10; other pastry or dough alone stays null. A pie whose filling does not bake in its crust (banana cream, chiffon, banoffee) stays null, and step 3 now says that null "stops here". With `pie-shell` inside step 3, as the plan first worded it, the live probe read Banana Cream, Lime Chiffon, Mango and Banoffee Pie as `pie-shell`; as step 10 with the stop, all ten crust and crust-only-pie cases were right in three runs out of three.
+- After the owner read the first dry run: `pie-savoury` needs a crust or lid of pastry, suet or mashed potato, and a filling rolled in tortillas, pasta or leaves, or packed into a loaf tin with no crust or lid, is null (Beef Enchiladas and Perfect Nut Roast had been called `pie-savoury`). In step 10, puff pastry baked flat to be stacked with cream and fruit into a torte is not a pie or tart crust, so it is null (Friesentorte). Step 3's crust-only-bake null also says "never pie-shell". The probe set gains Beef and Chicken Enchiladas, Perfect Nut Roast and Friesentorte, all null.
+- The bake-type probe set gains the pie crust and Graham Cracker Crust (`pie-shell`); "Good for Almost Everything Pie Dough" and "Hot Water Crust Pastry" move from null to `pie-shell` under the amended rule.
+
+---
+
 ## [9.24.0] — 2026-10-30
 
 Lists are hidden from tagging and re-tagging, and a Cayenne restore files a recipe's lists under the account's own Lists root (Cayenne Lists and bulk categories). **Deploy note:** needs Cayenne's `is_lists_root` column (PR A) applied first; the AI-path selects and the restore read it.

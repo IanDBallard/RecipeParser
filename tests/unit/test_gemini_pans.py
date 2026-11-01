@@ -115,9 +115,18 @@ def test_a_mashed_potato_lid_still_makes_a_pie():
     assert "a mashed-potato lid is not a topping" in p
 
 
-def test_pastry_alone_is_never_a_pie_and_batter_puddings_are_quick_bread():
+def test_a_crust_alone_is_pie_shell_other_pastry_is_null_and_batter_puddings_are_quick_bread():
+    # Cayenne pie tins D57: a pie or tart crust alone is pie-shell; puff for palmiers or choux stays null.
+    # It is the last step, and step 3's crust-only-bake null stops there: inside step 3 the live probe
+    # read banana cream, chiffon and banoffee pie as pie-shell.
     p = _bake_rule()
-    assert "3. a pie or tart, never a recipe for pastry or dough alone:" in p
+    assert "3. a pie or tart, never a recipe for a crust or pastry alone (step 10):" in p
+    assert "is null and stops here, never pie-shell (banana cream, chiffon and banoffee pie" in p
+    assert (
+        "10. pie-shell: a recipe for a pie or tart crust alone (pastry or a crumb crust, baked empty or not baked);"
+        " other pastry or dough alone is null. Only when the recipe makes no filling at all" in p
+    )
+    assert p.index("10. pie-shell:") > p.index("9. bar:")
     assert "Yorkshire puddings and toad in the hole" in p
     assert "steamed sponge puddings" in p
 
@@ -151,7 +160,55 @@ def test_a_baking_dish_takes_the_family_of_its_shape_and_a_choice_takes_the_firs
     # The live library had 13 dimensioned dishes with no family ("an ovenproof dish, about 18 x 23cm"),
     # so no recipe baked in one could be fitted: the vocabulary named tins and pans, never dishes.
     p = _bake_rule()
-    assert "A baking, ovenproof, gratin, casserole or pie dish takes the family of its shape" in p
-    assert "rectangular traybake, square square, round round-cake, a pie dish tart" in p
+    assert "A baking, ovenproof, gratin or casserole dish takes the family of its shape" in p
+    assert "rectangular traybake, square square, round round-cake," in p
     assert "the first size and shape it names" in p
     assert "A rectangle is traybake, never square: square only when its sides are equal" in p
+
+
+def test_a_pie_plate_is_pie_a_tart_tin_is_tart_and_a_capacity_only_pie_dish_is_pie():
+    # Cayenne pie tins D59.
+    p = _bake_rule()
+    assert "a pie plate, pie dish, pie pan or pie tin pie; a tart, flan or quiche tin tart." in p
+    assert "A pie dish named only by its capacity is pie, round, with capacity_ml." in p
+
+
+def test_a_tray_that_only_carries_another_tin_is_not_listed():
+    # Cayenne pie tins D59: the crust's half sheet pan was only its blind-baking tray.
+    p = _bake_rule()
+    assert (
+        "A baking sheet, tray or roasting tin that only holds another tin or dish (the pie plate set on a"
+        " baking sheet, a water bath, a tray to catch drips) is not listed; list a tray only when the item"
+        " bakes directly on it." in p
+    )
+
+
+def test_a_choice_of_any_tins_or_a_range_of_sizes_is_one_tin_the_first():
+    # Cayenne pie tins D59 (F-367's first half): the rule covers every tin, not only dishes.
+    p = _bake_rule()
+    assert (
+        'When the recipe offers a choice of tins or a range of sizes ("8-inch square or round",'
+        ' "9- or 10-inch springform"), list one tin: the first size and shape it names.' in p
+    )
+
+
+def test_pie_savoury_needs_a_crust_or_lid_and_a_rolled_or_packed_filling_is_null():
+    # Owner, 2026-11-01 (pie tins dry run): Beef Enchiladas and Perfect Nut Roast were pie-savoury.
+    p = _bake_rule()
+    assert "Pie-savoury needs a crust or lid of pastry, suet or mashed potato" in p
+    assert (
+        "A filling rolled in tortillas, pasta or leaves, or packed into a loaf tin with no crust or lid"
+        " (enchiladas, cannelloni, a nut roast wrapped in cabbage leaves, meatloaf), is null." in p
+    )
+
+
+def test_a_torte_of_layered_pastry_is_null_never_pie_shell():
+    # Owner, 2026-11-01 (pie tins dry run): Friesentorte was pie-shell.
+    p = _bake_rule()
+    # In the closing null list the clause also turned a hazelnut meringue roulade into a sponge; in step
+    # 10 it does not.
+    assert (
+        "Puff pastry rounds or sheets baked flat to be stacked with cream and fruit into a torte"
+        " (Friesentorte, mille-feuille) are not a pie or tart crust: null." in p
+    )
+    assert p.index("(Friesentorte, mille-feuille)") > p.index("10. pie-shell:")

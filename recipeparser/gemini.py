@@ -897,11 +897,16 @@ _TINS_SIZES = """\
    - "family" stovetop: a frying pan, skillet, sauté pan, wok, paella pan, omelette or pancake pan,
      griddle, saucepan, pot or lidded casserole pot such as a Dutch oven, whether the recipe uses it
      on the hob or in the oven; a baking dish, even one called a casserole dish, is not stovetop.
-   - A baking, ovenproof, gratin, casserole or pie dish takes the family of its shape: rectangular
-     traybake, square square, round round-cake, a pie dish tart. When the recipe offers a choice
-     ("8-inch square or round baking dish", "8x12 or 9x13-inch dish"), use the first size and shape it names.
+   - A baking, ovenproof, gratin or casserole dish takes the family of its shape: rectangular
+     traybake, square square, round round-cake, a pie plate, pie dish, pie pan or pie tin pie; a tart,
+     flan or quiche tin tart. A pie dish named only by its capacity is pie, round, with capacity_ml.
+     When the recipe offers a choice of tins or a range of sizes ("8-inch square or round",
+     "9- or 10-inch springform"), list one tin: the first size and shape it names.
      A rectangle is traybake, never square: square only when its sides are equal (a 9 x 13-inch dish or
      pan is traybake).
+   - A baking sheet, tray or roasting tin that only holds another tin or dish (the pie plate set on a
+     baking sheet, a water bath, a tray to catch drips) is not listed; list a tray only when the item
+     bakes directly on it.
    - "dims_mm": inside size in MILLIMETRES (inches x 25.4): "d" for a round, "l" and "w" for a
      rectangle, square or loaf; "depth" only when the recipe states it. Never guess a size.
    - "capacity_ml" only when the recipe names the tin by volume ("a 1.5 litre tin", "a 10-cup Bundt").
@@ -914,10 +919,10 @@ _TINS_BAKE = """\
      1. pizza: a yeast-dough base baked flat under its toppings.
      2. cheesecake: a filling that is mostly soft cheese (cream cheese, ricotta, quark) set with eggs
         as it bakes; a no-bake cheesecake is null.
-     3. a pie or tart, never a recipe for pastry or dough alone: a pastry or crumb crust holds the
+     3. a pie or tart, never a recipe for a crust or pastry alone (step 10): a pastry or crumb crust holds the
         filling, or a lid of pastry, a suet crust or mashed potato covers it. Only when the filling
         bakes in it: a filling cooked on the hob or set in the fridge, so that only the crust is baked
-        (blind, or a crumb crust) or only a meringue is browned on top, is null (banana cream, chiffon
+        (blind, or a crumb crust) or only a meringue is browned on top, is null and stops here, never pie-shell (banana cream, chiffon
         and banoffee pie, a curd or pastry cream spooned into a baked case). A sweet filling is never
         pie-savoury, whatever the crust (hot water, suet or shortcrust).
         pie-custard: the filling is mostly egg with milk or cream and sets as it bakes (custard tart,
@@ -929,7 +934,10 @@ _TINS_BAKE = """\
         mashed potato (meat and pot pies, pasties, empanadas, sausage rolls, beef Wellington, steak and
         kidney pudding, savoury tarts and galettes not filled with eggs and cream), and fish or meat under a mashed-potato lid (shepherd's,
         cottage and fish pie): a mashed-potato lid is not a topping. Never pie-savoury: a dish topped with cheese, sauce or breadcrumbs (lasagne,
-        moussaka, enchiladas, gratins, aubergine parmigiana), or anything sweet.
+        moussaka, enchiladas, gratins, aubergine parmigiana), or anything sweet. Pie-savoury needs a
+        crust or lid of pastry, suet or mashed potato (shepherd's, cottage and fish pie's mashed-potato
+        lid counts). A filling rolled in tortillas, pasta or leaves, or packed into a loaf tin with no
+        crust or lid (enchiladas, cannelloni, a nut roast wrapped in cabbage leaves, meatloaf), is null.
      4. custard: an egg-set liquid baked with no crust (baked custard, crème caramel, crème brûlée,
         bread and butter pudding, clafoutis, baked rice pudding).
      5. bread-enriched / bread-lean: risen with yeast or a sourdough starter. bread-enriched when the
@@ -945,6 +953,11 @@ _TINS_BAKE = """\
         fatless sponge, angel food, chiffon).
      9. bar: a batter or dough baked in one pan and cut into pieces (brownies, blondies, flapjacks,
         shortbread slices).
+     10. pie-shell: a recipe for a pie or tart crust alone (pastry or a crumb crust, baked empty or not
+        baked); other pastry or dough alone is null. Only when the recipe makes no filling at all: a
+        recipe with a filling is never pie-shell, even when only its crust bakes (banana cream, chiffon
+        and banoffee pie are null by step 3). Puff pastry rounds or sheets baked flat to be stacked with
+        cream and fruit into a torte (Friesentorte, mille-feuille) are not a pie or tart crust: null.
      null: anything else, including roast meat, casseroles, cookies baked as separate pieces,
      meringues and pavlova, granola, crackers, and anything cooked on the hob."""
 _TINS_VOCAB = _TINS_SIZES + "\n" + _TINS_BAKE

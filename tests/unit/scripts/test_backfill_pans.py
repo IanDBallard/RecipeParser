@@ -370,3 +370,27 @@ def test_restore_skips_a_row_whose_current_pans_are_only_a_tombstone(monkeypatch
     assert bp._restore(sb, rec, live=True) == 0
     assert not [e for e in log if e[0] == "update"]
     assert "SKIPPED r1" in capsys.readouterr().out
+
+
+def test_ids_file_keeps_exactly_the_listed_recipes(monkeypatch, capsys, tmp_path):
+    # Cayenne pie tins D60: the backfill is scoped by a file of ids, one per line.
+    ids = tmp_path / "scope.txt"
+    ids.write_text("r1\n\n  r3  \n", encoding="utf-8")
+    rows = [row(id="r1", title="Pie"), row(id="r2", title="Cake"), row(id="r3", title="Tart")]
+    calls = []
+
+    def plan(r, ask, force=False):
+        calls.append(r["id"])
+        return bp.RowResult(id=r["id"], title=r["title"], status="none-found")
+
+    monkeypatch.setattr(bp, "plan_row", plan)
+    assert _run_main(monkeypatch, ["--all-users", "--force", "--ids-file", str(ids)], rows, []) == 0
+    assert "2 recipes read" in capsys.readouterr().out
+    assert set(calls) == {"r1", "r3"}
+
+
+def test_ids_file_and_recipe_id_cannot_be_given_together(monkeypatch, tmp_path):
+    ids = tmp_path / "scope.txt"
+    ids.write_text("r1\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        _run_main(monkeypatch, ["--all-users", "--recipe-id", "r1", "--ids-file", str(ids)], [row()], [])

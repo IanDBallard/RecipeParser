@@ -25,6 +25,9 @@ a cook's edit mid-run wins.
     # for real; --record keeps every rewritten row's old pans, bake type, step and directions
     python scripts/backfill_pans.py --all-users --live --record pans-before.csv
 
+    # scoped to the recipes listed in a file, one id per line (combines with --force, --review, --live)
+    python scripts/backfill_pans.py --all-users --force --ids-file scope.txt --review scope-review.csv
+
     # undo, from that record; a row whose current tins include an edited one is skipped with a note,
     # so a restore never undoes a cook's later tin edit. The record also holds rows whose write was
     # refused (moved during the run): restoring those writes back what is already there.
@@ -279,6 +282,12 @@ def _read_rows(sb: Any, user_id: Optional[str], recipe_id: Optional[str]) -> Lis
         offset += PAGE
 
 
+def read_ids(path: Path) -> set:
+    """The recipe ids in an ids file: one per line, surrounding space and blank lines ignored."""
+    with path.open(encoding="utf-8") as fh:
+        return {line.strip() for line in fh if line.strip()}
+
+
 def _restore(sb: Any, path: Path, live: bool) -> int:
     restored = skipped = 0
     with path.open(newline="", encoding="utf-8") as fh:
@@ -312,7 +321,10 @@ def main() -> int:
     who = ap.add_mutually_exclusive_group(required=True)
     who.add_argument("--user-id", help="The owner whose library to tag.")
     who.add_argument("--all-users", action="store_true", help="Every library: shared copies are rows of their own.")
-    ap.add_argument("--recipe-id", help="Tag this one recipe only.")
+    which = ap.add_mutually_exclusive_group()
+    which.add_argument("--recipe-id", help="Tag this one recipe only.")
+    which.add_argument("--ids-file", type=Path,
+                       help="Tag only the recipes listed in this file, one id per line (blank lines ignored).")
     ap.add_argument("--limit", type=int, help="Stop after this many recipes have been sent to Gemini.")
     ap.add_argument("--workers", type=int, default=4, help="Gemini calls in flight at once (default 4).")
     ap.add_argument("--review", type=Path, help="CSV of every proposal: id, title, pans, bake_type, bake_step, step, "
@@ -353,6 +365,12 @@ def main() -> int:
         return tag_pans(steps, ingredients, system, gemini_client, limiter=limiter)
 
     rows = _read_rows(sb, args.user_id, args.recipe_id)
+    if args.ids_file:
+        wanted = read_ids(args.ids_file)
+        rows = [r for r in rows if r["id"] in wanted]
+        missing = len(wanted) - len(rows)
+        print(f"--ids-file: {len(wanted)} id(s) listed, {len(rows)} read"
+              + (f", {missing} not found" if missing else ""))
     if args.bake_type:
         rows = [r for r in rows if r.get("bake_type") in args.bake_type]
     by_id = {r["id"]: r for r in rows}
