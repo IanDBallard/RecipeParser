@@ -39,9 +39,10 @@ BAKE_TYPES = (
     "pie-custard",
     "pie-nut",
     "pie-savoury",
+    "pie-shell",
 )
 PAN_SHAPES = ("round", "square", "rect", "loaf", "ring", "flat-round", "sheet")
-PAN_FAMILIES = ("round-cake", "square", "traybake", "sheet", "loaf", "ring", "tart", "pizza", "stovetop")
+PAN_FAMILIES = ("round-cake", "square", "traybake", "sheet", "loaf", "ring", "tart", "pie", "pizza", "stovetop")
 # R2: tins a source names without dimensions; Cayenne domain/pans.ts keys. Their dimensions live in
 # core/tin_servings.py HINT_TINS, mirrored by tests/fixtures/hint_tins.json (the cross-repo contract).
 HINT_KEYS = (
