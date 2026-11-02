@@ -132,9 +132,14 @@ def check_bake(
     bake_step: Optional[int],
     directions: Sequence[TokenizedDirection],
     heading_steps: Set[int],
+    filling_quote: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[int]]:
     # R-E: a step with no known type is meaningless, so both go.
     if bake_type not in BAKE_TYPES:
+        return None, None
+    # Cayenne pie tins: pie-shell is a crust alone. A recipe with a step that fills its crust is a pie,
+    # and one whose filling never bakes has no bake type (banana cream, mango pie), so the answer goes.
+    if bake_type == "pie-shell" and filling_quote and filling_quote.strip():
         return None, None
     kind = bake_type
     step = (
@@ -202,7 +207,8 @@ def apply_pan_checks(refinement: CayenneRefinement, raw_directions: Sequence[str
     refinement.pans = pans
     refinement.tokenized_directions = directions
     refinement.bake_type, refinement.bake_step = check_bake(
-        refinement.bake_type, refinement.bake_step, directions, heading_steps(directions)
+        refinement.bake_type, refinement.bake_step, directions, heading_steps(directions),
+        refinement.filling_quote,
     )
     return warnings
 
