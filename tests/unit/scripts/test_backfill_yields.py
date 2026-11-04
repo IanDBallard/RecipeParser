@@ -61,14 +61,14 @@ def pieces_answer(count=1):
 
 
 def asker(ans, calls=None):
-    def ask(steps, ingredients, pans, bake_type):
+    def ask(steps, ingredients, pans, bake_type, words):
         if calls is not None:
-            calls.append((steps, ingredients, pans, bake_type))
+            calls.append((steps, ingredients, pans, bake_type, words))
         return ans
     return ask
 
 
-def no_ask(steps, ingredients, pans, bake_type):
+def no_ask(steps, ingredients, pans, bake_type, words):
     raise AssertionError("ask must not be called")
 
 
@@ -144,10 +144,10 @@ def test_fresh_row_is_tagged_with_the_yields_only_inputs():
     r = by.plan_row(row(), asker(servings_answer(), calls))
     assert r.status == "tagged"
     assert r.spec["kind"] == "servings" and r.spec["container"]["component_lines"] == ["ing_02", "ing_03"]
-    steps, ingredients, pans, bake_type = calls[0]
+    steps, ingredients, pans, bake_type, words = calls[0]
     assert steps == ["Line a 9-inch pie plate with the pastry.", "Bake at 200°C."]
     assert [i.id for i in ingredients] == ["ing_01", "ing_02", "ing_03", "ing_04"]  # headings included
-    assert pans[0].id == "pan_01" and bake_type == "pie-fruit"
+    assert pans[0].id == "pan_01" and bake_type == "pie-fruit" and words is None
     assert r.settled == {}
 
 
@@ -210,14 +210,54 @@ def test_pieces_with_no_count_notes_the_scale_left_alone():
     assert any("saved scale left as it is: no piece count" in n for n in r.notes)
 
 
+def test_the_ask_is_given_the_yield_words():
+    calls = []
+    by.plan_row(row(servings_min=16, servings_max=16, servings_note="Enough for double crust"),
+                asker(component_answer(), calls))
+    assert calls[0][4] == "16 Enough for double crust"
+
+
+def test_an_exception_after_the_answer_is_failed_not_fatal(monkeypatch):
+    def broken(*a):
+        raise KeyError("cook_yield")
+    monkeypatch.setattr(by, "settle_scale", broken)
+    r = by.plan_row(row(cook_servings=47), asker(component_answer()))
+    assert r.status == "failed" and "cook_yield" in r.error and r.spec is None
+    assert any("after the answer" in n for n in r.notes)
+
+
+def test_a_pieces_conversion_already_in_cook_yield_does_not_raise():
+    done = {"pieces": {"count": 2, "weight_g": 900, "diameter_mm": None}}
+    r = by.plan_row(row(cook_servings=2, base_servings=1, cook_yield=done), asker(pieces_answer()),
+                    settle_pieces=True)
+    assert r.status == "tagged" and r.settled == {"cook_servings": None}
+    assert "2 piece(s)" in r.settled_text
+
+
 # --- write_row and the review ------------------------------------------------------------------------
 
+IS_NULL = ("is", "null")
+
+
+def _matches(stored, val):
+    if val == IS_NULL:
+        return stored is None
+    if isinstance(stored, (dict, list)):
+        return json.dumps(stored) == val
+    return stored == val
+
+
 class FakeTable:
-    def __init__(self, data, log):
+    """A recipes table. With ``store`` (id -> the row as it is now), an update lands only when every filter
+    matches the stored row, as PostgREST's would; without it, ``data`` is returned."""
+
+    def __init__(self, data, log, store=None, raise_on_update=False):
         self.data, self.log, self.filters = data, log, []
+        self.store, self.raise_on_update, self.updating = store, raise_on_update, False
 
     def update(self, payload):
         self.log.append(("update", payload, self.filters))
+        self.updating = True
         return self
 
     def select(self, cols):
@@ -228,19 +268,41 @@ class FakeTable:
         self.filters.append((col, val))
         return self
 
+    def is_(self, col, val):
+        self.filters.append((col, ("is", val)))
+        return self
+
     def execute(self):
+        if self.updating and self.raise_on_update:
+            raise RuntimeError("connection reset")
+        if self.updating and self.store is not None:
+            cur = self.store.get(dict(self.filters).get("id"))
+            ok = cur is not None and all(_matches(cur.get(c), v) for c, v in self.filters)
+            return SimpleNamespace(data=[{"id": cur["id"]}] if ok else [])
         return SimpleNamespace(data=self.data)
 
 
-def test_write_row_is_conditional_and_carries_the_settlement():
+def test_write_row_is_conditional_on_the_revs_the_spec_and_the_saved_scale():
     log = []
-    r = by.plan_row(row(cook_servings=47, base_servings=16), asker(component_answer()))
+    read = row(cook_servings=47, base_servings=16, cook_pans=[{"key": "pie-9in", "count": 2}])
+    r = by.plan_row(read, asker(component_answer()))
     sb = SimpleNamespace(table=lambda name: FakeTable([{"id": "r1"}], log))
-    assert by.write_row(sb, row(), r) is True
+    assert by.write_row(sb, read, r) is True
     _, payload, filters = log[0]
     assert payload == {"yield_spec": r.spec, "cook_servings": None}
-    assert filters == [("id", "r1"), ("body_rev", 2), ("derived_rev", 2)]
-    assert by.write_row(SimpleNamespace(table=lambda name: FakeTable([], [])), row(), r) is False
+    assert filters == [("id", "r1"), ("body_rev", 2), ("derived_rev", 2), ("yield_spec", IS_NULL),
+                       ("cook_servings", 47), ("cook_pans", json.dumps([{"key": "pie-9in", "count": 2}])),
+                       ("cook_scale_by", IS_NULL), ("cook_yield", IS_NULL)]
+    assert by.write_row(SimpleNamespace(table=lambda name: FakeTable([], [])), read, r) is False
+
+
+def test_write_row_under_force_is_conditional_on_the_stored_spec():
+    stored = {"kind": "servings", "container": None, "area": None, "pieces": None, "edited": False}
+    read = row(yield_spec=stored)
+    r = by.plan_row(read, asker(component_answer()), force=True)
+    log = []
+    by.write_row(SimpleNamespace(table=lambda name: FakeTable([{"id": "r1"}], log)), read, r)
+    assert ("yield_spec", json.dumps(stored)) in log[0][2]
 
 
 def test_review_columns_and_lines(tmp_path):
@@ -263,7 +325,9 @@ def test_review_columns_and_lines(tmp_path):
 MISSING = "column recipes.yield_spec does not exist"
 
 
-def _run_main(monkeypatch, argv, rows, log, ans=None, missing_columns=False, writes_ok=True):
+def _run_main(monkeypatch, argv, rows, log, ans=None, missing_columns=False, writes_ok=True, moved=None,
+              write_raises=False):
+    """main() against a fake table. ``moved``: id -> columns changed after the read (a cook mid-run)."""
     import recipeparser
     import recipeparser.gemini as gem
     monkeypatch.setenv("SUPABASE_URL", "http://x")
@@ -272,9 +336,10 @@ def _run_main(monkeypatch, argv, rows, log, ans=None, missing_columns=False, wri
     asked = []
 
     def tag(*a, **k):
-        asked.append(a)
+        asked.append((a, k))
         return ans or servings_answer()
     monkeypatch.setattr(gem, "tag_yield", tag)
+    store = {r["id"]: {**r, **(moved or {}).get(r["id"], {})} for r in rows} if writes_ok else None
 
     class Table(FakeTable):
         def select(self, cols):
@@ -293,7 +358,7 @@ def _run_main(monkeypatch, argv, rows, log, ans=None, missing_columns=False, wri
 
     monkeypatch.setitem(sys.modules, "supabase", SimpleNamespace(
         create_client=lambda url, key: SimpleNamespace(
-            table=lambda name: Table([{"id": "r1"}] if writes_ok else [], log))))
+            table=lambda name: Table([{"id": "r1"}] if writes_ok else [], log, store, write_raises))))
     monkeypatch.setattr(sys, "argv", ["backfill_yields.py", *argv])
     code = by.main()
     return code, asked
@@ -301,6 +366,11 @@ def _run_main(monkeypatch, argv, rows, log, ans=None, missing_columns=False, wri
 
 def _updates(log):
     return [e for e in log if e[0] == "update"]
+
+
+def _record(path):
+    with path.open(newline="", encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
 
 
 def test_live_without_record_refuses(monkeypatch):
@@ -320,6 +390,12 @@ def test_dry_run_writes_nothing(monkeypatch, tmp_path):
     assert review.exists()
 
 
+def test_main_passes_the_yield_words_to_tag_yield(monkeypatch):
+    pie = row(servings_min=6, servings_max=8, servings_note="slices")
+    _, asked = _run_main(monkeypatch, ["--all-users"], [pie], [])
+    assert asked[0][1]["yield_text"] == "6 to 8 slices"
+
+
 def test_dry_run_before_the_migration_reads_both_as_null(monkeypatch, capsys):
     log = []
     code, asked = _run_main(monkeypatch, ["--all-users"], [row()], log, missing_columns=True)
@@ -328,6 +404,7 @@ def test_dry_run_before_the_migration_reads_both_as_null(monkeypatch, capsys):
     assert "yield_spec/cook_yield are not on this database yet: dry run reads both as null" in out
     assert _updates(log) == []
     assert "yield_spec" not in log[-1][1] and "cook_yield" not in log[-1][1]
+    assert "servings_note" in log[-1][1]
 
 
 def test_live_before_the_migration_stops_before_asking_or_writing(monkeypatch, tmp_path):
@@ -373,14 +450,15 @@ def test_live_writes_the_spec_and_settlement_and_records_the_old_values(monkeypa
     assert payload["yield_spec"]["kind"] == "component"
     assert payload["cook_servings"] is None and payload["cook_scale_by"] is None
     assert "cook_pans" not in payload and "cook_yield" not in payload
-    assert filters == [("id", "r1"), ("body_rev", 2), ("derived_rev", 2)]
-    with rec.open(newline="", encoding="utf-8") as fh:
-        lines = list(csv.DictReader(fh))
-    assert list(lines[0]) == ["id", "title", "yield_spec", "cook_servings", "cook_pans", "cook_scale_by",
-                              "cook_yield"]
-    assert lines[0]["yield_spec"] == "null" and lines[0]["cook_servings"] == "47"
-    assert lines[0]["cook_scale_by"] == '"feed"' and lines[0]["cook_pans"] == "null"
-    assert json.loads(lines[0]["cook_yield"]) == {"filling": "keep"}
+    assert filters[:3] == [("id", "r1"), ("body_rev", 2), ("derived_rev", 2)]
+    attempt, outcome = _record(rec)
+    assert list(attempt) == ["id", "title", "yield_spec", "cook_servings", "cook_pans", "cook_scale_by",
+                             "cook_yield", "written_yield_spec", "outcome"]
+    assert attempt["yield_spec"] == "null" and attempt["cook_servings"] == "47"
+    assert attempt["cook_scale_by"] == '"feed"' and attempt["cook_pans"] == "null"
+    assert json.loads(attempt["cook_yield"]) == {"filling": "keep"}
+    assert json.loads(attempt["written_yield_spec"]) == payload["yield_spec"]
+    assert (attempt["outcome"], outcome["outcome"]) == ("attempted", "written")
     out = capsys.readouterr().out
     assert "cleared" in out and "Crust" in out
 
@@ -396,7 +474,47 @@ def test_record_is_on_disk_before_the_row_is_written(monkeypatch, tmp_path):
 
     monkeypatch.setattr(FakeTable, "update", update)
     _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row()], [])
-    assert len(seen) == 1 and "r1" in seen[0]
+    assert len(seen) == 1 and "r1" in seen[0] and "attempted" in seen[0]
+
+
+def test_a_refused_write_is_raced_and_recorded(monkeypatch, tmp_path, capsys):
+    rec = tmp_path / "before.csv"
+    code, _ = _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row(cook_servings=47)], [],
+                        ans=component_answer(), writes_ok=False)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "MOVED   r1" in out and "0 recipe(s), 1 moved during the run, 0 failed" in out
+    assert [ln["outcome"] for ln in _record(rec)] == ["attempted", "raced"]
+
+
+@pytest.mark.parametrize("moved", [
+    {"cook_pans": [{"key": "pie-9in", "count": 1}]},  # a kitchen rescale to a tin mid-run
+    {"cook_servings": 12},  # a kitchen rescale mid-run
+    {"yield_spec": {"kind": "component", "container": None, "area": None, "pieces": None, "edited": True}},
+])
+def test_a_mid_run_change_is_refused_as_raced(monkeypatch, tmp_path, capsys, moved):
+    rec = tmp_path / "before.csv"
+    _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row(cook_servings=47)], [],
+              ans=component_answer(), moved={"r1": moved})
+    assert "1 moved during the run" in capsys.readouterr().out
+    assert _record(rec)[-1]["outcome"] == "raced"
+
+
+def test_an_unchanged_row_lands_through_the_guarded_fake(monkeypatch, tmp_path, capsys):
+    rec = tmp_path / "before.csv"
+    _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)],
+              [row(cook_servings=2.94, cook_pans=[{"key": "pie-9in", "count": 2}], cook_scale_by="pans")], [],
+              ans=component_answer())
+    assert "wrote 1 recipe(s), 0 moved" in capsys.readouterr().out
+
+
+def test_a_write_that_raises_is_failed_and_recorded(monkeypatch, tmp_path, capsys):
+    rec = tmp_path / "before.csv"
+    code, _ = _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row()], [],
+                        write_raises=True)
+    out = capsys.readouterr().out
+    assert code == 1 and "FAILED to write r1" in out and "0 moved during the run, 1 failed" in out
+    assert [ln["outcome"] for ln in _record(rec)] == ["attempted", "failed"]
 
 
 def test_live_pieces_without_the_flag_changes_only_the_spec(monkeypatch, tmp_path):
@@ -435,21 +553,28 @@ def test_summary_counts_kinds_and_assemblies_without_lines(monkeypatch, capsys):
     assert "servings" in out and "assemblies with no component lines: 1" in out
 
 
-def test_record_round_trips_through_restore(monkeypatch, tmp_path):
+# --- restore -----------------------------------------------------------------------------------------
+
+def _written(rec):
+    return json.loads(_record(rec)[0]["written_yield_spec"])
+
+
+def test_record_round_trips_through_restore_with_a_tin(monkeypatch, tmp_path):
     rec = tmp_path / "before.csv"
-    crust = row(cook_servings=47, base_servings=16, cook_scale_by="feed", cook_pans=None,
+    tins = [{"key": "pie-9in", "count": 2, "label": "9 in pie plate"}]
+    crust = row(cook_servings=47, base_servings=16, cook_scale_by="pans", cook_pans=tins,
                 cook_yield={"filling": "keep"})
     _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [crust], [], ans=component_answer())
+    written = _written(rec)
     log = []
-    now = [{"yield_spec": {"kind": "component", "edited": False}}]
-    sb = SimpleNamespace(table=lambda name: FakeTable(now, log))
+    sb = SimpleNamespace(table=lambda name: FakeTable([{"yield_spec": written}], log))
     assert by._restore(sb, rec, live=False) == 0
     assert _updates(log) == []
     assert by._restore(sb, rec, live=True) == 0
     (_, payload, filters), = _updates(log)
-    assert payload == {"yield_spec": None, "cook_servings": 47, "cook_pans": None, "cook_scale_by": "feed",
+    assert payload == {"yield_spec": None, "cook_servings": 47, "cook_pans": tins, "cook_scale_by": "pans",
                        "cook_yield": {"filling": "keep"}}
-    assert filters == [("id", "r1")]
+    assert filters == [("id", "r1"), ("yield_spec", json.dumps(written))]
 
 
 def test_restore_skips_a_row_whose_current_spec_was_edited(monkeypatch, tmp_path, capsys):
@@ -461,7 +586,58 @@ def test_restore_skips_a_row_whose_current_spec_was_edited(monkeypatch, tmp_path
     assert by._restore(sb, rec, live=True) == 0
     assert _updates(log) == []
     out = capsys.readouterr().out
-    assert "SKIPPED r1" in out and "skipped 1" in out
+    assert "SKIPPED r1" in out and "skipped 1 (1 edited)" in out
+
+
+def test_restore_skips_a_row_changed_since(monkeypatch, tmp_path, capsys):
+    rec = tmp_path / "before.csv"
+    _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row(cook_servings=47)], [],
+              ans=component_answer())
+    regenerated = {**_written(rec), "kind": "servings"}
+    log = []
+    sb = SimpleNamespace(table=lambda name: FakeTable([{"yield_spec": regenerated}], log))
+    assert by._restore(sb, rec, live=True) == 0
+    assert _updates(log) == []
+    assert "skipped 1 (1 changed since)" in capsys.readouterr().out
+
+
+def test_restore_counts_a_conditional_update_that_finds_the_row_changed(monkeypatch, tmp_path, capsys):
+    rec = tmp_path / "before.csv"
+    _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row()], [])
+    written = _written(rec)
+    # the select sees the written spec; the guarded update finds it changed in between
+    sb = SimpleNamespace(table=lambda name: FakeTable([{"yield_spec": written}], [], store={"r1": {"id": "r1"}}))
+    assert by._restore(sb, rec, live=True) == 0
+    assert "restored 0" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("how", [{"writes_ok": False}, {"write_raises": True}])
+def test_restore_skips_a_raced_or_failed_write(monkeypatch, tmp_path, capsys, how):
+    rec = tmp_path / "before.csv"
+    _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row(cook_servings=47)], [],
+              ans=component_answer(), **how)
+    capsys.readouterr()
+    log = []
+    sb = SimpleNamespace(table=lambda name: FakeTable([{"yield_spec": None}], log))
+    assert by._restore(sb, rec, live=True) == 0
+    assert _updates(log) == []
+    out = capsys.readouterr().out
+    assert "SKIPPED r1" in out and "skipped 1 (1 not written)" in out
+
+
+def test_restore_skips_an_attempt_with_no_outcome(tmp_path, capsys):
+    # a run killed between the attempt line and the write's outcome
+    rec = tmp_path / "before.csv"
+    with rec.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(by.RECORD_HEADER)
+        w.writerow(["r1", "Pie", "null", "47", "null", "null", "null", json.dumps({"kind": "component"}),
+                    "attempted"])
+    log = []
+    sb = SimpleNamespace(table=lambda name: FakeTable([{"yield_spec": {"kind": "component"}}], log))
+    by._restore(sb, rec, live=True)
+    out = capsys.readouterr().out
+    assert _updates(log) == [] and "skipped 1 (1 not confirmed)" in out and "check it by hand" in out
 
 
 def test_restore_through_main(monkeypatch, tmp_path):

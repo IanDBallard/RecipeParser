@@ -5,7 +5,8 @@ docs/superpowers/specs/2026-11-03-yield-kinds-scaling-design.md).
 
 Gemini is asked once per recipe through the yields-only prompt (``gemini.tag_yield``) with the stored
 structured ingredients (headings included), steps (tin tokens unwrapped, fat tokens stripped), tins and
-bake type; the answer is checked by ``core.yields.check_yield``. Written: ``yield_spec``, plus the
+bake type and yield words
+(``core.yields.yield_text``); the answer is checked by ``core.yields.check_yield``. Written: ``yield_spec``, plus the
 saved-scale settlement of 9 in the same row write:
 
 - servings: the saved scale is unchanged;
@@ -20,7 +21,9 @@ saved-scale settlement of 9 in the same row write:
 Skipped: a stale recipe (``derived_rev < body_rev``: REFINE re-derives it), one whose ``yield_spec`` the
 cook edited (never touched, ``--force`` or not), one that already has a ``yield_spec`` (``--force`` asks
 again), and one whose stored columns cannot be read (``malformed``). The write is conditional on
-``body_rev`` and ``derived_rev`` being what was read, so a cook's edit mid-run wins.
+``body_rev``, ``derived_rev``, ``yield_spec`` and every ``cook_*`` column being what was read, so a cook's
+edit mid-run (a body edit, a kind changed in the editor, a kitchen rescale) wins: the write is refused and
+counted as moved.
 
 Before the Cayenne migration is live, ``yield_spec`` and ``cook_yield`` do not exist: a dry run says so
 and reads both as null; a live run stops before asking or writing anything.
@@ -31,7 +34,8 @@ and reads both as null; a live run stops before asking or writing anything.
     # for real; --record keeps every rewritten row's old yield_spec and cook_* columns
     python scripts/backfill_yields.py --all-users --ids-file scope.txt --live --record yields-before.csv
 
-    # undo, from that record; a row whose current yield_spec the cook edited is skipped with a note
+    # undo, from that record; only rows whose write landed, and whose yield_spec is still the one this run
+    # wrote, are put back (a refused or failed write, an edited yield, a later change: skipped and counted)
     python scripts/backfill_yields.py --all-users --restore yields-before.csv --live
 
 Requires SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and GOOGLE_API_KEY.
@@ -55,7 +59,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from recipeparser.core.fat_tokens import strip_fat_tokens  # noqa: E402
-from recipeparser.core.yields import check_yield  # noqa: E402
+from recipeparser.core.yields import check_yield, yield_text  # noqa: E402
 from recipeparser.models import (  # noqa: E402
     RecipePan,
     StructuredIngredient,
@@ -81,15 +85,21 @@ PAGE = 500
 NEW_COLUMNS = ("yield_spec", "cook_yield")
 COLUMNS = (
     "id,title,structured_ingredients,tokenized_directions,body_rev,derived_rev,pans,bake_type,yield_spec,"
-    "cook_servings,cook_pans,cook_scale_by,cook_yield,base_servings,source_uom_system,source_uom_system_detected"
+    "cook_servings,cook_pans,cook_scale_by,cook_yield,base_servings,servings_min,servings_max,servings_note,"
+    "source_uom_system,source_uom_system_detected"
 )
 BASE_COLUMNS = ",".join(c for c in COLUMNS.split(",") if c not in NEW_COLUMNS)
 RECORD_COLUMNS = ("yield_spec", "cook_servings", "cook_pans", "cook_scale_by", "cook_yield")
+RECORD_HEADER = ("id", "title", *RECORD_COLUMNS, "written_yield_spec", "outcome")
+# outcome: "attempted" on the line written before the write; then a second line for the same id with
+# "written", "raced" (the row moved) or "failed" (the write raised). Only "written" is ever restored.
 MISSING_NOTICE = "yield_spec/cook_yield are not on this database yet: dry run reads both as null"
 PIECES_LEFT = "pieces scale left for stage 2"
 NO_PIECE_COUNT = "saved scale left as it is: no piece count"
 
-Asker = Callable[[List[str], List[StructuredIngredient], List[RecipePan], Optional[str]], YieldAnswer]
+# (steps, ingredients, pans, bake_type, yield words) -> the model's answer
+Asker = Callable[[List[str], List[StructuredIngredient], List[RecipePan], Optional[str], Optional[str]],
+                 YieldAnswer]
 STATUSES = ("tagged", "none-found", "already-done", "cook-edited", "stale", "malformed", "failed")
 
 
@@ -151,8 +161,9 @@ def _settled_text(kind: str, row: Dict[str, Any], settled: Dict[str, Any]) -> st
         return ""
     base = row.get("base_servings")
     if kind == "pieces":
-        p = settled["cook_yield"]["pieces"]
-        return f"converted: servings {row.get('cook_servings')} of {base} -> {p['count']} piece(s)"
+        group = settled.get("cook_yield") or row.get("cook_yield") or {}
+        count = (group.get("pieces") or {}).get("count") if isinstance(group, dict) else None
+        return f"converted: servings {row.get('cook_servings')} of {base} -> {count} piece(s)"
     if not _set(row.get("cook_pans")):
         return f"cleared: servings {row.get('cook_servings')} of {base} (no tin)"
     return f"cleared: servings {row.get('cook_servings')} of {base}; tin kept"
@@ -204,10 +215,23 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False, settle_pieces
         return result
     result.lines = {i.id: i.fallback_string for i in ingredients}
     try:
-        answer = ask(steps, ingredients, pans, row.get("bake_type"))
+        words = yield_text(row.get("servings_min"), row.get("servings_max"), row.get("servings_note"))
+        answer = ask(steps, ingredients, pans, row.get("bake_type"), words)
     except Exception as exc:  # noqa: BLE001
         result.status, result.error = "failed", str(exc)
         return result
+    try:
+        return _settle(row, result, answer, ingredients, pans, stored, settle_pieces)
+    except Exception as exc:  # noqa: BLE001
+        result.status, result.error = "failed", f"after the answer: {exc!r}"
+        result.spec, result.settled, result.settled_text = None, {}, ""
+        result.notes.append(result.error)
+        return result
+
+
+def _settle(row: Dict[str, Any], result: RowResult, answer: YieldAnswer, ingredients: List[StructuredIngredient],
+            pans: List[RecipePan], stored: Any, settle_pieces: bool) -> RowResult:
+    """The checked spec and the settlement, on a row the model answered for."""
     spec, warnings = check_yield(answer, ingredients, pans)
     result.notes = list(warnings)
     if spec is None:
@@ -229,17 +253,29 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False, settle_pieces
     return result
 
 
+def _as_read(query: Any, col: str, value: Any) -> Any:
+    """Filter ``col`` to the value it was read as: null by ``is``, a jsonb object or list by its JSON."""
+    if value is None:
+        return query.is_(col, "null")
+    if isinstance(value, (dict, list)):
+        return query.eq(col, json.dumps(value))
+    return query.eq(col, value)
+
+
 def write_row(sb: Any, row: Dict[str, Any], result: RowResult) -> bool:
-    """Write yield_spec and the settlement only if the row is still the revision that was read."""
-    response = (
+    """Write yield_spec and the settlement only if the row is still what was read: the revs, the stored
+    yield_spec and every cook_* column (a kind change in the editor and a kitchen rescale bump no rev).
+    False when it moved."""
+    query = (
         sb.table("recipes")
         .update({"yield_spec": result.spec, **result.settled})
         .eq("id", row["id"])
         .eq("body_rev", row.get("body_rev") or 0)
         .eq("derived_rev", row.get("derived_rev") or 0)
-        .execute()
     )
-    return bool(response.data)
+    for col in RECORD_COLUMNS:
+        query = _as_read(query, col, row.get(col))
+    return bool(query.execute().data)
 
 
 def _lines_text(ids: Sequence[str], words: Dict[str, str]) -> str:
@@ -311,22 +347,55 @@ def read_rows(sb: Any, user_id: Optional[str], recipe_id: Optional[str], live: b
     return rows
 
 
-def _restore(sb: Any, path: Path, live: bool) -> int:
-    restored = skipped = 0
+def _record_lines(path: Path) -> List[Dict[str, Dict[str, str]]]:
+    """Per id in record order: the attempt line (the old values) and the last outcome line seen."""
+    by_id: Dict[str, Dict[str, Dict[str, str]]] = {}
     with path.open(newline="", encoding="utf-8") as fh:
         for rec in csv.DictReader(fh):
-            current = sb.table("recipes").select("yield_spec").eq("id", rec["id"]).execute().data or []
-            now = current[0].get("yield_spec") if current else None
-            if isinstance(now, dict) and now.get("edited") is True:
-                skipped += 1
-                print(f"  SKIPPED {rec['id']}  {rec.get('title', '')!r}: the yield was edited since the backfill")
+            entry = by_id.setdefault(rec["id"], {"attempt": rec, "last": rec})
+            entry["last"] = rec
+    return list(by_id.values())
+
+
+def _restore(sb: Any, path: Path, live: bool) -> int:
+    """Put back the five recorded columns of each row this run wrote. Skipped, and counted: a row whose
+    write was refused, failed or never confirmed; a row whose yield the cook edited since; a row whose
+    yield_spec is no longer the one written (changed since, by a cook or a regeneration)."""
+    restored = 0
+    skipped: Counter = Counter()
+    for entry in _record_lines(path):
+        rec, outcome = entry["attempt"], entry["last"].get("outcome", "")
+        label = f"{rec['id']}  {rec.get('title', '')!r}"
+        if outcome == "attempted":
+            skipped["not confirmed"] += 1
+            print(f"  SKIPPED {label}: the run stopped before its write's outcome was recorded; check it by hand")
+            continue
+        if outcome != "written":
+            skipped["not written"] += 1
+            print(f"  SKIPPED {label}: its write was {outcome or 'never made'}; nothing to undo")
+            continue
+        written = json.loads(rec["written_yield_spec"])
+        current = sb.table("recipes").select("yield_spec").eq("id", rec["id"]).execute().data or []
+        now = current[0].get("yield_spec") if current else None
+        if isinstance(now, dict) and now.get("edited") is True:
+            skipped["edited"] += 1
+            print(f"  SKIPPED {label}: the yield was edited since the backfill")
+            continue
+        if now != written:
+            skipped["changed since"] += 1
+            print(f"  SKIPPED {label}: its yield_spec changed since the backfill")
+            continue
+        if live:
+            old = {c: json.loads(rec[c]) for c in RECORD_COLUMNS}
+            done = _as_read(sb.table("recipes").update(old).eq("id", rec["id"]), "yield_spec", written).execute()
+            if not done.data:
+                skipped["changed since"] += 1
+                print(f"  SKIPPED {label}: its yield_spec changed during the restore")
                 continue
-            if live:
-                old = {c: json.loads(rec[c]) for c in RECORD_COLUMNS}
-                sb.table("recipes").update(old).eq("id", rec["id"]).execute()
-            restored += 1
+        restored += 1
+    why = ", ".join(f"{n} {k}" for k, n in sorted(skipped.items()))
     print(f"{'restored' if live else 'would restore'} {restored} recipe(s) from {path}"
-          f"{f', skipped {skipped} with an edited yield' if skipped else ''}")
+          f"{f', skipped {sum(skipped.values())} ({why})' if skipped else ''}")
     if not live:
         print("DRY RUN — nothing was written. Re-run with --live to apply.")
     return 0
@@ -384,8 +453,8 @@ def main() -> int:
     limiter = GlobalRateLimiter()
 
     def ask(steps: List[str], ingredients: List[StructuredIngredient], pans: List[RecipePan],
-            bake_type: Optional[str]) -> YieldAnswer:
-        return tag_yield(steps, ingredients, pans, bake_type, gemini_client, limiter=limiter)
+            bake_type: Optional[str], words: Optional[str]) -> YieldAnswer:
+        return tag_yield(steps, ingredients, pans, bake_type, gemini_client, limiter=limiter, yield_text=words)
 
     if args.ids_file:
         wanted = bp.read_ids(args.ids_file)
@@ -419,7 +488,7 @@ def main() -> int:
     if args.live:
         record_fh = args.record.open("w", newline="", encoding="utf-8")
         writer = csv.writer(record_fh)
-        writer.writerow(["id", "title", *RECORD_COLUMNS])
+        writer.writerow(RECORD_HEADER)
         record_fh.flush()
 
     results: List[RowResult] = []
@@ -435,18 +504,23 @@ def main() -> int:
             print(f"  FAILED  {r.id}  {r.title!r}: {r.error}")
         elif r.status == "tagged" and args.live:
             assert writer is not None and record_fh is not None
-            # The record line is written, and flushed, before the row: the record is the way back.
-            writer.writerow([r.id, r.title, *(json.dumps(r.before[c]) for c in RECORD_COLUMNS)])
+            # The record line is written, and flushed, before the row: the record is the way back. A second
+            # line after the write says how it went; --restore puts back only a "written" one.
+            line = [r.id, r.title, *(json.dumps(r.before[c]) for c in RECORD_COLUMNS), json.dumps(r.spec)]
+            writer.writerow([*line, "attempted"])
             record_fh.flush()
             try:
                 if write_row(sb, by_id[r.id], r):
-                    counts["written"] += 1
+                    outcome = "written"
                 else:
-                    counts["raced"] += 1
-                    print(f"  MOVED   {r.id}  {r.title!r}: edited during the run; left for the regeneration worker")
+                    outcome = "raced"
+                    print(f"  MOVED   {r.id}  {r.title!r}: changed during the run; left as it is")
             except Exception as exc:  # noqa: BLE001
-                counts["failed_writes"] += 1
+                outcome = "failed"
                 print(f"  FAILED to write {r.id} {r.title!r}: {exc}")
+            counts[{"written": "written", "raced": "raced", "failed": "failed_writes"}[outcome]] += 1
+            writer.writerow([*line, outcome])
+            record_fh.flush()
         if args.progress and (counts["done"] % args.progress == 0 or counts["done"] == total):
             minutes = (time.monotonic() - started) / 60
             print(f"progress: {counts['done']}/{total} planned, {counts['written']} written, {minutes:.1f} min")
