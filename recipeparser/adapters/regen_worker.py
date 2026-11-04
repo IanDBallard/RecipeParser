@@ -111,7 +111,7 @@ class RegenWorker:
                         yields = yield_numbers(current.get("base_servings"), current.get("servings_min"),
                                                current.get("servings_max"), current.get("servings_note"))
                 except Exception as exc:  # noqa: BLE001 — the guard must not fail the regen
-                    log.warning("regen: %s: could not read current tins (%s); writing REFINE's", rid, exc)
+                    log.warning("regen: %s: could not read current tins and yield (%s); writing REFINE's", rid, exc)
                 payload = build_update(
                     refinement, vector, read_rev,
                     current_pans=current_pans if isinstance(current_pans, list) else None,

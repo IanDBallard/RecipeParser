@@ -1,7 +1,16 @@
 """Pydantic models for structured Gemini output."""
+import logging
 from typing import Any, Dict, List, Literal, NamedTuple, Optional, get_args
 
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    PrivateAttr,
+    ValidationError,
+    ValidationInfo,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+)
 
 SOURCE_SYSTEMS = ("US", "UK", "EU", "AU", "Imperial")  # verbatim-ingestion D4
 
@@ -221,7 +230,20 @@ class TemperatureMention(BaseModel):
 
 # Yield kinds (Cayenne yield kinds 11.3). Words are plain strings, not Literals: a word outside the
 # list must not fail validation and cost the recipe. core/yields.py enforces the vocabularies.
-class YieldContainer(BaseModel):
+class _Lenient(BaseModel):
+    """A field of the wrong shape (a number for a word, a string for an object) takes its default instead of
+    failing the model: a model slip costs the field, never the recipe."""
+
+    @field_validator("*", mode="wrap")
+    @classmethod
+    def _slip_costs_the_field(cls, value: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo) -> Any:
+        try:
+            return handler(value)
+        except ValidationError:
+            return cls.model_fields[info.field_name].get_default(call_default_factory=True)
+
+
+class YieldContainer(_Lenient):
     """The pastry or dough container (or lid) a recipe makes."""
     pastry: Optional[str] = Field(
         default=None,
@@ -253,14 +275,14 @@ class YieldContainer(BaseModel):
     )
 
 
-class YieldArea(BaseModel):
+class YieldArea(_Lenient):
     """A component's yield: how many rounds of what size."""
     count: Optional[float] = Field(default=None, description="How many tins or rounds the recipe makes.")
     noun: Optional[str] = Field(default=None, description="What they are, as the recipe says: tin, round, base.")
     diameter_mm: Optional[float] = Field(default=None, description="Each one's diameter in millimetres.")
 
 
-class YieldPieces(BaseModel):
+class YieldPieces(_Lenient):
     """A pieces recipe's yield: how many, and how big as the recipe states."""
     count: Optional[float] = Field(default=None, description="How many pieces the recipe makes.")
     noun: Optional[str] = Field(default=None, description="What they are: loaf, roll, bagel, pasty.")
@@ -270,7 +292,7 @@ class YieldPieces(BaseModel):
     )
 
 
-class YieldAnswer(BaseModel):
+class YieldAnswer(_Lenient):
     """How a recipe's yield is measured."""
     kind: Optional[str] = Field(default=None, description="servings, pieces or component.")
     container: Optional[YieldContainer] = Field(
@@ -418,6 +440,15 @@ class CayenneRefinement(BaseModel):
     # What check_yield made of yield_spec: the dict that is stored. Set by refine(), never by the model,
     # so refine_json_schema() leaves it out.
     yield_checked: Optional[dict] = None
+
+    @field_validator("yield_spec", mode="wrap")
+    @classmethod
+    def _a_malformed_yield_costs_the_yield(cls, value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+        try:
+            return handler(value)
+        except ValidationError as exc:
+            logging.getLogger(__name__).warning("yield_spec of the wrong shape dropped: %s", exc)
+            return None
 
 
 # Where a recipe's base_servings came from (scale-sheet redesign D44).

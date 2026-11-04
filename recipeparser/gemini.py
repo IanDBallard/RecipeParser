@@ -1446,6 +1446,9 @@ container it makes, if any.
 RULES:
 {_YIELD_RULES_TEXT}
 
+Answer with the "yield_spec" object itself: its "kind", "container", "area" and "pieces" are the reply's
+own fields.
+
 TINS: {tins}
 
 BAKE TYPE: {bake_type or "none"}

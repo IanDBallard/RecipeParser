@@ -73,3 +73,27 @@ def test_an_empty_reply_raises():
     with patch("recipeparser.gemini._call_with_retry", return_value=MagicMock(text="")):
         with pytest.raises(RuntimeError):
             tag_yield(["Bake."], _ING, [], None, MagicMock())
+
+
+@pytest.mark.parametrize("bad", [
+    {"kind": 3}, {"container": "shortcrust"}, {"area": [1]}, {"pieces": 4},
+    {"kind": "component", "area": {"count": "two", "diameter_mm": "wide"}},
+    {"container": {"base": "yes", "component_lines": "ing_01", "pastry": 4}},
+])
+def test_a_shape_slip_never_makes_tag_yield_raise(bad):
+    with patch("recipeparser.gemini._call_with_retry", return_value=MagicMock(text=json.dumps(bad))):
+        answer = tag_yield(["Bake."], _ING, [], None, MagicMock())
+    assert isinstance(answer, YieldAnswer)
+
+
+def test_a_slip_costs_only_its_field():
+    reply = {"kind": "component", "container": "shortcrust", "area": {"count": 2, "diameter_mm": "wide"}}
+    with patch("recipeparser.gemini._call_with_retry", return_value=MagicMock(text=json.dumps(reply))):
+        answer = tag_yield(["Bake."], _ING, [], None, MagicMock())
+    assert answer.kind == "component" and answer.container is None
+    assert answer.area.count == 2 and answer.area.diameter_mm is None
+
+
+def test_the_yields_prompt_says_the_answer_is_the_yield_object_itself():
+    prompt = build_yields_prompt(["Bake."], _ING, [], None)
+    assert 'Answer with the "yield_spec" object itself' in prompt

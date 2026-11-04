@@ -38,6 +38,7 @@ from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.core.stages.tag import TAG_BATCH_SIZE, TagFailure, tag_batch
+from recipeparser.core.yields import YIELD_KINDS
 from recipeparser.exceptions import JobCancelledError
 from recipeparser.gemini import categorize_batch
 from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse, Photo
@@ -735,6 +736,17 @@ def _citation_from(pr: "CayenneRecipe | IngestResponse") -> Optional[Citation]:
     )
 
 
+def _restored_yield(spec: Any) -> Optional[dict]:
+    """An archive's yield_spec, kept only when it is an object with a known kind: the database refuses
+    any other kind with a check constraint, which would fail the whole restore write. No model is run."""
+    if spec is None:
+        return None
+    if isinstance(spec, dict) and spec.get("kind") in YIELD_KINDS:
+        return spec
+    log.warning("restore: yield_spec %r is not an object with a known kind; dropped", spec)
+    return None
+
+
 def _pre_parsed_to_refinement(
     pr: "CayenneRecipe | IngestResponse",
 ) -> "CayenneRefinement":
@@ -761,7 +773,7 @@ def _pre_parsed_to_refinement(
         pans=list(getattr(pr, "pans", None) or []),
         bake_type=getattr(pr, "bake_type", None),
         bake_step=getattr(pr, "bake_step", None),
-        yield_checked=getattr(pr, "yield_spec", None),
+        yield_checked=_restored_yield(getattr(pr, "yield_spec", None)),
         source_uom_system_detected=getattr(pr, "source_uom_system_detected", None),
         source_uom_system_evidence=getattr(pr, "source_uom_system_evidence", None),
     )

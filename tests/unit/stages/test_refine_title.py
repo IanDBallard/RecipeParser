@@ -58,3 +58,27 @@ def test_a_restored_recipe_without_tins_has_none():
     )
     out = _pre_parsed_to_refinement(pr)
     assert out.pans == [] and out.bake_type is None and out.bake_step is None
+
+
+def _restored(spec):
+    pr = CayenneRecipe(title="Pie", structured_ingredients=[],
+                       tokenized_directions=[TokenizedDirection(step=1, text="Bake.")], yield_spec=spec)
+    return _pre_parsed_to_refinement(pr)
+
+
+def test_a_restored_yield_with_a_known_kind_is_kept():
+    spec = {"kind": "servings", "container": None, "area": None, "pieces": None, "edited": True}
+    assert _restored(spec).yield_checked == spec
+
+
+def test_a_restored_yield_with_an_unknown_kind_is_dropped_and_logged(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        assert _restored({"kind": "bushels", "edited": False}).yield_checked is None
+        assert _restored({"container": None}).yield_checked is None
+    assert any("yield_spec" in r.getMessage() for r in caplog.records)
+
+
+def test_a_restore_with_no_yield_stays_none():
+    assert _restored(None).yield_checked is None
