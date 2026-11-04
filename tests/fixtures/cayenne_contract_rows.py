@@ -29,6 +29,7 @@ _NO_SPANS = {
     "cook_min_minutes": None, "cook_max_minutes": None, "cook_note": None,
     "servings_min": None, "servings_max": None, "servings_note": None,
     "servings_source": None,
+    "yield_spec": None,
 }
 
 LEMON = {
