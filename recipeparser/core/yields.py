@@ -24,6 +24,11 @@ DEFAULT_SIDES = "full"
 DEFAULT_TOP = "none"
 DEFAULT_THICKNESS = "standard"
 
+# The tin families a stage-1 component can scale through: Cayenne's PIE_FAMILIES (pie tins D53). A
+# component is only a component to the client if it has one of these; stage 2 (count x diameter)
+# lifts the rule and this constant goes with it.
+COMPONENT_TIN_FAMILIES = ("pie", "tart", "round-cake", "square", "traybake")
+
 _AREA_DIAMETER_MM = (50, 600)
 _PIECE_WEIGHT_G = (10, 5000)
 
@@ -116,6 +121,8 @@ def check_yield(
     - component_lines / topping_lines are 1-based positions into `ingredients` (headings included)
       and are mapped to ids; one out of range or naming a heading is dropped with a warning; a line
       in both lists is component;
+    - a component with no (unremoved) tin in COMPONENT_TIN_FAMILIES is stored as 'servings', container and
+      area kept as they are (stage 2 reads them), with a warning;
     - `edited` is always False from the parser.
     """
     if answer is None:
@@ -157,5 +164,9 @@ def check_yield(
                 warnings.append(f"yield piece weight {p.weight_g} g is outside 10..5000; dropped")
             diameter = p.diameter_mm if p.diameter_mm is not None and p.diameter_mm > 0 else None
             pieces = {"count": count, "noun": p.noun or "", "weight_g": weight, "diameter_mm": diameter}
+
+    if kind == "component" and not any(p.family in COMPONENT_TIN_FAMILIES and not p.removed for p in pans):
+        warnings.append("yield component with no fittable tin stored as servings until stage 2")
+        kind = "servings"
 
     return {"kind": kind, "container": container, "area": area, "pieces": pieces, "edited": False}, warnings
