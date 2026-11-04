@@ -145,3 +145,11 @@ def test_a_component_whose_only_tin_is_a_sheet_a_loaf_or_removed_is_servings():
         assert check_yield(YieldAnswer(kind="component"), ING, tins)[0]["kind"] == "servings"
     tins = [RecipePan(id="pan_01", raw="a tin", family="sheet"), RecipePan(id="pan_02", raw="a tin", family="tart")]
     assert check_yield(YieldAnswer(kind="component"), ING, tins)[0]["kind"] == "component"
+
+
+def test_a_crumb_crust_in_a_pie_plate_is_servings_and_a_shortcrust_crust_stays_a_component():
+    crumb, warnings = check_yield(YieldAnswer(kind="component", container=YieldContainer(pastry="crumb", base=True)), ING, PIE)
+    assert crumb["kind"] == "servings" and crumb["container"]["pastry"] == "crumb"
+    assert any("crumb crust stored as servings until stage 3 (D84)" in w for w in warnings)
+    short, _ = check_yield(YieldAnswer(kind="component", container=YieldContainer(pastry="shortcrust", base=True)), ING, PIE)
+    assert short["kind"] == "component"
