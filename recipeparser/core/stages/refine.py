@@ -547,7 +547,14 @@ def refine(
     for line in apply_pan_checks(result, raw.directions):
         log.warning("refine(): '%s': %s", result.title, line)
     # The yield's positions count in the ingredient list REFINE wrote, so it is checked against that list.
-    result.yield_checked, yield_warnings = check_yield(result.yield_spec, result.structured_ingredients, result.pans)
+    # check_yield is not meant to raise; if it does, the slip costs the yield, never the recipe.
+    try:
+        result.yield_checked, yield_warnings = check_yield(
+            result.yield_spec, result.structured_ingredients, result.pans
+        )
+    except Exception as exc:  # noqa: BLE001 - any failure here is the field's, not the recipe's
+        log.warning("refine(): '%s': yield check failed (%r); no yield_spec", result.title, exc)
+        result.yield_checked, yield_warnings = None, []
     for line in yield_warnings:
         log.warning("refine(): '%s': %s", result.title, line)
     _validate_fat_tokens(result)

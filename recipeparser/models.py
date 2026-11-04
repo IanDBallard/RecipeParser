@@ -515,6 +515,15 @@ class CayenneRecipe(BaseModel):
     def _unknown_servings_source_is_none(cls, v):
         return v if isinstance(v, str) and v in _SERVINGS_SOURCES else None
 
+    @field_validator("yield_spec", mode="before")
+    @classmethod
+    def _a_yield_spec_not_an_object_costs_the_field(cls, v: Any) -> Any:
+        # An archive's yield_spec that is not an object loses the field, never the whole recipe on restore.
+        if v is not None and not isinstance(v, dict):
+            logging.getLogger(__name__).warning("yield_spec %r is not an object; dropped", v)
+            return None
+        return v
+
     @field_validator("category_paths", "list_paths", mode="before")
     @classmethod
     def _null_paths_are_empty(cls, v):

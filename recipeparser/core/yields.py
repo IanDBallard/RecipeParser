@@ -9,9 +9,10 @@ Pure: no I/O, no imports from recipeparser.io or recipeparser.adapters.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence, Tuple
+import math
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from recipeparser.models import RecipePan, StructuredIngredient, YieldAnswer, YieldContainer
+from recipeparser.models import StructuredIngredient, YieldAnswer, YieldContainer
 
 YIELD_KINDS = ("servings", "pieces", "component")
 PASTRY_TYPES = ("shortcrust", "sweet-shortcrust", "puff", "hot-water", "suet", "pizza-dough", "crumb", "filo")
@@ -31,6 +32,9 @@ COMPONENT_TIN_FAMILIES = ("pie", "tart", "round-cake", "square", "traybake")
 
 _AREA_DIAMETER_MM = (50, 600)
 _PIECE_WEIGHT_G = (10, 5000)
+_PIECE_DIAMETER_MM = (10, 1000)
+# A whole number beyond this is not one a float holds exactly, and no count or position is near it.
+_WHOLE_LIMIT = 2**53
 
 
 def _in_range(v: Optional[float], bounds: Tuple[float, float]) -> bool:
@@ -38,10 +42,28 @@ def _in_range(v: Optional[float], bounds: Tuple[float, float]) -> bool:
 
 
 def _whole(v: object) -> Optional[int]:
-    """A whole number from an int or a float with no fraction; anything else (bool, str, None) is None."""
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v in (float("inf"), float("-inf")):
+    """A whole number from an int or a float with no fraction; anything else (bool, str, None, NaN, an
+    infinity, or a number too big for a float to hold exactly) is None. It never raises."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
         return None
-    return int(v) if float(v).is_integer() else None
+    try:
+        f = float(v)
+    except OverflowError:
+        return None
+    if not math.isfinite(f) or abs(f) > _WHOLE_LIMIT or not f.is_integer():
+        return None
+    return int(f)
+
+
+def has_fittable_tin(pans: Sequence[Any]) -> bool:
+    """True when one unremoved tin is in COMPONENT_TIN_FAMILIES. A tin is a RecipePan or a stored tin dict
+    (the cook's tins a regeneration writes back)."""
+    for p in pans:
+        family = p.get("family") if isinstance(p, dict) else getattr(p, "family", None)
+        removed = p.get("removed") if isinstance(p, dict) else getattr(p, "removed", False)
+        if family in COMPONENT_TIN_FAMILIES and removed is not True:
+            return True
+    return False
 
 
 def _word(value: Optional[str], vocab: Sequence[str], default: str, field: str, warnings: List[str]) -> str:
@@ -106,7 +128,7 @@ def yield_text(servings_min: object, servings_max: object, servings_note: Option
 def check_yield(
     answer: Optional[YieldAnswer],
     ingredients: Sequence[StructuredIngredient],
-    pans: Sequence[RecipePan],
+    pans: Sequence[Any],
 ) -> Tuple[Optional[dict], List[str]]:
     """The yield_spec to store, or None, and the warnings. Pure. It never raises and never costs the recipe.
 
@@ -117,12 +139,12 @@ def check_yield(
     - a field outside its vocabulary, or a null pastry, takes the default, with a warning;
     - `area` is kept only on a component, with a whole count of 1 or more and diameter_mm within 50..600;
     - `pieces` is kept only on a pieces kind, with a whole count of 1 or more; weight_g within 10..5000 or
-      None; a weight is never asked of a component;
+      None; diameter_mm within 10..1000 or None; a weight is never asked of a component;
     - component_lines / topping_lines are 1-based positions into `ingredients` (headings included)
       and are mapped to ids; one out of range or naming a heading is dropped with a warning; a line
       in both lists is component;
     - a component with no (unremoved) tin in COMPONENT_TIN_FAMILIES is stored as 'servings', container and
-      area kept as they are (stage 2 reads them), with a warning;
+      area kept as they are (stage 2 reads them), with a warning; `pans` are RecipePans or stored tin dicts;
     - a component whose container pastry is 'crumb' is stored as 'servings' too (D84, stage 3);
     - `edited` is always False from the parser.
     """
@@ -163,10 +185,12 @@ def check_yield(
             weight = p.weight_g if _in_range(p.weight_g, _PIECE_WEIGHT_G) else None
             if p.weight_g is not None and weight is None:
                 warnings.append(f"yield piece weight {p.weight_g} g is outside 10..5000; dropped")
-            diameter = p.diameter_mm if p.diameter_mm is not None and p.diameter_mm > 0 else None
+            diameter = p.diameter_mm if _in_range(p.diameter_mm, _PIECE_DIAMETER_MM) else None
+            if p.diameter_mm is not None and diameter is None:
+                warnings.append(f"yield piece diameter {p.diameter_mm} mm is outside 10..1000; dropped")
             pieces = {"count": count, "noun": p.noun or "", "weight_g": weight, "diameter_mm": diameter}
 
-    if kind == "component" and not any(p.family in COMPONENT_TIN_FAMILIES and not p.removed for p in pans):
+    if kind == "component" and not has_fittable_tin(pans):
         warnings.append("yield component with no fittable tin stored as servings until stage 2")
         kind = "servings"
     # D84: a pressed crumb crust is not a rolled disc; its thickness model is stage 3's.

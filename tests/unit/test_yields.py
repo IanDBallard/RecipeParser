@@ -153,3 +153,34 @@ def test_a_crumb_crust_in_a_pie_plate_is_servings_and_a_shortcrust_crust_stays_a
     assert any("crumb crust stored as servings until stage 3 (D84)" in w for w in warnings)
     short, _ = check_yield(YieldAnswer(kind="component", container=YieldContainer(pastry="shortcrust", base=True)), ING, PIE)
     assert short["kind"] == "component"
+
+
+# --- hardening (whole-branch review, Minor 1) ---
+
+
+def test_whole_is_none_for_a_huge_or_non_finite_number():
+    from recipeparser.core.yields import _whole
+
+    assert _whole(10**400) is None
+    assert _whole(float("inf")) is None and _whole(float("nan")) is None
+    assert _whole(2**60) is None
+    assert _whole(12) == 12 and _whole(3.0) == 3
+
+
+def test_a_huge_position_is_dropped_not_raised():
+    container = YieldContainer(pastry="shortcrust", base=True, component_lines=[10**400, 2])
+    a = YieldAnswer(kind="servings", container=container)
+    spec, warnings = check_yield(a, ING, [])
+    assert spec["container"]["component_lines"] == ["ing_02"]
+    assert any("out of range" in w for w in warnings)
+
+
+def test_a_piece_diameter_outside_10_to_1000_mm_is_dropped():
+    for bad in (float("inf"), json.loads("1e999"), 5, 1001, float("nan")):
+        answer = YieldAnswer(kind="pieces", pieces={"count": 4, "noun": "roll", "diameter_mm": bad})
+        spec, warnings = check_yield(answer, ING, [])
+        assert spec["pieces"]["diameter_mm"] is None, bad
+        assert any("diameter" in w for w in warnings), bad
+    spec, _ = check_yield(YieldAnswer(kind="pieces", pieces={"count": 4, "noun": "pizza", "diameter_mm": 300}), ING, [])
+    assert spec["pieces"]["diameter_mm"] == 300
+    assert json.dumps(spec, allow_nan=False)
