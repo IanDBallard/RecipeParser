@@ -26,31 +26,38 @@ DEFAULT_THICKNESS = "standard"
 
 _AREA_DIAMETER_MM = (50, 600)
 _PIECE_WEIGHT_G = (10, 5000)
-_PIE_FAMILIES = ("pie", "tart")
 
 
 def _in_range(v: Optional[float], bounds: Tuple[float, float]) -> bool:
     return v is not None and bounds[0] <= v <= bounds[1]
 
 
+def _whole(v: object) -> Optional[int]:
+    """A whole number from an int or a float with no fraction; anything else (bool, str, None) is None."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v in (float("inf"), float("-inf")):
+        return None
+    return int(v) if float(v).is_integer() else None
+
+
 def _word(value: Optional[str], vocab: Sequence[str], default: str, field: str, warnings: List[str]) -> str:
     if value in vocab:
         return value  # type: ignore[return-value]
-    if value is not None:
-        warnings.append(f"yield container {field} {value!r} is not in the vocabulary; using {default!r}")
+    warnings.append(f"yield container {field} {value!r} is not in the vocabulary; using {default!r}")
     return default
 
 
 def _ids(
-    positions: Sequence[int],
+    positions: Sequence[object],
     ingredients: Sequence[StructuredIngredient],
     label: str,
     warnings: List[str],
 ) -> List[str]:
     """1-based positions in the list the prompt shows (headings included) -> ingredient ids."""
     out: List[str] = []
-    for pos in positions:
-        if not 1 <= pos <= len(ingredients):
+    for raw in positions:
+        pos = _whole(raw)
+        if pos is None or not 1 <= pos <= len(ingredients):
+            pos = raw
             warnings.append(f"yield {label} position {pos} is out of range; dropped")
         elif ingredients[pos - 1].kind == "heading":
             warnings.append(f"yield {label} position {pos} names a heading; dropped")
@@ -83,11 +90,12 @@ def check_yield(
     """The yield_spec to store, or None, and the warnings. Pure. It never raises and never costs the recipe.
 
     - an unknown kind -> None;
-    - a container on a kind that has none is kept only for 'servings' and 'pieces' when the recipe
-      names a pie type or a pastry (the assembly case), else dropped with a warning;
-    - a field outside its vocabulary takes the default, with a warning;
-    - `area` is kept only on a component, with a positive count and diameter_mm within 50..600;
-    - `pieces` is kept only on a pieces kind, with a positive count; weight_g within 10..5000 or
+    - a container is kept on any kind (an assembly is a servings or pieces recipe with one), unless it
+      has no piece at all (no base and no top), which drops it with a warning; the check never
+      guesses from the tins;
+    - a field outside its vocabulary, or a null pastry, takes the default, with a warning;
+    - `area` is kept only on a component, with a whole count of 1 or more and diameter_mm within 50..600;
+    - `pieces` is kept only on a pieces kind, with a whole count of 1 or more; weight_g within 10..5000 or
       None; a weight is never asked of a component;
     - component_lines / topping_lines are 1-based positions into `ingredients` (headings included)
       and are mapped to ids; one out of range or naming a heading is dropped with a warning; a line
@@ -103,34 +111,35 @@ def check_yield(
 
     container: Optional[Dict[str, object]] = None
     if answer.container is not None:
-        names_pie = answer.container.pastry in PASTRY_TYPES or any(p.family in _PIE_FAMILIES for p in pans)
-        if kind == "component" or names_pie:
-            container = _container(answer.container, ingredients, warnings)
-        else:
-            warnings.append(f"yield container on a {kind} recipe that names no pie type or pastry; dropped")
+        container = _container(answer.container, ingredients, warnings)
+        if container["base"] is False and container["top"] == "none":
+            warnings.append("yield container has no base and no top; dropped")
+            container = None
 
     area: Optional[Dict[str, object]] = None
     if answer.area is not None:
         a = answer.area
+        count, diameter = _whole(a.count), a.diameter_mm
         if kind != "component":
             warnings.append(f"yield area on a {kind} recipe; dropped")
-        elif a.count < 1 or not _in_range(a.diameter_mm, _AREA_DIAMETER_MM):
-            warnings.append("yield area needs a positive count and a diameter of 50..600 mm; dropped")
+        elif count is None or count < 1 or not _in_range(diameter, _AREA_DIAMETER_MM):
+            warnings.append("yield area needs a whole count of 1 or more and a diameter of 50..600 mm; dropped")
         else:
-            area = {"count": a.count, "noun": a.noun, "diameter_mm": a.diameter_mm}
+            area = {"count": count, "noun": a.noun or "", "diameter_mm": diameter}
 
     pieces: Optional[Dict[str, object]] = None
     if answer.pieces is not None:
         p = answer.pieces
+        count = _whole(p.count)
         if kind != "pieces":
             warnings.append(f"yield pieces on a {kind} recipe; dropped")
-        elif p.count < 1:
-            warnings.append("yield pieces needs a positive count; dropped")
+        elif count is None or count < 1:
+            warnings.append("yield pieces needs a whole count of 1 or more; dropped")
         else:
             weight = p.weight_g if _in_range(p.weight_g, _PIECE_WEIGHT_G) else None
             if p.weight_g is not None and weight is None:
                 warnings.append(f"yield piece weight {p.weight_g} g is outside 10..5000; dropped")
             diameter = p.diameter_mm if p.diameter_mm is not None and p.diameter_mm > 0 else None
-            pieces = {"count": p.count, "noun": p.noun, "weight_g": weight, "diameter_mm": diameter}
+            pieces = {"count": count, "noun": p.noun or "", "weight_g": weight, "diameter_mm": diameter}
 
     return {"kind": kind, "container": container, "area": area, "pieces": pieces, "edited": False}, warnings

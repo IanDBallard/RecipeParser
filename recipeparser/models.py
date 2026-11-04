@@ -1,5 +1,5 @@
 """Pydantic models for structured Gemini output."""
-from typing import Dict, List, Literal, NamedTuple, Optional, get_args
+from typing import Any, Dict, List, Literal, NamedTuple, Optional, get_args
 
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
@@ -228,25 +228,26 @@ class YieldContainer(BaseModel):
     sides: Optional[str] = None
     top: Optional[str] = None
     thickness: Optional[str] = None
-    component_lines: List[int] = Field(default_factory=list)
-    topping_lines: List[int] = Field(default_factory=list)
+    # Positions are checked in core/yields.py; a bad entry must not fail validation.
+    component_lines: List[Any] = Field(default_factory=list)
+    topping_lines: List[Any] = Field(default_factory=list)
 
 
 class YieldArea(BaseModel):
-    count: int
-    noun: str = ""
-    diameter_mm: float
+    count: Optional[float] = None
+    noun: Optional[str] = None
+    diameter_mm: Optional[float] = None
 
 
 class YieldPieces(BaseModel):
-    count: int
-    noun: str = ""
+    count: Optional[float] = None
+    noun: Optional[str] = None
     weight_g: Optional[float] = None
     diameter_mm: Optional[float] = None
 
 
 class YieldAnswer(BaseModel):
-    kind: str
+    kind: Optional[str] = None
     container: Optional[YieldContainer] = None
     area: Optional[YieldArea] = None
     pieces: Optional[YieldPieces] = None

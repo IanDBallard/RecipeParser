@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from recipeparser.core.yields import PASTRY_TYPES, SIDES, THICKNESSES, TOPS, YIELD_KINDS, check_yield
-from recipeparser.models import RecipePan, StructuredIngredient, YieldAnswer, YieldContainer
+from recipeparser.models import RecipePan, StructuredIngredient, YieldAnswer, YieldArea, YieldContainer, YieldPieces
 
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "yield_kinds.json"
 # The fixture is one file kept in two repositories: this constant also lives in Cayenne
@@ -76,15 +76,38 @@ def test_pieces_is_dropped_without_a_count_or_off_a_pieces_kind():
     assert spec["pieces"] is None
 
 
-def test_a_container_on_servings_needs_a_pie_type_or_a_pastry():
-    plain = YieldAnswer(kind="servings", container=YieldContainer(top="full"))
-    spec, warnings = check_yield(plain, ING, [])
+def test_a_servings_container_with_null_pastry_is_kept_with_the_default():
+    dish = RecipePan(id="pan_01", raw="a casserole dish", family="square")
+    a = YieldAnswer(kind="servings", container=YieldContainer(pastry=None, base=False, top="full"))
+    spec, warnings = check_yield(a, ING, [dish])
+    assert spec["container"]["pastry"] == "shortcrust" and spec["container"]["top"] == "full"
+    assert any("pastry" in w for w in warnings)
+    assert check_yield(a, ING, [])[0]["container"] is not None
+
+
+def test_a_container_with_no_base_and_no_top_is_dropped():
+    a = YieldAnswer(kind="servings", container=YieldContainer(pastry="puff", base=False, top="none"))
+    spec, warnings = check_yield(a, ING, [])
     assert spec["container"] is None and warnings
-    pie = RecipePan(id="pan_01", raw="a 9 inch pie plate", family="pie")
-    spec, _ = check_yield(plain, ING, [pie])
-    assert spec["container"] is not None and spec["container"]["top"] == "full"
-    named = YieldAnswer(kind="pieces", pieces={"count": 6, "noun": "pasty"}, container=YieldContainer(pastry="hot-water"))
-    assert check_yield(named, ING, [])[1] == []
+
+
+def test_bad_numbers_validate_and_are_dropped_by_the_check():
+    for area in ({"count": None, "diameter_mm": 300}, {"count": 2.5, "diameter_mm": 300}, {"count": 2, "diameter_mm": None}):
+        spec, warnings = check_yield(YieldAnswer(kind="component", area=YieldArea(**area)), ING, [])
+        assert spec["area"] is None and warnings
+    spec, _ = check_yield(YieldAnswer(kind="component", area={"count": 2.0, "diameter_mm": 300}), ING, [])
+    assert spec["area"]["count"] == 2
+    for pieces in ({"count": None}, {"count": 1.5}):
+        spec, warnings = check_yield(YieldAnswer(kind="pieces", pieces=YieldPieces(**pieces)), ING, [])
+        assert spec["pieces"] is None and warnings
+    assert check_yield(YieldAnswer(), ING, [])[0] is None
+
+
+def test_position_zero_and_negative_are_dropped():
+    a = YieldAnswer(kind="component", container=YieldContainer(component_lines=[0, -1, 2.0, "x"]))
+    spec, warnings = check_yield(a, ING, [])
+    assert spec["container"]["component_lines"] == ["ing_02"]
+    assert any("position 0" in w for w in warnings) and any("position -1" in w for w in warnings)
 
 
 def test_a_line_in_both_lists_is_component_and_defaults_fill_missing_fields():
