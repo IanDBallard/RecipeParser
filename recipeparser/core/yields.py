@@ -82,6 +82,22 @@ def _container(
     }
 
 
+def yield_text(servings_min: object, servings_max: object, servings_note: Optional[str]) -> Optional[str]:
+    """A stored row's yield words as the cook sees them (Cayenne's formatServingsSpan): "4", "2 to 4", then the
+    note ("16 Enough for double crust for a standard pie plate"). A one-sided span shows its one number.
+    None when there is nothing. Pure."""
+    low, high = _whole(servings_min), _whole(servings_max)
+    parts: List[str] = []
+    if low is not None and high is not None:
+        parts.append(str(low) if low == high else f"{low} to {high}")
+    elif low is not None or high is not None:
+        parts.append(str(low if low is not None else high))
+    note = (servings_note or "").strip()
+    if note:
+        parts.append(note)
+    return " ".join(parts) or None
+
+
 def check_yield(
     answer: Optional[YieldAnswer],
     ingredients: Sequence[StructuredIngredient],

@@ -32,7 +32,10 @@ Answer = Tuple[Optional[str], Optional[str], Optional[str]]  # kind, container.t
 Case = Tuple[str, str, str, Optional[str], Optional[str]]  # id, title, kind, top, pastry (None: not scored)
 CASES = ROOT / "tests" / "goldens" / "yield_kinds" / "cases.csv"
 NOT_READ = "(not read)"
-COLUMNS = "id,title,structured_ingredients,tokenized_directions,body_rev,derived_rev,pans,bake_type"
+COLUMNS = (
+    "id,title,structured_ingredients,tokenized_directions,body_rev,derived_rev,pans,bake_type,"
+    "servings_min,servings_max,servings_note"
+)
 
 
 def read_cases(path: Path) -> List[Case]:
@@ -103,7 +106,7 @@ def main() -> int:
     from recipeparser import client as gemini_client  # noqa: PLC0415
     from recipeparser.core.fat_tokens import strip_fat_tokens  # noqa: PLC0415
     from recipeparser.core.rate_limiter import GlobalRateLimiter  # noqa: PLC0415
-    from recipeparser.core.yields import check_yield  # noqa: PLC0415
+    from recipeparser.core.yields import check_yield, yield_text  # noqa: PLC0415
     from recipeparser.gemini import tag_yield  # noqa: PLC0415
     from recipeparser.models import RecipePan, StructuredIngredient  # noqa: PLC0415
     from supabase import create_client  # noqa: PLC0415
@@ -125,7 +128,10 @@ def main() -> int:
             steps = [strip_fat_tokens(bp._unwrap_pan_tokens(d.get("text") or "")) for d in directions]
             ingredients = [StructuredIngredient.model_validate(x) for x in row.get("structured_ingredients") or []]
             pans = [RecipePan.model_validate(p) for p in row.get("pans") or []]
-            answer = tag_yield(steps, ingredients, pans, row.get("bake_type"), gemini_client, limiter=limiter)
+            answer = tag_yield(
+                steps, ingredients, pans, row.get("bake_type"), gemini_client, limiter=limiter,
+                yield_text=yield_text(row.get("servings_min"), row.get("servings_max"), row.get("servings_note")),
+            )
             spec, _ = check_yield(answer, ingredients, pans)
             return row["id"], answer_of(spec)
         except Exception as exc:  # noqa: BLE001

@@ -1434,17 +1434,22 @@ def build_yields_prompt(
     ingredients: Sequence[StructuredIngredient],
     pans: Sequence[RecipePan],
     bake_type: Optional[str],
+    *,
+    yield_text: Optional[str] = None,
 ) -> str:
     """The yields-only prompt (Cayenne yield kinds 11.3): how a saved recipe's yield is measured.
     INGREDIENTS are numbered 1-based over every structured ingredient, headings included and marked
     "(heading)", so the model's positions are the ones ``core.yields.check_yield`` maps to ids. The
-    tins and bake type are given as stored, so the model need not re-derive them."""
+    tins and bake type are given as stored, so the model need not re-derive them. ``yield_text`` is the
+    recipe's own yield words ("Enough for double crust for a standard pie plate"), shown as a YIELD line
+    when given (``core.yields.yield_text`` builds it from a stored row)."""
     lines = "\n".join(
         f"  {n}. " + ("(heading) " if ing.kind == "heading" else "") + ing.fallback_string
         for n, ing in enumerate(ingredients, start=1)
     )
     numbered = "\n".join(f"  {n}. {text}" for n, text in enumerate(steps, start=1))
     tins = "; ".join(p.raw for p in pans) or "none"
+    yield_line = f"YIELD: {yield_text}\n\n" if yield_text else ""
     return f"""
 You are a culinary data refiner. Decide how this recipe's yield is measured, and what pastry or dough
 container it makes, if any.
@@ -1459,7 +1464,7 @@ TINS: {tins}
 
 BAKE TYPE: {bake_type or "none"}
 
-INGREDIENTS:
+{yield_line}INGREDIENTS:
 {lines}
 
 DIRECTIONS:
@@ -1475,6 +1480,7 @@ def tag_yield(
     client: Any,
     *,
     limiter: Optional["GlobalRateLimiter"] = None,
+    yield_text: Optional[str] = None,
 ) -> YieldAnswer:
     """How one recipe's yield is measured, from one Gemini call. Raises on failure: the backfill decides
     whether a recipe it could not ask about is skipped. The answer's positions are unchecked; pass it
@@ -1482,7 +1488,7 @@ def tag_yield(
     response: Any = _call_with_retry(
         client,
         model=GEMINI_MODEL,
-        contents=build_yields_prompt(steps, ingredients, pans, bake_type),
+        contents=build_yields_prompt(steps, ingredients, pans, bake_type, yield_text=yield_text),
         config={
             "response_mime_type": "application/json",
             "response_json_schema": schema_without_client_fields(_schema_for_gemini(YieldAnswer)),

@@ -97,3 +97,28 @@ def test_a_slip_costs_only_its_field():
 def test_the_yields_prompt_says_the_answer_is_the_yield_object_itself():
     prompt = build_yields_prompt(["Bake."], _ING, [], None)
     assert 'Answer with the "yield_spec" object itself' in prompt
+
+
+def test_the_prompt_carries_the_yield_line_when_given_and_omits_it_otherwise():
+    with_yield = build_yields_prompt(["Bake."], _ING, [], None, yield_text="16 Enough for double crust")
+    assert "YIELD: 16 Enough for double crust" in with_yield
+    assert "YIELD:" not in build_yields_prompt(["Bake."], _ING, [], None)
+    assert "YIELD:" not in build_yields_prompt(["Bake."], _ING, [], None, yield_text=None)
+
+
+def test_tag_yield_passes_the_yield_text_into_the_prompt():
+    with patch("recipeparser.gemini._call_with_retry", return_value=MagicMock(text=json.dumps(_REPLY))) as call:
+        tag_yield(["Bake."], _ING, [], None, MagicMock(), yield_text="Enough for double crust")
+    assert "YIELD: Enough for double crust" in call.call_args.kwargs["contents"]
+
+
+def test_yield_text_from_a_stored_rows_servings_columns():
+    from recipeparser.core.yields import yield_text
+
+    assert yield_text(16, 16, "Enough for double crust for a standard pie plate") == \
+        "16 Enough for double crust for a standard pie plate"
+    assert yield_text(16, None, "Enough for double crust") == "16 Enough for double crust"
+    assert yield_text(2, 4, None) == "2 to 4"
+    assert yield_text(4, 4, "") == "4"
+    assert yield_text(None, None, "Makes one loaf") == "Makes one loaf"
+    assert yield_text(None, None, None) is None and yield_text(None, None, "  ") is None

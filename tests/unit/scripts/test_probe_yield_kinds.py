@@ -53,3 +53,7 @@ def test_answer_of_reads_the_checked_spec():
     assert probe.answer_of(spec) == ("servings", "lattice", "puff")
     assert probe.answer_of({"kind": "pieces", "container": None}) == ("pieces", None, None)
     assert probe.answer_of(None) == (None, None, None)
+
+
+def test_the_probe_reads_the_rows_yield_columns():
+    assert all(c in probe.COLUMNS for c in ("servings_min", "servings_max", "servings_note"))
