@@ -647,3 +647,23 @@ def test_restore_through_main(monkeypatch, tmp_path):
     log = []
     _run_main(monkeypatch, ["--all-users", "--restore", str(rec)], [], log)
     assert _updates(log) == []
+
+
+def test_an_existing_record_file_is_refused_before_the_model_or_the_database(monkeypatch, tmp_path):
+    rec = tmp_path / "yields-before.csv"
+    rec.write_text("the first run's undo\n", encoding="utf-8")
+    log = []
+    with pytest.raises(SystemExit) as exc:
+        _run_main(monkeypatch, ["--all-users", "--live", "--record", str(rec)], [row()], log)
+    message = str(exc.value)
+    assert str(rec) in message and "new name" in message
+    assert log == []
+    assert rec.read_text(encoding="utf-8") == "the first run's undo\n"
+
+
+def test_restore_help_says_a_later_kitchen_rescale_is_reverted(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["backfill_yields.py", "--help"])
+    with pytest.raises(SystemExit):
+        by.main()
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "rescale" in help_text and "reverted" in help_text

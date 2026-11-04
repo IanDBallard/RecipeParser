@@ -425,7 +425,9 @@ def main() -> int:
     ap.add_argument("--record", type=Path, help="CSV of each rewritten row's id, title and old yield_spec, "
                                                 "cook_servings, cook_pans, cook_scale_by and cook_yield (JSON).")
     ap.add_argument("--restore", type=Path, help="Write this record's five columns back; nothing else. A row "
-                                                 "whose current yield_spec the cook edited is skipped.")
+                                                 "whose current yield_spec the cook edited is skipped. A kitchen "
+                                                 "rescale the cook made after the backfill is reverted for a "
+                                                 "restored row: its cook_* columns go back to the recorded ones.")
     ap.add_argument("--force", action="store_true",
                     help="Ask again about recipes that already have a yield_spec (a cook-edited one is never touched).")
     ap.add_argument("--settle-pieces", action="store_true",
@@ -437,6 +439,10 @@ def main() -> int:
         sys.stdout.reconfigure(line_buffering=True)
     if args.live and not args.restore and not args.record:
         raise SystemExit("--live needs --record: the record is the only way back.")
+    # Opening the record truncates it, and it may be the only undo of an earlier run: never overwrite one.
+    if args.record and not args.restore and args.record.exists():
+        raise SystemExit(f"--record {args.record} already exists, and it may be the only way back from an earlier "
+                         "run; choose a new name for this run's record.")
 
     from supabase import create_client  # noqa: PLC0415
     sb = create_client(*bp._creds())
