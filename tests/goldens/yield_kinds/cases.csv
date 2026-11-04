@@ -4,7 +4,7 @@ id,title,expected_kind,expected_top,expected_pastry
 33542e6d-7850-4f68-baad-415d498bb5e4,Good for Almost Everything Pie Dough,servings,,shortcrust
 5df4e837-8cd8-48fc-9e04-4f07fb3db5c9,Hot Water Crust Pastry,servings,,hot-water
 0385a281-5ad8-4ecc-8fc8-e2f6c2c425cf,Pizza Dough,servings,,pizza-dough
-0ce675e5-8dfd-4d01-8650-a30905df8931,Graham Cracker Crust,component,none,crumb
+0ce675e5-8dfd-4d01-8650-a30905df8931,Graham Cracker Crust,servings,none,crumb
 f1cf3348-c993-40a8-badd-05055212e19f,Rich Shortcrust Pastry,servings,,
 098ae8bc-4619-457d-a93b-ffb8aa6b9fd6,Savoury Shortcrust Pastry,servings,,shortcrust
 d689ea1a-b71d-40ab-bed2-ff6fcc438902,Perfect Quiche,servings,none,puff

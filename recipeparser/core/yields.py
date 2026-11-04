@@ -123,6 +123,7 @@ def check_yield(
       in both lists is component;
     - a component with no (unremoved) tin in COMPONENT_TIN_FAMILIES is stored as 'servings', container and
       area kept as they are (stage 2 reads them), with a warning;
+    - a component whose container pastry is 'crumb' is stored as 'servings' too (D84, stage 3);
     - `edited` is always False from the parser.
     """
     if answer is None:
@@ -167,6 +168,10 @@ def check_yield(
 
     if kind == "component" and not any(p.family in COMPONENT_TIN_FAMILIES and not p.removed for p in pans):
         warnings.append("yield component with no fittable tin stored as servings until stage 2")
+        kind = "servings"
+    # D84: a pressed crumb crust is not a rolled disc; its thickness model is stage 3's.
+    if kind == "component" and container is not None and container["pastry"] == "crumb":
+        warnings.append("yield crumb crust stored as servings until stage 3 (D84)")
         kind = "servings"
 
     return {"kind": kind, "container": container, "area": area, "pieces": pieces, "edited": False}, warnings
