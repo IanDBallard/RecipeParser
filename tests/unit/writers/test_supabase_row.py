@@ -160,7 +160,7 @@ def test_contract_round_trip_rows():
             "title", "base_servings", "servings_source", "prep_min_minutes", "prep_max_minutes", "prep_note",
             "cook_min_minutes", "cook_max_minutes", "cook_note", "servings_min", "servings_max",
             "servings_note", "rating", "is_favourite", "source_uom_system", "source_uom_system_detected",
-            "image_source", "ingredient_lines", "direction_steps", "body_rev", "derived_rev",
+            "image_source", "ingredient_lines", "direction_steps", "body_rev", "derived_rev", "yield_spec",
         ):
             assert row[key] == want[key], (row["title"], key)
         assert len(row["embedding"]) == want["embedding_length"]
@@ -172,3 +172,40 @@ def test_contract_round_trip_rows():
             assert {k: v for k, v in got["dims_mm"].items() if v is not None} == exp["dims_mm"]
             assert got.get("removed", False) == exp.get("removed", False)
     assert seen == set(CONTRACT_ROWS)
+
+
+def _restore_row(tmp_path, spec):
+    import gzip
+    import json
+    import zipfile
+
+    from recipeparser.core.fsm import PipelineController
+    from recipeparser.core.pipeline import RecipePipeline, chunk_stages
+    from recipeparser.core.rate_limiter import GlobalRateLimiter
+    from recipeparser.io.readers.paprika import PaprikaReader
+
+    meta = _recipe().model_dump()
+    meta["yield_spec"] = spec
+    entry = {"name": "Pie", "ingredients": "1 cup flour", "directions": "Mix flour.", "_cayenne_meta": meta}
+    path = tmp_path / "restore.paprikarecipes"
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("pie.paprikarecipe", gzip.compress(json.dumps(entry).encode("utf-8")))
+    chunks = PaprikaReader().read(str(path))
+    GlobalRateLimiter().reset()
+    pipeline = RecipePipeline(
+        client=_NoAiClient(), controller=PipelineController(), category_source=MagicMock(), rpm=9999,
+    )
+    result = pipeline._process_chunk(chunks[0], chunk_stages(chunks[0])).results[0]
+    from recipeparser.io.writers.supabase import _recipe_row
+
+    return _recipe_row(result, "u1", "r1")["yield_spec"]
+
+
+def test_a_restore_carries_the_archives_yield_spec_to_the_row(tmp_path):
+    spec = {"kind": "pieces", "container": None, "area": None,
+            "pieces": {"count": 8, "noun": "roll", "weight_g": 90, "diameter_mm": None}, "edited": True}
+    assert _restore_row(tmp_path, spec) == spec
+
+
+def test_a_restore_drops_a_yield_spec_with_an_unknown_kind(tmp_path):
+    assert _restore_row(tmp_path, {"kind": "bushels", "edited": False}) is None
