@@ -980,12 +980,18 @@ _YIELD_RULES = """\
      2. pieces: an end recipe eaten by the piece (free-form loaves, rolls, baguettes, bagels, naan, pitta,
         tortillas, hand pies, pasties, topped free-form pizzas): "pieces" holds the count and the size the
         recipe states ("divide into two 450 g pieces", "8 balls of 90 g"); a size it does not state is null.
-     3. servings: everything else, cakes, tin loaves, filled pies, quiches and pan pizza included.
+        Galettes, free-form tarts, crostatas, individual pies, hand pies, pasties, turnovers and sausage
+        rolls are pieces. A topped pizza baked on a stone, steel, tray or sheet, or free-form, is pieces.
+     3. servings: everything else, cakes, tin loaves, filled pies, quiches included. Cookies, biscuits,
+        muffins, cupcakes, scones, brownies, bars and traybakes are servings (they are counted, "Makes 24
+        cookies"), never pieces. So is a pizza baked in a deep pan or skillet (Detroit, Sicilian, deep-dish).
      "container": present when the recipe makes a pastry or dough container or lid (a component, or a
      filled pie, tart, quiche, pot pie, crumble or cobbler): which of base, sides and top the method
      makes ("line the plate" is a base with sides; "cover with the second round" is top full; "weave a
      lattice" is top lattice; "scatter the crumble over" is top crumble; a pot pie with only a lid is base
-     false, sides none, top full), the pastry type by its making, one of {pastry} (cold fat rubbed into
+     false, sides none, top full; a crust or pastry recipe that makes a double crust, a lid, two rounds or
+     "top and bottom crusts" is top full, even when it says so only in its yield words, "Enough for double
+     crust for a standard pie plate"; a crust for an open pie or tart shell is top none), the pastry type by its making, one of {pastry} (cold fat rubbed into
      flour: shortcrust; with sugar and egg: sweet-shortcrust; layered or folded with butter: puff; fat
      melted in boiling water: hot-water; suet: suet; a yeast dough stretched flat: pizza-dough; crumbs and
      butter pressed: crumb; filo sheets: filo), "sides" one of {sides}, "top" one of {tops}, "thickness"

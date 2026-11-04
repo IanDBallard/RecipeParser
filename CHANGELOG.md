@@ -15,6 +15,7 @@ How a recipe's yield is measured (Cayenne yield kinds): servings, pieces, or a c
 - Regeneration writes `yield_spec` too. A yield the cook edited (`edited: true`) keeps the cook's kind, container pills, area and pieces; only `component_lines` and `topping_lines` are re-derived, because ingredient ids are re-minted by position on every regeneration (Cayenne yield kinds P6). The worker reads the row's `yield_spec` with its tins.
 
 ### ⚠️ Changed
+- The yield rules, amended after the 54-recipe probe: a crust that makes a double crust, a lid or two rounds (even only in its yield words) is top full, an open shell top none; cookies, biscuits, muffins, cupcakes, scones, brownies, bars and traybakes are servings; galettes, free-form tarts, crostatas, individual pies, hand pies, pasties, turnovers, sausage rolls and pizza baked on a stone, steel, tray or sheet are pieces, only a deep-pan or skillet pizza is servings.
 - REFINE's schema gains `yield_spec`; its prompt gains the yield rules under rule 5. The prompt and schema snapshots and the stage and end-to-end goldens are updated on purpose (a `yield_spec` of null throughout).
 - Version 9.27.0.
 
