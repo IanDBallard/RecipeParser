@@ -219,6 +219,39 @@ class TemperatureMention(BaseModel):
     value: str = Field(description="What the writer meant: '180C,oven', '350F', 'gas4', '180C,oven,fan=160C'.")
 
 
+# Yield kinds (Cayenne yield kinds 11.3). Words are plain strings, not Literals: a word outside the
+# list must not fail validation and cost the recipe. core/yields.py enforces the vocabularies.
+# Minimal here; the prompt descriptions arrive with the gemini.py rules.
+class YieldContainer(BaseModel):
+    pastry: Optional[str] = None
+    base: Optional[bool] = None
+    sides: Optional[str] = None
+    top: Optional[str] = None
+    thickness: Optional[str] = None
+    component_lines: List[int] = Field(default_factory=list)
+    topping_lines: List[int] = Field(default_factory=list)
+
+
+class YieldArea(BaseModel):
+    count: int
+    noun: str = ""
+    diameter_mm: float
+
+
+class YieldPieces(BaseModel):
+    count: int
+    noun: str = ""
+    weight_g: Optional[float] = None
+    diameter_mm: Optional[float] = None
+
+
+class YieldAnswer(BaseModel):
+    kind: str
+    container: Optional[YieldContainer] = None
+    area: Optional[YieldArea] = None
+    pieces: Optional[YieldPieces] = None
+
+
 class TemperatureMentions(BaseModel):
     """The temperature backfill's whole answer for one recipe."""
     mentions: List[TemperatureMention] = Field(default_factory=list)

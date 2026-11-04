@@ -2,3 +2,6 @@
 
 # The scaling-text cases are one file kept in two repositories (Cayenne cayenne-web/tests/fixtures/); keep it LF in both.
 tests/fixtures/scaling_text_cases.json text eol=lf
+
+# The yield-kind vocabularies are one file kept in two repositories (Cayenne cayenne-web/tests/fixtures/); a test pins its SHA-256, so keep it LF in both.
+tests/fixtures/yield_kinds.json text eol=lf
