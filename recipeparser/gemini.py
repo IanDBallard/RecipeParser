@@ -980,12 +980,18 @@ _YIELD_RULES = """\
      2. pieces: an end recipe eaten by the piece (free-form loaves, rolls, baguettes, bagels, naan, pitta,
         tortillas, hand pies, pasties, topped free-form pizzas): "pieces" holds the count and the size the
         recipe states ("divide into two 450 g pieces", "8 balls of 90 g"); a size it does not state is null.
-     3. servings: everything else, cakes, tin loaves, filled pies, quiches and pan pizza included.
+        Galettes, free-form tarts, crostatas, individual pies, hand pies, pasties, turnovers and sausage
+        rolls are pieces. A topped pizza baked on a stone, steel, tray or sheet, or free-form, is pieces.
+     3. servings: everything else, cakes, tin loaves, filled pies, quiches included. Cookies, biscuits,
+        muffins, cupcakes, scones, brownies, bars and traybakes are servings (they are counted, "Makes 24
+        cookies"), never pieces. So is a pizza baked in a deep pan or skillet (Detroit, Sicilian, deep-dish).
      "container": present when the recipe makes a pastry or dough container or lid (a component, or a
      filled pie, tart, quiche, pot pie, crumble or cobbler): which of base, sides and top the method
      makes ("line the plate" is a base with sides; "cover with the second round" is top full; "weave a
      lattice" is top lattice; "scatter the crumble over" is top crumble; a pot pie with only a lid is base
-     false, sides none, top full), the pastry type by its making, one of {pastry} (cold fat rubbed into
+     false, sides none, top full; a crust or pastry recipe that makes a double crust, a lid, two rounds or
+     "top and bottom crusts" is top full, even when it says so only in its yield words, "Enough for double
+     crust for a standard pie plate"; a crust for an open pie or tart shell is top none), the pastry type by its making, one of {pastry} (cold fat rubbed into
      flour: shortcrust; with sugar and egg: sweet-shortcrust; layered or folded with butter: puff; fat
      melted in boiling water: hot-water; suet: suet; a yeast dough stretched flat: pizza-dough; crumbs and
      butter pressed: crumb; filo sheets: filo), "sides" one of {sides}, "top" one of {tops}, "thickness"
@@ -1428,17 +1434,22 @@ def build_yields_prompt(
     ingredients: Sequence[StructuredIngredient],
     pans: Sequence[RecipePan],
     bake_type: Optional[str],
+    *,
+    yield_text: Optional[str] = None,
 ) -> str:
     """The yields-only prompt (Cayenne yield kinds 11.3): how a saved recipe's yield is measured.
     INGREDIENTS are numbered 1-based over every structured ingredient, headings included and marked
     "(heading)", so the model's positions are the ones ``core.yields.check_yield`` maps to ids. The
-    tins and bake type are given as stored, so the model need not re-derive them."""
+    tins and bake type are given as stored, so the model need not re-derive them. ``yield_text`` is the
+    recipe's own yield words ("Enough for double crust for a standard pie plate"), shown as a YIELD line
+    when given (``core.yields.yield_text`` builds it from a stored row)."""
     lines = "\n".join(
         f"  {n}. " + ("(heading) " if ing.kind == "heading" else "") + ing.fallback_string
         for n, ing in enumerate(ingredients, start=1)
     )
     numbered = "\n".join(f"  {n}. {text}" for n, text in enumerate(steps, start=1))
     tins = "; ".join(p.raw for p in pans) or "none"
+    yield_line = f"YIELD: {yield_text}\n\n" if yield_text else ""
     return f"""
 You are a culinary data refiner. Decide how this recipe's yield is measured, and what pastry or dough
 container it makes, if any.
@@ -1453,7 +1464,7 @@ TINS: {tins}
 
 BAKE TYPE: {bake_type or "none"}
 
-INGREDIENTS:
+{yield_line}INGREDIENTS:
 {lines}
 
 DIRECTIONS:
@@ -1469,6 +1480,7 @@ def tag_yield(
     client: Any,
     *,
     limiter: Optional["GlobalRateLimiter"] = None,
+    yield_text: Optional[str] = None,
 ) -> YieldAnswer:
     """How one recipe's yield is measured, from one Gemini call. Raises on failure: the backfill decides
     whether a recipe it could not ask about is skipped. The answer's positions are unchecked; pass it
@@ -1476,7 +1488,7 @@ def tag_yield(
     response: Any = _call_with_retry(
         client,
         model=GEMINI_MODEL,
-        contents=build_yields_prompt(steps, ingredients, pans, bake_type),
+        contents=build_yields_prompt(steps, ingredients, pans, bake_type, yield_text=yield_text),
         config={
             "response_mime_type": "application/json",
             "response_json_schema": schema_without_client_fields(_schema_for_gemini(YieldAnswer)),
