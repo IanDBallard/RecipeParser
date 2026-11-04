@@ -125,3 +125,14 @@ def test_refine_drops_an_unknown_kind_and_keeps_the_recipe():
 
 def test_refine_without_a_yield_answer_stores_none():
     assert _run(["Bake."]).yield_checked is None
+
+
+def test_a_yield_check_that_raises_costs_the_yield_not_the_recipe(caplog):
+    from recipeparser.models import YieldAnswer
+
+    with patch("recipeparser.core.stages.refine.check_yield", side_effect=OverflowError("boom")), \
+            caplog.at_level(logging.WARNING):
+        result = _run(["Bake for 25 minutes."], yield_spec=YieldAnswer(kind="servings"))
+    assert result.yield_checked is None
+    assert result.title == "Sponge"
+    assert any("yield" in r.getMessage() and "boom" in r.getMessage() for r in caplog.records)

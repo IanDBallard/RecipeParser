@@ -271,3 +271,44 @@ def test_an_unedited_or_missing_yield_writes_refines_whole_answer():
 
 def test_no_answer_and_no_cook_edit_writes_none():
     assert build_update(_yield_refinement(None), [0.1] * 3, 3)["yield_spec"] is None
+
+
+# --- the fittable-tin rule runs against the tins actually written (whole-branch review, Minor 2) ---
+
+
+def _tin_refinement(pans):
+    from recipeparser.core.yields import check_yield
+    from recipeparser.models import YieldAnswer
+
+    answer = YieldAnswer(kind="component", area={"count": 1, "noun": "tin", "diameter_mm": 230})
+    ref = CayenneRefinement(title="Pastry", base_servings=4, structured_ingredients=[], tokenized_directions=[],
+                            pans=pans, yield_spec=answer)
+    ref.yield_checked, _ = check_yield(answer, [], pans)
+    return ref
+
+
+_PIZZA = RecipePan(id="pan_01", raw="a pizza stone", family="pizza")
+_PIE_TIN = RecipePan(id="pan_01", raw="a 23 cm pie dish", family="pie")
+
+
+def test_a_cook_edited_pie_tin_lets_refines_component_stand():
+    ref = _tin_refinement([_PIZZA])
+    assert ref.yield_checked["kind"] == "servings"  # REFINE's tins have no fittable one
+    cooks = [{**_PIE_TIN.model_dump(), "edited": True}]
+    spec = build_update(ref, [0.1] * 3, 3, current_pans=cooks)["yield_spec"]
+    assert spec["kind"] == "component" and spec["area"]["diameter_mm"] == 230
+
+
+def test_cook_edited_tins_with_no_fittable_one_demote_refines_component():
+    ref = _tin_refinement([_PIE_TIN])
+    assert ref.yield_checked["kind"] == "component"
+    for cooks in ([{**_PIZZA.model_dump(), "edited": True}],
+                  [{**_PIE_TIN.model_dump(), "edited": True, "removed": True}]):
+        spec = build_update(ref, [0.1] * 3, 3, current_pans=cooks)["yield_spec"]
+        assert spec["kind"] == "servings" and spec["area"]["diameter_mm"] == 230
+
+
+def test_unedited_tins_leave_refines_checked_yield_as_it_is():
+    ref = _tin_refinement([_PIE_TIN])
+    spec = build_update(ref, [0.1] * 3, 3, current_pans=[_PIZZA.model_dump()])["yield_spec"]
+    assert spec == ref.yield_checked

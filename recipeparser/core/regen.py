@@ -8,15 +8,19 @@ No imports from recipeparser.io or recipeparser.adapters are permitted here.
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 from recipeparser.core.count_tokens import scalable_counts
 from recipeparser.core.fat_tokens import TOKEN_RE, is_pan_id, strip_fat_tokens
 from recipeparser.core.pans import check_pan_tokens
+from recipeparser.core.yields import check_yield
 from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
 
 __all__ = ["strip_fat_tokens", "raw_lines_from_derived", "raw_body_column", "build_extraction", "build_update"]
+
+log = logging.getLogger(__name__)
 
 
 def raw_lines_from_derived(
@@ -97,6 +101,21 @@ def _fold(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _checked_against(refinement: CayenneRefinement, pans: List[Any]) -> Optional[Dict[str, Any]]:
+    """REFINE's yield re-checked against the tins actually written (the cook's, when they edited one), so
+    the fittable-tin rule decides the kind from those tins, not REFINE's. A failed check costs the yield."""
+    if refinement.yield_spec is None:
+        return refinement.yield_checked
+    try:
+        checked, warnings = check_yield(refinement.yield_spec, refinement.structured_ingredients, pans)
+    except Exception as exc:  # noqa: BLE001 - any failure here is the field's, not the regeneration's
+        log.warning("regen: '%s': yield check failed (%r); no yield_spec", refinement.title, exc)
+        return None
+    for line in warnings:
+        log.warning("regen: '%s': %s", refinement.title, line)
+    return checked
+
+
 def _yield_to_write(checked: Optional[Dict[str, Any]], current: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """The yield_spec a regeneration writes (Cayenne yield kinds P6). See ``build_update``."""
     if not isinstance(current, dict) or current.get("edited") is not True:
@@ -137,7 +156,12 @@ def build_update(
     yield_spec is `edited`, the cook's kind, container pills (pastry, base, sides, top, thickness), area
     and pieces are written back unchanged and only component_lines and topping_lines are REFINE's, since
     ingredient ids are re-minted by position on every regeneration; otherwise REFINE's checked yield is
-    written (None when it gave none).
+    written (None when it gave none). When the cook's tins are written back (any tin edited), REFINE's
+    yield is re-checked against those tins, so the fittable-tin rule (a component needs a pie-family tin)
+    decides the kind from the tins the row will hold, not from REFINE's.
+    Accepted race, not guarded, for the yield too: a yield edit the cook has made that has not synced
+    when regen reads, or a failed read of the row's yield_spec, leaves `current_yield` without the
+    cook's edit, and REFINE's yield overwrites it.
     """
     edited = bool(current_pans) and any(isinstance(p, dict) and p.get("edited") is True for p in current_pans or [])
     directions = refinement.tokenized_directions
@@ -180,5 +204,7 @@ def build_update(
         "pans": pans,
         "bake_type": refinement.bake_type,
         "bake_step": refinement.bake_step,
-        "yield_spec": _yield_to_write(refinement.yield_checked, current_yield),
+        "yield_spec": _yield_to_write(
+            _checked_against(refinement, pans) if edited else refinement.yield_checked, current_yield
+        ),
     }
