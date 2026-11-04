@@ -761,6 +761,7 @@ def _pre_parsed_to_refinement(
         pans=list(getattr(pr, "pans", None) or []),
         bake_type=getattr(pr, "bake_type", None),
         bake_step=getattr(pr, "bake_step", None),
+        yield_checked=getattr(pr, "yield_spec", None),
         source_uom_system_detected=getattr(pr, "source_uom_system_detected", None),
         source_uom_system_evidence=getattr(pr, "source_uom_system_evidence", None),
     )

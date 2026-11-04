@@ -458,10 +458,28 @@ def test_regen_reads_the_rows_current_tins_and_keeps_an_edited_one():
         {"pans": cooks}, rpc_responses={"claim_stale_recipes": [_row()]}, responses={"recipes": [{"id": "r1"}]}
     )
     _worker(fake, refine_fn=MagicMock(return_value=_tin_refinement())).run_once()
-    assert _selects(fake, "recipes") == [[("select", ("pans,base_servings,servings_min,servings_max,servings_note",), {}), ("eq", ("id", "r1"), {}), ("single", (), {})]]
+    assert _selects(fake, "recipes") == [[("select", ("pans,yield_spec,base_servings,servings_min,servings_max,servings_note",), {}), ("eq", ("id", "r1"), {}), ("single", (), {})]]
     payload = _ops(fake, "recipes")[0][0][1][0]
     assert payload["pans"] == cooks
     assert payload["tokenized_directions"][0]["text"] == "Bake in {{pan_01|two tins}} and a tray."
+
+
+def test_regen_keeps_an_edited_yield_but_takes_refines_line_lists():
+    cooks = {"kind": "component", "container": {"pastry": "puff", "base": True, "sides": "short", "top": "none",
+             "thickness": "thin", "component_lines": ["ing_09"], "topping_lines": []},
+             "area": {"count": 1, "noun": "tin", "diameter_mm": 230}, "pieces": None, "edited": True}
+    refinement = _tin_refinement()
+    refinement.yield_checked = {"kind": "servings", "container": {"pastry": "shortcrust", "base": True,
+                                "sides": "full", "top": "full", "thickness": "standard",
+                                "component_lines": ["ing_01"], "topping_lines": []},
+                                "area": None, "pieces": None, "edited": False}
+    fake = _TwoTable(
+        {"yield_spec": cooks}, rpc_responses={"claim_stale_recipes": [_row()]}, responses={"recipes": [{"id": "r1"}]}
+    )
+    _worker(fake, refine_fn=MagicMock(return_value=refinement)).run_once()
+    spec = _ops(fake, "recipes")[0][0][1][0]["yield_spec"]
+    assert spec["kind"] == "component" and spec["edited"] is True and spec["area"] == cooks["area"]
+    assert spec["container"]["pastry"] == "puff" and spec["container"]["component_lines"] == ["ing_01"]
 
 
 def test_a_failed_tin_read_writes_refines_tins_and_logs(caplog):

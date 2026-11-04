@@ -97,12 +97,29 @@ def _fold(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _yield_to_write(checked: Optional[Dict[str, Any]], current: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The yield_spec a regeneration writes (Cayenne yield kinds P6). See ``build_update``."""
+    if not isinstance(current, dict) or current.get("edited") is not True:
+        return checked
+    refined = (checked or {}).get("container") or {}
+    kept = dict(current)
+    cooks_container = current.get("container")
+    if isinstance(cooks_container, dict):
+        kept["container"] = {
+            **cooks_container,
+            "component_lines": list(refined.get("component_lines") or []),
+            "topping_lines": list(refined.get("topping_lines") or []),
+        }
+    return kept
+
+
 def build_update(
     refinement: CayenneRefinement,
     embedding: List[float],
     read_rev: int,
     current_pans: Optional[List[Any]] = None,
     yields: Optional[Set[int]] = None,
+    current_yield: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     The conditional write-back payload (spec 5.5).  Title, base_servings and
@@ -115,6 +132,12 @@ def build_update(
     is edited the cook's tins are written back unchanged and REFINE's pan tokens for other ids unwrap.
     Accepted race, not guarded: a pans edit the cook has made that has not synced when regen reads
     can be overwritten.
+
+    The yield is derived data with the same exception (Cayenne yield kinds P6): when the row's current
+    yield_spec is `edited`, the cook's kind, container pills (pastry, base, sides, top, thickness), area
+    and pieces are written back unchanged and only component_lines and topping_lines are REFINE's, since
+    ingredient ids are re-minted by position on every regeneration; otherwise REFINE's checked yield is
+    written (None when it gave none).
     """
     edited = bool(current_pans) and any(isinstance(p, dict) and p.get("edited") is True for p in current_pans or [])
     directions = refinement.tokenized_directions
@@ -157,4 +180,5 @@ def build_update(
         "pans": pans,
         "bake_type": refinement.bake_type,
         "bake_step": refinement.bake_step,
+        "yield_spec": _yield_to_write(refinement.yield_checked, current_yield),
     }

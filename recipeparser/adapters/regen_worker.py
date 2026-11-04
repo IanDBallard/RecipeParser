@@ -99,13 +99,15 @@ class RegenWorker:
                 # The row's own yield, which the method's yield counts are wrapped against (Cayenne
                 # scaling text audit): servings are the cook's, so they are read here, never REFINE's.
                 current_pans: Any = None
+                current_yield: Any = None
                 yields = None
                 try:
                     current = self._sb.table("recipes").select(
-                        "pans,base_servings,servings_min,servings_max,servings_note"
+                        "pans,yield_spec,base_servings,servings_min,servings_max,servings_note"
                     ).eq("id", rid).single().execute().data
                     if isinstance(current, dict):
                         current_pans = current.get("pans")
+                        current_yield = current.get("yield_spec")
                         yields = yield_numbers(current.get("base_servings"), current.get("servings_min"),
                                                current.get("servings_max"), current.get("servings_note"))
                 except Exception as exc:  # noqa: BLE001 — the guard must not fail the regen
@@ -114,6 +116,7 @@ class RegenWorker:
                     refinement, vector, read_rev,
                     current_pans=current_pans if isinstance(current_pans, list) else None,
                     yields=yields,
+                    current_yield=current_yield if isinstance(current_yield, dict) else None,
                 )
                 res = (
                     self._sb.table("recipes")

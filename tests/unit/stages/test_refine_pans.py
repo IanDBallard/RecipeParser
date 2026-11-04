@@ -99,3 +99,29 @@ def test_a_valid_core_temperature_survives():
     steps = ["Grease the tins.", "Bake.", "Fry.", "Heat.", "Bake until it reads {{temp:93C,core|93°C}} in the centre."]
     result = _run(steps)
     assert result.tokenized_directions[4].text == steps[4]
+
+
+# --- yield_spec (Cayenne yield kinds): checked against REFINE's own ingredient list ---
+
+
+def _yield_run(answer):
+    from recipeparser.models import YieldAnswer
+    return _run(["Bake."], yield_spec=YieldAnswer.model_validate(answer))
+
+
+def test_refine_checks_the_yield_and_maps_positions_to_ids():
+    result = _yield_run({"kind": "servings", "container": {
+        "pastry": "shortcrust", "base": True, "sides": "full", "top": "full", "thickness": "standard",
+        "component_lines": [1], "topping_lines": []}})
+    assert result.yield_checked["kind"] == "servings"
+    assert result.yield_checked["container"]["component_lines"] == ["ing_01"]
+    assert result.yield_checked["edited"] is False
+
+
+def test_refine_drops_an_unknown_kind_and_keeps_the_recipe():
+    result = _yield_run({"kind": "bushels"})
+    assert result.yield_checked is None and result.title == "Sponge"
+
+
+def test_refine_without_a_yield_answer_stores_none():
+    assert _run(["Bake."]).yield_checked is None

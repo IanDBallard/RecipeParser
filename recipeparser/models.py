@@ -221,36 +221,63 @@ class TemperatureMention(BaseModel):
 
 # Yield kinds (Cayenne yield kinds 11.3). Words are plain strings, not Literals: a word outside the
 # list must not fail validation and cost the recipe. core/yields.py enforces the vocabularies.
-# Minimal here; the prompt descriptions arrive with the gemini.py rules.
 class YieldContainer(BaseModel):
-    pastry: Optional[str] = None
-    base: Optional[bool] = None
-    sides: Optional[str] = None
-    top: Optional[str] = None
-    thickness: Optional[str] = None
+    """The pastry or dough container (or lid) a recipe makes."""
+    pastry: Optional[str] = Field(
+        default=None,
+        description="The pastry type by how it is made: shortcrust, sweet-shortcrust, puff, hot-water, suet, "
+                    "pizza-dough, crumb or filo.",
+    )
+    base: Optional[bool] = Field(default=None, description="true when the method lines the bottom of the dish.")
+    sides: Optional[str] = Field(
+        default=None, description="How far the pastry goes up the sides: full, short or none."
+    )
+    top: Optional[str] = Field(
+        default=None, description="What covers the filling: none, full (a lid), lattice or crumble."
+    )
+    thickness: Optional[str] = Field(
+        default=None,
+        description="standard unless the recipe states a thickness, then the nearest of thin, standard or thick.",
+    )
     # Positions are checked in core/yields.py; a bad entry must not fail validation.
-    component_lines: List[Any] = Field(default_factory=list)
-    topping_lines: List[Any] = Field(default_factory=list)
+    component_lines: List[Any] = Field(
+        default_factory=list,
+        description="1-based positions in the INGREDIENTS list of the lines that make the crust or dough.",
+        json_schema_extra={"items": {"type": "integer"}},
+    )
+    topping_lines: List[Any] = Field(
+        default_factory=list,
+        description="1-based positions in the INGREDIENTS list of the lines that make a crumble, streusel or "
+                    "pizza topping.",
+        json_schema_extra={"items": {"type": "integer"}},
+    )
 
 
 class YieldArea(BaseModel):
-    count: Optional[float] = None
-    noun: Optional[str] = None
-    diameter_mm: Optional[float] = None
+    """A component's yield: how many rounds of what size."""
+    count: Optional[float] = Field(default=None, description="How many tins or rounds the recipe makes.")
+    noun: Optional[str] = Field(default=None, description="What they are, as the recipe says: tin, round, base.")
+    diameter_mm: Optional[float] = Field(default=None, description="Each one's diameter in millimetres.")
 
 
 class YieldPieces(BaseModel):
-    count: Optional[float] = None
-    noun: Optional[str] = None
-    weight_g: Optional[float] = None
-    diameter_mm: Optional[float] = None
+    """A pieces recipe's yield: how many, and how big as the recipe states."""
+    count: Optional[float] = Field(default=None, description="How many pieces the recipe makes.")
+    noun: Optional[str] = Field(default=None, description="What they are: loaf, roll, bagel, pasty.")
+    weight_g: Optional[float] = Field(default=None, description="Each piece's weight in grams; null when not stated.")
+    diameter_mm: Optional[float] = Field(
+        default=None, description="Each piece's diameter in millimetres; null when not stated."
+    )
 
 
 class YieldAnswer(BaseModel):
-    kind: Optional[str] = None
-    container: Optional[YieldContainer] = None
-    area: Optional[YieldArea] = None
-    pieces: Optional[YieldPieces] = None
+    """How a recipe's yield is measured."""
+    kind: Optional[str] = Field(default=None, description="servings, pieces or component.")
+    container: Optional[YieldContainer] = Field(
+        default=None, description="The pastry or dough container the recipe makes; null when it makes none."
+    )
+    area: Optional[YieldArea] = Field(default=None, description="Only on a component; otherwise null.")
+    pieces: Optional[YieldPieces] = Field(default=None, description="Only on a pieces recipe; otherwise null.")
 
 
 class TemperatureMentions(BaseModel):
@@ -385,6 +412,12 @@ class CayenneRefinement(BaseModel):
     filling_quote: Optional[str] = Field(default=None, description=_FILLING_QUOTE_DESC)
     bake_type: Optional[str] = Field(default=None, description=_BAKE_TYPE_DESC)
     bake_step: Optional[int] = Field(default=None, description=_BAKE_STEP_DESC)
+    yield_spec: Optional[YieldAnswer] = Field(
+        default=None, description="How the recipe's yield is measured; null when it cannot be told."
+    )
+    # What check_yield made of yield_spec: the dict that is stored. Set by refine(), never by the model,
+    # so refine_json_schema() leaves it out.
+    yield_checked: Optional[dict] = None
 
 
 # Where a recipe's base_servings came from (scale-sheet redesign D44).
@@ -435,6 +468,8 @@ class CayenneRecipe(BaseModel):
     pans: List[RecipePan] = Field(default_factory=list)
     bake_type: Optional[str] = None
     bake_step: Optional[int] = None
+    # The checked yield (Cayenne yield kinds): kind, container, area, pieces, edited. Never the model's raw answer.
+    yield_spec: Optional[dict] = None
     # _cayenne_meta version 2 (Paprika export): read back by a restore, never asked of the model.
     is_favourite: Optional[bool] = None
     category_paths: List[List[str]] = Field(default_factory=list)

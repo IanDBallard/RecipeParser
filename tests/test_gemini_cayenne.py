@@ -177,3 +177,12 @@ def test_refine_prompt_asks_for_tins_baking_and_core_temperatures():
     assert "{{temp:93C,core|93°C}}" in prompt
     for value in (*BAKE_TYPES, *HINT_KEYS, *PAN_SHAPES, *PAN_FAMILIES):
         assert value in prompt
+
+
+def test_refine_prompt_asks_for_the_yield_with_every_vocabulary_value():
+    from recipeparser.core.yields import PASTRY_TYPES, SIDES, THICKNESSES, TOPS, YIELD_KINDS
+
+    prompt = build_refine_prompt("x", None)
+    assert '"yield_spec"' in prompt and "component_lines" in prompt and "topping_lines" in prompt
+    for value in (*YIELD_KINDS, *PASTRY_TYPES, *SIDES, *TOPS, *THICKNESSES):
+        assert value in prompt

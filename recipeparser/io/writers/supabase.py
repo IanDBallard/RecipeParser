@@ -285,6 +285,8 @@ def _recipe_row(recipe: IngestResponse, user_id: str, rid: str, ingestion_job_id
         "pans": [p.model_dump() for p in recipe.pans],
         "bake_type": recipe.bake_type,
         "bake_step": recipe.bake_step,
+        # How the yield is measured (Cayenne yield kinds): jsonb, so the dict itself, never a JSON string.
+        "yield_spec": recipe.yield_spec,
         # Restore fields (_cayenne_meta v2). is_favourite is NOT NULL; the other two are check-constrained.
         "is_favourite": bool(recipe.is_favourite),
         "source_uom_system": recipe.source_uom_system if recipe.source_uom_system in _UOM_SYSTEMS else None,

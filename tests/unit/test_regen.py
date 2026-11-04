@@ -106,6 +106,7 @@ def test_build_update_payload():
         "pans": [ref.pans[0].model_dump()],
         "bake_type": "sponge",
         "bake_step": 1,
+        "yield_spec": None,
     }
     # base_servings, grid_categories and title are user-owned after ingest (D3, 3.6)
     assert "base_servings" not in payload and "title" not in payload
@@ -212,3 +213,61 @@ def test_build_update_wraps_the_counts_against_the_rows_own_yield():
     # Without the row's yield (a failed read) only the ingredient count is wrapped.
     payload = build_update(ref, [0.1] * 3, read_rev=1)
     assert payload["tokenized_directions"][0]["text"] == "Beat all {{ing_01|four|4}} of the {{ing_01|eggs|none}}, then cut into 16 squares."
+
+
+# --- yield_spec (Cayenne yield kinds P6): the cook's kind and pills survive; the line lists are re-derived ---
+
+
+def _yield_refinement(checked):
+    return CayenneRefinement(
+        title="Pie", base_servings=4, structured_ingredients=[], tokenized_directions=[], yield_checked=checked,
+    )
+
+
+_REFINE_YIELD = {
+    "kind": "servings",
+    "container": {"pastry": "puff", "base": True, "sides": "full", "top": "full", "thickness": "thin",
+                  "component_lines": ["ing_07"], "topping_lines": ["ing_09"]},
+    "area": None, "pieces": None, "edited": False,
+}
+_COOKS_YIELD = {
+    "kind": "component",
+    "container": {"pastry": "shortcrust", "base": True, "sides": "short", "top": "none", "thickness": "thick",
+                  "component_lines": ["ing_01"], "topping_lines": ["ing_02"]},
+    "area": {"count": 2, "noun": "tin", "diameter_mm": 250}, "pieces": None, "edited": True,
+}
+
+
+def test_an_edited_yield_keeps_the_cooks_kind_and_pills_and_takes_refines_line_lists():
+    payload = build_update(_yield_refinement(_REFINE_YIELD), [0.1] * 3, 3, current_yield=_COOKS_YIELD)
+    spec = payload["yield_spec"]
+    assert spec["kind"] == "component" and spec["edited"] is True
+    assert spec["area"] == _COOKS_YIELD["area"] and spec["pieces"] is None
+    c = spec["container"]
+    assert (c["pastry"], c["base"], c["sides"], c["top"], c["thickness"]) == ("shortcrust", True, "short", "none", "thick")
+    assert c["component_lines"] == ["ing_07"] and c["topping_lines"] == ["ing_09"]
+
+
+def test_an_edited_yield_with_no_refine_answer_keeps_the_pills_and_empties_the_lists():
+    payload = build_update(_yield_refinement(None), [0.1] * 3, 3, current_yield=_COOKS_YIELD)
+    c = payload["yield_spec"]["container"]
+    assert payload["yield_spec"]["kind"] == "component" and c["thickness"] == "thick"
+    assert c["component_lines"] == [] and c["topping_lines"] == []
+    assert _COOKS_YIELD["container"]["component_lines"] == ["ing_01"]  # the input is not mutated
+
+
+def test_an_edited_yield_with_no_container_stays_without_one():
+    cooks = {"kind": "pieces", "container": None, "area": None,
+             "pieces": {"count": 8, "noun": "roll", "weight_g": 90, "diameter_mm": None}, "edited": True}
+    spec = build_update(_yield_refinement(_REFINE_YIELD), [0.1] * 3, 3, current_yield=cooks)["yield_spec"]
+    assert spec["container"] is None and spec["kind"] == "pieces" and spec["pieces"]["count"] == 8
+
+
+def test_an_unedited_or_missing_yield_writes_refines_whole_answer():
+    for current in ({**_COOKS_YIELD, "edited": False}, None, {}, "junk"):
+        payload = build_update(_yield_refinement(_REFINE_YIELD), [0.1] * 3, 3, current_yield=current)
+        assert payload["yield_spec"] == _REFINE_YIELD
+
+
+def test_no_answer_and_no_cook_edit_writes_none():
+    assert build_update(_yield_refinement(None), [0.1] * 3, 3)["yield_spec"] is None

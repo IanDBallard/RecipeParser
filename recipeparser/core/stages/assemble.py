@@ -172,6 +172,7 @@ def assemble(
         pans=recipe.pans,
         bake_type=recipe.bake_type,
         bake_step=recipe.bake_step,
+        yield_spec=recipe.yield_checked,
         notes=notes,
         rating=meta.rating if meta else None,
         nutritional_info=nutritional_info,

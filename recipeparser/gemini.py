@@ -36,6 +36,7 @@ from recipeparser import usage
 from recipeparser.core import job_signal
 from recipeparser.core.pans import BAKE_TYPES, HINT_KEYS, PAN_FAMILIES, PAN_SHAPES
 from recipeparser.core.picture_check import FoodVerdict
+from recipeparser.core.yields import PASTRY_TYPES, SIDES, THICKNESSES, TOPS, YIELD_KINDS
 from recipeparser.exceptions import AIServiceTimeoutError, ExtractionParseError, JobCancelledError
 from recipeparser.models import (
     CayenneRefinement,
@@ -43,9 +44,11 @@ from recipeparser.models import (
     DirectionMentions,
     PanAnswer,
     RecipeList,
+    RecipePan,
     StructuredIngredient,
     TemperatureMention,
     TemperatureMentions,
+    YieldAnswer,
 )
 
 if TYPE_CHECKING:
@@ -968,6 +971,36 @@ _TINS_BAKE = """\
         cream and fruit into a torte (Friesentorte, mille-feuille) are not a pie or tart crust: null.
      null: anything else, including roast meat, casseroles, cookies baked as separate pieces,
      meringues and pavlova, granola, crackers, and anything cooked on the hob."""
+_YIELD_RULES = """\
+   - "yield_spec": how the recipe's yield is measured. First decide the kind, one of {kinds}, by one
+     test, in this order:
+     1. component: the recipe's whole result goes into or onto another recipe (a pie or tart crust alone,
+        a pizza dough with no toppings, a crumb base alone). Its yield is an area: the tin it names, or
+        the count and diameter it states ("4 × 30 cm", "two 12-inch rounds") as "area". Never a weight.
+     2. pieces: an end recipe eaten by the piece (free-form loaves, rolls, baguettes, bagels, naan, pitta,
+        tortillas, hand pies, pasties, topped free-form pizzas): "pieces" holds the count and the size the
+        recipe states ("divide into two 450 g pieces", "8 balls of 90 g"); a size it does not state is null.
+     3. servings: everything else, cakes, tin loaves, filled pies, quiches and pan pizza included.
+     "container": present when the recipe makes a pastry or dough container or lid (a component, or a
+     filled pie, tart, quiche, pot pie, crumble or cobbler): which of base, sides and top the method
+     makes ("line the plate" is a base with sides; "cover with the second round" is top full; "weave a
+     lattice" is top lattice; "scatter the crumble over" is top crumble; a pot pie with only a lid is base
+     false, sides none, top full), the pastry type by its making, one of {pastry} (cold fat rubbed into
+     flour: shortcrust; with sugar and egg: sweet-shortcrust; layered or folded with butter: puff; fat
+     melted in boiling water: hot-water; suet: suet; a yeast dough stretched flat: pizza-dough; crumbs and
+     butter pressed: crumb; filo sheets: filo), "sides" one of {sides}, "top" one of {tops}, "thickness"
+     one of {thicknesses}: standard unless the recipe states a thickness, then the nearest of thin,
+     standard, thick; "component_lines" the 1-based positions in INGREDIENTS of the
+     crust's or dough's lines and "topping_lines" of a crumble, streusel or pizza topping; every other line
+     is filling and is not listed. A recipe with no container: null.
+     Examples: a double-crust apple pie -> servings, container base true, sides full, top full, shortcrust;
+     a pâte sucrée tart shell -> component, sides short, top none, sweet-shortcrust; a boule ->
+     pieces 1 × 900 g; a pizza dough for four -> component, area 4 × 300 mm, pizza-dough; a pot pie with a
+     puff lid -> servings, container base false, sides none, top full, puff; a stew -> servings, no container."""
+# REFINE writes its own ingredient list, so it is told which list the positions count in.
+_YIELD_REFINE_NOTE = """\
+   - In "yield_spec", INGREDIENTS is the structured_ingredients list you output: count every entry in it,
+     headings included, from 1."""
 _TINS_VOCAB = _TINS_SIZES + "\n" + _TINS_BAKE
 _TINS_TOKEN = """\
    - In the directions, wrap the words naming each listed tin in a tin token {{{{pan_01|words}}}},
@@ -976,13 +1009,19 @@ _TINS_TOKEN = """\
 _TINS_STEP = """\
    - "bake_step": the 0-based position in tokenized_directions (the first step is 0, not 1) of the
      step that bakes the main item, or null."""
-_TINS_RULES = "\n".join((_TINS_SIZES, _TINS_TOKEN, _TINS_BAKE, _TINS_STEP))
+_TINS_RULES = "\n".join((_TINS_SIZES, _TINS_TOKEN, _TINS_BAKE, _TINS_STEP, _YIELD_RULES, _YIELD_REFINE_NOTE))
 _TINS_FILL = dict(
     shapes=", ".join(PAN_SHAPES),
     families=", ".join(PAN_FAMILIES),
     hints=", ".join(HINT_KEYS),
     bake_types=", ".join(BAKE_TYPES),
+    kinds=", ".join(YIELD_KINDS),
+    pastry=", ".join(PASTRY_TYPES),
+    sides=", ".join(SIDES),
+    tops=", ".join(TOPS),
+    thicknesses=", ".join(THICKNESSES),
 )
+_YIELD_RULES_TEXT = _YIELD_RULES.format(**_TINS_FILL)
 _TINS_VOCAB_TEXT = _TINS_VOCAB.format(**_TINS_FILL)
 _TINS_RULES_TEXT = _TINS_RULES.format(**_TINS_FILL)
 
@@ -1118,6 +1157,8 @@ def refine_json_schema() -> dict:
     """
     json_schema = _schema_for_gemini(CayenneRefinement)
     json_schema["properties"].pop("grid_categories", None)
+    # Set by refine() from check_yield, never by the model.
+    json_schema["properties"].pop("yield_checked", None)
     return schema_without_client_fields(json_schema)
 
 
@@ -1380,6 +1421,70 @@ def tag_pans(
     if answer.bake_step is not None:
         answer.bake_step = answer.bake_step - 1 if answer.bake_step >= 1 else None
     return answer
+
+
+def build_yields_prompt(
+    steps: Sequence[str],
+    ingredients: Sequence[StructuredIngredient],
+    pans: Sequence[RecipePan],
+    bake_type: Optional[str],
+) -> str:
+    """The yields-only prompt (Cayenne yield kinds 11.3): how a saved recipe's yield is measured.
+    INGREDIENTS are numbered 1-based over every structured ingredient, headings included and marked
+    "(heading)", so the model's positions are the ones ``core.yields.check_yield`` maps to ids. The
+    tins and bake type are given as stored, so the model need not re-derive them."""
+    lines = "\n".join(
+        f"  {n}. " + ("(heading) " if ing.kind == "heading" else "") + ing.fallback_string
+        for n, ing in enumerate(ingredients, start=1)
+    )
+    numbered = "\n".join(f"  {n}. {text}" for n, text in enumerate(steps, start=1))
+    tins = "; ".join(p.raw for p in pans) or "none"
+    return f"""
+You are a culinary data refiner. Decide how this recipe's yield is measured, and what pastry or dough
+container it makes, if any.
+
+RULES:
+{_YIELD_RULES_TEXT}
+
+TINS: {tins}
+
+BAKE TYPE: {bake_type or "none"}
+
+INGREDIENTS:
+{lines}
+
+DIRECTIONS:
+{numbered}
+"""
+
+
+def tag_yield(
+    steps: Sequence[str],
+    ingredients: Sequence[StructuredIngredient],
+    pans: Sequence[RecipePan],
+    bake_type: Optional[str],
+    client: Any,
+    *,
+    limiter: Optional["GlobalRateLimiter"] = None,
+) -> YieldAnswer:
+    """How one recipe's yield is measured, from one Gemini call. Raises on failure: the backfill decides
+    whether a recipe it could not ask about is skipped. The answer's positions are unchecked; pass it
+    through ``core.yields.check_yield`` with the same ingredients."""
+    response: Any = _call_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=build_yields_prompt(steps, ingredients, pans, bake_type),
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": schema_without_client_fields(_schema_for_gemini(YieldAnswer)),
+            "temperature": 0,
+        },
+        what="Yield",
+        limiter=limiter,
+    )
+    if not response.text or not response.text.strip():
+        raise RuntimeError("tag_yield(): Gemini returned an empty response")
+    return YieldAnswer.model_validate(json.loads(response.text))
 
 
 def build_servings_prompt(title: str, ingredients: Sequence[str], directions: Sequence[str]) -> str:

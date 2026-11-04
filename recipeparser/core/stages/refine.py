@@ -24,6 +24,7 @@ from recipeparser.core.numbers import written_measures
 from recipeparser.core.pans import apply_pan_checks, check_core_flags
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.temperatures import repair_tokens
+from recipeparser.core.yields import check_yield
 from recipeparser.gemini import refine_recipe_for_cayenne
 from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction
 from recipeparser.utils import title_case
@@ -544,6 +545,10 @@ def refine(
         log.warning("refine(): '%s': %s", result.title, line)
     _check_temperatures(result, raw)
     for line in apply_pan_checks(result, raw.directions):
+        log.warning("refine(): '%s': %s", result.title, line)
+    # The yield's positions count in the ingredient list REFINE wrote, so it is checked against that list.
+    result.yield_checked, yield_warnings = check_yield(result.yield_spec, result.structured_ingredients, result.pans)
+    for line in yield_warnings:
         log.warning("refine(): '%s': %s", result.title, line)
     _validate_fat_tokens(result)
     _check_mentions(result)

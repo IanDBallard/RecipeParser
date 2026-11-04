@@ -24,6 +24,7 @@ def _recipe() -> IngestResponse:
         pans=[RecipePan(id="pan_01", raw="a 20 cm tin", shape="round", family="round-cake", dims_mm={"d": 200})],
         bake_type="sponge",
         bake_step=0,
+        yield_spec={"kind": "servings", "container": None, "area": None, "pieces": None, "edited": False},
     )
 
 
@@ -77,6 +78,15 @@ def test_row_has_the_tins_bake_type_and_bake_step(posted):
     assert posted["pans"][0]["dims_mm"]["d"] == 200
     assert posted["pans"][0]["edited"] is False
     assert (posted["bake_type"], posted["bake_step"]) == ("sponge", 0)
+
+
+def test_row_has_the_yield_spec_as_a_real_object(posted):
+    assert posted["yield_spec"] == {"kind": "servings", "container": None, "area": None, "pieces": None,
+                                    "edited": False}
+
+
+def test_row_yield_spec_is_none_when_unclassified():
+    assert _row(yield_spec=None)["yield_spec"] is None
 
 
 # --- Cayenne restore (plan B task 3) -----------------------------------------

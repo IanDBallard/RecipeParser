@@ -137,7 +137,8 @@
           "step": 4,
           "text": "Cut while warm and cool in the tin."
         }
-      ]
+      ],
+      "yield_spec": null
     },
     {
       "bake_step": null,
@@ -292,7 +293,8 @@
           "step": 4,
           "text": "Pat out to 1 inch thick, cut rounds, and bake for 12 to 14 minutes."
         }
-      ]
+      ],
+      "yield_spec": null
     }
   ]
 }

@@ -214,7 +214,8 @@
             "step": 6,
             "text": "Shape, retard overnight, and bake at 475F in a covered pot for 20 minutes, then 20 uncovered."
           }
-        ]
+        ],
+        "yield_spec": null
       },
       "categories": [
         "Bread"
@@ -382,7 +383,8 @@
             "step": 3,
             "text": "Bake at 400F for 35 minutes."
           }
-        ]
+        ],
+        "yield_spec": null
       },
       "categories": [
         "Bread"
