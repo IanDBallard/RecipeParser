@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.28.0] — 2026-11-05
+
+Yield kinds stage 2 (Cayenne): pieces and component areas carry the counts and sizes the recipe states. **Deploy note:** deploy after Cayenne's stage 2 PR is live; the stage 2 backfill runs on this release with `--settle-pieces`.
+
+### ⚠️ Changed
+- `check_yield` keeps a component that has an `area` (a count and a diameter) even when the recipe names no tin, so a pizza dough sized "4 × 30 cm" stays a component (P21); a component with neither a tin nor an area is still stored as servings.
+- The yield rules name the piece and its stated size: "noun" is the thing itself in the singular, never "serving", "piece" or "slice" when the recipe names it; a galette or free-form tart is usually 1; a topped pizza's count is the pizzas and its size their diameter; "weight_g" and "diameter_mm" only when the recipe states them, never derived from the ingredients; a dough with no tin gives its count and diameter as "area". The prompt snapshots are updated on purpose.
+- The probe set (`tests/goldens/yield_kinds/cases.csv`) scores counts and sizes: two optional columns, `expected_count` and `expected_size` (a piece's weight in grams, else its diameter in millimetres; blank is not scored), filled for the stage 1 pieces recipes whose text states them, plus six new pieces cases (60 in all). `scripts/probe_yield_kinds.py` compares them.
+- `backfill_yields.py` gains its second scope, `--settle-pieces`.
+
+---
+
 ## [9.27.0] — 2026-11-04
 
 How a recipe's yield is measured (Cayenne yield kinds): servings, pieces, or a component that goes into or onto another recipe, and the pastry or dough container a pie, tart, quiche or crust makes. **Deploy note:** run this release only after Cayenne's `20261103120000_yield_kinds.sql` is live (it adds `recipes.yield_spec`); the stage 1 backfill runs on this release.

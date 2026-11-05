@@ -122,3 +122,12 @@ def test_yield_text_from_a_stored_rows_servings_columns():
     assert yield_text(4, 4, "") == "4"
     assert yield_text(None, None, "Makes one loaf") == "Makes one loaf"
     assert yield_text(None, None, None) is None and yield_text(None, None, "  ") is None
+
+
+def test_the_rules_name_the_piece_and_the_galettes_count():
+    rules = " ".join(_YIELD_RULES_TEXT.split())
+    assert 'never "serving", "piece" or "slice"' in rules
+    assert "a galette or free-form tart is usually 1" in rules
+    assert "two 12-inch pizzas" in rules and "diameter_mm 305" in rules
+    assert "never derive either from the ingredients" in rules
+    assert '"area" when a dough names no tin' in rules
