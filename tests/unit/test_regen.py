@@ -280,7 +280,7 @@ def _tin_refinement(pans):
     from recipeparser.core.yields import check_yield
     from recipeparser.models import YieldAnswer
 
-    answer = YieldAnswer(kind="component", area={"count": 1, "noun": "tin", "diameter_mm": 230})
+    answer = YieldAnswer(kind="component")  # no area: only a tin keeps it a component
     ref = CayenneRefinement(title="Pastry", base_servings=4, structured_ingredients=[], tokenized_directions=[],
                             pans=pans, yield_spec=answer)
     ref.yield_checked, _ = check_yield(answer, [], pans)
@@ -296,7 +296,7 @@ def test_a_cook_edited_pie_tin_lets_refines_component_stand():
     assert ref.yield_checked["kind"] == "servings"  # REFINE's tins have no fittable one
     cooks = [{**_PIE_TIN.model_dump(), "edited": True}]
     spec = build_update(ref, [0.1] * 3, 3, current_pans=cooks)["yield_spec"]
-    assert spec["kind"] == "component" and spec["area"]["diameter_mm"] == 230
+    assert spec["kind"] == "component"
 
 
 def test_cook_edited_tins_with_no_fittable_one_demote_refines_component():
@@ -305,7 +305,7 @@ def test_cook_edited_tins_with_no_fittable_one_demote_refines_component():
     for cooks in ([{**_PIZZA.model_dump(), "edited": True}],
                   [{**_PIE_TIN.model_dump(), "edited": True, "removed": True}]):
         spec = build_update(ref, [0.1] * 3, 3, current_pans=cooks)["yield_spec"]
-        assert spec["kind"] == "servings" and spec["area"]["diameter_mm"] == 230
+        assert spec["kind"] == "servings"
 
 
 def test_unedited_tins_leave_refines_checked_yield_as_it_is():

@@ -3,13 +3,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from recipeparser.core.yields import PASTRY_TYPES, SIDES, THICKNESSES, TOPS, YIELD_KINDS, check_yield
+from recipeparser.core.yields import _AREA_DIAMETER_MM, _PIECE_DIAMETER_MM, _PIECE_WEIGHT_G, PASTRY_TYPES, SIDES, THICKNESSES, TOPS, YIELD_KINDS, check_yield
 from recipeparser.models import RecipePan, StructuredIngredient, YieldAnswer, YieldArea, YieldContainer, YieldPieces
 
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "yield_kinds.json"
 # The fixture is one file kept in two repositories: this constant also lives in Cayenne
 # cayenne-web/tests/unit/domain/yieldKinds.test.ts, and both change together with the fixture.
-_FIXTURE_SHA256 = "d1636dc4c63f659de2d05d86c80e618ef061dad000a244d7f688d0e9db8d73b1"
+_FIXTURE_SHA256 = "fa78100cb356a90508a4c790e888ce51902dcea7da9d756eb509a25d61307a3b"
 
 
 def test_fixture_is_byte_identical_to_the_copy_cayenne_runs():
@@ -20,6 +20,13 @@ def test_vocabularies_match_the_fixture():
     f = json.loads(_FIXTURE.read_text(encoding="utf-8"))
     assert tuple(f["kinds"]) == YIELD_KINDS and tuple(f["pastry"]) == PASTRY_TYPES
     assert tuple(f["sides"]) == SIDES and tuple(f["tops"]) == TOPS and tuple(f["thicknesses"]) == THICKNESSES
+
+
+def test_ranges_match_the_fixture():
+    r = json.loads(_FIXTURE.read_text(encoding="utf-8"))["ranges"]
+    assert tuple(r["piece_weight_g"]) == _PIECE_WEIGHT_G
+    assert tuple(r["piece_diameter_mm"]) == _PIECE_DIAMETER_MM
+    assert tuple(r["area_diameter_mm"]) == _AREA_DIAMETER_MM
 
 
 def _ing(i, kind="ingredient"):
@@ -129,14 +136,32 @@ def test_a_component_with_no_tin_is_stored_as_servings_and_keeps_its_container()
     spec, warnings = check_yield(a, ING, [])
     assert spec["kind"] == "servings"
     assert spec["container"]["pastry"] == "puff" and spec["container"]["component_lines"] == []
-    assert any("no fittable tin" in w for w in warnings)
+    assert any("neither a fittable tin nor an area" in w for w in warnings)
 
 
-def test_a_pizza_dough_with_an_area_and_no_tin_is_servings_with_the_area_kept():
+def test_a_pizza_dough_with_an_area_and_no_tin_stays_a_component():
     a = YieldAnswer(kind="component", area={"count": 4, "noun": "round", "diameter_mm": 300})
+    spec, _ = check_yield(a, ING, [])
+    assert spec["kind"] == "component" and spec["area"] == {"count": 4, "noun": "round", "diameter_mm": 300}
+
+
+def test_a_component_with_an_area_and_no_tin_stays_a_component():
+    a = YieldAnswer(
+        kind="component",
+        area=YieldArea(count=4, noun="round", diameter_mm=300),
+        container=YieldContainer(pastry="pizza-dough", base=True, sides="none", top="none", component_lines=[2]),
+    )
+    spec, _ = check_yield(a, ING, [])
+    assert spec["kind"] == "component"
+    assert spec["area"] == {"count": 4, "noun": "round", "diameter_mm": 300}
+    assert spec["container"]["component_lines"] == ["ing_02"]
+
+
+def test_a_component_with_neither_tin_nor_area_is_servings_with_the_new_warning():
+    a = YieldAnswer(kind="component", container=YieldContainer(pastry="puff", component_lines=[2]))
     spec, warnings = check_yield(a, ING, [])
-    assert spec["kind"] == "servings" and spec["area"] == {"count": 4, "noun": "round", "diameter_mm": 300}
-    assert any("until stage 2" in w for w in warnings)
+    assert spec["kind"] == "servings" and spec["container"]["component_lines"] == []
+    assert "yield component with neither a fittable tin nor an area stored as servings until stage 3 reads the leftovers" in warnings
 
 
 def test_a_component_whose_only_tin_is_a_sheet_a_loaf_or_removed_is_servings():
