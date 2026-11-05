@@ -81,6 +81,7 @@
         'text': 'Mix {{ing_01|1.5 cups flour}} until smooth.',
       }),
     ]),
+    'yield_spec': None,
   })
 # ---
 # name: test_embed_output_shape
@@ -166,5 +167,7 @@
         'text': 'Mix {{ing_01|1.5 cups flour}} until smooth.',
       }),
     ]),
+    'yield_checked': None,
+    'yield_spec': None,
   })
 # ---
