@@ -67,11 +67,16 @@ def answer_of(spec: Optional[Dict[str, Any]]) -> Answer:
     return spec.get("kind"), container.get("top"), container.get("pastry"), group.get("count"), size
 
 
+def _size_matches(got: Optional[float], want: float) -> bool:
+    """A size within rounding: 28.35 g matches 28.349523125 g, a 114 mm answer does not."""
+    return got is not None and abs(got - want) <= max(0.5, 0.01 * want)
+
+
 def _matches(case: Case, answer: Answer) -> bool:
     _, _, kind, top, pastry, count, size = case
     return (
         answer[0] == kind and (top is None or answer[1] == top) and (pastry is None or answer[2] == pastry)
-        and (count is None or answer[3] == count) and (size is None or answer[4] == size)
+        and (count is None or answer[3] == count) and (size is None or _size_matches(answer[4], size))
     )
 
 

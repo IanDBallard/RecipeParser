@@ -98,3 +98,14 @@ def test_read_cases_reads_the_optional_columns(tmp_path):
     old = tmp_path / "b.csv"
     old.write_text("id,title,expected_kind,expected_top,expected_pastry\nx,Boule,pieces,,\n", encoding="utf-8")
     assert probe.read_cases(old) == [("x", "Boule", "pieces", None, None, None, None)]
+
+
+def test_a_size_within_rounding_matches():
+    oz = ("g", "Empanadas", "pieces", None, None, 36, 28.35)
+    assert probe.score([oz], [{"g": ("pieces", None, None, 36, 28.349523125)}])["matches"] == [1]
+
+
+def test_an_expected_weight_against_an_answered_diameter_misses():
+    oz = ("g", "Empanadas", "pieces", None, None, 36, 28.35)
+    assert probe.score([oz], [{"g": ("pieces", None, None, 36, 114)}])["matches"] == [0]
+    assert probe.score([oz], [{"g": ("pieces", None, None, 36, None)}])["matches"] == [0]
