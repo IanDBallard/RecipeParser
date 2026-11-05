@@ -98,15 +98,27 @@ def _container(
 ) -> Dict[str, object]:
     component = _ids(c.component_lines, ingredients, "component_lines", warnings)
     topping = [i for i in _ids(c.topping_lines, ingredients, "topping_lines", warnings) if i not in component]
+    base = c.base if isinstance(c.base, bool) else True
+    top = _word(c.top, TOPS, DEFAULT_TOP, "top", warnings)
+    if not base and top in ("crumble", "none") and component:
+        # No rolled piece: what the model listed as component lines is the topping.
+        topping = topping + [i for i in component if i not in topping]
+        component = []
+        warnings.append("yield container with no rolled piece: component_lines moved to topping_lines")
     return {
         "pastry": _word(c.pastry, PASTRY_TYPES, DEFAULT_PASTRY, "pastry", warnings),
-        "base": c.base if isinstance(c.base, bool) else True,
+        "base": base,
         "sides": _word(c.sides, SIDES, DEFAULT_SIDES, "sides", warnings),
-        "top": _word(c.top, TOPS, DEFAULT_TOP, "top", warnings),
+        "top": top,
         "thickness": _word(c.thickness, THICKNESSES, DEFAULT_THICKNESS, "thickness", warnings),
         "component_lines": component,
         "topping_lines": topping,
     }
+
+
+def _unsplit(container: Optional[Dict[str, object]]) -> Optional[Dict[str, object]]:
+    """A recipe demoted to servings has no part split: both line lists empty, so every line takes the number."""
+    return None if container is None else {**container, "component_lines": [], "topping_lines": []}
 
 
 def yield_text(servings_min: object, servings_max: object, servings_note: Optional[str]) -> Optional[str]:
@@ -144,8 +156,8 @@ def check_yield(
       and are mapped to ids; one out of range or naming a heading is dropped with a warning; a line
       in both lists is component;
     - a component with no (unremoved) tin in COMPONENT_TIN_FAMILIES is stored as 'servings', container and
-      area kept as they are (stage 2 reads them), with a warning; `pans` are RecipePans or stored tin dicts;
-    - a component whose container pastry is 'crumb' is stored as 'servings' too (D84, stage 3);
+      area kept as they are (stage 2 reads them), with a warning; both line lists are emptied; `pans` are RecipePans or stored tin dicts;
+    - a component whose container pastry is 'crumb' is stored as 'servings' too (D84, stage 3), also with empty line lists;
     - `edited` is always False from the parser.
     """
     if answer is None:
@@ -193,9 +205,11 @@ def check_yield(
     if kind == "component" and not has_fittable_tin(pans):
         warnings.append("yield component with no fittable tin stored as servings until stage 2")
         kind = "servings"
+        container = _unsplit(container)
     # D84: a pressed crumb crust is not a rolled disc; its thickness model is stage 3's.
     if kind == "component" and container is not None and container["pastry"] == "crumb":
         warnings.append("yield crumb crust stored as servings until stage 3 (D84)")
         kind = "servings"
+        container = _unsplit(container)
 
     return {"kind": kind, "container": container, "area": area, "pieces": pieces, "edited": False}, warnings

@@ -128,7 +128,7 @@ def test_a_component_with_no_tin_is_stored_as_servings_and_keeps_its_container()
     a = YieldAnswer(kind="component", container=YieldContainer(pastry="puff", top="full", component_lines=[2]))
     spec, warnings = check_yield(a, ING, [])
     assert spec["kind"] == "servings"
-    assert spec["container"]["pastry"] == "puff" and spec["container"]["component_lines"] == ["ing_02"]
+    assert spec["container"]["pastry"] == "puff" and spec["container"]["component_lines"] == []
     assert any("no fittable tin" in w for w in warnings)
 
 
@@ -184,3 +184,27 @@ def test_a_piece_diameter_outside_10_to_1000_mm_is_dropped():
     spec, _ = check_yield(YieldAnswer(kind="pieces", pieces={"count": 4, "noun": "pizza", "diameter_mm": 300}), ING, [])
     assert spec["pieces"]["diameter_mm"] == 300
     assert json.dumps(spec, allow_nan=False)
+
+
+def test_a_demotion_to_servings_empties_both_line_lists():
+    c = YieldContainer(pastry="shortcrust", component_lines=[2, 3], topping_lines=[4])
+    tinless, _ = check_yield(YieldAnswer(kind="component", container=c), ING, [])
+    assert tinless["kind"] == "servings" and tinless["container"]["pastry"] == "shortcrust"
+    assert tinless["container"]["component_lines"] == [] and tinless["container"]["topping_lines"] == []
+    crumb = YieldContainer(pastry="crumb", component_lines=[2, 3], topping_lines=[4])
+    spec, _ = check_yield(YieldAnswer(kind="component", container=crumb), ING, PIE)
+    assert spec["kind"] == "servings" and spec["container"]["component_lines"] == []
+    assert spec["container"]["topping_lines"] == []
+    kept, _ = check_yield(YieldAnswer(kind="component", container=c), ING, PIE)
+    assert kept["container"]["component_lines"] == ["ing_02", "ing_03"]
+
+
+def test_a_crumble_with_no_rolled_piece_moves_its_component_lines_to_the_topping():
+    c = YieldContainer(pastry="crumb", base=False, sides="none", top="crumble", component_lines=[2, 3], topping_lines=[4, 3])
+    spec, warnings = check_yield(YieldAnswer(kind="servings", container=c), ING, [])
+    assert spec["container"]["component_lines"] == []
+    assert spec["container"]["topping_lines"] == ["ing_04", "ing_02", "ing_03"]
+    assert any("topping_lines" in w and "moved" in w for w in warnings)
+    rolled = YieldContainer(base=True, top="crumble", component_lines=[2], topping_lines=[3])
+    spec, _ = check_yield(YieldAnswer(kind="servings", container=rolled), ING, [])
+    assert spec["container"]["component_lines"] == ["ing_02"] and spec["container"]["topping_lines"] == ["ing_03"]
