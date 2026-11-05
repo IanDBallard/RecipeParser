@@ -325,6 +325,16 @@ def test_review_columns_and_lines(tmp_path):
 MISSING = "column recipes.yield_spec does not exist"
 
 
+def test_a_pieces_row_with_no_size_is_noted():
+    sizeless = YieldAnswer(kind="pieces", pieces=YieldPieces(count=12, noun="roll"))
+    r = by.plan_row(row(), asker(sizeless))
+    assert r.status == "tagged" and "pieces: no size stated" in r.notes
+    by_diameter = YieldAnswer(kind="pieces", pieces=YieldPieces(count=2, noun="pizza", diameter_mm=300))
+    assert "pieces: no size stated" not in by.plan_row(row(), asker(by_diameter)).notes
+    assert "pieces: no size stated" not in by.plan_row(row(), asker(pieces_answer())).notes
+    assert "pieces: no size stated" not in by.plan_row(row(), asker(servings_answer())).notes
+
+
 def _run_main(monkeypatch, argv, rows, log, ans=None, missing_columns=False, writes_ok=True, moved=None,
               write_raises=False):
     """main() against a fake table. ``moved``: id -> columns changed after the read (a cook mid-run)."""
@@ -551,6 +561,15 @@ def test_summary_counts_kinds_and_assemblies_without_lines(monkeypatch, capsys):
     _run_main(monkeypatch, ["--all-users"], [row()], [], ans=ans)
     out = capsys.readouterr().out
     assert "servings" in out and "assemblies with no component lines: 1" in out
+
+
+def test_summary_counts_pieces_with_no_size(monkeypatch, capsys):
+    sizeless = YieldAnswer(kind="pieces", pieces=YieldPieces(count=12, noun="roll"))
+    _run_main(monkeypatch, ["--all-users"], [row()], [], ans=sizeless)
+    out = capsys.readouterr().out
+    assert "pieces with no size: 1" in out
+    _run_main(monkeypatch, ["--all-users"], [row()], [], ans=pieces_answer())
+    assert "pieces with no size: 0" in capsys.readouterr().out
 
 
 # --- restore -----------------------------------------------------------------------------------------

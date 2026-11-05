@@ -13,7 +13,7 @@ Yield kinds stage 2 (Cayenne): pieces and component areas carry the counts and s
 - `check_yield` keeps a component that has an `area` (a count and a diameter) even when the recipe names no tin, so a pizza dough sized "4 × 30 cm" stays a component (P21); a component with neither a tin nor an area is still stored as servings.
 - The yield rules name the piece and its stated size: "noun" is the thing itself in the singular, never "serving", "piece" or "slice" when the recipe names it; a galette or free-form tart is usually 1; a topped pizza's count is the pizzas and its size their diameter; "weight_g" and "diameter_mm" only when the recipe states them, never derived from the ingredients; a dough with no tin gives its count and diameter as "area". The prompt snapshots are updated on purpose.
 - The probe set (`tests/goldens/yield_kinds/cases.csv`) scores counts and sizes: two optional columns, `expected_count` and `expected_size` (a piece's weight in grams, else its diameter in millimetres; blank is not scored), filled for the stage 1 pieces recipes whose text states them, plus six new pieces cases (60 in all). `scripts/probe_yield_kinds.py` compares them.
-- The backfill's second scope (`--settle-pieces`) lands in this same release; its own entry follows with that change.
+- `scripts/backfill_yields.py` takes its second scope (P22: breads, pizza and untinned pastry without a `yield_spec`, the recipes already tagged `pieces`, and servings recipes that carry an `area` or a pizza `container`; run with `--settle-pieces` and `--ids-file`). A tagged pieces recipe whose spec states neither a weight nor a diameter is noted "pieces: no size stated" in the review, and the summary prints `pieces with no size: N`.
 
 ---
 
