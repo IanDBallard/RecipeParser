@@ -435,6 +435,40 @@
        meringues and pavlova, granola, crackers, and anything cooked on the hob.
      - "bake_step": the 0-based position in tokenized_directions (the first step is 0, not 1) of the
        step that bakes the main item, or null.
+     - "yield_spec": how the recipe's yield is measured. First decide the kind, one of servings, pieces, component, by one
+       test, in this order:
+       1. component: the recipe's whole result goes into or onto another recipe (a pie or tart crust alone,
+          a pizza dough with no toppings, a crumb base alone). Its yield is an area: the tin it names, or
+          the count and diameter it states ("4 × 30 cm", "two 12-inch rounds") as "area". Never a weight.
+       2. pieces: an end recipe eaten by the piece (free-form loaves, rolls, baguettes, bagels, naan, pitta,
+          tortillas, hand pies, pasties, topped free-form pizzas): "pieces" holds the count and the size the
+          recipe states ("divide into two 450 g pieces", "8 balls of 90 g"); a size it does not state is null.
+          Galettes, free-form tarts, crostatas, individual pies, hand pies, pasties, turnovers and sausage
+          rolls are pieces. A topped pizza baked on a stone, steel, tray or sheet, or free-form, is pieces.
+       3. servings: everything else, cakes, tin loaves, filled pies, quiches included. Cookies, biscuits,
+          muffins, cupcakes, scones, brownies, bars and traybakes are servings (they are counted, "Makes 24
+          cookies"), never pieces. So is a pizza baked in a deep pan or skillet (Detroit, Sicilian, deep-dish).
+       "container": present when the recipe makes a pastry or dough container or lid (a component, or a
+       filled pie, tart, quiche, pot pie, crumble or cobbler): which of base, sides and top the method
+       makes ("line the plate" is a base with sides; "cover with the second round" is top full; "weave a
+       lattice" is top lattice; "scatter the crumble over" is top crumble; a pot pie with only a lid is base
+       false, sides none, top full; a crust or pastry recipe that makes a double crust, a lid, two rounds or
+       "top and bottom crusts" is top full, even when it says so only in its yield words, "Enough for double
+       crust for a standard pie plate"; a crust for an open pie or tart shell is top none), the pastry type by its making, one of shortcrust, sweet-shortcrust, puff, hot-water, suet, pizza-dough, crumb, filo (cold fat rubbed into
+       flour: shortcrust; with sugar and egg: sweet-shortcrust; layered or folded with butter: puff; fat
+       melted in boiling water: hot-water; suet: suet; a yeast dough stretched flat: pizza-dough; crumbs and
+       butter pressed: crumb; filo sheets: filo), "sides" one of full, short, none, "top" one of none, full, lattice, crumble, "thickness"
+       one of thin, standard, thick: standard unless the recipe states a thickness, then the nearest of thin,
+       standard, thick; "component_lines" the 1-based positions in INGREDIENTS of the
+       crust's or dough's lines and "topping_lines" of a crumble, streusel or pizza topping (a
+       crumble, streusel or crisp topping's lines are topping_lines, never component_lines); every other line
+       is filling and is not listed. A recipe with no container: null.
+       Examples: a double-crust apple pie -> servings, container base true, sides full, top full, shortcrust;
+       a pâte sucrée tart shell -> component, sides short, top none, sweet-shortcrust; a boule ->
+       pieces 1 × 900 g; a pizza dough for four -> component, area 4 × 300 mm, pizza-dough; a pot pie with a
+       puff lid -> servings, container base false, sides none, top full, puff; a stew -> servings, no container.
+     - In "yield_spec", INGREDIENTS is the structured_ingredients list you output: count every entry in it,
+       headings included, from 1.
   
   SOURCE HOST: none
   
@@ -646,6 +680,40 @@
        meringues and pavlova, granola, crackers, and anything cooked on the hob.
      - "bake_step": the 0-based position in tokenized_directions (the first step is 0, not 1) of the
        step that bakes the main item, or null.
+     - "yield_spec": how the recipe's yield is measured. First decide the kind, one of servings, pieces, component, by one
+       test, in this order:
+       1. component: the recipe's whole result goes into or onto another recipe (a pie or tart crust alone,
+          a pizza dough with no toppings, a crumb base alone). Its yield is an area: the tin it names, or
+          the count and diameter it states ("4 × 30 cm", "two 12-inch rounds") as "area". Never a weight.
+       2. pieces: an end recipe eaten by the piece (free-form loaves, rolls, baguettes, bagels, naan, pitta,
+          tortillas, hand pies, pasties, topped free-form pizzas): "pieces" holds the count and the size the
+          recipe states ("divide into two 450 g pieces", "8 balls of 90 g"); a size it does not state is null.
+          Galettes, free-form tarts, crostatas, individual pies, hand pies, pasties, turnovers and sausage
+          rolls are pieces. A topped pizza baked on a stone, steel, tray or sheet, or free-form, is pieces.
+       3. servings: everything else, cakes, tin loaves, filled pies, quiches included. Cookies, biscuits,
+          muffins, cupcakes, scones, brownies, bars and traybakes are servings (they are counted, "Makes 24
+          cookies"), never pieces. So is a pizza baked in a deep pan or skillet (Detroit, Sicilian, deep-dish).
+       "container": present when the recipe makes a pastry or dough container or lid (a component, or a
+       filled pie, tart, quiche, pot pie, crumble or cobbler): which of base, sides and top the method
+       makes ("line the plate" is a base with sides; "cover with the second round" is top full; "weave a
+       lattice" is top lattice; "scatter the crumble over" is top crumble; a pot pie with only a lid is base
+       false, sides none, top full; a crust or pastry recipe that makes a double crust, a lid, two rounds or
+       "top and bottom crusts" is top full, even when it says so only in its yield words, "Enough for double
+       crust for a standard pie plate"; a crust for an open pie or tart shell is top none), the pastry type by its making, one of shortcrust, sweet-shortcrust, puff, hot-water, suet, pizza-dough, crumb, filo (cold fat rubbed into
+       flour: shortcrust; with sugar and egg: sweet-shortcrust; layered or folded with butter: puff; fat
+       melted in boiling water: hot-water; suet: suet; a yeast dough stretched flat: pizza-dough; crumbs and
+       butter pressed: crumb; filo sheets: filo), "sides" one of full, short, none, "top" one of none, full, lattice, crumble, "thickness"
+       one of thin, standard, thick: standard unless the recipe states a thickness, then the nearest of thin,
+       standard, thick; "component_lines" the 1-based positions in INGREDIENTS of the
+       crust's or dough's lines and "topping_lines" of a crumble, streusel or pizza topping (a
+       crumble, streusel or crisp topping's lines are topping_lines, never component_lines); every other line
+       is filling and is not listed. A recipe with no container: null.
+       Examples: a double-crust apple pie -> servings, container base true, sides full, top full, shortcrust;
+       a pâte sucrée tart shell -> component, sides short, top none, sweet-shortcrust; a boule ->
+       pieces 1 × 900 g; a pizza dough for four -> component, area 4 × 300 mm, pizza-dough; a pot pie with a
+       puff lid -> servings, container base false, sides none, top full, puff; a stew -> servings, no container.
+     - In "yield_spec", INGREDIENTS is the structured_ingredients list you output: count every entry in it,
+       headings included, from 1.
   
   SOURCE HOST: taste.com.au
   
@@ -1019,6 +1087,255 @@
         'title': 'TokenizedDirection',
         'type': 'object',
       }),
+      'YieldAnswer': dict({
+        'description': "How a recipe's yield is measured.",
+        'properties': dict({
+          'area': dict({
+            'anyOf': list([
+              dict({
+                '$ref': '#/$defs/YieldArea',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Only on a component; otherwise null.',
+          }),
+          'container': dict({
+            'anyOf': list([
+              dict({
+                '$ref': '#/$defs/YieldContainer',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'The pastry or dough container the recipe makes; null when it makes none.',
+          }),
+          'kind': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'servings, pieces or component.',
+            'title': 'Kind',
+          }),
+          'pieces': dict({
+            'anyOf': list([
+              dict({
+                '$ref': '#/$defs/YieldPieces',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'Only on a pieces recipe; otherwise null.',
+          }),
+        }),
+        'title': 'YieldAnswer',
+        'type': 'object',
+      }),
+      'YieldArea': dict({
+        'description': "A component's yield: how many rounds of what size.",
+        'properties': dict({
+          'count': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'How many tins or rounds the recipe makes.',
+            'title': 'Count',
+          }),
+          'diameter_mm': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Each one's diameter in millimetres.",
+            'title': 'Diameter Mm',
+          }),
+          'noun': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'What they are, as the recipe says: tin, round, base.',
+            'title': 'Noun',
+          }),
+        }),
+        'title': 'YieldArea',
+        'type': 'object',
+      }),
+      'YieldContainer': dict({
+        'description': 'The pastry or dough container (or lid) a recipe makes.',
+        'properties': dict({
+          'base': dict({
+            'anyOf': list([
+              dict({
+                'type': 'boolean',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'true when the method lines the bottom of the dish.',
+            'title': 'Base',
+          }),
+          'component_lines': dict({
+            'description': '1-based positions in the INGREDIENTS list of the lines that make the crust or dough.',
+            'items': dict({
+              'type': 'integer',
+            }),
+            'title': 'Component Lines',
+            'type': 'array',
+          }),
+          'pastry': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'The pastry type by how it is made: shortcrust, sweet-shortcrust, puff, hot-water, suet, pizza-dough, crumb or filo.',
+            'title': 'Pastry',
+          }),
+          'sides': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'How far the pastry goes up the sides: full, short or none.',
+            'title': 'Sides',
+          }),
+          'thickness': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'standard unless the recipe states a thickness, then the nearest of thin, standard or thick.',
+            'title': 'Thickness',
+          }),
+          'top': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'What covers the filling: none, full (a lid), lattice or crumble.',
+            'title': 'Top',
+          }),
+          'topping_lines': dict({
+            'description': '1-based positions in the INGREDIENTS list of the lines that make a crumble, streusel or pizza topping.',
+            'items': dict({
+              'type': 'integer',
+            }),
+            'title': 'Topping Lines',
+            'type': 'array',
+          }),
+        }),
+        'title': 'YieldContainer',
+        'type': 'object',
+      }),
+      'YieldPieces': dict({
+        'description': "A pieces recipe's yield: how many, and how big as the recipe states.",
+        'properties': dict({
+          'count': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'How many pieces the recipe makes.',
+            'title': 'Count',
+          }),
+          'diameter_mm': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Each piece's diameter in millimetres; null when not stated.",
+            'title': 'Diameter Mm',
+          }),
+          'noun': dict({
+            'anyOf': list([
+              dict({
+                'type': 'string',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': 'What they are: loaf, roll, bagel, pasty.',
+            'title': 'Noun',
+          }),
+          'weight_g': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'description': "Each piece's weight in grams; null when not stated.",
+            'title': 'Weight G',
+          }),
+        }),
+        'title': 'YieldPieces',
+        'type': 'object',
+      }),
     }),
     'description': 'Internal refinement pass output.',
     'properties': dict({
@@ -1124,6 +1441,18 @@
         }),
         'title': 'Tokenized Directions',
         'type': 'array',
+      }),
+      'yield_spec': dict({
+        'anyOf': list([
+          dict({
+            '$ref': '#/$defs/YieldAnswer',
+          }),
+          dict({
+            'type': 'null',
+          }),
+        ]),
+        'default': None,
+        'description': "How the recipe's yield is measured; null when it cannot be told.",
       }),
     }),
     'required': list([

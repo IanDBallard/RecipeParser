@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.27.0] — 2026-11-04
+
+How a recipe's yield is measured (Cayenne yield kinds): servings, pieces, or a component that goes into or onto another recipe, and the pastry or dough container a pie, tart, quiche or crust makes. **Deploy note:** run this release only after Cayenne's `20261103120000_yield_kinds.sql` is live (it adds `recipes.yield_spec`); the stage 1 backfill runs on this release.
+
+### ✨ Added
+- `yield_spec` on REFINE's output (`YieldAnswer`: the kind, the container with its pastry, base, sides, top, thickness and the 1-based `component_lines` and `topping_lines`, the area of a component, the pieces of a pieces recipe), asked by one rule block (`_YIELD_RULES`, templated from `core.yields` so the vocabularies cannot drift) whose first test decides the kind and whose second decides the container. After REFINE, `check_yield` runs against the ingredient list REFINE wrote and the stored dict goes on `CayenneRefinement.yield_checked`; the import writes it to `recipes.yield_spec`.
+- A yields-only pass: `build_yields_prompt` and `tag_yield`, for the backfill. The ingredients are numbered 1-based over every line, headings included and marked `(heading)`, so the model's positions are the ones `check_yield` maps to ids; the recipe's tins and bake type are given as stored.
+- Regeneration writes `yield_spec` too. A yield the cook edited (`edited: true`) keeps the cook's kind, container pills, area and pieces; only `component_lines` and `topping_lines` are re-derived, because ingredient ids are re-minted by position on every regeneration (Cayenne yield kinds P6). The worker reads the row's `yield_spec` with its tins.
+
+### ⚠️ Changed
+- `check_yield`: a component demoted to servings (no fittable tin, or a crumb crust) has its `component_lines` and `topping_lines` emptied, so the number moves every line; a container with no rolled piece (no base, crumble or no top) has its `component_lines` moved to `topping_lines`. The yield rules say a crumble, streusel or crisp topping's lines are `topping_lines`, never `component_lines` (prompt snapshots updated).
+- `check_yield` stores a `component` whose pastry is `crumb` (a pressed graham or biscuit crust) as `servings`, container kept: a pressed crust's thickness differs from rolled pastry's, and stage 3 models it (D84).
+- `check_yield` stores `component` only when the recipe has an unremoved tin in the pie tins families (pie, tart, round-cake, square, traybake); a component with none (rough puff, a suet pastry, a pizza dough sized by count and diameter) is stored as `servings` with its container and area kept, because the stage 1 client can only scale a component through a tin. Stage 2 lifts the rule.
+- The yield rules, amended after the 54-recipe probe: a crust that makes a double crust, a lid or two rounds (even only in its yield words) is top full, an open shell top none; cookies, biscuits, muffins, cupcakes, scones, brownies, bars and traybakes are servings; galettes, free-form tarts, crostatas, individual pies, hand pies, pasties, turnovers, sausage rolls and pizza baked on a stone, steel, tray or sheet are pieces, only a deep-pan or skillet pizza is servings.
+- REFINE's schema gains `yield_spec`; its prompt gains the yield rules under rule 5. The prompt and schema snapshots and the stage and end-to-end goldens are updated on purpose (a `yield_spec` of null throughout).
+- Yield hardening after the whole-branch review: a yield check that raises costs the yield, never the recipe; a huge or non-finite count or position is dropped, not raised; a piece's `diameter_mm` is kept only within 10..1000 mm (an infinity can no longer reach jsonb); regeneration re-checks the fittable-tin rule against the cook's tins when it writes them back; an archive whose `yield_spec` is not an object loses only that field on restore.
+- Version 9.27.0.
+
+---
+
 ## [9.26.0] — 2026-11-01
 
 The owner's second reading of the pie tins backfill dry run: a pie whose filling never bakes can no longer be a crust, a pavlova is never a sponge, a meat pie bound with egg is savoury, and a Gypsy tart is a custard tart (Cayenne pie tins). **Deploy note:** run the scoped pie tins backfill on this release, not on 9.25.0.

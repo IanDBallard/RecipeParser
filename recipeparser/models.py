@@ -1,7 +1,16 @@
 """Pydantic models for structured Gemini output."""
-from typing import Dict, List, Literal, NamedTuple, Optional, get_args
+import logging
+from typing import Any, Dict, List, Literal, NamedTuple, Optional, get_args
 
-from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    PrivateAttr,
+    ValidationError,
+    ValidationInfo,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+)
 
 SOURCE_SYSTEMS = ("US", "UK", "EU", "AU", "Imperial")  # verbatim-ingestion D4
 
@@ -219,6 +228,80 @@ class TemperatureMention(BaseModel):
     value: str = Field(description="What the writer meant: '180C,oven', '350F', 'gas4', '180C,oven,fan=160C'.")
 
 
+# Yield kinds (Cayenne yield kinds 11.3). Words are plain strings, not Literals: a word outside the
+# list must not fail validation and cost the recipe. core/yields.py enforces the vocabularies.
+class _Lenient(BaseModel):
+    """A field of the wrong shape (a number for a word, a string for an object) takes its default instead of
+    failing the model: a model slip costs the field, never the recipe."""
+
+    @field_validator("*", mode="wrap")
+    @classmethod
+    def _slip_costs_the_field(cls, value: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo) -> Any:
+        try:
+            return handler(value)
+        except ValidationError:
+            return cls.model_fields[info.field_name].get_default(call_default_factory=True)
+
+
+class YieldContainer(_Lenient):
+    """The pastry or dough container (or lid) a recipe makes."""
+    pastry: Optional[str] = Field(
+        default=None,
+        description="The pastry type by how it is made: shortcrust, sweet-shortcrust, puff, hot-water, suet, "
+                    "pizza-dough, crumb or filo.",
+    )
+    base: Optional[bool] = Field(default=None, description="true when the method lines the bottom of the dish.")
+    sides: Optional[str] = Field(
+        default=None, description="How far the pastry goes up the sides: full, short or none."
+    )
+    top: Optional[str] = Field(
+        default=None, description="What covers the filling: none, full (a lid), lattice or crumble."
+    )
+    thickness: Optional[str] = Field(
+        default=None,
+        description="standard unless the recipe states a thickness, then the nearest of thin, standard or thick.",
+    )
+    # Positions are checked in core/yields.py; a bad entry must not fail validation.
+    component_lines: List[Any] = Field(
+        default_factory=list,
+        description="1-based positions in the INGREDIENTS list of the lines that make the crust or dough.",
+        json_schema_extra={"items": {"type": "integer"}},
+    )
+    topping_lines: List[Any] = Field(
+        default_factory=list,
+        description="1-based positions in the INGREDIENTS list of the lines that make a crumble, streusel or "
+                    "pizza topping.",
+        json_schema_extra={"items": {"type": "integer"}},
+    )
+
+
+class YieldArea(_Lenient):
+    """A component's yield: how many rounds of what size."""
+    count: Optional[float] = Field(default=None, description="How many tins or rounds the recipe makes.")
+    noun: Optional[str] = Field(default=None, description="What they are, as the recipe says: tin, round, base.")
+    diameter_mm: Optional[float] = Field(default=None, description="Each one's diameter in millimetres.")
+
+
+class YieldPieces(_Lenient):
+    """A pieces recipe's yield: how many, and how big as the recipe states."""
+    count: Optional[float] = Field(default=None, description="How many pieces the recipe makes.")
+    noun: Optional[str] = Field(default=None, description="What they are: loaf, roll, bagel, pasty.")
+    weight_g: Optional[float] = Field(default=None, description="Each piece's weight in grams; null when not stated.")
+    diameter_mm: Optional[float] = Field(
+        default=None, description="Each piece's diameter in millimetres; null when not stated."
+    )
+
+
+class YieldAnswer(_Lenient):
+    """How a recipe's yield is measured."""
+    kind: Optional[str] = Field(default=None, description="servings, pieces or component.")
+    container: Optional[YieldContainer] = Field(
+        default=None, description="The pastry or dough container the recipe makes; null when it makes none."
+    )
+    area: Optional[YieldArea] = Field(default=None, description="Only on a component; otherwise null.")
+    pieces: Optional[YieldPieces] = Field(default=None, description="Only on a pieces recipe; otherwise null.")
+
+
 class TemperatureMentions(BaseModel):
     """The temperature backfill's whole answer for one recipe."""
     mentions: List[TemperatureMention] = Field(default_factory=list)
@@ -351,6 +434,21 @@ class CayenneRefinement(BaseModel):
     filling_quote: Optional[str] = Field(default=None, description=_FILLING_QUOTE_DESC)
     bake_type: Optional[str] = Field(default=None, description=_BAKE_TYPE_DESC)
     bake_step: Optional[int] = Field(default=None, description=_BAKE_STEP_DESC)
+    yield_spec: Optional[YieldAnswer] = Field(
+        default=None, description="How the recipe's yield is measured; null when it cannot be told."
+    )
+    # What check_yield made of yield_spec: the dict that is stored. Set by refine(), never by the model,
+    # so refine_json_schema() leaves it out.
+    yield_checked: Optional[dict] = None
+
+    @field_validator("yield_spec", mode="wrap")
+    @classmethod
+    def _a_malformed_yield_costs_the_yield(cls, value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+        try:
+            return handler(value)
+        except ValidationError as exc:
+            logging.getLogger(__name__).warning("yield_spec of the wrong shape dropped: %s", exc)
+            return None
 
 
 # Where a recipe's base_servings came from (scale-sheet redesign D44).
@@ -401,6 +499,8 @@ class CayenneRecipe(BaseModel):
     pans: List[RecipePan] = Field(default_factory=list)
     bake_type: Optional[str] = None
     bake_step: Optional[int] = None
+    # The checked yield (Cayenne yield kinds): kind, container, area, pieces, edited. Never the model's raw answer.
+    yield_spec: Optional[dict] = None
     # _cayenne_meta version 2 (Paprika export): read back by a restore, never asked of the model.
     is_favourite: Optional[bool] = None
     category_paths: List[List[str]] = Field(default_factory=list)
@@ -414,6 +514,15 @@ class CayenneRecipe(BaseModel):
     @classmethod
     def _unknown_servings_source_is_none(cls, v):
         return v if isinstance(v, str) and v in _SERVINGS_SOURCES else None
+
+    @field_validator("yield_spec", mode="before")
+    @classmethod
+    def _a_yield_spec_not_an_object_costs_the_field(cls, v: Any) -> Any:
+        # An archive's yield_spec that is not an object loses the field, never the whole recipe on restore.
+        if v is not None and not isinstance(v, dict):
+            logging.getLogger(__name__).warning("yield_spec %r is not an object; dropped", v)
+            return None
+        return v
 
     @field_validator("category_paths", "list_paths", mode="before")
     @classmethod

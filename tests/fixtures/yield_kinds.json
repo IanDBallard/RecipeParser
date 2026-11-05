@@ -1,0 +1,8 @@
+{
+  "kinds": ["servings", "pieces", "component"],
+  "pastry": ["shortcrust", "sweet-shortcrust", "puff", "hot-water", "suet", "pizza-dough", "crumb", "filo"],
+  "sides": ["full", "short", "none"],
+  "tops": ["none", "full", "lattice", "crumble"],
+  "thicknesses": ["thin", "standard", "thick"],
+  "filling": ["fill", "keep"]
+}

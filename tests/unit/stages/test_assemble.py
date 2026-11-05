@@ -212,3 +212,13 @@ def test_assemble_wraps_the_counts_the_method_writes():
         "Stir in all {{ing_01|four|4}} of the {{ing_01|eggs|none}}.",
         "Cut into {{yield:16|16}} squares.",
     ]
+
+
+def test_assemble_carries_the_checked_yield_to_the_row():
+    refined = _refined()
+    refined.yield_checked = {
+        "kind": "pieces", "container": None, "area": None,
+        "pieces": {"count": 8, "noun": "roll", "weight_g": 90, "diameter_mm": None}, "edited": False,
+    }
+    r = assemble(recipe=refined, embedding=[0.0] * 1536, source_url=None, image_url=None, grid_categories={})
+    assert r.yield_spec == refined.yield_checked

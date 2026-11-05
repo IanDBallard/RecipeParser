@@ -142,7 +142,8 @@
           "step": 5,
           "text": "Cool, then stir in the {{ing_04|vanilla}}."
         }
-      ]
+      ],
+      "yield_spec": null
     }
   ]
 }

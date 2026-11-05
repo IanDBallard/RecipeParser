@@ -177,3 +177,45 @@ def test_refine_prompt_asks_for_tins_baking_and_core_temperatures():
     assert "{{temp:93C,core|93°C}}" in prompt
     for value in (*BAKE_TYPES, *HINT_KEYS, *PAN_SHAPES, *PAN_FAMILIES):
         assert value in prompt
+
+
+def test_refine_prompt_asks_for_the_yield_with_every_vocabulary_value():
+    from recipeparser.core.yields import PASTRY_TYPES, SIDES, THICKNESSES, TOPS, YIELD_KINDS
+
+    prompt = build_refine_prompt("x", None)
+    assert '"yield_spec"' in prompt and "component_lines" in prompt and "topping_lines" in prompt
+    for value in (*YIELD_KINDS, *PASTRY_TYPES, *SIDES, *TOPS, *THICKNESSES):
+        assert value in prompt
+
+
+def _reply_with(yield_spec):
+    import json
+
+    return json.dumps({
+        "title": "Pie", "base_servings": 4,
+        "structured_ingredients": [{"id": "ing_01", "kind": "ingredient", "amount": 1.0, "unit": "cup",
+                                    "name": "flour", "fallback_string": "1 cup flour"}],
+        "tokenized_directions": [{"step": 1, "text": "Use {{ing_01|flour}}."}],
+        "yield_spec": yield_spec,
+    })
+
+
+@pytest.mark.parametrize("bad", [
+    {"container": "x"}, {"kind": 3}, {"container": "shortcrust"}, {"area": [1, 2]},
+    {"kind": "component", "area": {"count": "two"}},
+    {"kind": "servings", "container": {"component_lines": "ing_01"}},
+    "servings", 7, [],
+])
+def test_a_malformed_yield_spec_never_costs_the_recipe(bad):
+    client = MagicMock()
+    client.models.generate_content.return_value = MagicMock(text=_reply_with(bad))
+    result = refine_recipe_for_cayenne("raw", client)
+    assert result is not None and result.title == "Pie"
+
+
+def test_a_good_yield_spec_still_comes_through():
+    client = MagicMock()
+    client.models.generate_content.return_value = MagicMock(
+        text=_reply_with({"kind": "pieces", "pieces": {"count": 8, "weight_g": 90}}))
+    result = refine_recipe_for_cayenne("raw", client)
+    assert result.yield_spec.kind == "pieces" and result.yield_spec.pieces.count == 8
