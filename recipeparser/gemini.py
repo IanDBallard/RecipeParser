@@ -997,7 +997,8 @@ _YIELD_RULES = """\
      butter pressed: crumb; filo sheets: filo), "sides" one of {sides}, "top" one of {tops}, "thickness"
      one of {thicknesses}: standard unless the recipe states a thickness, then the nearest of thin,
      standard, thick; "component_lines" the 1-based positions in INGREDIENTS of the
-     crust's or dough's lines and "topping_lines" of a crumble, streusel or pizza topping; every other line
+     crust's or dough's lines and "topping_lines" of a crumble, streusel or pizza topping (a
+     crumble, streusel or crisp topping's lines are topping_lines, never component_lines); every other line
      is filling and is not listed. A recipe with no container: null.
      Examples: a double-crust apple pie -> servings, container base true, sides full, top full, shortcrust;
      a pâte sucrée tart shell -> component, sides short, top none, sweet-shortcrust; a boule ->
