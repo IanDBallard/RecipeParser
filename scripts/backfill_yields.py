@@ -102,7 +102,6 @@ RECORD_HEADER = ("id", "title", *RECORD_COLUMNS, "written_yield_spec", "outcome"
 # "written", "raced" (the row moved) or "failed" (the write raised). Only "written" is ever restored.
 MISSING_NOTICE = "yield_spec/cook_yield are not on this database yet: dry run reads both as null"
 PIECES_LEFT = "pieces scale left for stage 2"
-NO_PIECE_COUNT = "saved scale left as it is: no piece count"
 NO_PIECE_SIZE = "pieces: no size stated"
 
 # (steps, ingredients, pans, bake_type, yield words) -> the model's answer
@@ -254,8 +253,6 @@ def _settle(row: Dict[str, Any], result: RowResult, answer: YieldAnswer, ingredi
     if kind == "pieces" and row.get("cook_servings") is not None:
         if not settle_pieces:
             result.notes.append(PIECES_LEFT)
-        elif not (spec.get("pieces") or {}).get("count"):
-            result.notes.append(NO_PIECE_COUNT)
     if kind != "pieces" or settle_pieces:
         result.settled = settle_scale(kind, spec, row.get("cook_servings"), row.get("cook_pans"),
                                       row.get("cook_scale_by"), row.get("cook_yield"), row.get("base_servings"))

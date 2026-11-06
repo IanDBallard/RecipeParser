@@ -180,6 +180,29 @@ def test_a_crumb_crust_in_a_pie_plate_is_servings_and_a_shortcrust_crust_stays_a
     assert short["kind"] == "component"
 
 
+def test_a_pieces_kind_with_no_pieces_group_is_stored_as_servings():
+    c = YieldContainer(pastry="shortcrust", base=True, component_lines=[2], topping_lines=[3])
+    spec, warnings = check_yield(YieldAnswer(kind="pieces", container=c), ING, [])
+    assert spec["kind"] == "servings" and spec["pieces"] is None
+    assert spec["container"]["pastry"] == "shortcrust"
+    assert spec["container"]["component_lines"] == [] and spec["container"]["topping_lines"] == []
+    assert "yield pieces with no count stored as servings" in warnings
+
+
+def test_a_pieces_kind_whose_count_was_dropped_is_stored_as_servings_with_both_warnings():
+    answer = YieldAnswer(kind="pieces", pieces=YieldPieces(count=0, noun="pizza"))
+    spec, warnings = check_yield(answer, ING, [])
+    assert spec["kind"] == "servings" and spec["pieces"] is None
+    assert "yield pieces needs a whole count of 1 or more; dropped" in warnings
+    assert "yield pieces with no count stored as servings" in warnings
+
+
+def test_a_pieces_kind_with_a_valid_count_stays_pieces():
+    spec, warnings = check_yield(YieldAnswer(kind="pieces", pieces=YieldPieces(count=2, noun="pizza")), ING, [])
+    assert spec["kind"] == "pieces" and spec["pieces"]["count"] == 2
+    assert "yield pieces with no count stored as servings" not in warnings
+
+
 # --- hardening (whole-branch review, Minor 1) ---
 
 

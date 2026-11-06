@@ -308,6 +308,17 @@ def test_cook_edited_tins_with_no_fittable_one_demote_refines_component():
         assert spec["kind"] == "servings"
 
 
+def test_a_component_with_an_area_stays_a_component_on_cook_edited_non_fittable_tins():
+    from recipeparser.models import YieldAnswer, YieldArea
+
+    answer = YieldAnswer(kind="component", area=YieldArea(count=2, noun="tin", diameter_mm=230))
+    ref = CayenneRefinement(title="Pastry", base_servings=4, structured_ingredients=[], tokenized_directions=[],
+                            pans=[], yield_spec=answer)
+    cooks = [{**_PIZZA.model_dump(), "edited": True}]
+    spec = build_update(ref, [0.1] * 3, 3, current_pans=cooks)["yield_spec"]
+    assert spec["kind"] == "component" and spec["area"]["diameter_mm"] == 230
+
+
 def test_unedited_tins_leave_refines_checked_yield_as_it_is():
     ref = _tin_refinement([_PIE_TIN])
     spec = build_update(ref, [0.1] * 3, 3, current_pans=[_PIZZA.model_dump()])["yield_spec"]

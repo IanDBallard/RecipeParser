@@ -203,11 +203,11 @@ def test_pieces_scale_converts_with_settle_pieces():
     assert "converted" in r.settled_text
 
 
-def test_pieces_with_no_count_notes_the_scale_left_alone():
+def test_pieces_with_no_count_are_demoted_to_servings_and_noted():
     ans = YieldAnswer(kind="pieces")
     r = by.plan_row(row(cook_servings=2, base_servings=1), asker(ans), settle_pieces=True)
-    assert r.settled == {}
-    assert any("saved scale left as it is: no piece count" in n for n in r.notes)
+    assert r.spec["kind"] == "servings"
+    assert "yield pieces with no count stored as servings" in r.notes
 
 
 def test_the_ask_is_given_the_yield_words():
@@ -333,6 +333,14 @@ def test_a_pieces_row_with_no_size_is_noted():
     assert "pieces: no size stated" not in by.plan_row(row(), asker(by_diameter)).notes
     assert "pieces: no size stated" not in by.plan_row(row(), asker(pieces_answer())).notes
     assert "pieces: no size stated" not in by.plan_row(row(), asker(servings_answer())).notes
+
+
+def test_a_pieces_answer_with_a_dropped_count_is_a_servings_row_with_no_size_note():
+    answer = YieldAnswer(kind="pieces", pieces=YieldPieces(count=0, noun="pizza"))
+    r = by.plan_row(row(), asker(answer))
+    assert r.status == "tagged" and r.spec["kind"] == "servings"
+    assert "pieces: no size stated" not in r.notes
+    assert "yield pieces with no count stored as servings" in r.notes
 
 
 def _run_main(monkeypatch, argv, rows, log, ans=None, missing_columns=False, writes_ok=True, moved=None,
