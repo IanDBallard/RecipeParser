@@ -256,3 +256,50 @@ def test_a_crumble_with_no_rolled_piece_moves_its_component_lines_to_the_topping
     rolled = YieldContainer(base=True, top="crumble", component_lines=[2], topping_lines=[3])
     spec, _ = check_yield(YieldAnswer(kind="servings", container=rolled), ING, [])
     assert spec["container"]["component_lines"] == ["ing_02"] and spec["container"]["topping_lines"] == ["ing_03"]
+
+
+def test_a_component_by_area_with_no_container_gets_the_pizza_dough_container_the_client_assumes():
+    # F-559: the model sometimes drops a dough's container; Cayenne already reads a component by area with no
+    # container as pizza dough, so the parser stores that container, every ingredient line its component.
+    a = YieldAnswer(kind="component", area=YieldArea(count=4, noun="round", diameter_mm=203))
+    spec, warnings = check_yield(a, ING, [])
+    assert spec["kind"] == "component"
+    assert spec["container"] == {
+        "pastry": "pizza-dough",
+        "base": True,
+        "sides": "none",
+        "top": "none",
+        "thickness": "standard",
+        "component_lines": ["ing_02", "ing_03", "ing_04"],
+        "topping_lines": [],
+    }
+    assert any("no container" in w for w in warnings)
+
+
+def test_a_component_by_area_keeps_the_container_the_model_gave():
+    a = YieldAnswer(
+        kind="component",
+        area=YieldArea(count=2, noun="round", diameter_mm=356),
+        container=YieldContainer(pastry="pizza-dough", base=True, sides="full", top="none", thickness="thin", component_lines=[2]),
+    )
+    spec, warnings = check_yield(a, ING, [])
+    assert spec["container"]["sides"] == "full" and spec["container"]["thickness"] == "thin"
+    assert spec["container"]["component_lines"] == ["ing_02"]
+    assert not any("no container" in w for w in warnings)
+
+
+def test_a_dropped_container_on_a_component_by_area_is_filled_too():
+    a = YieldAnswer(
+        kind="component",
+        area=YieldArea(count=1, noun="circle", diameter_mm=305),
+        container=YieldContainer(pastry="pizza-dough", base=False, top="none"),
+    )
+    spec, warnings = check_yield(a, ING, [])
+    assert spec["container"]["pastry"] == "pizza-dough" and spec["container"]["base"] is True
+    assert any("no base and no top" in w for w in warnings) and any("no container" in w for w in warnings)
+
+
+def test_no_container_is_filled_on_a_tinned_component_or_any_other_kind():
+    assert check_yield(YieldAnswer(kind="component"), ING, PIE)[0]["container"] is None
+    assert check_yield(YieldAnswer(kind="servings"), ING, [])[0]["container"] is None
+    assert check_yield(YieldAnswer(kind="pieces", pieces=YieldPieces(count=6)), ING, [])[0]["container"] is None

@@ -3,7 +3,7 @@
 ; Output: output\RecipeParser-Setup-9.21.1.exe
 
 #define AppName      "RecipeParser"
-#define AppVersion   "9.28.0"
+#define AppVersion   "9.28.1"
 #define AppPublisher "Ian Ballard"
 #define AppURL       "https://github.com/IanDBallard/RecipeParser"
 #define AppExeName   "RecipeParser.exe"
