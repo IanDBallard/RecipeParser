@@ -3,8 +3,9 @@ Read-only: how well the yield kind rules classify a fixed set of the owner's rec
 answer is from one call to the next (Cayenne yield kinds 11.3,
 docs/superpowers/specs/2026-11-03-yield-kinds-scaling-design.md).
 
-The cases (``tests/goldens/yield_kinds/cases.csv``: id, title, expected_kind, expected_top, expected_pastry;
-a blank top or pastry is not scored) were chosen at the boundaries the kind rules decide: a crust against a
+The cases (``tests/goldens/yield_kinds/cases.csv``: id, title, expected_kind, expected_top, expected_pastry,
+expected_count, expected_size; a blank top, pastry, count or size is not scored; the size is each piece's
+weight in grams, else its diameter in millimetres) were chosen at the boundaries the kind rules decide: a crust against a
 filled pie, a pie in a tin against a free-form one, a pan pizza against a topped round, a loaf in a tin
 against a boule, and the plain servings recipes. Each recipe is asked through ``tag_yield`` with its stored
 structured ingredients, steps, tins and bake type, then checked by ``check_yield``, exactly as the yields
@@ -28,8 +29,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-Answer = Tuple[Optional[str], Optional[str], Optional[str]]  # kind, container.top, container.pastry
-Case = Tuple[str, str, str, Optional[str], Optional[str]]  # id, title, kind, top, pastry (None: not scored)
+# kind, container.top, container.pastry, count, size (weight_g, else diameter_mm)
+Answer = Tuple[Optional[str], Optional[str], Optional[str], Optional[float], Optional[float]]
+# id, title, kind, top, pastry, count, size (None: not scored)
+Case = Tuple[str, str, str, Optional[str], Optional[str], Optional[float], Optional[float]]
 CASES = ROOT / "tests" / "goldens" / "yield_kinds" / "cases.csv"
 NOT_READ = "(not read)"
 COLUMNS = (
@@ -38,10 +41,18 @@ COLUMNS = (
 )
 
 
+def _number(cell: Optional[str]) -> Optional[float]:
+    cell = (cell or "").strip()
+    return float(cell) if cell else None
+
+
 def read_cases(path: Path) -> List[Case]:
     with path.open(encoding="utf-8", newline="") as f:
         return [
-            (r["id"], r["title"], r["expected_kind"], r["expected_top"] or None, r["expected_pastry"] or None)
+            (
+                r["id"], r["title"], r["expected_kind"], r["expected_top"] or None, r["expected_pastry"] or None,
+                _number(r.get("expected_count")), _number(r.get("expected_size")),
+            )
             for r in csv.DictReader(f)
         ]
 
@@ -49,14 +60,24 @@ def read_cases(path: Path) -> List[Case]:
 def answer_of(spec: Optional[Dict[str, Any]]) -> Answer:
     """The scored parts of a checked yield_spec."""
     if not spec:
-        return None, None, None
+        return None, None, None, None, None
     container = spec.get("container") or {}
-    return spec.get("kind"), container.get("top"), container.get("pastry")
+    group = spec.get("pieces") or spec.get("area") or {}
+    size = group.get("weight_g") if group.get("weight_g") is not None else group.get("diameter_mm")
+    return spec.get("kind"), container.get("top"), container.get("pastry"), group.get("count"), size
+
+
+def _size_matches(got: Optional[float], want: float) -> bool:
+    """A size within rounding: 28.35 g matches 28.349523125 g, a 114 mm answer does not."""
+    return got is not None and abs(got - want) <= max(0.5, 0.01 * want)
 
 
 def _matches(case: Case, answer: Answer) -> bool:
-    _, _, kind, top, pastry = case
-    return answer[0] == kind and (top is None or answer[1] == top) and (pastry is None or answer[2] == pastry)
+    _, _, kind, top, pastry, count, size = case
+    return (
+        answer[0] == kind and (top is None or answer[1] == top) and (pastry is None or answer[2] == pastry)
+        and (count is None or answer[3] == count) and (size is None or _size_matches(answer[4], size))
+    )
 
 
 def score(cases: Sequence[Case], runs: Sequence[Dict[str, Answer]]) -> Dict[str, Any]:
@@ -90,7 +111,7 @@ def _load_backfill() -> Any:
 
 
 def _describe(a: Any) -> str:
-    return a if isinstance(a, str) else "/".join(x or "-" for x in a)
+    return a if isinstance(a, str) else "/".join("-" if x is None else f"{x:g}" if isinstance(x, float) else str(x) for x in a)
 
 
 def main() -> int:
@@ -150,9 +171,9 @@ def main() -> int:
         print(f"  run {k}: {m}/{n} as expected")
     print(f"  same answer in every run: {s['agree']}/{n}")
     for m in s["misses"]:
-        want = "/".join(x or "-" for x in m["expected"])
+        want = _describe(tuple(m["expected"]))
         got = ", ".join(_describe(a) for a in m["answers"])
-        print(f"  miss: {m['title']} - expected {want} (kind/top/pastry), got {got}")
+        print(f"  miss: {m['title']} - expected {want} (kind/top/pastry/count/size), got {got}")
     return 0
 
 

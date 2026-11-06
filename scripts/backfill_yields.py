@@ -18,6 +18,13 @@ saved-scale settlement of 9 in the same row write:
   size unchanged; ``cook_servings`` and ``cook_pans`` cleared. Without the flag a pieces row's scale is
   left for stage 2, and the review says so.
 
+Scopes. Stage 1: pies, tarts and pastry (the tins and the tinned pastry). Stage 2 (P22, run with
+``--settle-pieces``; the ids file is the scope query): breads, pizza and untinned pastry that have no
+``yield_spec``, the recipes already tagged ``pieces`` (asked again, so the count and size are named), and
+the servings recipes that carry an ``area`` or a pizza ``container`` (asked again). A tagged pieces row
+whose spec states neither ``weight_g`` nor ``diameter_mm`` is noted "pieces: no size stated" and counted
+in the summary ("pieces with no size").
+
 Skipped: a stale recipe (``derived_rev < body_rev``: REFINE re-derives it), one whose ``yield_spec`` the
 cook edited (never touched, ``--force`` or not), one that already has a ``yield_spec`` (``--force`` asks
 again), and one whose stored columns cannot be read (``malformed``). The write is conditional on
@@ -95,7 +102,7 @@ RECORD_HEADER = ("id", "title", *RECORD_COLUMNS, "written_yield_spec", "outcome"
 # "written", "raced" (the row moved) or "failed" (the write raised). Only "written" is ever restored.
 MISSING_NOTICE = "yield_spec/cook_yield are not on this database yet: dry run reads both as null"
 PIECES_LEFT = "pieces scale left for stage 2"
-NO_PIECE_COUNT = "saved scale left as it is: no piece count"
+NO_PIECE_SIZE = "pieces: no size stated"
 
 # (steps, ingredients, pans, bake_type, yield words) -> the model's answer
 Asker = Callable[[List[str], List[StructuredIngredient], List[RecipePan], Optional[str], Optional[str]],
@@ -239,11 +246,13 @@ def _settle(row: Dict[str, Any], result: RowResult, answer: YieldAnswer, ingredi
         return result
     result.spec = spec
     kind = spec["kind"]
+    if kind == "pieces":
+        size = spec.get("pieces") or {}
+        if size.get("weight_g") is None and size.get("diameter_mm") is None:
+            result.notes.append(NO_PIECE_SIZE)
     if kind == "pieces" and row.get("cook_servings") is not None:
         if not settle_pieces:
             result.notes.append(PIECES_LEFT)
-        elif not (spec.get("pieces") or {}).get("count"):
-            result.notes.append(NO_PIECE_COUNT)
     if kind != "pieces" or settle_pieces:
         result.settled = settle_scale(kind, spec, row.get("cook_servings"), row.get("cook_pans"),
                                       row.get("cook_scale_by"), row.get("cook_yield"), row.get("base_servings"))
@@ -550,6 +559,7 @@ def main() -> int:
     print("by kind (tagged):")
     for kind in ("servings", "pieces", "component"):
         print(f"  {kind:15s} {kinds.get(kind, 0):5d}")
+    print(f"pieces with no size: {sum(NO_PIECE_SIZE in r.notes for r in results if r.status == 'tagged')}")
     print(f"assemblies with no component lines: {sum(_is_assembly_without_lines(r) for r in results)}")
     settled = sorted((r for r in results if r.status == "tagged" and r.settled_text), key=lambda r: r.id)
     print(f"saved scales settled: {len(settled)}")

@@ -4,5 +4,6 @@
   "sides": ["full", "short", "none"],
   "tops": ["none", "full", "lattice", "crumble"],
   "thicknesses": ["thin", "standard", "thick"],
-  "filling": ["fill", "keep"]
+  "filling": ["fill", "keep"],
+  "ranges": { "piece_weight_g": [10, 5000], "piece_diameter_mm": [10, 1000], "area_diameter_mm": [50, 600] }
 }

@@ -976,10 +976,18 @@ _YIELD_RULES = """\
      test, in this order:
      1. component: the recipe's whole result goes into or onto another recipe (a pie or tart crust alone,
         a pizza dough with no toppings, a crumb base alone). Its yield is an area: the tin it names, or
-        the count and diameter it states ("4 × 30 cm", "two 12-inch rounds") as "area". Never a weight.
+        the count and diameter it states ("4 × 30 cm", "two 12-inch rounds" -> count 2, diameter_mm 305)
+        as "area" when a dough names no tin: "noun" is "round" unless the recipe says otherwise. Never a weight.
      2. pieces: an end recipe eaten by the piece (free-form loaves, rolls, baguettes, bagels, naan, pitta,
         tortillas, hand pies, pasties, topped free-form pizzas): "pieces" holds the count and the size the
         recipe states ("divide into two 450 g pieces", "8 balls of 90 g"); a size it does not state is null.
+        "noun" is the thing itself in the singular ("loaf", "roll", "bagel", "pasty", "pizza", "galette"),
+        never "serving", "piece" or "slice" when the recipe names the thing. "count" is how many of the
+        thing the recipe makes: a galette or free-form tart is usually 1, however many it serves; a
+        topped pizza's count is the pizzas, its size their diameter ("two 12-inch pizzas" -> count 2,
+        diameter_mm 305). "weight_g" only when the recipe states each piece's weight ("divide into 8 ×
+        90 g"); "diameter_mm" only when it states a width ("roll into 20 cm rounds"); never derive either
+        from the ingredients.
         Galettes, free-form tarts, crostatas, individual pies, hand pies, pasties, turnovers and sausage
         rolls are pieces. A topped pizza baked on a stone, steel, tray or sheet, or free-form, is pieces.
      3. servings: everything else, cakes, tin loaves, filled pies, quiches included. Cookies, biscuits,

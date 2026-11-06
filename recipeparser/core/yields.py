@@ -25,9 +25,9 @@ DEFAULT_SIDES = "full"
 DEFAULT_TOP = "none"
 DEFAULT_THICKNESS = "standard"
 
-# The tin families a stage-1 component can scale through: Cayenne's PIE_FAMILIES (pie tins D53). A
-# component is only a component to the client if it has one of these; stage 2 (count x diameter)
-# lifts the rule and this constant goes with it.
+# The tin families a component can scale through: Cayenne's PIE_FAMILIES (pie tins D53). Stage 1 kept a
+# component only if the recipe had one of these; stage 2 lifted the rule for a component with a valid
+# `area` (count x diameter, P21), so this now decides only a component with no area.
 COMPONENT_TIN_FAMILIES = ("pie", "tart", "round-cake", "square", "traybake")
 
 _AREA_DIAMETER_MM = (50, 600)
@@ -149,15 +149,19 @@ def check_yield(
       has no piece at all (no base and no top), which drops it with a warning; the check never
       guesses from the tins;
     - a field outside its vocabulary, or a null pastry, takes the default, with a warning;
-    - `area` is kept only on a component, with a whole count of 1 or more and diameter_mm within 50..600;
+    - `area` is read only on a component, with a whole count of 1 or more and diameter_mm within 50..600; it is
+      kept on the row a component is later demoted to servings (a crumb crust), for stage 3 to read;
     - `pieces` is kept only on a pieces kind, with a whole count of 1 or more; weight_g within 10..5000 or
       None; diameter_mm within 10..1000 or None; a weight is never asked of a component;
     - component_lines / topping_lines are 1-based positions into `ingredients` (headings included)
       and are mapped to ids; one out of range or naming a heading is dropped with a warning; a line
       in both lists is component;
-    - a component with no (unremoved) tin in COMPONENT_TIN_FAMILIES is stored as 'servings', container and
-      area kept as they are (stage 2 reads them), with a warning; both line lists are emptied; `pans` are RecipePans or stored tin dicts;
+    - a component with a valid `area` stays a component whatever its tins (stage 2, P21); one with no area
+      and no (unremoved) tin in COMPONENT_TIN_FAMILIES is stored as 'servings', container kept as it is,
+      with a warning; both line lists are emptied; `pans` are RecipePans or stored tin dicts;
     - a component whose container pastry is 'crumb' is stored as 'servings' too (D84, stage 3), also with empty line lists;
+    - a pieces kind with no kept `pieces` group (no whole count of 1 or more) is stored as 'servings' too, container kept
+      with empty line lists, since a pieces recipe is scaled by that count and cannot be scaled without it;
     - `edited` is always False from the parser.
     """
     if answer is None:
@@ -202,13 +206,17 @@ def check_yield(
                 warnings.append(f"yield piece diameter {p.diameter_mm} mm is outside 10..1000; dropped")
             pieces = {"count": count, "noun": p.noun or "", "weight_g": weight, "diameter_mm": diameter}
 
-    if kind == "component" and not has_fittable_tin(pans):
-        warnings.append("yield component with no fittable tin stored as servings until stage 2")
+    if kind == "component" and area is None and not has_fittable_tin(pans):
+        warnings.append("yield component with neither a fittable tin nor an area stored as servings until stage 3 reads the leftovers")
         kind = "servings"
         container = _unsplit(container)
     # D84: a pressed crumb crust is not a rolled disc; its thickness model is stage 3's.
     if kind == "component" and container is not None and container["pastry"] == "crumb":
         warnings.append("yield crumb crust stored as servings until stage 3 (D84)")
+        kind = "servings"
+        container = _unsplit(container)
+    if kind == "pieces" and pieces is None:
+        warnings.append("yield pieces with no count stored as servings")
         kind = "servings"
         container = _unsplit(container)
 

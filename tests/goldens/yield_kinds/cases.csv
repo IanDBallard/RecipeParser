@@ -1,55 +1,61 @@
-id,title,expected_kind,expected_top,expected_pastry
-467e4f29-c625-4b58-af0c-0450ec43616b,"Buttery, Flaky Pastry Pie Crust",component,full,shortcrust
-440563e4-ef6c-4474-8e9a-9ad3336642f0,"Flaky, Tender, and Nutty Whole Wheat Pie Crust",component,,shortcrust
-33542e6d-7850-4f68-baad-415d498bb5e4,Good for Almost Everything Pie Dough,servings,,shortcrust
-5df4e837-8cd8-48fc-9e04-4f07fb3db5c9,Hot Water Crust Pastry,servings,,hot-water
-0385a281-5ad8-4ecc-8fc8-e2f6c2c425cf,Pizza Dough,servings,,pizza-dough
-0ce675e5-8dfd-4d01-8650-a30905df8931,Graham Cracker Crust,servings,none,crumb
-f1cf3348-c993-40a8-badd-05055212e19f,Rich Shortcrust Pastry,servings,,
-098ae8bc-4619-457d-a93b-ffb8aa6b9fd6,Savoury Shortcrust Pastry,servings,,shortcrust
-d689ea1a-b71d-40ab-bed2-ff6fcc438902,Perfect Quiche,servings,none,puff
-8fdb0ade-d378-4bad-8bea-b6bb45252da2,Perfect Crumble,servings,crumble,
-9244d302-f30b-4958-bf8f-4543d96a6593,Perfect Apple Pie,servings,full,shortcrust
-59378e81-3526-4929-baea-fbf1117897d1,Rhubarb Plate Pie,servings,full,
-4491054c-05e8-49b9-8400-6f987c6d0f1e,Corned Beef Plate Pie,servings,full,shortcrust
-7a61f5ce-c370-43cb-80b2-b90db9606819,Buffalo & Ale Pie,servings,full,
-d0bf2ea8-d2c8-4988-b275-f716f9c17c59,Chicken-Tarragon Pot Pie,servings,full,shortcrust
-567db5a3-be5c-4888-966a-459aa60b8ae5,Meat & Potato Pie,servings,full,suet
-0555b6f7-2c38-4a9e-8c31-edd7b0b72c83,Thai Chicken Pie,servings,lattice,shortcrust
-db7783c9-456c-49b4-89bd-c4cd419d0a77,Whitby Fish Pie,servings,lattice,shortcrust
-3bcf5329-008d-4b92-a5fb-a98107951ab2,Cumberland Rum Nicky,servings,lattice,
-7005b001-7a5b-4ba9-8813-090414f8a357,Linzertorte,servings,lattice,
-5806cdf7-bba7-48c8-84a1-169e5911db51,Träubelestorte,servings,none,
-655bce0f-c478-49e8-826c-55a39f599934,Fresh Fruit Tart,servings,none,sweet-shortcrust
-4477ba8c-2998-4d7d-af92-a23ec7faf3cd,Ultimate Pumpkin Pie,servings,none,
-c904662c-2a8b-4374-bf20-5f6707db994c,Perfect Bakewell Tart,servings,none,shortcrust
-cfa4bfea-ca0e-4a92-8c5b-1e88da48edee,Banoffee Pie,servings,none,
-2bd2a5c2-77a6-40e1-867c-4cdf0005342f,Mango Pie,servings,none,crumb
-1cea975d-3564-46c8-b17d-e0e53ebcd506,Shepherd's Pie,servings,,
-413f5bd6-2fec-440f-b422-9a37cb449fd8,Luxury Fish Pie,servings,,
-3896a0ee-0e06-4c43-922e-eff6a17b8e97,Detroit-Style Pan Pizza,servings,,
-63cc5f70-ec94-4f31-82fa-efe7cc9c5289,Perfect New York Cheesecake,servings,,
-f1b05e16-6b61-48cf-977e-225a269fa5a3,Banana Bread,servings,,
-d616f8db-aebd-48ac-bf97-7ef648c384ec,Perfect Banana Bread,servings,,
-2ee06e0c-6508-449a-85af-4cf3cfab504c,Malt Loaf,servings,,
-8e9c2dd4-7874-40cf-a461-c48baf321d5f,The Best Spinach Lasagna Recipe,servings,,
-b0fb8e82-80d0-48dd-90b3-d0d2ba82cde5,Beef Stew with Prunes,servings,,
-1b964def-18c0-4626-82ce-b3031daa7a8e,Perfect Potato Salad,servings,,
-1473402c-a209-4343-9327-2165fb2cc923,Basic Tahini Sauce,servings,,
-104794ec-1c6e-466d-a198-763477535368,Classic Oatmeal-Raisin Cookies,servings,,
-1ed962e2-557c-4463-95d9-3055eaec19e0,Perfect Victoria Sandwich,servings,,
-a623e593-ac2e-48b6-a479-110f454f4b92,Gratin Dauphinoise,servings,,
-9c3a4456-f398-42c4-b677-e468d01df965,Perfect Tomato Sauce,servings,,
-26e0a56c-d533-47c8-bf0a-7adcd57e0e84,Savoury Prosciutto and Tomato Galette,pieces,,
-c01035bc-922d-451d-9145-dfbc6d9e5939,Thomasina Miers' Marmalade and Apple Galette,pieces,,
-ae95d267-d712-4916-a86e-33be00dddc5a,Cornish Pasties,pieces,,
-7f97ae2c-d389-4fb9-ad0d-89087f0dc12b,Individual Fruit Pies,pieces,,
-959b8b95-3895-4ac2-8907-1676e597b65f,Classic Sourdough,pieces,,
-b03c8cbd-88cf-4642-ae34-e6819c86ae5d,Brötchen Classic Breakfast Rolls,pieces,,
-4753d3af-5eaf-41f7-9428-6305a137c9df,Naan,pieces,,
-41c3d536-779a-4ace-a934-98a5831ec946,Chapati,pieces,,
-deec6242-e817-4e18-9282-d3de338e0bdf,Pitta Breads,pieces,,
-e87d06d3-e4a9-486d-b55f-d25602427de2,Perfect Sausage Rolls,pieces,,
-e6fb70b1-8812-45c5-a942-299b75782063,New York-Style Pizza,pieces,,
-f0b6a75b-54b3-4902-a44a-a31df41416d5,Pizza with Four Cheeses and Basil,pieces,,
-46ce52b0-92f2-4239-aa3b-47b04d48b40e,Beef Empanadas,pieces,,
+id,title,expected_kind,expected_top,expected_pastry,expected_count,expected_size
+467e4f29-c625-4b58-af0c-0450ec43616b,"Buttery, Flaky Pastry Pie Crust",component,full,shortcrust,,
+440563e4-ef6c-4474-8e9a-9ad3336642f0,"Flaky, Tender, and Nutty Whole Wheat Pie Crust",component,,shortcrust,,
+33542e6d-7850-4f68-baad-415d498bb5e4,Good for Almost Everything Pie Dough,servings,,shortcrust,,
+5df4e837-8cd8-48fc-9e04-4f07fb3db5c9,Hot Water Crust Pastry,servings,,hot-water,,
+0385a281-5ad8-4ecc-8fc8-e2f6c2c425cf,Pizza Dough,servings,,pizza-dough,,
+0ce675e5-8dfd-4d01-8650-a30905df8931,Graham Cracker Crust,servings,none,crumb,,
+f1cf3348-c993-40a8-badd-05055212e19f,Rich Shortcrust Pastry,servings,,,,
+098ae8bc-4619-457d-a93b-ffb8aa6b9fd6,Savoury Shortcrust Pastry,servings,,shortcrust,,
+d689ea1a-b71d-40ab-bed2-ff6fcc438902,Perfect Quiche,servings,none,puff,,
+8fdb0ade-d378-4bad-8bea-b6bb45252da2,Perfect Crumble,servings,crumble,,,
+9244d302-f30b-4958-bf8f-4543d96a6593,Perfect Apple Pie,servings,full,shortcrust,,
+59378e81-3526-4929-baea-fbf1117897d1,Rhubarb Plate Pie,servings,full,,,
+4491054c-05e8-49b9-8400-6f987c6d0f1e,Corned Beef Plate Pie,servings,full,shortcrust,,
+7a61f5ce-c370-43cb-80b2-b90db9606819,Buffalo & Ale Pie,servings,full,,,
+d0bf2ea8-d2c8-4988-b275-f716f9c17c59,Chicken-Tarragon Pot Pie,servings,full,shortcrust,,
+567db5a3-be5c-4888-966a-459aa60b8ae5,Meat & Potato Pie,servings,full,suet,,
+0555b6f7-2c38-4a9e-8c31-edd7b0b72c83,Thai Chicken Pie,servings,lattice,shortcrust,,
+db7783c9-456c-49b4-89bd-c4cd419d0a77,Whitby Fish Pie,servings,lattice,shortcrust,,
+3bcf5329-008d-4b92-a5fb-a98107951ab2,Cumberland Rum Nicky,servings,lattice,,,
+7005b001-7a5b-4ba9-8813-090414f8a357,Linzertorte,servings,lattice,,,
+5806cdf7-bba7-48c8-84a1-169e5911db51,Träubelestorte,servings,none,,,
+655bce0f-c478-49e8-826c-55a39f599934,Fresh Fruit Tart,servings,none,sweet-shortcrust,,
+4477ba8c-2998-4d7d-af92-a23ec7faf3cd,Ultimate Pumpkin Pie,servings,none,,,
+c904662c-2a8b-4374-bf20-5f6707db994c,Perfect Bakewell Tart,servings,none,shortcrust,,
+cfa4bfea-ca0e-4a92-8c5b-1e88da48edee,Banoffee Pie,servings,none,,,
+2bd2a5c2-77a6-40e1-867c-4cdf0005342f,Mango Pie,servings,none,crumb,,
+1cea975d-3564-46c8-b17d-e0e53ebcd506,Shepherd's Pie,servings,,,,
+413f5bd6-2fec-440f-b422-9a37cb449fd8,Luxury Fish Pie,servings,,,,
+3896a0ee-0e06-4c43-922e-eff6a17b8e97,Detroit-Style Pan Pizza,servings,,,,
+63cc5f70-ec94-4f31-82fa-efe7cc9c5289,Perfect New York Cheesecake,servings,,,,
+f1b05e16-6b61-48cf-977e-225a269fa5a3,Banana Bread,servings,,,,
+d616f8db-aebd-48ac-bf97-7ef648c384ec,Perfect Banana Bread,servings,,,,
+2ee06e0c-6508-449a-85af-4cf3cfab504c,Malt Loaf,servings,,,,
+8e9c2dd4-7874-40cf-a461-c48baf321d5f,The Best Spinach Lasagna Recipe,servings,,,,
+b0fb8e82-80d0-48dd-90b3-d0d2ba82cde5,Beef Stew with Prunes,servings,,,,
+1b964def-18c0-4626-82ce-b3031daa7a8e,Perfect Potato Salad,servings,,,,
+1473402c-a209-4343-9327-2165fb2cc923,Basic Tahini Sauce,servings,,,,
+104794ec-1c6e-466d-a198-763477535368,Classic Oatmeal-Raisin Cookies,servings,,,,
+1ed962e2-557c-4463-95d9-3055eaec19e0,Perfect Victoria Sandwich,servings,,,,
+a623e593-ac2e-48b6-a479-110f454f4b92,Gratin Dauphinoise,servings,,,,
+9c3a4456-f398-42c4-b677-e468d01df965,Perfect Tomato Sauce,servings,,,,
+26e0a56c-d533-47c8-bf0a-7adcd57e0e84,Savoury Prosciutto and Tomato Galette,pieces,,,1,
+c01035bc-922d-451d-9145-dfbc6d9e5939,Thomasina Miers' Marmalade and Apple Galette,pieces,,,1,300
+ae95d267-d712-4916-a86e-33be00dddc5a,Cornish Pasties,pieces,,,5,240
+7f97ae2c-d389-4fb9-ad0d-89087f0dc12b,Individual Fruit Pies,pieces,,,12,
+959b8b95-3895-4ac2-8907-1676e597b65f,Classic Sourdough,pieces,,,1,
+b03c8cbd-88cf-4642-ae34-e6819c86ae5d,Brötchen Classic Breakfast Rolls,pieces,,,8,
+4753d3af-5eaf-41f7-9428-6305a137c9df,Naan,pieces,,,6,
+41c3d536-779a-4ace-a934-98a5831ec946,Chapati,pieces,,,8,127
+deec6242-e817-4e18-9282-d3de338e0bdf,Pitta Breads,pieces,,,,
+e87d06d3-e4a9-486d-b55f-d25602427de2,Perfect Sausage Rolls,pieces,,,25,
+e6fb70b1-8812-45c5-a942-299b75782063,New York-Style Pizza,pieces,,,3,
+f0b6a75b-54b3-4902-a44a-a31df41416d5,Pizza with Four Cheeses and Basil,pieces,,,,
+46ce52b0-92f2-4239-aa3b-47b04d48b40e,Beef Empanadas,pieces,,,36,28.35
+87520e88-1ce4-42f8-837e-181e21958b3b,Baked Scallion Bread,pieces,,,2,
+d97c0d38-a5ab-444a-9ecc-0653c61feaf2,Beautiful Burger Buns,pieces,,,8,100
+3498cf43-101c-4c9f-8d2b-9235f87cf1e4,Mohnhörnchen Poppy-Seed Crescent Rolls,pieces,,,10,85
+4c623848-539a-4e2c-988a-455708bb8d0e,Maneesh,pieces,,,3,230
+797ce5de-89b3-42f1-b863-8e8dbb0a51ab,"Tomato, Cheese and Tarragon Galette",pieces,,,1,250
+47427387-d575-448c-a831-e2b160a59ba2,Grilled Pizza with Grilled Eggplant and Cherry Tomatoes,pieces,,,,254
