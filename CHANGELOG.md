@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.28.1] — 2026-11-06
+
+Yield kinds (Cayenne F-559): a dough by area always carries its container.
+
+### 🐛 Fixed
+- `check_yield` stores the pizza-dough container (flat base, no sides, no top, standard thickness, every ingredient line the component) on a component that keeps its `area` but has no container, whether the model gave none or one was dropped, with the warning "yield component by area with no container stored as pizza dough". The model dropped it between runs on two production doughs; the Cayenne client already read such a row as pizza dough, so parser and client now agree in the data.
+
+---
+
 ## [9.28.0] — 2026-11-05
 
 Yield kinds stage 2 (Cayenne): pieces and component areas carry the counts and sizes the recipe states. **Deploy note:** deploy after Cayenne's stage 2 PR is live; the stage 2 backfill runs on this release with `--settle-pieces`.

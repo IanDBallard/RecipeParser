@@ -116,6 +116,20 @@ def _container(
     }
 
 
+def _area_dough(ingredients: Sequence[StructuredIngredient]) -> Dict[str, object]:
+    """The container Cayenne assumes for a component by area that has none: a flat pizza-dough base, every
+    ingredient line (headings excluded) the rolled component."""
+    return {
+        "pastry": "pizza-dough",
+        "base": True,
+        "sides": "none",
+        "top": DEFAULT_TOP,
+        "thickness": DEFAULT_THICKNESS,
+        "component_lines": [i.id for i in ingredients if i.kind != "heading"],
+        "topping_lines": [],
+    }
+
+
 def _unsplit(container: Optional[Dict[str, object]]) -> Optional[Dict[str, object]]:
     """A recipe demoted to servings has no part split: both line lists empty, so every line takes the number."""
     return None if container is None else {**container, "component_lines": [], "topping_lines": []}
@@ -162,6 +176,8 @@ def check_yield(
     - a component whose container pastry is 'crumb' is stored as 'servings' too (D84, stage 3), also with empty line lists;
     - a pieces kind with no kept `pieces` group (no whole count of 1 or more) is stored as 'servings' too, container kept
       with empty line lists, since a pieces recipe is scaled by that count and cannot be scaled without it;
+    - a component that keeps its `area` but has no container (none given, or one dropped) gets the pizza-dough
+      container Cayenne already assumes for it, every ingredient line its component, with a warning (F-559);
     - `edited` is always False from the parser.
     """
     if answer is None:
@@ -219,5 +235,10 @@ def check_yield(
         warnings.append("yield pieces with no count stored as servings")
         kind = "servings"
         container = _unsplit(container)
+    # F-559: the model sometimes drops a dough's container between runs. Cayenne reads a component by area
+    # with no container as pizza dough (yieldScale, ScalingSheetBody), so store that container explicitly.
+    if kind == "component" and area is not None and container is None:
+        warnings.append("yield component by area with no container stored as pizza dough")
+        container = _area_dough(ingredients)
 
     return {"kind": kind, "container": container, "area": area, "pieces": pieces, "edited": False}, warnings
