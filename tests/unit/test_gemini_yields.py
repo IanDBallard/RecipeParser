@@ -131,3 +131,10 @@ def test_the_rules_name_the_piece_and_the_galettes_count():
     assert "two 12-inch pizzas" in rules and "diameter_mm 305" in rules
     assert "never derive either from the ingredients" in rules
     assert '"area" when a dough names no tin' in rules
+
+
+def test_the_rules_say_a_crumble_is_a_topping_and_a_tinless_crust_is_still_a_component():
+    rules = " ".join(_YIELD_RULES_TEXT.split())
+    assert "a crumble, crisp or streusel scattered over fruit or a filling is a topping, never a crumb crust" in rules
+    assert "an apple crumble -> servings, container base false, sides none, top crumble" in rules
+    assert "A crust or dough that names neither a tin nor a size is still a component, with area null" in rules

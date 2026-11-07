@@ -25,11 +25,6 @@ DEFAULT_SIDES = "full"
 DEFAULT_TOP = "none"
 DEFAULT_THICKNESS = "standard"
 
-# The tin families a component can scale through: Cayenne's PIE_FAMILIES (pie tins D53). Stage 1 kept a
-# component only if the recipe had one of these; stage 2 lifted the rule for a component with a valid
-# `area` (count x diameter, P21), so this now decides only a component with no area.
-COMPONENT_TIN_FAMILIES = ("pie", "tart", "round-cake", "square", "traybake")
-
 _AREA_DIAMETER_MM = (50, 600)
 _PIECE_WEIGHT_G = (10, 5000)
 _PIECE_DIAMETER_MM = (10, 1000)
@@ -53,17 +48,6 @@ def _whole(v: object) -> Optional[int]:
     if not math.isfinite(f) or abs(f) > _WHOLE_LIMIT or not f.is_integer():
         return None
     return int(f)
-
-
-def has_fittable_tin(pans: Sequence[Any]) -> bool:
-    """True when one unremoved tin is in COMPONENT_TIN_FAMILIES. A tin is a RecipePan or a stored tin dict
-    (the cook's tins a regeneration writes back)."""
-    for p in pans:
-        family = p.get("family") if isinstance(p, dict) else getattr(p, "family", None)
-        removed = p.get("removed") if isinstance(p, dict) else getattr(p, "removed", False)
-        if family in COMPONENT_TIN_FAMILIES and removed is not True:
-            return True
-    return False
 
 
 def _word(value: Optional[str], vocab: Sequence[str], default: str, field: str, warnings: List[str]) -> str:
@@ -98,15 +82,20 @@ def _container(
 ) -> Dict[str, object]:
     component = _ids(c.component_lines, ingredients, "component_lines", warnings)
     topping = [i for i in _ids(c.topping_lines, ingredients, "topping_lines", warnings) if i not in component]
+    pastry = _word(c.pastry, PASTRY_TYPES, DEFAULT_PASTRY, "pastry", warnings)
     base = c.base if isinstance(c.base, bool) else True
     top = _word(c.top, TOPS, DEFAULT_TOP, "top", warnings)
+    if pastry == "crumb" and not base and top != "crumble":
+        # D96: crumbs with no base are a crumble scattered on top, never a crumb crust (a crust is pressed as a base).
+        warnings.append("yield crumb container with no base read as a crumble top (D96)")
+        top = "crumble"
     if not base and top in ("crumble", "none") and component:
         # No rolled piece: what the model listed as component lines is the topping.
         topping = topping + [i for i in component if i not in topping]
         component = []
         warnings.append("yield container with no rolled piece: component_lines moved to topping_lines")
     return {
-        "pastry": _word(c.pastry, PASTRY_TYPES, DEFAULT_PASTRY, "pastry", warnings),
+        "pastry": pastry,
         "base": base,
         "sides": _word(c.sides, SIDES, DEFAULT_SIDES, "sides", warnings),
         "top": top,
@@ -163,17 +152,17 @@ def check_yield(
       has no piece at all (no base and no top), which drops it with a warning; the check never
       guesses from the tins;
     - a field outside its vocabulary, or a null pastry, takes the default, with a warning;
-    - `area` is read only on a component, with a whole count of 1 or more and diameter_mm within 50..600; it is
-      kept on the row a component is later demoted to servings (a crumb crust), for stage 3 to read;
+    - `area` is read only on a component, with a whole count of 1 or more and diameter_mm within 50..600;
     - `pieces` is kept only on a pieces kind, with a whole count of 1 or more; weight_g within 10..5000 or
       None; diameter_mm within 10..1000 or None; a weight is never asked of a component;
     - component_lines / topping_lines are 1-based positions into `ingredients` (headings included)
       and are mapped to ids; one out of range or naming a heading is dropped with a warning; a line
       in both lists is component;
-    - a component with a valid `area` stays a component whatever its tins (stage 2, P21); one with no area
-      and no (unremoved) tin in COMPONENT_TIN_FAMILIES is stored as 'servings', container kept as it is,
-      with a warning; both line lists are emptied; `pans` are RecipePans or stored tin dicts;
-    - a component whose container pastry is 'crumb' is stored as 'servings' too (D84, stage 3), also with empty line lists;
+    - a component stays a component whatever its tins and whether or not it has an area (D97, Cayenne yield
+      kinds 7.8: the client fits one with neither); a crumb crust is a component like any other (D95);
+    - a `crumb` container with no base is a crumble scattered on top (D96): its top reads 'crumble' and its
+      component lines move to topping_lines, so it is never dropped as having no base and no top;
+    - `pans` is not read since D97 (kept for the four callers);
     - a pieces kind with no kept `pieces` group (no whole count of 1 or more) is stored as 'servings' too, container kept
       with empty line lists, since a pieces recipe is scaled by that count and cannot be scaled without it;
     - a component that keeps its `area` but has no container (none given, or one dropped) gets the pizza-dough
@@ -222,15 +211,6 @@ def check_yield(
                 warnings.append(f"yield piece diameter {p.diameter_mm} mm is outside 10..1000; dropped")
             pieces = {"count": count, "noun": p.noun or "", "weight_g": weight, "diameter_mm": diameter}
 
-    if kind == "component" and area is None and not has_fittable_tin(pans):
-        warnings.append("yield component with neither a fittable tin nor an area stored as servings until stage 3 reads the leftovers")
-        kind = "servings"
-        container = _unsplit(container)
-    # D84: a pressed crumb crust is not a rolled disc; its thickness model is stage 3's.
-    if kind == "component" and container is not None and container["pastry"] == "crumb":
-        warnings.append("yield crumb crust stored as servings until stage 3 (D84)")
-        kind = "servings"
-        container = _unsplit(container)
     if kind == "pieces" and pieces is None:
         warnings.append("yield pieces with no count stored as servings")
         kind = "servings"
