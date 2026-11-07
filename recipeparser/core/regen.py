@@ -103,7 +103,8 @@ def _fold(text: str) -> str:
 
 def _checked_against(refinement: CayenneRefinement, pans: List[Any]) -> Optional[Dict[str, Any]]:
     """REFINE's yield re-checked against the tins actually written (the cook's, when they edited one), so
-    the fittable-tin rule decides the kind from those tins, not REFINE's. A failed check costs the yield."""
+    a component keeps its kind (Cayenne fits a size when it has no tin or area). A failed check costs the
+    yield."""
     if refinement.yield_spec is None:
         return refinement.yield_checked
     try:
@@ -157,8 +158,8 @@ def build_update(
     and pieces are written back unchanged and only component_lines and topping_lines are REFINE's, since
     ingredient ids are re-minted by position on every regeneration; otherwise REFINE's checked yield is
     written (None when it gave none). When the cook's tins are written back (any tin edited), REFINE's
-    yield is re-checked against those tins, so the fittable-tin rule (a component needs a pie-family tin)
-    decides the kind from the tins the row will hold, not from REFINE's.
+    yield is re-checked against those tins, so a component keeps its kind
+    (Cayenne fits a size when there is no tin or area) and the check runs against the tins the row will hold.
     Accepted race, not guarded, for the yield too: a yield edit the cook has made that has not synced
     when regen reads, or a failed read of the row's yield_spec, leaves `current_yield` without the
     cook's edit, and REFINE's yield overwrites it.

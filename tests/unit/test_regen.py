@@ -293,19 +293,19 @@ _PIE_TIN = RecipePan(id="pan_01", raw="a 23 cm pie dish", family="pie")
 
 def test_a_cook_edited_pie_tin_lets_refines_component_stand():
     ref = _tin_refinement([_PIZZA])
-    assert ref.yield_checked["kind"] == "servings"  # REFINE's tins have no fittable one
+    assert ref.yield_checked["kind"] == "component"  # D97: a component stands whatever the tins
     cooks = [{**_PIE_TIN.model_dump(), "edited": True}]
     spec = build_update(ref, [0.1] * 3, 3, current_pans=cooks)["yield_spec"]
     assert spec["kind"] == "component"
 
 
-def test_cook_edited_tins_with_no_fittable_one_demote_refines_component():
+def test_cook_edited_tins_with_no_fittable_one_leave_refines_component_a_component():
     ref = _tin_refinement([_PIE_TIN])
     assert ref.yield_checked["kind"] == "component"
     for cooks in ([{**_PIZZA.model_dump(), "edited": True}],
                   [{**_PIE_TIN.model_dump(), "edited": True, "removed": True}]):
         spec = build_update(ref, [0.1] * 3, 3, current_pans=cooks)["yield_spec"]
-        assert spec["kind"] == "servings"
+        assert spec["kind"] == "component"  # D97
 
 
 def test_a_component_with_an_area_stays_a_component_on_cook_edited_non_fittable_tins():

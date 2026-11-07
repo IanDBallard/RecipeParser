@@ -131,13 +131,13 @@ def test_a_component_with_a_pie_plate_stays_a_component():
     assert spec["kind"] == "component" and not any("tin" in w for w in warnings)
 
 
-def test_a_component_with_no_tin_is_stored_as_servings_and_keeps_its_container():
+def test_a_component_with_neither_tin_nor_area_stays_a_component_with_area_null():
+    # D97: the client fits it from its weight (Cayenne yield kinds 7.8).
     a = YieldAnswer(kind="component", container=YieldContainer(pastry="puff", top="full", component_lines=[2]))
     spec, warnings = check_yield(a, ING, [])
-    assert spec["kind"] == "servings"
-    assert spec["container"]["pastry"] == "puff" and spec["container"]["component_lines"] == []
-    assert any("neither a fittable tin nor an area" in w for w in warnings)
-
+    assert spec["kind"] == "component" and spec["area"] is None
+    assert spec["container"]["pastry"] == "puff" and spec["container"]["component_lines"] == ["ing_02"]
+    assert not any("stored as servings" in w for w in warnings)
 
 def test_a_pizza_dough_with_an_area_and_no_tin_stays_a_component():
     a = YieldAnswer(kind="component", area={"count": 4, "noun": "round", "diameter_mm": 300})
@@ -157,28 +157,19 @@ def test_a_component_with_an_area_and_no_tin_stays_a_component():
     assert spec["container"]["component_lines"] == ["ing_02"]
 
 
-def test_a_component_with_neither_tin_nor_area_is_servings_with_the_new_warning():
-    a = YieldAnswer(kind="component", container=YieldContainer(pastry="puff", component_lines=[2]))
-    spec, warnings = check_yield(a, ING, [])
-    assert spec["kind"] == "servings" and spec["container"]["component_lines"] == []
-    assert "yield component with neither a fittable tin nor an area stored as servings until stage 3 reads the leftovers" in warnings
-
-
-def test_a_component_whose_only_tin_is_a_sheet_a_loaf_or_removed_is_servings():
+def test_a_component_whose_only_tin_is_a_sheet_a_loaf_or_removed_stays_a_component():
     for family, removed in (("sheet", False), ("loaf", False), ("pie", True)):
         tins = [RecipePan(id="pan_01", raw="a tin", family=family, removed=removed)]
-        assert check_yield(YieldAnswer(kind="component"), ING, tins)[0]["kind"] == "servings"
-    tins = [RecipePan(id="pan_01", raw="a tin", family="sheet"), RecipePan(id="pan_02", raw="a tin", family="tart")]
-    assert check_yield(YieldAnswer(kind="component"), ING, tins)[0]["kind"] == "component"
+        assert check_yield(YieldAnswer(kind="component"), ING, tins)[0]["kind"] == "component"
 
-
-def test_a_crumb_crust_in_a_pie_plate_is_servings_and_a_shortcrust_crust_stays_a_component():
-    crumb, warnings = check_yield(YieldAnswer(kind="component", container=YieldContainer(pastry="crumb", base=True)), ING, PIE)
-    assert crumb["kind"] == "servings" and crumb["container"]["pastry"] == "crumb"
-    assert any("crumb crust stored as servings until stage 3 (D84)" in w for w in warnings)
-    short, _ = check_yield(YieldAnswer(kind="component", container=YieldContainer(pastry="shortcrust", base=True)), ING, PIE)
-    assert short["kind"] == "component"
-
+def test_a_crumb_crust_is_a_component_like_any_other():
+    # D95 (supersedes D84): no crumb demotion; its lines are kept.
+    c = YieldContainer(pastry="crumb", base=True, sides="full", top="none", component_lines=[2, 3])
+    for tins in (PIE, []):
+        spec, warnings = check_yield(YieldAnswer(kind="component", container=c), ING, tins)
+        assert spec["kind"] == "component" and spec["container"]["pastry"] == "crumb"
+        assert spec["container"]["component_lines"] == ["ing_02", "ing_03"]
+        assert not any("D84" in w for w in warnings)
 
 def test_a_pieces_kind_with_no_pieces_group_is_stored_as_servings():
     c = YieldContainer(pastry="shortcrust", base=True, component_lines=[2], topping_lines=[3])
@@ -234,18 +225,44 @@ def test_a_piece_diameter_outside_10_to_1000_mm_is_dropped():
     assert json.dumps(spec, allow_nan=False)
 
 
-def test_a_demotion_to_servings_empties_both_line_lists():
+def test_only_a_count_less_pieces_kind_is_demoted_and_its_line_lists_emptied():
     c = YieldContainer(pastry="shortcrust", component_lines=[2, 3], topping_lines=[4])
     tinless, _ = check_yield(YieldAnswer(kind="component", container=c), ING, [])
-    assert tinless["kind"] == "servings" and tinless["container"]["pastry"] == "shortcrust"
-    assert tinless["container"]["component_lines"] == [] and tinless["container"]["topping_lines"] == []
-    crumb = YieldContainer(pastry="crumb", component_lines=[2, 3], topping_lines=[4])
-    spec, _ = check_yield(YieldAnswer(kind="component", container=crumb), ING, PIE)
-    assert spec["kind"] == "servings" and spec["container"]["component_lines"] == []
-    assert spec["container"]["topping_lines"] == []
-    kept, _ = check_yield(YieldAnswer(kind="component", container=c), ING, PIE)
-    assert kept["container"]["component_lines"] == ["ing_02", "ing_03"]
+    assert tinless["kind"] == "component" and tinless["container"]["component_lines"] == ["ing_02", "ing_03"]
+    pieces, _ = check_yield(YieldAnswer(kind="pieces", container=c), ING, [])
+    assert pieces["kind"] == "servings"
+    assert pieces["container"]["component_lines"] == [] and pieces["container"]["topping_lines"] == []
 
+
+def test_a_crumb_container_with_no_base_is_a_crumble_top_and_keeps_its_lines_as_topping():
+    # D96: the model read a crumble's topping as a crumb crust with no base and no top; it was dropped.
+    c = YieldContainer(pastry="crumb", base=False, sides="none", top="none", component_lines=[3, 4])
+    spec, warnings = check_yield(YieldAnswer(kind="servings", container=c), ING, [])
+    assert spec["container"] is not None
+    assert spec["container"]["top"] == "crumble"
+    assert spec["container"]["component_lines"] == [] and spec["container"]["topping_lines"] == ["ing_03", "ing_04"]
+    assert any("crumb container with no base read as a crumble top (D96)" in w for w in warnings)
+    assert not any("no base and no top" in w for w in warnings)
+
+
+def test_a_crumb_container_with_no_base_and_a_full_top_is_a_crumble_too_on_any_kind():
+    c = YieldContainer(pastry="crumb", base=False, top="full", component_lines=[2])
+    for kind in ("servings", "component"):
+        spec, _ = check_yield(YieldAnswer(kind=kind, container=c), ING, [])
+        assert spec["container"]["top"] == "crumble" and spec["container"]["topping_lines"] == ["ing_02"]
+        assert spec["kind"] == kind
+
+
+def test_a_crumb_crust_with_a_base_is_not_a_crumble():
+    c = YieldContainer(pastry="crumb", base=True, top="none", component_lines=[2])
+    spec, warnings = check_yield(YieldAnswer(kind="servings", container=c), ING, PIE)
+    assert spec["container"]["top"] == "none" and spec["container"]["component_lines"] == ["ing_02"]
+    assert not any("D96" in w for w in warnings)
+
+
+def test_a_puff_container_with_no_base_and_no_top_is_still_dropped():
+    spec, _ = check_yield(YieldAnswer(kind="servings", container=YieldContainer(pastry="puff", base=False, top="none")), ING, [])
+    assert spec["container"] is None
 
 def test_a_crumble_with_no_rolled_piece_moves_its_component_lines_to_the_topping():
     c = YieldContainer(pastry="crumb", base=False, sides="none", top="crumble", component_lines=[2, 3], topping_lines=[4, 3])
