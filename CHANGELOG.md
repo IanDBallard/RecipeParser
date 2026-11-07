@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.29.0] — 2026-11-07
+
+Yield kinds stage 3 (Cayenne D95–D97): a component is kept as one whether or not it names a tin or an area, a crumb crust is a component like any other, and a crumble's crumbs are its topping. **Deploy note:** deploy after Cayenne's stage 3 PR is live (it fits a component with no tin and no area from its weight); the scoped re-run (`yield-scope-3.txt`) runs on this release.
+
+### ⚠️ Changed
+- `check_yield` no longer stores a component with neither a fittable tin nor an `area` as servings: it stays a component with `area` null and its line lists kept (D97); Cayenne fits it from its weight. `has_fittable_tin` and `COMPONENT_TIN_FAMILIES` are removed; `check_yield`'s `pans` argument is no longer read.
+- `check_yield` no longer stores a crumb crust as servings (D84 superseded by D95).
+- `check_yield` reads a `crumb` container with no base as a crumble top, with its component lines moved to topping, so a crumble is no longer dropped as "no base and no top" (D96).
+- The yield rules say a crumble, crisp or streusel over fruit is a topping, never a crumb crust, with an apple crumble and a graham cracker crust as examples, and that a crust or dough with no tin and no size is still a component. The prompt snapshots are updated on purpose.
+- The probe set flips six stand-alone pastries, doughs and the graham crust to `component`.
+
 ## [9.28.1] — 2026-11-06
 
 Yield kinds (Cayenne F-559): a dough by area always carries its container.

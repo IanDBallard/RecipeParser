@@ -978,6 +978,7 @@ _YIELD_RULES = """\
         a pizza dough with no toppings, a crumb base alone). Its yield is an area: the tin it names, or
         the count and diameter it states ("4 × 30 cm", "two 12-inch rounds" -> count 2, diameter_mm 305)
         as "area" when a dough names no tin: "noun" is "round" unless the recipe says otherwise. Never a weight.
+        A crust or dough that names neither a tin nor a size is still a component, with area null.
      2. pieces: an end recipe eaten by the piece (free-form loaves, rolls, baguettes, bagels, naan, pitta,
         tortillas, hand pies, pasties, topped free-form pizzas): "pieces" holds the count and the size the
         recipe states ("divide into two 450 g pieces", "8 balls of 90 g"); a size it does not state is null.
@@ -1006,12 +1007,18 @@ _YIELD_RULES = """\
      one of {thicknesses}: standard unless the recipe states a thickness, then the nearest of thin,
      standard, thick; "component_lines" the 1-based positions in INGREDIENTS of the
      crust's or dough's lines and "topping_lines" of a crumble, streusel or pizza topping (a
-     crumble, streusel or crisp topping's lines are topping_lines, never component_lines); every other line
+     crumble, streusel or crisp topping's lines are topping_lines, never component_lines);
+     a crumble, crisp or streusel scattered over fruit or a filling is a topping, never a crumb crust:
+     top crumble, base false unless the method also lines the dish, and pastry crumb only for crumbs and
+     butter pressed into the dish as a base; every other line
      is filling and is not listed. A recipe with no container: null.
      Examples: a double-crust apple pie -> servings, container base true, sides full, top full, shortcrust;
      a pâte sucrée tart shell -> component, sides short, top none, sweet-shortcrust; a boule ->
      pieces 1 × 900 g; a pizza dough for four -> component, area 4 × 300 mm, pizza-dough; a pot pie with a
-     puff lid -> servings, container base false, sides none, top full, puff; a stew -> servings, no container."""
+     puff lid -> servings, container base false, sides none, top full, puff;
+     an apple crumble -> servings, container base false, sides none, top crumble, its crumble's lines
+     topping_lines; a graham cracker crust in a 9-inch pie plate -> component, base true, sides full,
+     top none, crumb; a stew -> servings, no container."""
 # REFINE writes its own ingredient list, so it is told which list the positions count in.
 _YIELD_REFINE_NOTE = """\
    - In "yield_spec", INGREDIENTS is the structured_ingredients list you output: count every entry in it,
