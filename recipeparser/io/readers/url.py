@@ -128,29 +128,48 @@ class PageMeta:
 
 
 _CHALLENGE_TITLE_RE = re.compile(r"^Title:\s*Just a moment", re.IGNORECASE)
+_PERIMETERX_TITLE_RE = re.compile(r"^Title:\s*Access to this page has been denied", re.IGNORECASE)
 
 
 def looks_like_bot_challenge(text: str) -> bool:
     """True for a Jina-rendered bot-protection interstitial, not real content.
 
-    Cloudflare-style JS challenges (and clones, e.g. BigScoots' "Security
-    Verification") title themselves "Just a moment..." and always print a
-    Ray ID for support tickets. A recipe page combining both by coincidence
-    is vanishingly unlikely, so together they're a safe fingerprint.
+    Two walls, each a title plus the support line it always prints, since a
+    recipe page combining both by coincidence is vanishingly unlikely:
+
+    - Cloudflare-style JS challenges (and clones, e.g. BigScoots' "Security
+      Verification") title themselves "Just a moment..." and print a Ray ID.
+    - PerimeterX (HUMAN) walls title themselves "Access to this page has been
+      denied." and print a Reference ID (thekitchn.com, 2026-11-08: the wall
+      came back as a 200 and the job said "no recipes found").
     """
-    return bool(_CHALLENGE_TITLE_RE.match(text[:200])) and "Ray ID" in text
+    head = text[:200]
+    if _CHALLENGE_TITLE_RE.match(head):
+        return "Ray ID" in text
+    if _PERIMETERX_TITLE_RE.match(head):
+        return "Reference ID" in text
+    return False
 
 
 _HTML_CHALLENGE_TITLE_RE = re.compile(
-    r"<title[^>]*>\s*(?:Just a moment|Attention Required|Access denied|Security Verification)",
+    r"<title[^>]*>\s*(?:Just a moment|Attention Required|Access denied|Access to this page has been denied"
+    r"|Security Verification)",
     re.IGNORECASE,
 )
 
 
 def looks_like_html_challenge(html: str) -> bool:
-    """True for a bot-protection interstitial fetched directly, before Jina's rendering."""
+    """True for a bot-protection interstitial fetched directly, before Jina's rendering.
+
+    The title, or the vendor's own challenge script: Cloudflare's under
+    /cdn-cgi/challenge-platform/, PerimeterX's from captcha.px-cdn.net.
+    """
     head = html[:20_000]
-    return bool(_HTML_CHALLENGE_TITLE_RE.search(head)) or "/cdn-cgi/challenge-platform/" in head
+    return (
+        bool(_HTML_CHALLENGE_TITLE_RE.search(head))
+        or "/cdn-cgi/challenge-platform/" in head
+        or "captcha.px-cdn.net" in head
+    )
 
 
 def _iter_json_ld_nodes(value: Any) -> Iterator[Dict[str, Any]]:

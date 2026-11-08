@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.29.1] — 2026-11-08
+
+A site behind a PerimeterX (HUMAN) bot wall is reported as refusing automated readers, not as a page with no recipe in it.
+
+### 🐛 Fixed
+- `UrlReader` recognises PerimeterX's "Access to this page has been denied." wall, which Jina renders as a 200, and raises `SiteRefusedError` for it: the job now says the site is blocked by its bot-protection page and suggests pasting the recipe's text. Before, the wall's text went to the model and the job said "no recipes found" (thekitchn.com, 2026-11-08). The direct fetch recognises the same wall by its title or its `captcha.px-cdn.net` script, should a site ever serve it with a 200.
+
+---
+
 ## [9.29.0] — 2026-11-07
 
 Yield kinds stage 3 (Cayenne D95–D97): a component is kept as one whether or not it names a tin or an area, a crumb crust is a component like any other, and a crumble's crumbs are its topping. **Deploy note:** deploy after Cayenne's stage 3 PR is live (it fits a component with no tin and no area from its weight); the scoped re-run (`yield-scope-3.txt`) runs on this release.
