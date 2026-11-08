@@ -221,6 +221,72 @@ def test_a_direct_challenge_page_is_not_read_as_a_recipe(public_dns: Any) -> Non
     assert str(excinfo.value) == f"is blocked by the site's bot-protection challenge page. {_PASTE}"
 
 
+# PerimeterX (HUMAN) walls, as thekitchn.com serves them (2026-11-08): Jina renders the wall as a
+# 200 under "Access to this page has been denied.", with its own CAPTCHA warning; a direct GET gets
+# the same page as a 403, which _REFUSING_STATUSES already turns into a refusal. The Jina text is
+# the one that slipped through: it was read as a page with no recipe in it.
+_PERIMETERX_JINA = (
+    "Title: Access to this page has been denied.\n\n"
+    "URL Source: https://www.thekitchn.com/french-country-pot-roast-recipe-23847407\n\n"
+    "Warning: This page maybe requiring CAPTCHA, please make sure you are authorized to access this page.\n\n"
+    "Markdown Content:\n"
+    "## Please verify you are a human\n\n"
+    "Access to this page has been denied because we believe you are using automation tools to browse the website.\n\n"
+    "This may happen as a result of the following:\n\n"
+    "*    Javascript is disabled or blocked by an extension (ad blockers for example) \n"
+    "*    Your browser does not support cookies \n\n"
+    "Please make sure that Javascript and cookies are enabled on your browser and that you are not blocking them "
+    "from loading.\n\n"
+    "Reference ID: #f1d783db-db8f-11f1-88de-5df1b6d7e854\n"
+)
+
+_PERIMETERX_HTML = (
+    "<html><head><title>Access to this page has been denied.</title>"
+    '<script src="https://captcha.px-cdn.net/PXabc123/captcha.js?a=c&m=0"></script></head>'
+    '<body><div id="px-captcha"></div><h1>Please verify you are a human</h1>'
+    "<p>Access to this page has been denied because we believe you are using automation tools.</p>"
+    "<p>Reference ID: #f1d783db-db8f-11f1-88de-5df1b6d7e854</p></body></html>"
+)
+
+
+def test_a_perimeterx_wall_jina_rendered_is_a_refusal(public_dns: Any) -> None:
+    """thekitchn.com, 2026-11-08: the wall came back as a 200 and the job said "no recipes found"."""
+    wall = MagicMock(status_code=200, text=_PERIMETERX_JINA)
+    wall.raise_for_status.return_value = None
+    with patch(
+        "recipeparser.io.readers.url.requests.get",
+        side_effect=[wall, _page("Not Found", status=404)],
+    ):
+        with pytest.raises(SiteRefusedError) as excinfo:
+            UrlReader().read("https://www.thekitchn.com/french-country-pot-roast-recipe-23847407")
+    assert excinfo.value.host == "thekitchn.com"
+    assert str(excinfo.value) == f"is blocked by the site's bot-protection challenge page. {_PASTE}"
+
+
+def test_a_perimeterx_wall_served_as_a_200_is_not_read_as_a_recipe(public_dns: Any) -> None:
+    """The same wall fetched directly, should a site ever serve it with a 200."""
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=[_jina_refusal(), _page(_PERIMETERX_HTML)]):
+        with pytest.raises(SiteRefusedError) as excinfo:
+            UrlReader().read(SOURCE)
+    assert str(excinfo.value) == f"is blocked by the site's bot-protection challenge page. {_PASTE}"
+
+
+def test_a_recipe_page_that_mentions_a_captcha_is_still_read(public_dns: Any) -> None:
+    """The fingerprint is the wall's title with its reference line, not the word CAPTCHA on its own."""
+    article = MagicMock(
+        status_code=200,
+        text=(
+            "Title: French Country Pot Roast\n\nURL Source: https://example.com/pot-roast\n\n"
+            "Markdown Content:\n## Ingredients\n* 1 kg beef chuck\n* 2 onions\n\n"
+            "## Comments\nPlease verify you are a human to leave a comment.\n"
+        ),
+    )
+    article.raise_for_status.return_value = None
+    with patch("recipeparser.io.readers.url.requests.get", return_value=article):
+        [chunk] = UrlReader().read("https://example.com/pot-roast")
+    assert "beef chuck" in chunk.text
+
+
 @pytest.mark.parametrize(
     "url",
     ["http://169.254.169.254/latest/meta-data/", "http://localhost:8000/admin", "file:///etc/passwd"],
