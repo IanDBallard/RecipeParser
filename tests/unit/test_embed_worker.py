@@ -1,5 +1,6 @@
 """EmbedWorker: claim_stale_embeddings -> embed -> guarded write-back (Cayenne AI search §6)."""
 from typing import Any, Dict, List
+import pytest
 from unittest.mock import MagicMock
 
 from recipeparser.core.stages.embed import build_embedding_text
@@ -124,6 +125,20 @@ def test_paused_owner_skipped():
 def test_wrong_dims_is_a_failure():
     fake = FakeSupabase(rows=[_row()])
     assert _worker(fake, embed_text_fn=MagicMock(return_value=[0.1] * 1000)).run_once() == 1
+    assert ("embed_failed", {"p_id": "r1"}) in fake.rpcs
+    assert _updates(fake) == []
+
+
+@pytest.mark.parametrize("column", ["ingredient_lines", "direction_steps"])
+def test_double_encoded_body_column_is_a_failure(column):
+    # A jsonb column that arrives as a JSON string would embed single characters;
+    # raw_body_column raises, so the row goes to embed_failed and nothing is written.
+    row = _row()
+    row[column] = '["1 cup flour"]'
+    fake = FakeSupabase(rows=[row])
+    fn = MagicMock(return_value=[0.1] * 1536)
+    assert _worker(fake, embed_text_fn=fn).run_once() == 1
+    fn.assert_not_called()
     assert ("embed_failed", {"p_id": "r1"}) in fake.rpcs
     assert _updates(fake) == []
 

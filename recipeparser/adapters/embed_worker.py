@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List
 
 from recipeparser import usage
+from recipeparser.core.regen import raw_body_column
 from recipeparser.core.stages.embed import _EXPECTED_DIMS, build_embedding_text
 from recipeparser.gemini import get_embeddings
 
@@ -66,8 +67,8 @@ class EmbedWorker:
                 text = build_embedding_text(
                     row["title"],
                     row.get("category_names") or [],
-                    row.get("ingredient_lines") or [],
-                    row.get("direction_steps") or [],
+                    raw_body_column(row, "ingredient_lines"),
+                    raw_body_column(row, "direction_steps"),
                 )
                 vector = self._embed_text(text, self._client)
                 if len(vector) != _EXPECTED_DIMS:
@@ -90,7 +91,9 @@ class EmbedWorker:
 
     def _release_claim(self, rid: str) -> None:
         """Clear the claim on a row whose result was dropped, so its new revision is
-        picked up at the next poll instead of after the lease. Never raises; a failed
+        not held for the whole lease. Both the release and the edit's bump move
+        updated_at (moddatetime), and the claim RPC's 20-second gate on updated_at
+        holds the row until a poll at least 20 s later. Never raises; a failed
         release is not a failure of the row (its new revision has not been tried)."""
         try:
             self._sb.table("recipes").update({"embed_claimed_at": None}).eq("id", rid).execute()
