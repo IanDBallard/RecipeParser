@@ -25,7 +25,7 @@
         ],
         "embedding": {
           "len": 1536,
-          "sha256": "403eb9981fc2809e1383c3c12b09547b216df439b2189c50c540b34c5341bba4"
+          "sha256": "98e0e05adcce4792c150d45eda6207a93a53f23cd4a6a1cea45e4015d57886fd"
         },
         "grid_categories": {
           "Meal Type": [
@@ -262,7 +262,7 @@
         ],
         "embedding": {
           "len": 1536,
-          "sha256": "4062a3eb743dccba41f5a1ac835e2ac1cbcecbf0bcb9a68dac1d964010c25924"
+          "sha256": "7d89d8e9c0a2bb976e5df776113091dfb87736d422242523ad20e7a36cfb50db"
         },
         "grid_categories": {
           "Meal Type": [

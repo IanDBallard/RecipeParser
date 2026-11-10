@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, Iterator, List, Literal, Optional
 
 log = logging.getLogger(__name__)
 
-Action = Literal["import", "regen", "recat", "picture", "classify", "search"]
+Action = Literal["import", "regen", "recat", "picture", "classify", "search", "embed"]
 
 
 @dataclass

@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.30.0] — 2026-11-10
+
+Cayenne Library AI search, stage 1: a recipe's embedding covers its title, its category names, its ingredient lines and the first 400 characters of its directions, and stays current when any of them change. **Deploy note:** deploy after Cayenne's `20261110120000_embedding_rev` migration is applied; before it, `EmbedWorker` logs a missing-function error on every poll and its `ai_usage` rows are rejected.
+
+### ✨ Added
+- `build_embedding_text` in `core/stages/embed.py`: the one embedding text, one part per line, empty parts left out. Category names under the Lists root are excluded by the database.
+- `EmbedWorker` (`adapters/embed_worker.py`), started with the other workers: claims rows from `claim_stale_embeddings`, embeds them, and writes `embedding` and `embedded_rev` guarded by `embed_rev`; a failure goes to `embed_failed` (three per revision, then the row waits for a change). Body columns are read through `raw_body_column`, so a double-encoded value is a recorded failure. Its Gemini usage is recorded as `embed`.
+
+### ⚠️ Changed
+- `embed()` builds its input with `build_embedding_text` and takes an optional `category_names`. Import and regeneration still write an interim vector without categories; `EmbedWorker` replaces it about half a minute later.
+
+---
+
 ## [9.29.1] — 2026-11-08
 
 A site behind a PerimeterX (HUMAN) bot wall is reported as refusing automated readers, not as a page with no recipe in it.
