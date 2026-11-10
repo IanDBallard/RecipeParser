@@ -24,7 +24,7 @@
         ],
         "embedding": {
           "len": 1536,
-          "sha256": "edeafa1291e5ec89b7ad14780aeee9b197a34b6e98ef043854385a58a7b50aec"
+          "sha256": "4e0f129e4d9d991ef46da8330aedd9d77a1a9ac722d9a5a4ae8282ecb75714f7"
         },
         "grid_categories": {
           "Cuisine": [
@@ -190,7 +190,7 @@
         ],
         "embedding": {
           "len": 1536,
-          "sha256": "f951e17453a0b5eb581fc43153e180288b16174af95f00717fd153250b7a22a2"
+          "sha256": "1712e227f1a66b5c835c931380de8259b784926df523ad4a7bb83067fee93c6c"
         },
         "grid_categories": {
           "Cuisine": [
