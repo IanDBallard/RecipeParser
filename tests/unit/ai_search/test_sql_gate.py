@@ -46,6 +46,7 @@ COLUMNS = frozenset(
         "category_id",
         "position",
         "text",
+        "rank",
     }
 )
 
@@ -201,11 +202,11 @@ FUNCTION_NOTATION_REFUSED = [
     pytest.param("select ((null::int).pg_stat_get_activity).query", "pg_stat_get_activity", id="attr_stat_activity"),
     pytest.param(
         "select (n).pg_stat_get_backend_activity from unnest(array[1,2,3,4,5]) n",
-        "pg_stat_get_backend_activity",
+        "may be used in FROM",
         id="attr_backend_activity",
     ),
     pytest.param(
-        "select (pid).pg_terminate_backend from unnest(array[123]) pid", "pg_terminate_backend", id="attr_terminate"
+        "select (pid).pg_terminate_backend from unnest(array[123]) pid", "may be used in FROM", id="attr_terminate"
     ),
     pytest.param("select (1::bigint).pg_advisory_lock", "pg_advisory_lock", id="attr_advisory_lock"),
     pytest.param("select (5::float8).pg_sleep", "pg_sleep", id="attr_pg_sleep"),
@@ -220,15 +221,86 @@ FUNCTION_NOTATION_REFUSED = [
     # elsewhere in the statement must not open that door.
     pytest.param(
         "select s.current_setting from unnest(array['request.jwt.claims']) s, (select 1 as current_setting) t",
-        "s.current_setting",
+        "may be used in FROM",
         id="scalar_function_alias_borrowed_name",
     ),
     pytest.param(
         "select unnest.pg_sleep from unnest(array[10]), (select 1 as pg_sleep) t",
-        "unnest.pg_sleep",
+        "may be used in FROM",
         id="unaliased_function_borrowed_name",
     ),
 ]
+
+# Fix round 2. Only the two ai search functions (which return rows) may stand in FROM: any other
+# function there can return a scalar, whose alias Postgres reads `alias.f` as f(scalar).
+FROM_FUNCTION_REFUSED = [
+    # (a) a function alias's column list reused from another scope
+    pytest.param(
+        "select (select s.current_setting from unnest(array['server_version']) s)"
+        " from unnest(array['a']) s(current_setting)",
+        id="alias_reuse_in_scalar_subquery",
+    ),
+    pytest.param(
+        "select q.v from unnest(array['a']) s(current_setting),"
+        " lateral (select s.current_setting as v from unnest(array['server_version']) s) q",
+        id="alias_reuse_in_lateral",
+    ),
+    pytest.param(
+        "select s.pg_sleep from unnest(array[1]) s(pg_sleep)"
+        " union all select null from (select s.pg_sleep from unnest(array[0.2::float8]) s) z",
+        id="alias_reuse_across_union",
+    ),
+    # (b) non-FuncCall expressions in FROM
+    pytest.param(
+        "select coalesce.current_setting from coalesce('server_version'), (select 1 as current_setting) t",
+        id="coalesce_in_from",
+    ),
+    pytest.param(
+        "select text.current_setting from cast('server_version' as text), (select 1 as current_setting) t",
+        id="cast_in_from",
+    ),
+    pytest.param(
+        "select nullif.current_setting from nullif('server_version','x'), (select 1 as current_setting) t",
+        id="nullif_in_from",
+    ),
+    pytest.param(
+        "select greatest.pg_sleep from greatest(0.1::float8), (select 1 as pg_sleep) t", id="greatest_in_from"
+    ),
+    pytest.param(
+        "select coalesce.pg_stat_get_backend_pid from coalesce(1), (select 1 as pg_stat_get_backend_pid) t",
+        id="coalesce_backend_pid_in_from",
+    ),
+    pytest.param(
+        'select "current_user".current_setting from current_user, (select 1 as current_setting) t',
+        id="current_user_in_from",
+    ),
+    # shapes of FROM functions
+    pytest.param("select * from unnest(array[1]) u", id="unnest_in_from"),
+    pytest.param("select n from unnest(array[1, 2]) n", id="function_alias_column"),
+    pytest.param("select * from rows from (ai.keyword_search('x', 5))", id="rows_from"),
+    pytest.param("select * from ai.keyword_search('x', 5) with ordinality", id="with_ordinality"),
+    pytest.param("select * from generate_series(1,3) g", id="generate_series"),
+    pytest.param("select * from coalesce(1)", id="bare_coalesce_in_from"),
+]
+
+
+@pytest.mark.parametrize("sql", FROM_FUNCTION_REFUSED)
+def test_from_function_refused(sql: str) -> None:
+    with pytest.raises(StatementRefused) as caught:
+        check_statement(sql, AI, COLUMNS)
+    assert "may be used in FROM" in caught.value.reason
+
+
+FROM_FUNCTION_ALLOWED = [
+    pytest.param("select k.id, k.title, k.rank from ai.keyword_search('soup', 10) k", id="aliased_keyword_search"),
+    pytest.param("select * from keyword_search('miso', 5)", id="bare_keyword_search"),
+    pytest.param("select unnest(categories) from recipes", id="unnest_in_select_list"),
+]
+
+
+@pytest.mark.parametrize("sql", FROM_FUNCTION_ALLOWED)
+def test_from_function_allowed(sql: str) -> None:
+    check_statement(sql, AI, COLUMNS)
 
 
 @pytest.mark.parametrize(("sql", "reason_fragment"), FUNCTION_NOTATION_REFUSED)
@@ -249,7 +321,6 @@ NAMES_ALLOWED = [
         id="alias_colname",
     ),
     pytest.param("select x.c from (select title as c from recipes) x", id="subquery_output_name"),
-    pytest.param("select n from unnest(array[1, 2]) n", id="function_alias_column"),
 ]
 
 
