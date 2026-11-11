@@ -13,7 +13,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import psycopg
+import psycopg_pool
 import pytest
+from psycopg.pq import TransactionStatus
 
 from recipeparser.adapters.ai_search import ai_db
 from recipeparser.adapters.ai_search.ai_db import (
@@ -41,10 +43,19 @@ class FakeCursor:
     def __exit__(self, *exc: object) -> None:
         return None
 
-    def execute(self, sql: str, params: Any = None) -> FakeCursor:
+    def execute(self, sql: str, params: Any = None, *, prepare: bool | None = None) -> FakeCursor:
         self.conn.executed.append((sql, params))
+        self.conn.prepare_flags.append(prepare)
+        self.conn.pipelined.append(self.conn.in_pipeline)
+        lowered = sql.strip().lower()
+        if lowered.startswith("begin"):
+            self.conn.info.transaction_status = TransactionStatus.INTRANS
+        elif lowered in ("rollback", "commit") or lowered.endswith("; commit"):
+            self.conn.info.transaction_status = TransactionStatus.IDLE
         for fragment, outcome in self.conn.script.items():
             if fragment in sql:
+                if isinstance(outcome, _Raiser):
+                    outcome.callback()
                 if isinstance(outcome, BaseException):
                     raise outcome
                 columns, rows = outcome
@@ -70,7 +81,23 @@ class FakeConn:
     def __init__(self, script: dict[str, Any] | None = None) -> None:
         self.script: dict[str, Any] = script or {}
         self.executed: list[tuple[str, Any]] = []
+        self.prepare_flags: list[bool | None] = []
+        self.pipelined: list[bool] = []
+        self.in_pipeline = False
         self.fetch_sizes: list[int] = []
+        self.info = SimpleNamespace(transaction_status=TransactionStatus.IDLE)
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+    @contextmanager
+    def pipeline(self) -> Iterator[None]:
+        self.in_pipeline = True
+        try:
+            yield
+        finally:
+            self.in_pipeline = False
 
     def cursor(self) -> FakeCursor:
         return FakeCursor(self)
@@ -96,6 +123,14 @@ class FakePool:
     def close(self) -> None:
         self.closed = True
 
+    @contextmanager
+    def pipeline(self) -> Iterator[None]:
+        self.in_pipeline = True
+        try:
+            yield
+        finally:
+            self.in_pipeline = False
+
 
 @pytest.fixture
 def db(monkeypatch: pytest.MonkeyPatch) -> Iterator[AiReaderDb]:
@@ -114,11 +149,31 @@ def _statements() -> list[str]:
     return [" ".join(sql.split()) for sql, _ in _pool().conn.executed]
 
 
-def test_pool_is_autocommit_unprepared_and_checks_identity(db: AiReaderDb) -> None:
+def test_pool_is_autocommit_unprepared_bounded_and_checks_identity(db: AiReaderDb) -> None:
     kwargs = _pool().kwargs
-    assert kwargs["kwargs"] == {"autocommit": True, "prepare_threshold": None}
+    assert kwargs["kwargs"] == {
+        "autocommit": True,
+        "prepare_threshold": None,
+        "connect_timeout": 5,
+        "keepalives": 1,
+        "keepalives_idle": 10,
+        "keepalives_interval": 5,
+        "keepalives_count": 2,
+        "tcp_user_timeout": 15000,
+    }
     assert kwargs["max_size"] == 2
+    assert kwargs["timeout"] == 10
+    assert kwargs["check"] is psycopg_pool.ConnectionPool.check_connection
     assert callable(kwargs["configure"])
+
+
+def test_identity_error_cleared_once_a_connection_passes(db: AiReaderDb) -> None:
+    configure = _pool().kwargs["configure"]
+    with pytest.raises(NotAiReader):
+        configure(FakeConn({"current_user": (["current_user", "session_user"], [("postgres", "postgres")])}))
+    assert db._identity_error is not None
+    configure(FakeConn({"current_user": (["current_user", "session_user"], [("ai_reader", "ai_reader")])}))
+    assert db._identity_error is None
 
 
 def test_run_wraps_read_only_and_sets_both_claims(db: AiReaderDb) -> None:
@@ -269,3 +324,62 @@ def test_catalogue_cached(db: AiReaderDb) -> None:
 def test_close_closes_the_pool(db: AiReaderDb) -> None:
     db.close()
     assert _pool().closed is True
+
+
+def test_run_always_uses_the_extended_protocol(db: AiReaderDb) -> None:
+    # No parameters would mean psycopg's simple protocol, which runs "select 1; commit; ..." whole.
+    _pool().conn.script = {"from ai.recipes": (["title"], [("Soup",)])}
+    db.run(CLAIMS, "select title from ai.recipes where title like '%soup%'")
+    sql, params = _pool().conn.executed[2]
+    assert sql == "select title from ai.recipes where title like '%soup%'"
+    assert params is None
+    assert _pool().conn.prepare_flags[2] is False
+    assert _pool().conn.pipelined == [False, False, True, False]  # only the statement is pipelined
+
+
+def test_run_discards_a_connection_whose_transaction_ended(db: AiReaderDb) -> None:
+    with pytest.raises(QueryFailed) as caught:
+        db.run(CLAIMS, "commit")
+    assert "transaction" in caught.value.message
+    assert _pool().conn.closed is True
+    assert _statements()[-1] == "commit"  # no rollback on a connection already closed
+
+
+def test_stale_connection_on_begin_raises_query_failed(db: AiReaderDb) -> None:
+    _pool().conn.script = {"begin transaction": psycopg.OperationalError("server closed the connection")}
+    with pytest.raises(QueryFailed) as caught:
+        db.run(CLAIMS, "select 1")
+    assert "server closed the connection" in caught.value.message
+
+
+def test_failed_rollback_closes_and_raises_query_failed(db: AiReaderDb) -> None:
+    _pool().conn.script = {"rollback": psycopg.OperationalError("connection lost")}
+    with pytest.raises(QueryFailed) as caught:
+        db.run(CLAIMS, "select 1")
+    assert "connection lost" in caught.value.message
+    assert _pool().conn.closed is True
+
+
+def test_failed_statement_that_ended_the_transaction_is_discarded(db: AiReaderDb) -> None:
+    class Ends(psycopg.ProgrammingError):
+        pass
+
+    conn = _pool().conn
+
+    def end_and_fail() -> None:
+        conn.info.transaction_status = TransactionStatus.IDLE
+        raise Ends("ended")
+
+    conn.script = {"end it": _Raiser(end_and_fail)}
+    with pytest.raises(QueryFailed) as caught:
+        db.run(CLAIMS, "end it")
+    assert "transaction" in caught.value.message
+    assert conn.closed is True
+
+
+class _Raiser(Exception):
+    """A scripted outcome that runs a callback (which raises) instead of being raised itself."""
+
+    def __init__(self, callback: Any) -> None:
+        super().__init__("callback")
+        self.callback = callback

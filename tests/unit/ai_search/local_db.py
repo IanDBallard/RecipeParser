@@ -54,7 +54,11 @@ def admin_dsn() -> str:
     dsn = os.environ.get(ENV, "").strip()
     if not dsn:
         pytest.skip(f"{ENV} is not set: no local Supabase to test against")
-    host = conninfo_to_dict(dsn).get("host") or ""
+    parts = conninfo_to_dict(dsn)
+    for key in ("hostaddr", "service"):
+        if parts.get(key):
+            pytest.fail(f"{ENV} must not set {key}: only a host of 127.0.0.1, localhost or ::1 is accepted")
+    host = str(parts.get("host") or "")
     if host not in LOCAL_HOSTS:
         pytest.fail(f"{ENV} must point at 127.0.0.1, localhost or ::1, not {host!r}: these tests write to it")
     return dsn
@@ -67,8 +71,7 @@ def reader_dsn(admin: str) -> str:
     return make_conninfo("", **parts)
 
 
-def _seed_cook(conn: psycopg.Connection[Any], label: str, titles: list[str]) -> Cook:
-    cook = Cook(str(uuid.uuid4()))
+def _seed_cook(conn: psycopg.Connection[Any], cook: Cook, label: str, titles: list[str]) -> None:
     email = f"ai-db-{label}-{cook.id}@example.test"
     conn.execute("insert into auth.users (id, email) values (%s, %s)", (cook.id, email))
     conn.execute("insert into public.categories (user_id, name) values (%s, %s)", (cook.id, f"{label} category"))
@@ -80,38 +83,41 @@ def _seed_cook(conn: psycopg.Connection[Any], label: str, titles: list[str]) -> 
             (rid, cook.id, title, EMBEDDING),
         )
         cook.recipe_ids.append(rid)
-    return cook
 
 
 @pytest.fixture(name="seeded", scope="module")
 def seeded_fixture() -> Iterator[Seeded]:
     admin = admin_dsn()
-    with psycopg.connect(admin, autocommit=True) as conn:
-        # pytest-xdist workers each seed their own cooks; only the role change must not race.
-        conn.execute("select pg_advisory_lock(hashtext('recipeparser ai_db tests'))")
-        try:
-            conn.execute(f"alter role ai_reader with password '{AI_READER_PASSWORD}'")
-        finally:
-            conn.execute("select pg_advisory_unlock(hashtext('recipeparser ai_db tests'))")
-        has_net = conn.execute("select to_regclass('net.http_request_queue') is not null").fetchone() == (True,)
-        a = _seed_cook(conn, "a", ["Alpha Soup", "Alpha Bread"])
-        b = _seed_cook(conn, "b", ["Bravo Stew"])
-        net_id = None
-        if has_net:
-            row = conn.execute(
-                "insert into net.http_request_queue (method, url, headers, timeout_milliseconds)"
-                " values ('GET', 'http://ai-db-test.invalid/', '{}'::jsonb, 1000) returning id"
-            ).fetchone()
-            net_id = row[0] if row else None
+    a, b = Cook(str(uuid.uuid4())), Cook(str(uuid.uuid4()))
+    net_id = None
     try:
+        with psycopg.connect(admin, autocommit=True) as conn:
+            # pytest-xdist workers each seed their own cooks; only the role change must not race.
+            conn.execute("select pg_advisory_lock(hashtext('recipeparser ai_db tests'))")
+            try:
+                conn.execute(f"alter role ai_reader with password '{AI_READER_PASSWORD}'")
+            finally:
+                conn.execute("select pg_advisory_unlock(hashtext('recipeparser ai_db tests'))")
+            has_net = conn.execute("select to_regclass('net.http_request_queue') is not null").fetchone() == (True,)
+            _seed_cook(conn, a, "a", ["Alpha Soup", "Alpha Bread"])
+            _seed_cook(conn, b, "b", ["Bravo Stew"])
+            if has_net:
+                row = conn.execute(
+                    "insert into net.http_request_queue (method, url, headers, timeout_milliseconds)"
+                    " values ('GET', 'http://ai-db-test.invalid/', '{}'::jsonb, 1000) returning id"
+                ).fetchone()
+                net_id = row[0] if row else None
         yield Seeded(admin, reader_dsn(admin), a, b, has_net)
     finally:
+        # Also after a partial seed: whatever exists of the two cooks is removed.
         with psycopg.connect(admin, autocommit=True) as conn:
             if net_id is not None:
                 conn.execute("delete from net.http_request_queue where id = %s", (net_id,))
             # Cayenne's own account deletion removes every row the signup trigger and the seed made.
-            for cook in (a, b):
-                conn.execute("select public.admin_delete_account(%s, true)", (cook.id,))
+            conn.execute(
+                "select public.admin_delete_account(id, true) from auth.users where id = any(%s::uuid[])",
+                ([a.id, b.id],),
+            )
 
 
 @pytest.fixture(name="db")

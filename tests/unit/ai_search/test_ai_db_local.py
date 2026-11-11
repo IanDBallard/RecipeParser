@@ -31,6 +31,8 @@ def test_role_settings_present(db: AiReaderDb, seeded: Seeded) -> None:
     assert show("search_path") == "ai"
     assert show("statement_timeout") == "5s"
     assert show("default_transaction_read_only") == "on"
+    assert show("lock_timeout") == "2s"
+    assert show("idle_in_transaction_session_timeout") == "10s"
     assert show("transaction_read_only") == "on"
 
 
@@ -140,3 +142,44 @@ def test_statement_timeout_applies(db: AiReaderDb, seeded: Seeded) -> None:
     with pytest.raises(QueryFailed) as caught:
         db.run(seeded.a.claims, "select pg_sleep(6)")
     assert "statement timeout" in caught.value.message
+
+
+def test_multiple_statements_refused_and_nothing_leaks(seeded: Seeded) -> None:
+    # Gate bypassed on purpose. The extended protocol runs one statement only, so the COMMIT and the
+    # session SET never run, and the next cook on the same connection keeps the role's settings.
+    db = AiReaderDb(seeded.reader_dsn, max_size=1)
+    try:
+        with pytest.raises(QueryFailed, match="multiple commands"):
+            db.run(seeded.a.claims, "select 1; commit; set statement_timeout = 0")
+        assert db.run(seeded.b.claims, "show statement_timeout").rows == [("5s",)]
+        assert db.run(seeded.b.claims, "show transaction_read_only").rows == [("on",)]
+    finally:
+        db.close()
+
+
+def test_commit_discards_the_connection(seeded: Seeded) -> None:
+    db = AiReaderDb(seeded.reader_dsn, max_size=1)
+    try:
+        pid = db.run(seeded.a.claims, "select pg_backend_pid()").rows[0][0]
+        with pytest.raises(QueryFailed) as caught:
+            db.run(seeded.a.claims, "commit")
+        assert "transaction" in caught.value.message
+        after = db.run(seeded.b.claims, "select pg_backend_pid(), current_setting('statement_timeout')").rows[0]
+        assert after[0] != pid  # the connection that left its transaction was not lent again
+        assert after[1] == "5s"
+    finally:
+        db.close()
+
+
+def test_session_set_does_not_outlive_run(seeded: Seeded) -> None:
+    db = AiReaderDb(seeded.reader_dsn, max_size=1)
+    try:
+        db.run(seeded.a.claims, "set statement_timeout = 0")
+        assert db.run(seeded.b.claims, "show statement_timeout").rows == [("5s",)]
+    finally:
+        db.close()
+
+
+def test_like_pattern_with_percent_runs(db: AiReaderDb, seeded: Seeded) -> None:
+    result = db.run(seeded.a.claims, "select title from ai.recipes where title like '%Soup%'")
+    assert result.rows == [("Alpha Soup",)]

@@ -24,10 +24,29 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import psycopg
+from psycopg.pq import TransactionStatus
 from psycopg_pool import ConnectionPool, PoolTimeout
 
 ROLE = "ai_reader"
 DEFAULT_MAX_ROWS = 200
+POOL_TIMEOUT_S = 10.0
+# Bound at import: the pool checks each connection before lending it.
+_CHECK_CONNECTION = ConnectionPool.check_connection
+_OPEN_TRANSACTION = (TransactionStatus.INTRANS, TransactionStatus.INERROR)
+
+# Per connection: autocommit (run() opens its own transaction); no server-side prepared statements,
+# which Supavisor's transaction mode cannot carry from one transaction to the next; and a hung
+# database or network bounded on the client, well inside the endpoint's 30 s wall clock.
+CONNECTION_KWARGS: dict[str, Any] = {
+    "autocommit": True,
+    "prepare_threshold": None,
+    "connect_timeout": 5,
+    "keepalives": 1,
+    "keepalives_idle": 10,
+    "keepalives_interval": 5,
+    "keepalives_count": 2,
+    "tcp_user_timeout": 15000,
+}
 
 _BEGIN = "begin transaction read only"
 _ROLLBACK = "rollback"
@@ -127,10 +146,10 @@ class AiReaderDb:
             min_size=1,
             open=True,
             max_size=max_size,
-            # prepare_threshold=None: no server-side prepared statements, which Supavisor's
-            # transaction mode cannot carry from one transaction to the next.
-            kwargs={"autocommit": True, "prepare_threshold": None},
+            timeout=POOL_TIMEOUT_S,
+            kwargs=dict(CONNECTION_KWARGS),
             configure=self._configure,
+            check=_CHECK_CONNECTION,
         )
 
     def _configure(self, conn: psycopg.Connection[Any]) -> None:
@@ -141,6 +160,8 @@ class AiReaderDb:
             # waiting sees it instead of a bare timeout.
             self._identity_error = e
             raise
+        # A later PoolTimeout (under load) must not be reported as an identity failure.
+        self._identity_error = None
 
     def run(
         self,
@@ -188,28 +209,42 @@ class AiReaderDb:
         max_rows: int,
     ) -> QueryResult:
         try:
-            with self._pool.connection() as conn, conn.cursor() as cur:
-                cur.execute(_BEGIN)
+            with self._pool.connection() as conn:
                 try:
-                    if claim_params is not None:
-                        cur.execute(_SET_CLAIMS, claim_params)
-                    started = time.perf_counter()
-                    cur.execute(sql, params)
-                    if cur.description is None:
-                        columns: list[str] = []
-                        rows: list[tuple[Any, ...]] = []
-                    else:
-                        columns = [d.name for d in cur.description]
-                        rows = list(cur.fetchmany(max_rows + 1))
-                    duration_ms = (time.perf_counter() - started) * 1000
+                    with conn.cursor() as cur:
+                        cur.execute(_BEGIN)
+                        try:
+                            if claim_params is not None:
+                                cur.execute(_SET_CLAIMS, claim_params)
+                            started = time.perf_counter()
+                            # Pipeline mode always sends the extended protocol, which runs exactly one
+                            # statement: outside it, psycopg sends a parameterless query with the simple
+                            # protocol, where "select 1; commit; set ..." would run all three.
+                            with conn.pipeline():
+                                cur.execute(sql, params, prepare=False)
+                            if cur.description is None:
+                                columns: list[str] = []
+                                rows: list[tuple[Any, ...]] = []
+                            else:
+                                columns = [d.name for d in cur.description]
+                                rows = list(cur.fetchmany(max_rows + 1))
+                            duration_ms = (time.perf_counter() - started) * 1000
+                        finally:
+                            if conn.info.transaction_status not in _OPEN_TRANSACTION:
+                                # The statement ended the read-only transaction (a COMMIT, say):
+                                # whatever it changed must not reach the next cook. A closed
+                                # connection is discarded by the pool.
+                                conn.close()
+                                raise QueryFailed("the statement must not end its transaction")
+                            try:
+                                cur.execute(_ROLLBACK)
+                            except psycopg.Error:
+                                conn.close()
+                                raise
                 except psycopg.Error as e:
+                    # Stale connections included (BEGIN or ROLLBACK failing): the pool discards a
+                    # closed or broken connection on return.
                     raise QueryFailed(_message(e)) from e
-                finally:
-                    try:
-                        cur.execute(_ROLLBACK)
-                    except psycopg.Error:
-                        # A broken connection cannot roll back; the pool discards it on return.
-                        pass
         except PoolTimeout as e:
             if self._identity_error is not None:
                 raise self._identity_error from e
