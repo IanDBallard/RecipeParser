@@ -36,6 +36,9 @@ dependencies = [
     # Parses the search agent's SQL for the statement gate (adapters/ai_search/sql_gate.py).
     # pglast 8 needs Python 3.10 or later.
     "pglast>=8.7",
+    # The ai_reader connection the search agent's SQL runs through (adapters/ai_search/ai_db.py).
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
 ]
 
 [project.scripts]
@@ -82,6 +85,7 @@ python_files = ["test_*.py"]
 addopts = ["-n", "auto"]
 markers = [
     "transient: marks tests as transient (deleted in Phase 8 alongside legacy code)",
+    "ai_db: needs a local Supabase with the Stage 2 ai schema (AI_SEARCH_TEST_ADMIN_DSN)",
 ]
 
 [tool.ruff]
