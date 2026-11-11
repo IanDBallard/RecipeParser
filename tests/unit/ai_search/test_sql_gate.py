@@ -29,6 +29,26 @@ AI = frozenset(
     }
 )
 
+# Column names of the ai views the SQL below touches (a realistic subset of the catalogue's columns).
+COLUMNS = frozenset(
+    {
+        "id",
+        "title",
+        "categories",
+        "prep_min_minutes",
+        "cook_min_minutes",
+        "created_at",
+        "rating",
+        "source",
+        "recipe_id",
+        "name",
+        "axis",
+        "category_id",
+        "position",
+        "text",
+    }
+)
+
 REFUSED = [
     pytest.param("select set_config('request.jwt.claims', '{\"sub\":\"x\"}', true)", "set_config", id="set_config"),
     pytest.param(
@@ -113,7 +133,7 @@ ALLOWED = [
 @pytest.mark.parametrize(("sql", "reason_fragment"), REFUSED)
 def test_refused(sql: str, reason_fragment: str) -> None:
     with pytest.raises(StatementRefused) as caught:
-        check_statement(sql, AI)
+        check_statement(sql, AI, COLUMNS)
     assert reason_fragment in caught.value.reason
     assert "\n" not in caught.value.reason
     assert str(caught.value) == caught.value.reason
@@ -121,7 +141,7 @@ def test_refused(sql: str, reason_fragment: str) -> None:
 
 @pytest.mark.parametrize("sql", ALLOWED)
 def test_allowed(sql: str) -> None:
-    check_statement(sql, AI)
+    check_statement(sql, AI, COLUMNS)
 
 
 # Beyond the brief's table: the scoping and name-length rulings of the task.
@@ -155,7 +175,7 @@ SCOPING_REFUSED = [
 @pytest.mark.parametrize(("sql", "reason_fragment"), SCOPING_REFUSED)
 def test_scoping_refused(sql: str, reason_fragment: str) -> None:
     with pytest.raises(StatementRefused) as caught:
-        check_statement(sql, AI)
+        check_statement(sql, AI, COLUMNS)
     assert reason_fragment in caught.value.reason
 
 
@@ -171,7 +191,71 @@ SCOPING_ALLOWED = [
 
 @pytest.mark.parametrize("sql", SCOPING_ALLOWED)
 def test_scoping_allowed(sql: str) -> None:
-    check_statement(sql, AI)
+    check_statement(sql, AI, COLUMNS)
+
+
+# Fix round 1. Postgres reads `(x).name` and `alias.name` as `name(x)` when no such field or column
+# exists, so attribute notation could call any one-argument function the gate never saw.
+FUNCTION_NOTATION_REFUSED = [
+    pytest.param("select ('request.jwt.claims'::text).current_setting", "current_setting", id="attr_current_setting"),
+    pytest.param("select ((null::int).pg_stat_get_activity).query", "pg_stat_get_activity", id="attr_stat_activity"),
+    pytest.param(
+        "select (n).pg_stat_get_backend_activity from unnest(array[1,2,3,4,5]) n",
+        "pg_stat_get_backend_activity",
+        id="attr_backend_activity",
+    ),
+    pytest.param(
+        "select (pid).pg_terminate_backend from unnest(array[123]) pid", "pg_terminate_backend", id="attr_terminate"
+    ),
+    pytest.param("select (1::bigint).pg_advisory_lock", "pg_advisory_lock", id="attr_advisory_lock"),
+    pytest.param("select (5::float8).pg_sleep", "pg_sleep", id="attr_pg_sleep"),
+    pytest.param("select ('s'::text).nextval", "nextval", id="attr_nextval"),
+    pytest.param("select ('pg_class'::text).pg_relation_size", "pg_relation_size", id="attr_relation_size"),
+    pytest.param("select (title).length from recipes", "length", id="attr_length"),
+    pytest.param("select s.to_json from (select 1 a) s", "to_json", id="column_to_json"),
+    pytest.param("select r.row_to_json from recipes r", "row_to_json", id="column_row_to_json"),
+    pytest.param("select r.pg_column_size from recipes r", "pg_column_size", id="column_pg_column_size"),
+    pytest.param("select title collate public.x from recipes", "public.x", id="qualified_collation"),
+    # A function in FROM that returns a scalar makes `alias.name` call name(scalar); a name aliased
+    # elsewhere in the statement must not open that door.
+    pytest.param(
+        "select s.current_setting from unnest(array['request.jwt.claims']) s, (select 1 as current_setting) t",
+        "s.current_setting",
+        id="scalar_function_alias_borrowed_name",
+    ),
+    pytest.param(
+        "select unnest.pg_sleep from unnest(array[10]), (select 1 as pg_sleep) t",
+        "unnest.pg_sleep",
+        id="unaliased_function_borrowed_name",
+    ),
+]
+
+
+@pytest.mark.parametrize(("sql", "reason_fragment"), FUNCTION_NOTATION_REFUSED)
+def test_function_notation_refused(sql: str, reason_fragment: str) -> None:
+    with pytest.raises(StatementRefused) as caught:
+        check_statement(sql, AI, COLUMNS)
+    assert reason_fragment in caught.value.reason
+
+
+NAMES_ALLOWED = [
+    pytest.param("select categories[1] from recipes", id="subscript"),
+    pytest.param("select (array_agg(title))[1] from recipes", id="subscript_of_call"),
+    pytest.param("select (r.*) from recipes r", id="parenthesised_row_star"),
+    pytest.param('select r.title collate "C" from recipes r', id="unqualified_collation"),
+    pytest.param('select title collate pg_catalog."default" from recipes', id="catalog_collation"),
+    pytest.param(
+        "with recursive t(n) as (select 1 union all select n + 1 from t where n < 3) select n from t",
+        id="alias_colname",
+    ),
+    pytest.param("select x.c from (select title as c from recipes) x", id="subquery_output_name"),
+    pytest.param("select n from unnest(array[1, 2]) n", id="function_alias_column"),
+]
+
+
+@pytest.mark.parametrize("sql", NAMES_ALLOWED)
+def test_names_allowed(sql: str) -> None:
+    check_statement(sql, AI, COLUMNS)
 
 
 def test_ai_functions_are_the_two_searches() -> None:

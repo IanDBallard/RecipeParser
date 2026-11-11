@@ -14,6 +14,10 @@ Three axes, applied to the whole parse tree:
 3. Names: relations are ``ai`` views (or a CTE in scope), functions, types and operators are on
    their lists with only the qualifiers that keep them where they belong.
 
+Postgres reads attribute notation as a call when no field matches: ``(x).f`` and ``q.f`` become
+``f(x)`` / ``f(q)``. So field access after a parenthesis is refused, and the last part of every
+column reference must be an ``ai`` column or a name the statement itself declares.
+
 A refusal raises ``StatementRefused`` whose ``reason`` is one plain sentence naming what was
 refused. It goes back to the agent so it can rewrite the query.
 
@@ -80,10 +84,11 @@ class StatementRefused(Exception):
         self.reason = reason
 
 
-def check_statement(sql: str, ai_relations: frozenset[str]) -> None:
+def check_statement(sql: str, ai_relations: frozenset[str], ai_columns: frozenset[str]) -> None:
     """Raise ``StatementRefused`` unless ``sql`` is one SELECT that stays inside the allow-list.
 
-    ``ai_relations`` is the set of view names in the ``ai`` schema (the catalogue's relations).
+    ``ai_relations`` is the set of view names in the ``ai`` schema (the catalogue's relations);
+    ``ai_columns`` is every column name those views (and the two search functions) return.
     """
     if not sql.strip():
         raise StatementRefused("The statement is empty.")
@@ -101,12 +106,22 @@ def check_statement(sql: str, ai_relations: frozenset[str]) -> None:
     stmt = statements[0].stmt
     if not isinstance(stmt, ast.SelectStmt):
         raise StatementRefused(f"Statement kind {type(stmt).__name__} is not allowed; only SELECT is.")
-    _Gate(ai_relations).walk(stmt, frozenset())
+    aliased, function_columns = _declared_names(stmt)
+    _Gate(ai_relations, ai_columns, aliased, function_columns).walk(stmt, frozenset())
 
 
 class _Gate:
-    def __init__(self, ai_relations: frozenset[str]) -> None:
+    def __init__(
+        self,
+        ai_relations: frozenset[str],
+        ai_columns: frozenset[str],
+        aliased: frozenset[str],
+        function_columns: dict[str, set[str]],
+    ) -> None:
         self._ai_relations = ai_relations
+        self._ai_columns = ai_columns
+        self._aliased = aliased
+        self._function_columns = function_columns
 
     def walk(self, value: object, ctes: frozenset[str]) -> None:
         """Check ``value`` and everything under it; ``ctes`` are the CTE names in scope here."""
@@ -138,6 +153,14 @@ class _Gate:
             self._operator(value.operName)
         elif isinstance(value, ast.SortBy):
             self._operator(value.useOp)
+        elif isinstance(value, ast.A_Indirection):
+            # Inner first, so `((x).f).g` names the innermost call it would make.
+            self.walk(value.arg, ctes)
+            self._indirection(value.indirection)
+        elif isinstance(value, ast.ResTarget):
+            self._indirection(value.indirection)
+        elif isinstance(value, ast.CollateClause):
+            self._collation(value)
         for attr in value:
             self.walk(getattr(value, attr), ctes)
 
@@ -181,6 +204,20 @@ class _Gate:
         if len(fields) > _MAX_COLUMN_PARTS:
             shown = ".".join(f.sval if isinstance(f, ast.String) and f.sval else "*" for f in fields)
             raise StatementRefused(f"Column reference {shown} is not allowed.")
+        last = fields[-1] if fields else None
+        if isinstance(last, ast.A_Star):
+            return
+        names = _names(fields)
+        # Postgres reads `q.name` as the call name(q) when q has no column `name`, so the last part
+        # must be a real column: one of the ai views', or a name this statement gives a column.
+        # Through a function in FROM (whose row may be a bare scalar) only its own names count.
+        known = self._ai_columns
+        if len(names) >= 2 and names[-2] in self._function_columns:
+            known = known | self._function_columns[names[-2]]
+        else:
+            known = known | self._aliased
+        if names[-1] not in known:
+            raise StatementRefused(f"Column {'.'.join(names)} is not allowed; it is not a column of any view or alias.")
 
     def _function(self, node: ast.FuncCall) -> None:
         names = _names(node.funcname)
@@ -199,10 +236,24 @@ class _Gate:
     def _type(self, node: ast.TypeName) -> None:
         names = _names(node.names)
         allowed = bool(names) and names[-1] in ALLOWED_TYPES
-        if len(names) == 2 and names[0] != _CATALOG_SCHEMA or len(names) > 2:
+        if (len(names) == 2 and names[0] != _CATALOG_SCHEMA) or len(names) > 2:
             allowed = False
         if not allowed:
             raise StatementRefused(f"Type {'.'.join(names)} is not allowed.")
+
+    def _collation(self, node: ast.CollateClause) -> None:
+        names = _names(node.collname)
+        if (len(names) == 2 and names[0] != _CATALOG_SCHEMA) or len(names) > 2:
+            raise StatementRefused(f"Collation {'.'.join(names)} is not allowed.")
+
+    def _indirection(self, parts: Sequence[object] | None) -> None:
+        # `(x).name` is the call name(x) when x has no field `name`, on scalars too, so field
+        # access is refused outright; subscripts and `.*` are all that may follow a parenthesis.
+        for part in parts or ():
+            if isinstance(part, ast.String):
+                raise StatementRefused(f"Field access .{part.sval} is not allowed; select columns by name instead.")
+            if not isinstance(part, (ast.A_Indices, ast.A_Star)):
+                raise StatementRefused(f"{type(part).__name__} is not allowed after a parenthesis.")
 
     def _operator(self, name: Sequence[object] | None) -> None:
         names = _names(name)
@@ -217,6 +268,56 @@ def _names(value: Sequence[object] | None) -> list[str]:
             raise StatementRefused(f"{type(item).__name__} is not allowed in a name.")
         names.append(item.sval)
     return names
+
+
+def _declared_names(root: ast.Node) -> tuple[frozenset[str], dict[str, set[str]]]:
+    """Column names the statement itself declares, and the names each FROM function provides.
+
+    The first set holds output names (``AS x``), alias column lists (``t(n)``), CTE column lists
+    and function aliases. The dict maps each function-in-FROM's alias (or bare function name) to
+    its own column names: the alias, its column list and the function's name.
+    """
+    aliased: set[str] = set()
+    functions: dict[str, set[str]] = {}
+
+    def visit(value: object) -> None:
+        if isinstance(value, (tuple, list)):
+            for item in value:
+                visit(item)
+            return
+        if not isinstance(value, ast.Node):
+            return
+        if isinstance(value, ast.ResTarget) and value.name:
+            aliased.add(value.name)
+        elif isinstance(value, ast.Alias):
+            aliased.update(s.sval for s in value.colnames or () if isinstance(s, ast.String) and s.sval)
+        elif isinstance(value, ast.CommonTableExpr):
+            aliased.update(s.sval for s in value.aliascolnames or () if isinstance(s, ast.String) and s.sval)
+        elif isinstance(value, ast.RangeFunction):
+            own: set[str] = set()
+            for item in value.functions or ():
+                call = item[0] if isinstance(item, (tuple, list)) and item else None
+                if isinstance(call, ast.FuncCall) and call.funcname:
+                    last = call.funcname[-1]
+                    if isinstance(last, ast.String) and last.sval:
+                        own.add(last.sval)
+            alias = value.alias
+            if alias is not None and alias.aliasname:
+                own.add(alias.aliasname)
+                own.update(s.sval for s in alias.colnames or () if isinstance(s, ast.String) and s.sval)
+                key = alias.aliasname
+                aliased.add(alias.aliasname)
+                functions.setdefault(key, set()).update(own)
+            else:
+                # Unaliased, the function's own (allow-listed) name is its column and qualifier.
+                aliased.update(own)
+                for name in own:
+                    functions.setdefault(name, set()).update(own)
+        for attr in value:
+            visit(getattr(value, attr))
+
+    visit(root)
+    return frozenset(aliased), functions
 
 
 def _cte_name(entry: object) -> str:
