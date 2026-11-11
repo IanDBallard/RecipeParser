@@ -1,3 +1,4 @@
+import math
 from unittest.mock import MagicMock
 
 import pytest
@@ -149,3 +150,99 @@ def test_a_raising_client_factory_fails_closed() -> None:
     assert e.value.status_code == 503
     assert gate.paused() is True
     assert gate.consume_recipe("u1") is False
+
+
+# --- search rate limit (Cayenne AI search §8) ---
+
+
+def _search_gate(clock, *, paused=False, exempt=False):
+    return AiGate(lambda: _sb(paused=paused, row={**ROW, "exempt": exempt}), clock=clock)
+
+
+def test_search_allows_ten_an_hour_then_429() -> None:
+    gate = _search_gate(_Clock())
+    for _ in range(10):
+        gate.check("u1", search=True)
+    with pytest.raises(HTTPException) as e:
+        gate.check("u1", search=True)
+    assert (e.value.status_code, e.value.detail) == (429, "You can search more deeply again in 60 minutes.")
+    gate.check("u2", search=True)  # another user is unaffected
+
+
+def test_search_hour_window_slides() -> None:
+    clock = _Clock()
+    gate = _search_gate(clock)
+    for _ in range(10):
+        gate.check("u1", search=True)
+    clock.t = 3600.0
+    gate.check("u1", search=True)
+
+
+def test_search_day_cap_thirty() -> None:
+    clock = _Clock()
+    gate = _search_gate(clock)
+    for hour in range(3):
+        clock.t = hour * 3600.0
+        for _ in range(10):
+            gate.check("u1", search=True)
+    clock.t = 3 * 3600.0  # the hour window is clear
+    with pytest.raises(HTTPException) as e:
+        gate.check("u1", search=True)
+    assert e.value.status_code == 429
+    assert e.value.headers["Retry-After"] == str(86400 - 3 * 3600)
+    assert e.value.detail == "You can search more deeply again in 21 hours."
+
+
+def test_search_exempt_uncapped_and_unpaused() -> None:
+    gate = _search_gate(_Clock(), paused=True, exempt=True)
+    for _ in range(50):
+        gate.check("u1", search=True)
+
+
+def test_search_paused_503_for_non_exempt() -> None:
+    with pytest.raises(HTTPException) as e:
+        _search_gate(_Clock(), paused=True).check("u1", search=True)
+    assert (e.value.status_code, e.value.detail) == (503, ai_gate.PAUSED_DETAIL)
+
+
+def test_search_refusal_spends_no_slot() -> None:
+    clock = _Clock()
+    gate = _search_gate(clock)
+    for _ in range(10):
+        gate.check("u1", search=True)
+    clock.t = 1000.0
+    for _ in range(5):
+        with pytest.raises(HTTPException):
+            gate.check("u1", search=True)
+    clock.t = 3600.0  # the first window clears on schedule, the refusals extended nothing
+    for _ in range(10):
+        gate.check("u1", search=True)
+
+
+def test_search_retry_after_header() -> None:
+    clock = _Clock()
+    gate = _search_gate(clock)
+    for _ in range(10):
+        gate.check("u1", search=True)
+    clock.t = 0.4
+    with pytest.raises(HTTPException) as e:
+        gate.check("u1", search=True)
+    seconds = gate.search_retry_after("u1")
+    assert e.value.headers["Retry-After"] == str(math.ceil(seconds)) == "3600"
+    assert gate.search_retry_after("nobody") == 0
+
+
+def test_search_when_wording() -> None:
+    assert ai_gate.search_when(45) == "a minute"
+    assert ai_gate.search_when(1200) == "20 minutes"
+    assert ai_gate.search_when(2 * 3600 + 600) == "3 hours"
+    assert ai_gate.search_when(89 * 60) == "89 minutes"
+    assert ai_gate.search_when(90 * 60) == "2 hours"
+
+
+def test_search_does_not_touch_embed_window() -> None:
+    gate = _search_gate(_Clock())
+    for _ in range(10):
+        gate.check("u1", search=True)
+    for _ in range(60):
+        gate.check("u1", embed=True)
