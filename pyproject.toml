@@ -7,7 +7,7 @@ name = "recipeparser"
 version = "9.30.0"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Ian Ballard"}
@@ -33,6 +33,9 @@ dependencies = [
     # caught and logged. CI caught it because CI installs only what is declared.
     "supabase>=2.0",
     "Pillow>=11.0",
+    # Parses the search agent's SQL for the statement gate (adapters/ai_search/sql_gate.py).
+    # pglast 8 needs Python 3.10 or later.
+    "pglast>=8.7",
 ]
 
 [project.scripts]
@@ -83,7 +86,7 @@ markers = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "TID"]
@@ -132,11 +135,13 @@ select = ["E", "F", "I", "TID"]
 "tests/unit/test_tagging_scope.py" = ["TID"]
 # The cancel tests drive the API's cancel endpoint, job runner and liveness tick directly (Cayenne F-426).
 "tests/unit/test_ingest_cancel.py" = ["TID"]
+# The search agent's tests drive recipeparser.adapters.ai_search directly by design (Cayenne AI search Stage 3).
+"tests/unit/ai_search/**" = ["TID"]
 # Picture generation test has long assertion lines that cannot easily be split.
 "tests/unit/test_picture_gen.py" = ["E501"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
