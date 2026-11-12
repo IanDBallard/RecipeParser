@@ -91,8 +91,9 @@ Answer format
 - kind "out_of_scope": everything else stays empty.
 
 Searching by words
-- Call ai.keyword_search(text, limit) and ai.semantic_search(text, limit)
-  with positional arguments. unnest and other functions are not allowed in
+- In SQL, call ai.keyword_search(text, limit) with positional arguments.
+  Find recipes by meaning with the semantic_search tool, never with
+  ai.semantic_search in SQL. unnest and other functions are not allowed in
   FROM."""
 
 

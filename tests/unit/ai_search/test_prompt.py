@@ -26,8 +26,14 @@ CAT = Catalogue(
 
 
 def test_system_prompt_has_spec_rules() -> None:
-    for text in ("out_of_scope", "Never mention AI", "Every recipe id", "Active filters", "Answer format"):
-        assert text in SYSTEM_PROMPT or text.lower() in SYSTEM_PROMPT.lower()
+    lines = SYSTEM_PROMPT.split("\n")
+    assert "  answer is worse than none." in lines
+    assert "- Never mention AI, models, SQL, tools, databases or searching. The cook" in lines
+    assert 'return kind "out_of_scope" and nothing else.' in SYSTEM_PROMPT
+    assert "  come from a tool result in this conversation. A recipe you remember or" in lines
+    assert "Answer format" in lines
+    assert "never with\n  ai.semantic_search in SQL" in SYSTEM_PROMPT
+    assert "Call ai.semantic_search" not in SYSTEM_PROMPT
     assert "{schema description" not in SYSTEM_PROMPT
     assert "The cook's library" not in SYSTEM_PROMPT
     assert "positional" in SYSTEM_PROMPT and "unnest" in SYSTEM_PROMPT

@@ -143,8 +143,14 @@ def answer_ids(answer: Answer) -> list[str]:
 
 def raw_ids(raw: RawAnswer) -> list[str]:
     """Every id the raw answer names: the candidates to check for ownership."""
-    ids = list(raw.recipe_ids)
-    ids.extend(i for a in raw.alternatives for g in a.groups for i in g.recipe_ids)
+    named = list(raw.recipe_ids)
+    named.extend(i for a in raw.alternatives for g in a.groups for i in g.recipe_ids)
+    ids: list[str] = []
+    for value in named:
+        try:
+            ids.append(str(uuid.UUID(value)))
+        except ValueError:
+            continue
     return _unique(ids)
 
 
@@ -171,6 +177,8 @@ def finalize(raw: RawAnswer, *, permitted: set[str]) -> Answer:
     if raw.kind == "none":
         return NoneAnswer(kind="none", text=raw.text.strip() or NONE_LEFT)
     if raw.kind == "text":
+        if not raw.text.strip():
+            return NoneAnswer(kind="none", text=NONE_LEFT)
         return TextAnswer(kind="text", text=raw.text, recipe_ids=_owned(raw.recipe_ids, allowed))
     alternatives: list[Alternative] = []
     for a in raw.alternatives:

@@ -113,6 +113,16 @@ def test_finalize_none_and_out_of_scope() -> None:
     assert finalize(raw(kind="out_of_scope", text="ignored"), permitted=set()) == OutOfScopeAnswer(kind="out_of_scope")
 
 
+def test_finalize_blank_text_becomes_none() -> None:
+    out = finalize(raw(kind="text", text="  \n ", recipe_ids=[A]), permitted={A})
+    assert out == NoneAnswer(kind="none", text=NONE_LEFT)
+
+
+def test_raw_ids_canonical_lowercase_and_valid_only() -> None:
+    r = raw(recipe_ids=[A.upper(), "junk"], alternatives=[alt(("", [A, B.upper()]))])
+    assert raw_ids(r) == [A, B]
+
+
 def test_finalize_matches_ids_case_insensitively() -> None:
     out = finalize(raw(kind="text", text="x", recipe_ids=[A.upper()]), permitted={A})
     assert isinstance(out, TextAnswer)
