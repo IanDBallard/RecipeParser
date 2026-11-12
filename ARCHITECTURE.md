@@ -68,7 +68,7 @@ recipeparser/
 │       └── base.py                # Re-export of the ABC for older imports
 │
 ├── adapters/
-│   ├── api.py                     # The FastAPI app: /jobs*, /embed, recipe images, /health; mounts shares and shopping
+│   ├── api.py                     # The FastAPI app: /jobs*, /embed, recipe images, /health; mounts shares, shopping and search
 │   ├── job_sink.py                # Per-job bookkeeping shared by both ingestion endpoints
 │   ├── ingest_liveness.py         # Keeps live ingest rows fresh; ends those whose process died
 │   ├── regen_worker.py            # The reprocess worker: stale rows → REFINE and EMBED
@@ -76,6 +76,9 @@ recipeparser/
 │   ├── share_worker.py            # The recipe-sharing copy job and its sweep
 │   ├── shares_api.py              # The recipe-sharing endpoints
 │   ├── shopping_api.py            # The shopping classify endpoint
+│   ├── ai_gate.py                 # The AI gate: kill switch, recipe cap, embed and search rate limits
+│   ├── search_api.py              # POST /search/ask: the search agent, streamed as NDJSON
+│   ├── ai_search/                 # The search agent: sql_gate, ai_db, tools, prompt, answer, agent
 │   ├── cli.py                     # CLI adapter: Reader → RecipePipeline → PaprikaWriter
 │   └── gui.py                     # CustomTkinter GUI
 │
@@ -815,3 +818,17 @@ Spec: Cayenne's `docs/superpowers/specs/2026-09-30-recipe-sharing-design.md`. Pl
 The job's `stage` stays `IDLE` until it ends: the stage check has no copying value, and the client follows the share's items, not the job.
 
 `cleanup_jobs.py` marks every `pending` or `running` job `error` whatever its `kind`. Run by hand, it would leave any share being accepted in `accepting` for good, so do not run it while a `share_accept` job is open.
+
+---
+
+## 15. AI Search (`POST /search/ask`)
+
+Spec: Cayenne's Library AI search design (§7) and its Stage 3 plan. A cook's deeper search is answered by a Claude agent (`AI_SEARCH_MODEL`, `claude-opus-5-5`) that reads the cook's own library through SQL and two search functions. Nothing is stored server-side: the device holds the previous turn and sends it back to refine (at most 5 rounds).
+
+**The gate.** `search_api.build_router` refuses in this order, each an ordinary JSON error: 401 (token), 422 (body), 503 `Searching more deeply isn't available right now.` when either secret is missing (before any slot is spent), then `AiGate.check(sub, search=True)`: 503 while paused (exempt users excepted), 429 with `Retry-After` past 10 an hour or 30 a day (exempt users uncapped). The slot is spent there, immediately before the agent starts, and stays spent if the cook leaves. The `semantic_search` tool's Gemini call spends no `/embed` slot.
+
+**The connection.** `ai_search/ai_db.py`'s `AiReaderDb` is a psycopg pool on `AI_READER_DATABASE_URL` that logs in as the `ai_reader` role itself (both `current_user` and `session_user` checked). Every statement runs in a `READ ONLY` transaction that first sets the cook's verified JWT claims with `set_config(..., true)`, so row-level security shows that cook's rows only, and is always rolled back. `ai_search/sql_gate.py` parses the agent's SQL with pglast before it runs: one `SELECT`, `ai` views and the two `ai` search functions only. `api.py` builds the pool and the Anthropic client once per process on the first request that finds both secrets, never in a test run, and closes the pool in `_lifespan`.
+
+**The loop.** `ai_search/agent.py`'s `run_agent` is a manual loop (not the SDK tool runner): at most 10 tool rounds, a 30 s wall clock, a 40,000-token task budget, effort `medium`, adaptive thinking, server-side refusal fallback, SDK retries off, and a cancel flag checked before every model call and tool run. The four tools (`ai_search/tools.py`: `run_sql`, `semantic_search`, `keyword_search`, `get_recipe`) never raise into the loop except for infrastructure failures (`PoolTimeout`, `NotAiReader`). Every recipe id a tool returns is recorded; `finalize` lets an id into the answer only when a tool returned it in this request (or it was in the ownership-checked previous answer) and `ai.recipes` shows it as the cook's own. Each model call is recorded in `ai_usage` under action `search`, step `agent`.
+
+**The stream.** After the gate the response is `application/x-ndjson`: `{"type":"progress","text":…}` lines (`Looking for …`, `Checking …`, `Checking the details`), then exactly one `{"type":"answer","answer":…}` or `{"type":"error","code":"timeout"|"failed","detail":…}`. The agent runs in a worker thread inside `usage.attributed(sub, "search")`; progress crosses to the response through the event loop's thread-safe hand-off. Any failure after the stream began (Anthropic, Gemini, Postgres, the pool) is one `failed` line, logged at ERROR; when the client disconnects, the stream's `finally` sets the cancel event and the agent stops before its next model call. One summary line is logged per request: user, rounds, kind, duration, tokens.

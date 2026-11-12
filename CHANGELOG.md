@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.31.0] — 2026-11-11
+
+Cayenne Library AI search, stage 3: `POST /search/ask`, the agent behind a deeper Library search, answered as a stream. Inert until Cayenne's Stage 4 calls it. **Deploy note:** two new secrets, `ANTHROPIC_API_KEY` and `AI_READER_DATABASE_URL` (a Supavisor pooler DSN that logs in as Cayenne's `ai_reader` role, with its password); a Cayenne deploy PR carries them to the VM. Until both are set the endpoint answers 503 and nothing else changes. The owner sets `ai_reader`'s password and creates both secrets.
+
+### ✨ Added
+- `POST /search/ask` (`adapters/search_api.py`): `{ text, today, measuring, filters, previous? }`. Refusals before the agent starts are ordinary JSON errors: 401, 422, 503 when not configured or paused, 429 with `Retry-After` past 10 searches an hour or 30 a day per user (exempt users uncapped). After that the response is `application/x-ndjson`: `progress` lines, then exactly one `answer` or `error` (`timeout` or `failed`) line. A cook who leaves stops the agent before its next model call; the search still counts.
+- The search agent (`adapters/ai_search/`): a statement gate that admits one `SELECT` over Cayenne's `ai` views (`sql_gate.py`); the `ai_reader` connection, read-only and carrying the cook's token claims so row-level security shows only their recipes (`ai_db.py`); four tools (`tools.py`); the instructions and request context (`prompt.py`); the answer shape and its checks, which keep only recipes a tool returned and the cook owns (`answer.py`); and the loop, at most 10 rounds, 30 seconds and a 40,000-token budget (`agent.py`). Its Claude calls are recorded in `ai_usage` under `search`, step `agent`.
+- `config.AI_SEARCH_MODEL` (`claude-opus-5-5`, overridable) and `config.ai_search_secrets()`.
+
+### ⚠️ Changed
+- New dependencies: `pglast>=8.7`, `psycopg[binary]>=3.2`, `psycopg-pool>=3.2`, `anthropic>=2.8.0`.
+- `requires-python` raised to `>=3.10` (pglast 8 needs it).
+- The AI gate's `check` takes `search=True` for the search rate limit.
+
+---
+
 ## [9.30.0] — 2026-11-10
 
 Cayenne Library AI search, stage 1: a recipe's embedding covers its title, its category names, its ingredient lines and the first 400 characters of its directions, and stays current when any of them change. **Deploy note:** deploy after Cayenne's `20261110120000_embedding_rev` migration is applied; before it, `EmbedWorker` logs a missing-function error on every poll and its `ai_usage` rows are rejected.

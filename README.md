@@ -212,6 +212,9 @@ stops advancing is a stuck worker. Cayenne's deploy requires `"auth_mode":"verif
 
 | Variable | Default | Description |
 |---|---|---|
+| `ANTHROPIC_API_KEY` | unset | The Anthropic key behind `POST /search/ask`. Without it (or without `AI_READER_DATABASE_URL`) the endpoint answers 503. |
+| `AI_READER_DATABASE_URL` | unset | A Supavisor pooler DSN that logs in as Cayenne's `ai_reader` role, with its password: where the search agent's SQL runs. |
+| `AI_SEARCH_MODEL` | `claude-opus-5-5` | The model behind `POST /search/ask`. |
 | `REGEN_WORKER_ENABLED` | `0` | Set to `1` to run the regen and bulk-recategorise workers inside the API process. Requires `SUPABASE_SERVICE_ROLE_KEY` and Cayenne migration 014 (`regen_rpcs`) on top of the mandatory 013 above — without 014 the `claim_stale_recipes` / `regen_failed` RPCs do not exist and every poll raises. This flag gates only the workers; migration 013 is required regardless of its value. |
 
 ### Authentication
@@ -264,6 +267,7 @@ which is the source of truth; `recipeparser/adapters/api.py` implements it. Ever
 | `POST /recipes/{recipe_id}/image/generate` | Ask Gemini for a picture of the recipe as drafted. |
 | `DELETE /recipes/{recipe_id}/image` | Remove the recipe's picture. |
 | `POST /embed` | `{ text }` → `{ embedding }`, a 1536-float vector from `gemini-embedding-001`, for Cayenne's search. |
+| `POST /search/ask` | A deeper Library search: `{ text, today, measuring, filters, previous? }` → an NDJSON stream of `progress` lines, then one `answer` or `error` line. Rate-limited to 10 an hour and 30 a day per user; 503 until `ANTHROPIC_API_KEY` and `AI_READER_DATABASE_URL` are both set. See ARCHITECTURE.md §15. |
 | `GET /health` | Liveness and boot state (above). |
 
 Ingestion is never synchronous: there is no `POST /ingest` (removed; recipes are written by the job

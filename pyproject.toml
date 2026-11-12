@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recipeparser"
-version = "9.30.0"
+version = "9.31.0"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -143,6 +143,7 @@ select = ["E", "F", "I", "TID"]
 "tests/unit/test_ingest_cancel.py" = ["TID"]
 # The search agent's tests drive recipeparser.adapters.ai_search directly by design (Cayenne AI search Stage 3).
 "tests/unit/ai_search/**" = ["TID"]
+"tests/unit/test_search_endpoint.py" = ["TID"]
 # Picture generation test has long assertion lines that cannot easily be split.
 "tests/unit/test_picture_gen.py" = ["E501"]
 
