@@ -244,3 +244,98 @@ def test_tool_definitions_strict() -> None:
     assert "cache_control" not in TOOL_DEFINITIONS[0]
     assert TOOL_DEFINITIONS[-1]["cache_control"] == {"type": "ephemeral"}
     assert TOOL_DEFINITIONS[1]["input_schema"]["properties"]["limit"]["type"] == "integer"
+
+
+def test_failed_query_is_logged_as_warning(caplog: pytest.LogCaptureFixture) -> None:
+    db = FakeDb([QueryFailed("boom message")])
+    with caplog.at_level(logging.INFO):
+        _box(db).run("run_sql", {"query": "select title from recipes"})
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings
+    text = warnings[0].getMessage()
+    assert "boom message" in text
+    assert "select title from recipes" in text
+    assert "cook-a" in text
+
+
+def test_get_recipe_logs_counts(caplog: pytest.LogCaptureFixture) -> None:
+    db = FakeDb(
+        [
+            _result(["id", "title"], [(uuid.UUID(A), "Miso")]),
+            _result(["position"], [(1,), (2,)]),
+            _result(["position"], [(1,)]),
+        ]
+    )
+    with caplog.at_level(logging.INFO):
+        _box(db).run("get_recipe", {"id": A})
+    text = " ".join(r.getMessage() for r in caplog.records)
+    assert "ingredients=2" in text
+    assert "steps=1" in text
+    assert "duration_ms" in text
+
+
+def test_pool_timeout_and_not_ai_reader_propagate() -> None:
+    from psycopg_pool import PoolTimeout
+
+    from recipeparser.adapters.ai_search.ai_db import NotAiReader
+
+    with pytest.raises(PoolTimeout):
+        _box(FakeDb([PoolTimeout("busy")])).run("run_sql", {"query": "select title from recipes"})
+    with pytest.raises(NotAiReader):
+        _box(FakeDb([NotAiReader("wrong role")])).run("keyword_search", {"text": "x", "limit": 3})
+
+
+def test_unexpected_exception_logged_at_error_and_returned(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.ERROR):
+        out = _box(FakeDb([RuntimeError("kaboom")])).run("run_sql", {"query": "select title from recipes"})
+    assert out.is_error
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert errors
+    assert errors[0].exc_info is not None
+
+
+def test_non_finite_decimal_is_text() -> None:
+    db = FakeDb([_result(["a", "b"], [(Decimal("Infinity"), Decimal("NaN"))])])
+    out = _box(db).run("run_sql", {"query": "select title from recipes"})
+    row = json.loads(out.content)["rows"][0]
+    assert row == {"a": "Infinity", "b": "NaN"}
+
+
+def test_only_dashed_uuid_form_counts() -> None:
+    other = "33333333-3333-3333-3333-333333333333"
+    db = FakeDb(
+        [_result(["a", "b", "c", "d"], [(A.replace("-", ""), "{" + B + "}", "urn:uuid:" + other, other.upper())])]
+    )
+    box = _box(db)
+    out = box.run("run_sql", {"query": "select title from recipes"})
+    assert box.seen_ids == {other}
+    assert json.loads(out.content)["rows"][0]["a"] == A.replace("-", "")
+
+
+def test_refusal_log_caps_sql(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.WARNING):
+        _box(FakeDb()).run("run_sql", {"query": "select " + "x" * 20000 + " from pg_stat_activity"})
+    assert all(len(r.getMessage()) < 9000 for r in caplog.records)
+
+
+def test_progress_collapses_whitespace_and_cuts_title() -> None:
+    db = FakeDb(
+        [
+            _result(["id", "title", "score"], []),
+            _result(["id", "title"], [(uuid.UUID(A), "Miso\n  soup " + "z" * 80)]),
+            _result([], []),
+            _result([], []),
+        ]
+    )
+    box = _box(db)
+    assert (
+        box.run("semantic_search", {"text": "cosy\n\n  autumn   soup", "limit": 5}).progress
+        == "Looking for cosy autumn soup"
+    )
+    progress = box.run("get_recipe", {"id": A}).progress
+    assert progress == "Checking " + ("Miso soup " + "z" * 80)[:40]
+
+
+def test_non_ascii_not_escaped() -> None:
+    db = FakeDb([_result(["t"], [("crème brûlée",)])])
+    assert "crème brûlée" in _box(db).run("run_sql", {"query": "select title from recipes"}).content

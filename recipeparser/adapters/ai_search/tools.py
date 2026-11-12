@@ -12,15 +12,25 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import re
+import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from recipeparser.adapters.ai_search.ai_db import AiReaderDb, Catalogue, QueryFailed, QueryResult
+from psycopg_pool import PoolTimeout
+
+from recipeparser.adapters.ai_search.ai_db import (
+    AiReaderDb,
+    Catalogue,
+    NotAiReader,
+    QueryFailed,
+    QueryResult,
+)
 from recipeparser.adapters.ai_search.answer import Answer, answer_ids
-from recipeparser.adapters.ai_search.sql_gate import StatementRefused, check_statement
+from recipeparser.adapters.ai_search.sql_gate import MAX_SQL_CHARS, StatementRefused, check_statement
 
 logger = logging.getLogger(__name__)
 
@@ -115,15 +125,25 @@ class _BadInput(Exception):
     pass
 
 
+_UUID_FORM = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
 def _canonical_uuid(value: Any) -> str | None:
+    """The canonical lowercase form of a UUID instance or a dashed 36-character UUID string."""
     if isinstance(value, uuid.UUID):
         return str(value)
-    if isinstance(value, str):
-        try:
-            return str(uuid.UUID(value))
-        except ValueError:
-            return None
+    if isinstance(value, str) and _UUID_FORM.fullmatch(value):
+        return str(uuid.UUID(value))
     return None
+
+
+def _short(text: str) -> str:
+    """Whitespace collapsed, cut at the progress length."""
+    return " ".join(text.split())[:PROGRESS_TEXT_CHARS]
+
+
+def _dumps(payload: Any) -> str:
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _cut(text: str) -> str:
@@ -141,6 +161,8 @@ def _jsonable(value: Any, seen: set[str]) -> Any:
     if value is None or isinstance(value, bool | int | float):
         return value
     if isinstance(value, Decimal):
+        if not value.is_finite():
+            return str(value)
         return int(value) if value == value.to_integral_value() else float(value)
     if isinstance(value, datetime.datetime | datetime.date | datetime.time):
         return value.isoformat()
@@ -222,8 +244,10 @@ class ToolBox:
             return ToolOutcome(str(e), True, None)
         except QueryFailed as e:
             return ToolOutcome(e.message, True, None)
-        except Exception as e:  # a tool must never raise into the agent loop
-            logger.warning("tool %s failed for user %s: %s", name, self._user(), type(e).__name__)
+        except (PoolTimeout, NotAiReader):
+            raise  # infrastructure: the endpoint fails the request
+        except Exception:  # a tool must never raise into the agent loop; the rest becomes a tool error
+            logger.error("tool %s failed unexpectedly for user %s", name, self._user(), exc_info=True)
             return ToolOutcome("That didn't work. Try something else.", True, None)
 
     def _user(self) -> str:
@@ -236,11 +260,22 @@ class ToolBox:
         try:
             check_statement(query, self._catalogue.relations, self._catalogue.columns)
         except StatementRefused as e:
-            logger.warning("run_sql refused for user %s: %s | %s", self._user(), e.reason, query)
+            logger.warning("run_sql refused for user %s: %s | %s", self._user(), e.reason, query[:MAX_SQL_CHARS])
             return ToolOutcome(e.reason, True, None)
-        result = self._db.run(self._claims, query, max_rows=MAX_ROWS)
+        started = time.monotonic()
+        try:
+            result = self._db.run(self._claims, query, max_rows=MAX_ROWS)
+        except QueryFailed as e:
+            logger.warning(
+                "tool=run_sql user=%s duration_ms=%.0f outcome=failed message=%s sql=%s",
+                self._user(),
+                (time.monotonic() - started) * 1000,
+                e.message,
+                query,
+            )
+            raise
         logger.info(
-            "tool=run_sql user=%s duration_ms=%.0f rows=%d sql=%s",
+            "tool=run_sql user=%s duration_ms=%.0f rows=%d outcome=ok sql=%s",
             self._user(),
             result.duration_ms,
             len(result.rows),
@@ -249,7 +284,7 @@ class ToolBox:
         payload: dict[str, Any] = {"columns": result.columns, "rows": _rows(result, self.seen_ids)}
         if result.truncated:
             payload["note"] = f"Showing the first {MAX_ROWS} rows."
-        return ToolOutcome(json.dumps(payload), False, "Checking the details")
+        return ToolOutcome(_dumps(payload), False, "Checking the details")
 
     def _search(self, sql: str, params: list[Any], tool: str, text: str) -> ToolOutcome:
         result = self._db.run(self._claims, sql, params, max_rows=MAX_SEARCH_LIMIT)
@@ -257,8 +292,8 @@ class ToolBox:
             "tool=%s user=%s duration_ms=%.0f rows=%d", tool, self._user(), result.duration_ms, len(result.rows)
         )
         rows = _rows(result, self.seen_ids)
-        progress = "Looking for " + text[:PROGRESS_TEXT_CHARS]
-        return ToolOutcome(json.dumps({"columns": result.columns, "rows": rows}), False, progress)
+        progress = "Looking for " + _short(text)
+        return ToolOutcome(_dumps({"columns": result.columns, "rows": rows}), False, progress)
 
     def _semantic_search(self, tool_input: Mapping[str, Any]) -> ToolOutcome:
         text = _require_text(tool_input, "text")
@@ -279,17 +314,25 @@ class ToolBox:
         recipe_id = _canonical_uuid(tool_input.get("id"))
         if recipe_id is None:
             raise _BadInput("id must be a recipe id, as returned by another tool.")
+        started = time.monotonic()
         head = self._db.run(self._claims, _RECIPE_SQL, [recipe_id], max_rows=1)
         if not head.rows:
             return ToolOutcome("No recipe with that id.", True, "Checking the details")
         ingredients = self._db.run(self._claims, _INGREDIENTS_SQL, [recipe_id], max_rows=MAX_ROWS)
         steps = self._db.run(self._claims, _STEPS_SQL, [recipe_id], max_rows=MAX_ROWS)
-        logger.info("tool=get_recipe user=%s", self._user())
+        logger.info(
+            "tool=get_recipe user=%s duration_ms=%.0f ingredients=%d steps=%d",
+            self._user(),
+            (time.monotonic() - started) * 1000,
+            len(ingredients.rows),
+            len(steps.rows),
+        )
         scratch: set[str] = set()
         recipe = _rows(head, scratch)[0]
         recipe["ingredients"] = _rows(ingredients, scratch)
         recipe["steps"] = _rows(steps, scratch)
         self.seen_ids.add(recipe_id)
-        title = recipe.get("title")
-        progress = f"Checking {title}" if isinstance(title, str) and title else "Checking the details"
-        return ToolOutcome(json.dumps(recipe), False, progress)
+        raw_title = head.rows[0][head.columns.index("title")] if "title" in head.columns else None
+        title = _short(raw_title) if isinstance(raw_title, str) else ""
+        progress = f"Checking {title}" if title else "Checking the details"
+        return ToolOutcome(_dumps(recipe), False, progress)
