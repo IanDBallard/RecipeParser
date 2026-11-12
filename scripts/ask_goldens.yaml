@@ -1,0 +1,111 @@
+# The golden questions for the Library's deeper search (Cayenne AI search section 10).
+# Fields: id, question, expect_kind (recipes | text | none | out_of_scope), filters (plain text
+# lines, as the Library writes them), today (YYYY-MM-DD), previous (id of an earlier entry: the
+# question is a refinement of that entry's answer).
+
+# Menus with parts
+- id: menu-sunday-roast
+  question: Plan a Sunday roast for six with a starter, a main with sides, and a pudding.
+  expect_kind: recipes
+- id: menu-vegetarian-dinner
+  question: I'm having two vegetarian friends over. Give me a three course dinner.
+  expect_kind: recipes
+- id: menu-picnic
+  question: What could I take to a picnic? A couple of savoury things and something sweet.
+  expect_kind: recipes
+- id: menu-christmas-sides
+  question: Which side dishes would go with a roast turkey?
+  expect_kind: recipes
+- id: menu-brunch
+  question: Put together a brunch for eight, nothing that needs frying at the last minute.
+  expect_kind: recipes
+- id: menu-kids-party
+  question: Food for a children's birthday party, savoury and sweet, that can be made the day before.
+  expect_kind: recipes
+
+# Constraints: time, diet, oven sharing
+- id: time-weeknight
+  question: Dinner on the table in 30 minutes, start to finish.
+  expect_kind: recipes
+- id: time-slow
+  question: Something I can put on in the morning and leave all day.
+  expect_kind: recipes
+- id: diet-gluten-free
+  question: Gluten free dinners that most of the family would eat.
+  expect_kind: recipes
+- id: diet-dairy-free-dessert
+  question: A dessert without any dairy.
+  expect_kind: recipes
+- id: diet-vegan-lunch
+  question: Vegan lunches I can pack for work.
+  expect_kind: recipes
+- id: oven-share
+  question: A main and a side that can both go in the oven at the same temperature, so I only use it once.
+  expect_kind: recipes
+- id: oven-hot-and-cool
+  question: I have one oven. Which of my bakes work at 180 degrees along with a roast chicken?
+  expect_kind: recipes
+- id: filtered-quick
+  question: Something for a weeknight.
+  filters: ["Only recipes in the category Dinner", "Only recipes rated 4 stars or more"]
+  expect_kind: recipes
+- id: dated-season
+  question: What should I cook this weekend?
+  today: "2026-12-23"
+  expect_kind: recipes
+
+# Counts and facts: the answer is text
+- id: fact-count-soups
+  question: How many soup recipes do I have?
+  expect_kind: text
+- id: fact-longest
+  question: Which recipe takes the longest to cook?
+  expect_kind: text
+- id: fact-oven-temp
+  question: What oven temperature does my lemon cake use?
+  expect_kind: text
+- id: fact-rated
+  question: How many recipes have I rated five stars?
+  expect_kind: text
+- id: fact-source
+  question: Which cookbook do most of my recipes come from?
+  expect_kind: text
+
+# A thin corner of the library: nothing fits
+- id: thin-sushi
+  question: A full sushi dinner with hand rolls and a dipping sauce.
+  expect_kind: none
+- id: thin-wedding-cake
+  question: A three tier wedding cake with fondant.
+  expect_kind: none
+
+# Refinements
+- id: refine-roast-swap
+  question: Swap the pudding for something with fruit.
+  previous: menu-sunday-roast
+  expect_kind: recipes
+- id: refine-quicker
+  question: Make that quicker, nothing over 20 minutes of work.
+  previous: time-weeknight
+  expect_kind: recipes
+- id: refine-vegetarian
+  question: Make the whole thing vegetarian.
+  previous: menu-christmas-sides
+  expect_kind: recipes
+
+# Cooking knowledge, not the library
+- id: scope-boil-egg
+  question: How long do I boil an egg?
+  expect_kind: out_of_scope
+- id: scope-rest-steak
+  question: How long should I rest a steak after it comes off the heat?
+  expect_kind: out_of_scope
+- id: scope-sub-buttermilk
+  question: What can I use instead of buttermilk?
+  expect_kind: out_of_scope
+- id: scope-rice-water
+  question: What is the right ratio of water to rice?
+  expect_kind: out_of_scope
+- id: scope-knife
+  question: How do I keep my kitchen knives sharp?
+  expect_kind: out_of_scope
