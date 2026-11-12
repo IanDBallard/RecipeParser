@@ -60,6 +60,39 @@ def record(step: str, model: str, usage_metadata: object | None) -> None:
         ctx.records.append(row)
 
 
+def record_claude(step: str, model: str, usage: object | None) -> None:
+    """Add one Anthropic call to the current context's buffer.
+
+    ``prompt_tokens`` counts every input token, cached or not: uncached input, cache writes and
+    cache reads. Claude reports no separate thinking count, so ``thought_tokens`` stays empty.
+    """
+    ctx = ai_context.get()
+    if ctx is None:
+        return
+    uncached = _tokens(usage, "input_tokens")
+    prompt = None
+    if uncached is not None:
+        prompt = (
+            uncached
+            + (_tokens(usage, "cache_creation_input_tokens") or 0)
+            + (_tokens(usage, "cache_read_input_tokens") or 0)
+        )
+    row = {
+        "user_id": ctx.user_id,
+        "action": ctx.action,
+        "step": step,
+        "job_id": ctx.job_id,
+        "recipe_id": None,
+        "model": model,
+        "calls": 1,
+        "prompt_tokens": prompt,
+        "output_tokens": _tokens(usage, "output_tokens"),
+        "thought_tokens": None,
+    }
+    with ctx._lock:
+        ctx.records.append(row)
+
+
 def flush(ctx: UsageContext, get_client: Callable[[], Any]) -> None:
     """Write the buffer to ai_usage in one insert, never raising."""
     with ctx._lock:

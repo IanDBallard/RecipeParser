@@ -149,6 +149,27 @@ VISION_MAX_EDGE_PX: int = 2000
 VISION_JPEG_QUALITY: int = 85
 
 # ---------------------------------------------------------------------------
+# Library AI search (Cayenne AI search §7)
+# ---------------------------------------------------------------------------
+
+# The model behind POST /search/ask. Override with AI_SEARCH_MODEL to try another.
+AI_SEARCH_MODEL: str = os.environ.get("AI_SEARCH_MODEL", "claude-opus-5-5")
+
+# The two secrets POST /search/ask needs, named here and read when the endpoint first runs (not
+# at import), so a test can unset them. Without both, the endpoint answers 503. Never logged.
+ANTHROPIC_API_KEY: str = "ANTHROPIC_API_KEY"
+# A Supavisor pooler DSN that logs in as the ai_reader role, with its password.
+AI_READER_DATABASE_URL: str = "AI_READER_DATABASE_URL"
+
+
+def ai_search_secrets() -> Optional[tuple[str, str]]:
+    """(Anthropic key, ai_reader DSN) from the environment, or None unless both are set."""
+    key = os.environ.get(ANTHROPIC_API_KEY, "").strip()
+    dsn = os.environ.get(AI_READER_DATABASE_URL, "").strip()
+    return (key, dsn) if key and dsn else None
+
+
+# ---------------------------------------------------------------------------
 # Pipeline concurrency
 # ---------------------------------------------------------------------------
 

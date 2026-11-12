@@ -60,6 +60,36 @@ class TestGetEmbeddings:
         _, kwargs = client.models.embed_content.call_args
         assert _timeout_of(kwargs["config"]) == HTTP_TIMEOUT_SECS * 1000
 
+    def test_a_callers_timeout_replaces_the_global_one_for_that_call(self):
+        """The search agent's embed call is bounded by the request's time left (Cayenne AI search §7.7)."""
+        from recipeparser.gemini import get_embeddings
+
+        client = MagicMock()
+        client.models.embed_content.return_value = SimpleNamespace(
+            embeddings=[SimpleNamespace(values=[0.0] * 1536)]
+        )
+
+        get_embeddings("soup", client, max_retries=0, timeout_secs=2.5)
+        _, kwargs = client.models.embed_content.call_args
+        assert _timeout_of(kwargs["config"]) == 2500
+
+        get_embeddings("soup", client)  # other callers keep the global timeout
+        _, kwargs = client.models.embed_content.call_args
+        assert _timeout_of(kwargs["config"]) == HTTP_TIMEOUT_SECS * 1000
+
+    def test_no_retry_means_one_attempt_on_a_timeout(self):
+        """max_retries=0: a transient failure is not retried (a second try would outlast the budget)."""
+        import pytest
+        from google.genai import errors as genai_errors
+
+        from recipeparser.gemini import get_embeddings
+
+        client = MagicMock()
+        client.models.embed_content.side_effect = genai_errors.ServerError(503, {"error": {"message": "busy"}})
+        with pytest.raises(genai_errors.ServerError):
+            get_embeddings("soup", client, max_retries=0, timeout_secs=1.0)
+        assert client.models.embed_content.call_count == 1
+
     def test_the_embedding_call_keeps_its_output_dimensionality(self):
         """The timeout must be added to the existing config, not replace it —
         a 1536-dimension vector is what the assemble stage expects."""

@@ -423,6 +423,7 @@ def get_embeddings(
     *,
     limiter: Optional["GlobalRateLimiter"] = None,
     max_retries: int = MAX_RETRIES,
+    timeout_secs: Optional[float] = None,
 ) -> List[float]:
     """Generates a 1536-dimension embedding for the given text.
 
@@ -430,7 +431,10 @@ def get_embeddings(
     every ``generate_content`` call (Fix Roadmap F-132): until then one 503
     failed an ingest's EMBED step, or a regeneration, outright. ``max_retries``
     lets a caller with a person waiting (``POST /embed``) shorten the ladder.
+    ``timeout_secs`` replaces the global HTTP timeout for this call only (the
+    search agent's budget, Cayenne AI search §7.7); None keeps the global one.
     """
+    timeout_ms = _HTTP_TIMEOUT_MS if timeout_secs is None else max(1, int(timeout_secs * 1000))
     from google.genai import types as genai_types
 
     def _once() -> object:
@@ -444,7 +448,7 @@ def get_embeddings(
             # hangs an ordinary import.
             config=genai_types.EmbedContentConfig(
                 output_dimensionality=1536,
-                http_options={"timeout": _HTTP_TIMEOUT_MS},
+                http_options={"timeout": timeout_ms},
             ),
         )
         _log_usage_metadata(response, "Embedding", GEMINI_EMBEDDING_MODEL)

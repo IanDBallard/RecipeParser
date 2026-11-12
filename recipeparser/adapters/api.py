@@ -12,6 +12,7 @@ Endpoints (canonical — Phase 6):
   DELETE /recipes/{recipe_id}/image — clear it (200 + { image_url: null })
   POST /embed             — generate a 1536-dim embedding (returns 200 + {embedding})
   POST /shopping/classify — label a Generate's ingredients (200 + {items})
+  POST /search/ask        — a deeper Library search, answered as an NDJSON stream (Cayenne AI search)
   GET  /health            — liveness probe + the auth mode the app booted with
 
 Auth:
@@ -35,6 +36,7 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -57,8 +59,9 @@ from recipeparser.adapters.job_sink import JobSink
 from recipeparser.adapters.shares_api import RecipientCheckLimiter
 from recipeparser.adapters.shares_api import build_router as _build_share_router
 from recipeparser.adapters.shopping_api import build_router as _build_shopping_router
+from recipeparser.adapters.search_api import build_router as _build_search_router
 from recipeparser.adapters.household_api import build_router as _build_household_router
-from recipeparser.config import MAX_UPLOAD_BYTES
+from recipeparser.config import AI_SEARCH_MODEL, MAX_UPLOAD_BYTES, ai_search_secrets
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import web_citation
 from recipeparser.core.clock import utc_timestamp
@@ -300,6 +303,7 @@ async def _lifespan(_app: FastAPI):
     finally:
         stop.set()
         await _stop_background([t for t in (task, liveness) if t is not None])
+        _close_search_clients()
 
 
 app = FastAPI(title="Cayenne Ingestion API", version="1.0.0", lifespan=_lifespan)
@@ -2119,6 +2123,73 @@ app.include_router(_build_share_router(
 # The endpoint lives in shopping_api.py. The client factory is a lambda so a
 # test can replace _get_client, as the shares block does for Supabase.
 app.include_router(_build_shopping_router(_verify_supabase_jwt, lambda: _get_client(), _require_ai, lambda: _get_supabase_service_client()))
+
+# ---------------------------------------------------------------------------
+# Library AI search — POST /search/ask (Cayenne AI search §7.1)
+# ---------------------------------------------------------------------------
+# The endpoint lives in search_api.py. The ai_reader pool and the Anthropic client are built once
+# per process, on the first request that finds both secrets set (config.ai_search_secrets); until
+# then the endpoint answers 503 before the gate spends a slot. A test run never builds either: the
+# live-write guard covers a real project's database here too. The pool closes in _lifespan.
+_search_clients: dict[str, Any] = {}
+_search_clients_lock = threading.Lock()
+
+
+def _build_ai_reader_db(dsn: str) -> Any:
+    from recipeparser.adapters.ai_search.ai_db import AiReaderDb  # noqa: PLC0415
+    return AiReaderDb(dsn)
+
+
+def _build_anthropic(api_key: str) -> Any:
+    import anthropic  # noqa: PLC0415
+    return anthropic.Anthropic(api_key=api_key)
+
+
+def _search_client(name: str) -> Any:
+    """The built ai_reader pool ("db") or Anthropic client ("anthropic"), or None when not configured."""
+    secrets = ai_search_secrets()
+    if secrets is None:
+        return None
+    if _live_writes_blocked():
+        logger.warning("Test run: refusing to build the search clients against a real project.")
+        return None
+    with _search_clients_lock:
+        if not _search_clients:
+            key, dsn = secrets
+            anthropic_client = _build_anthropic(key)
+            _search_clients["db"] = _build_ai_reader_db(dsn)
+            _search_clients["anthropic"] = anthropic_client
+        return _search_clients.get(name)
+
+
+def _search_db() -> Any:
+    return _search_client("db")
+
+
+def _search_anthropic() -> Any:
+    return _search_client("anthropic")
+
+
+def _close_search_clients() -> None:
+    with _search_clients_lock:
+        db = _search_clients.pop("db", None)
+        _search_clients.clear()
+    if db is not None:
+        try:
+            db.close()
+        except Exception:  # noqa: BLE001 - shutting down; nothing to hand the error to
+            logger.exception("Could not close the search connection pool.")
+
+
+app.include_router(_build_search_router(
+    _verify_supabase_jwt,
+    _ai_gate,
+    lambda: _search_db(),
+    lambda: _search_anthropic(),
+    lambda: _get_client(),
+    lambda: _get_supabase_service_client(),
+    AI_SEARCH_MODEL,
+))
 
 # ---------------------------------------------------------------------------
 # Households — POST /household/invites, /invites/{id}/accept|decline|cancel, /leave,
