@@ -269,10 +269,64 @@ def run_golden(
     return result, answer
 
 
+_UNPARSEABLE = "unparseable (not shown)"
+
+
 def dsn_summary(dsn: str) -> str:
-    """Host, port and user of a database url; the password is never part of it."""
-    parts = urlsplit(dsn)
-    return f"host={parts.hostname} port={parts.port} user={parts.username}"
+    """Host, port and user of a database url or key=value DSN; the password is never part of it.
+
+    Anything that will not parse is reported as unparseable and nothing of it is shown: a parse error's
+    message (a bad port, say) could carry part of the password.
+    """
+    try:
+        if "://" in dsn:
+            parts = urlsplit(dsn)
+            host, port, user = parts.hostname, parts.port, parts.username
+        else:
+            fields = _keyword_fields(dsn)
+            host, user = fields.get("host"), fields.get("user")
+            port = int(fields["port"]) if "port" in fields else None
+    except Exception:  # noqa: BLE001 - never let the DSN reach a traceback
+        return _UNPARSEABLE
+    return f"host={host} port={port} user={user}"
+
+
+def _keyword_fields(dsn: str) -> dict[str, str]:
+    """The host, port and user of a libpq ``key=value`` DSN (values may be single-quoted)."""
+    fields: dict[str, str] = {}
+    i, n = 0, len(dsn)
+    while i < n:
+        while i < n and dsn[i].isspace():
+            i += 1
+        if i >= n:
+            break
+        eq = dsn.find("=", i)
+        if eq < 0:
+            raise ValueError("not a key=value DSN")
+        key = dsn[i:eq].strip()
+        i = eq + 1
+        while i < n and dsn[i].isspace():
+            i += 1
+        value_chars: list[str] = []
+        if i < n and dsn[i] == "'":
+            i += 1
+            while i < n and dsn[i] != "'":
+                if dsn[i] == "\\" and i + 1 < n:
+                    i += 1
+                value_chars.append(dsn[i])
+                i += 1
+            if i >= n:
+                raise ValueError("unterminated quote")
+            i += 1
+        else:
+            while i < n and not dsn[i].isspace():
+                if dsn[i] == "\\" and i + 1 < n:
+                    i += 1
+                value_chars.append(dsn[i])
+                i += 1
+        if key in ("host", "port", "user"):
+            fields[key] = "".join(value_chars)
+    return fields
 
 
 def build_previous(entry: Golden, finished: dict[str, tuple[str, Answer, int]]) -> Previous | None:
@@ -327,7 +381,9 @@ def main(argv: list[str] | None = None) -> int:
                 db=db,
                 claims=claims,
                 client=client,
-                embed=lambda text: gemini.get_embeddings(text, gemini_client, max_retries=1),
+                embed=lambda text, timeout: gemini.get_embeddings(
+                    text, gemini_client, max_retries=0, timeout_secs=timeout
+                ),
                 catalogue=catalogue,
                 measuring=args.measuring,
                 previous=previous,

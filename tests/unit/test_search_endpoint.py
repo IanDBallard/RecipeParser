@@ -47,12 +47,16 @@ class FakeDb:
     def __init__(self, owned: set[str] | None = None) -> None:
         self.owned = owned if owned is not None else {OWNED, OWNED_2}
         self.claims_seen: list[dict[str, Any]] = []
+        self.timeouts: list[int | None] = []
 
     def catalogue(self) -> Catalogue:
         return Catalogue(views={"recipes": ViewInfo("", [ColumnInfo("id", "uuid", "")])}, functions={})
 
-    def run(self, claims: Any, sql: str, params: Any = None, *, max_rows: int = 200) -> QueryResult:
+    def run(
+        self, claims: Any, sql: str, params: Any = None, *, max_rows: int = 200, timeout_ms: int | None = None
+    ) -> QueryResult:
         self.claims_seen.append(dict(claims))
+        self.timeouts.append(timeout_ms)
         return QueryResult(["id", "title", "rank"], [(OWNED, "Leek soup", 1.0)], False, 1.0)
 
     def own_recipe_ids(self, claims: Any, ids: Any) -> set[str]:
@@ -227,6 +231,18 @@ def test_validation_422(change: dict[str, Any]) -> None:
     assert client.calls == 0
 
 
+def test_oversize_previous_answer_422() -> None:
+    """A 2 MB previous answer would be re-sent, and billed, on every call: it is refused up front."""
+    client = FakeAnthropic([])
+    gate = AiGate(lambda: _supabase())
+    tc, _ = _app(client=client, gate=gate)
+    previous = {"question": "soups", "answer": {"kind": "text", "text": "x" * 2_000_000, "recipe_ids": []}, "round": 1}
+    resp = tc.post("/search/ask", json={**BODY, "previous": previous}, headers=AUTH)
+    assert resp.status_code == 422
+    assert client.calls == 0
+    assert len(gate._search_hour[SUB]) == 0  # no slot spent
+
+
 # -- the stream -----------------------------------------------------------------------------------
 
 
@@ -338,10 +354,12 @@ def test_disconnect_sets_cancel() -> None:
     started, release = threading.Event(), threading.Event()
 
     class SlowDb(FakeDb):
-        def run(self, claims: Any, sql: str, params: Any = None, *, max_rows: int = 200) -> QueryResult:
+        def run(
+            self, claims: Any, sql: str, params: Any = None, *, max_rows: int = 200, timeout_ms: int | None = None
+        ) -> QueryResult:
             started.set()
             release.wait(5)
-            return super().run(claims, sql, params, max_rows=max_rows)
+            return super().run(claims, sql, params, max_rows=max_rows, timeout_ms=timeout_ms)
 
     gate = AiGate(lambda: _supabase())
     gate.check(SUB, search=True)  # the slot the endpoint spends before the stream starts
@@ -426,3 +444,28 @@ def test_agent_model_is_configured() -> None:
 
     assert config.AI_SEARCH_MODEL == MODEL
     assert agent_mod.run_agent is search_api.run_agent
+
+
+def test_embed_is_bounded_and_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The meaning search's embed call gets at most 8 s of the request's time and no retry."""
+    from recipeparser import gemini
+
+    seen: list[dict[str, Any]] = []
+
+    def fake_embeddings(text: str, client: Any, **kwargs: Any) -> list[float]:
+        seen.append(kwargs)
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(gemini, "get_embeddings", fake_embeddings)
+    semantic = _response(
+        "tool_use",
+        [SimpleNamespace(type="tool_use", id="t1", name="semantic_search", input={"text": "soup", "limit": 5})],
+    )
+    tc, state = _app(client=FakeAnthropic([semantic, _final(_recipes(OWNED))]))
+    lines = _lines(tc.post("/search/ask", json=BODY, headers=AUTH))
+    assert lines[-1]["type"] == "answer"
+    assert len(seen) == 1
+    assert seen[0]["max_retries"] == 0
+    assert 0 < seen[0]["timeout_secs"] <= 8.0
+    # The search statement's timeout is the request's time left, which ai_db caps at 5 s.
+    assert state["db"].timeouts[0] is not None and 0 < state["db"].timeouts[0] <= 30_000

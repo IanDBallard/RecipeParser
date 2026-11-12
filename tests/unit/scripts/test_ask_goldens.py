@@ -156,3 +156,37 @@ def test_build_previous_validates_against_the_api_model():
 def test_report_shows_the_ran_fresh_note():
     note = "ran fresh: previous turn missing"
     assert note in goldens.render_report([_result(note=note)])
+
+
+def test_dsn_summary_reads_a_key_value_dsn():
+    text = goldens.dsn_summary(
+        "host=aws-0.pooler.example.com port=6543 dbname=postgres user=ai_reader.proj password=s3cret sslmode=require"
+    )
+    assert text == "host=aws-0.pooler.example.com port=6543 user=ai_reader.proj"
+    assert "s3cret" not in text
+
+
+def test_dsn_summary_reads_quoted_key_value_values():
+    text = goldens.dsn_summary("user='ai_reader' password='a b=c' host='db.example.com' port = 5432")
+    assert text == "host=db.example.com port=5432 user=ai_reader"
+
+
+@pytest.mark.parametrize(
+    "dsn",
+    [
+        "postgresql://ai_reader:s3cret@db.example.com:65s3cret/postgres",  # bad port, url form
+        "host=db.example.com port=s3cret user=ai_reader password=s3cret",  # bad port, key=value form
+        "host=db.example.com password='s3cret",  # unterminated quote
+        "s3cret",  # neither form
+    ],
+)
+def test_dsn_summary_unparseable_shows_nothing(dsn: str):
+    assert goldens.dsn_summary(dsn) == "unparseable (not shown)"
+
+
+def test_golden_embed_is_bounded_and_not_retried():
+    """The script's embed call matches the endpoint's: the tool box's timeout, no retry."""
+    import inspect
+
+    source = inspect.getsource(goldens.main)
+    assert "max_retries=0" in source and "timeout_secs=timeout" in source

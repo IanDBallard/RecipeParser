@@ -32,8 +32,9 @@ CLAIMS = {"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"
 
 
 class FakeCursor:
-    def __init__(self, conn: FakeConn) -> None:
+    def __init__(self, conn: FakeConn, name: str | None = None) -> None:
         self.conn = conn
+        self.name = name
         self.description: list[SimpleNamespace] | None = None
         self._rows: list[tuple[Any, ...]] = []
 
@@ -43,10 +44,9 @@ class FakeCursor:
     def __exit__(self, *exc: object) -> None:
         return None
 
-    def execute(self, sql: str, params: Any = None, *, prepare: bool | None = None) -> FakeCursor:
+    def execute(self, sql: str, params: Any = None) -> FakeCursor:
         self.conn.executed.append((sql, params))
-        self.conn.prepare_flags.append(prepare)
-        self.conn.pipelined.append(self.conn.in_pipeline)
+        self.conn.cursor_names.append(self.name)
         lowered = sql.strip().lower()
         if lowered.startswith("begin"):
             self.conn.info.transaction_status = TransactionStatus.INTRANS
@@ -70,6 +70,9 @@ class FakeCursor:
         self.conn.fetch_sizes.append(size)
         return self._rows[:size]
 
+    def close(self) -> None:
+        self.conn.closed_cursors.append(self.name)
+
     def fetchall(self) -> list[tuple[Any, ...]]:
         return list(self._rows)
 
@@ -81,9 +84,8 @@ class FakeConn:
     def __init__(self, script: dict[str, Any] | None = None) -> None:
         self.script: dict[str, Any] = script or {}
         self.executed: list[tuple[str, Any]] = []
-        self.prepare_flags: list[bool | None] = []
-        self.pipelined: list[bool] = []
-        self.in_pipeline = False
+        self.cursor_names: list[str | None] = []
+        self.closed_cursors: list[str | None] = []
         self.fetch_sizes: list[int] = []
         self.info = SimpleNamespace(transaction_status=TransactionStatus.IDLE)
         self.closed = False
@@ -91,16 +93,8 @@ class FakeConn:
     def close(self) -> None:
         self.closed = True
 
-    @contextmanager
-    def pipeline(self) -> Iterator[None]:
-        self.in_pipeline = True
-        try:
-            yield
-        finally:
-            self.in_pipeline = False
-
-    def cursor(self) -> FakeCursor:
-        return FakeCursor(self)
+    def cursor(self, name: str | None = None) -> FakeCursor:
+        return FakeCursor(self, name)
 
     def execute(self, sql: str, params: Any = None) -> FakeCursor:
         return self.cursor().execute(sql, params)
@@ -114,22 +108,16 @@ class FakePool:
         self.kwargs = kwargs
         self.conn = FakeConn()
         self.closed = False
+        self.waits: list[float | None] = []
         FakePool.instances.append(self)
 
     @contextmanager
     def connection(self, timeout: float | None = None) -> Iterator[FakeConn]:
+        self.waits.append(timeout)
         yield self.conn
 
     def close(self) -> None:
         self.closed = True
-
-    @contextmanager
-    def pipeline(self) -> Iterator[None]:
-        self.in_pipeline = True
-        try:
-            yield
-        finally:
-            self.in_pipeline = False
 
 
 @pytest.fixture
@@ -184,7 +172,8 @@ def test_run_wraps_read_only_and_sets_both_claims(db: AiReaderDb) -> None:
     assert statements[0] == "begin transaction read only"
     assert "set_config('request.jwt.claim.sub', %s, true)" in statements[1]
     assert "set_config('request.jwt.claims', %s, true)" in statements[1]
-    assert executed[1][1] == (CLAIMS["sub"], json.dumps(CLAIMS))
+    assert "set_config('statement_timeout', %s, true)" in statements[1]
+    assert executed[1][1] == (CLAIMS["sub"], json.dumps(CLAIMS), "5000")
     assert statements[2] == "select id from ai.recipes"
     assert executed[2][1] is None
     assert statements[3] == "rollback"
@@ -326,15 +315,36 @@ def test_close_closes_the_pool(db: AiReaderDb) -> None:
     assert _pool().closed is True
 
 
-def test_run_always_uses_the_extended_protocol(db: AiReaderDb) -> None:
-    # No parameters would mean psycopg's simple protocol, which runs "select 1; commit; ..." whole.
+def test_statement_runs_through_a_server_side_cursor(db: AiReaderDb) -> None:
+    # A named cursor: DECLARE goes by the extended protocol (one statement only), and only
+    # max_rows + 1 rows are ever fetched from the server.
     _pool().conn.script = {"from ai.recipes": (["title"], [("Soup",)])}
     db.run(CLAIMS, "select title from ai.recipes where title like '%soup%'")
     sql, params = _pool().conn.executed[2]
     assert sql == "select title from ai.recipes where title like '%soup%'"
     assert params is None
-    assert _pool().conn.prepare_flags[2] is False
-    assert _pool().conn.pipelined == [False, False, True, False]  # only the statement is pipelined
+    assert _pool().conn.cursor_names == [None, None, ai_db._CURSOR, None]  # only the statement is named
+    assert _pool().conn.fetch_sizes == [201]
+    assert _pool().conn.closed_cursors == [ai_db._CURSOR]
+
+
+@pytest.mark.parametrize(
+    ("timeout_ms", "setting", "wait"),
+    [(None, "5000", 10.0), (1234, "1234", 1.234), (99_999, "5000", 5.0), (0, "1", 0.001), (-50, "1", 0.001)],
+)
+def test_statement_timeout_is_the_time_left_capped_at_5s(
+    db: AiReaderDb, timeout_ms: int | None, setting: str, wait: float
+) -> None:
+    db.run(CLAIMS, "select 1", timeout_ms=timeout_ms)
+    assert _pool().conn.executed[1][1][2] == setting
+    assert _pool().waits == [pytest.approx(wait)]
+
+
+def test_statement_timeout_ms_never_zero_never_above_the_role() -> None:
+    assert ai_db.statement_timeout_ms(None) == 5000
+    assert ai_db.statement_timeout_ms(4321) == 4321
+    assert ai_db.statement_timeout_ms(6000) == 5000
+    assert ai_db.statement_timeout_ms(0) == 1
 
 
 def test_run_discards_a_connection_whose_transaction_ended(db: AiReaderDb) -> None:

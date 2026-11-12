@@ -13,9 +13,10 @@ Cayenne Library AI search, stage 3: `POST /search/ask`, the agent behind a deepe
 - `POST /search/ask` (`adapters/search_api.py`): `{ text, today, measuring, filters, previous? }`. Refusals before the agent starts are ordinary JSON errors: 401, 422, 503 when not configured or paused, 429 with `Retry-After` past 10 searches an hour or 30 a day per user (exempt users uncapped). After that the response is `application/x-ndjson`: `progress` lines, then exactly one `answer` or `error` (`timeout` or `failed`) line. A cook who leaves stops the agent before its next model call; the search still counts.
 - The search agent (`adapters/ai_search/`): a statement gate that admits one `SELECT` over Cayenne's `ai` views (`sql_gate.py`); the `ai_reader` connection, read-only and carrying the cook's token claims so row-level security shows only their recipes (`ai_db.py`); four tools (`tools.py`); the instructions and request context (`prompt.py`); the answer shape and its checks, which keep only recipes a tool returned and the cook owns (`answer.py`); and the loop, at most 10 rounds, 30 seconds and a 40,000-token budget (`agent.py`). Its Claude calls are recorded in `ai_usage` under `search`, step `agent`.
 - `config.AI_SEARCH_MODEL` (`claude-opus-5-5`, overridable) and `config.ai_search_secrets()`.
+- Hardening: the answer's strings and lists are bounded, so an oversize `previous` answer is a 422 (`finalize` cuts the agent's own answer to the same limits); the 200-row cap is enforced on the server (a server-side cursor, 201 rows fetched), so one huge join cannot exhaust memory; and the 30 seconds cover tool work too (statement timeouts and pool waits cut to the time left, the embedding call at most 8 s with no retry, a round that ends late is a timeout). `gemini.get_embeddings` takes an optional `timeout_secs`.
 
 ### ⚠️ Changed
-- New dependencies: `pglast>=8.7`, `psycopg[binary]>=3.2`, `psycopg-pool>=3.2`, `anthropic>=2.8.0`.
+- New dependencies: `pglast>=8.7,<9`, `psycopg[binary]>=3.2`, `psycopg-pool>=3.2`, `anthropic>=2.8.0,<3`.
 - `requires-python` raised to `>=3.10` (pglast 8 needs it).
 - The AI gate's `check` takes `search=True` for the search rate limit.
 

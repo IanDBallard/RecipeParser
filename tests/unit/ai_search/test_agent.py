@@ -81,11 +81,13 @@ class FakeClient:
 class FakeToolBox:
     def __init__(self, on_run: Callable[[str], None] | None = None, error_for: set[str] | None = None) -> None:
         self.runs: list[tuple[str, Mapping[str, Any]]] = []
+        self.remaining: list[float | None] = []
         self.on_run = on_run
         self.error_for = error_for or set()
 
-    def run(self, name: str, tool_input: Mapping[str, Any]) -> ToolOutcome:
+    def run(self, name: str, tool_input: Mapping[str, Any], remaining: float | None = None) -> ToolOutcome:
         self.runs.append((name, tool_input))
+        self.remaining.append(remaining)
         if self.on_run:
             self.on_run(name)
         if name in self.error_for:
@@ -310,10 +312,10 @@ def test_progress_forwarded() -> None:
     seen: list[str] = []
 
     class Mixed(FakeToolBox):
-        def run(self, name: str, tool_input: Mapping[str, Any]) -> ToolOutcome:
+        def run(self, name: str, tool_input: Mapping[str, Any], remaining: float | None = None) -> ToolOutcome:
             if name == "run_sql":
                 return ToolOutcome("{}", False, None)
-            return super().run(name, tool_input)
+            return super().run(name, tool_input, remaining)
 
     client = FakeClient(
         [
@@ -386,3 +388,55 @@ def test_limits_are_frozen() -> None:
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         AgentLimits().rounds = 3  # type: ignore[misc]
+
+
+def test_tool_gets_the_seconds_left() -> None:
+    clock = Clock(0.0)
+
+    def advance(_name: str) -> None:
+        clock.now += 4.0
+
+    toolbox = FakeToolBox(on_run=advance)
+    client = FakeClient([_tools(_tool_use("t1"), _tool_use("t2")), _answer()])
+    _run(client, toolbox, clock=clock)
+    assert toolbox.remaining == [pytest.approx(30.0), pytest.approx(26.0)]
+
+
+def test_deadline_crossed_mid_round_raises_timeout_after_the_tool() -> None:
+    """A tool that returns past the deadline ends the request: no next tool, no next model call."""
+    clock = Clock(0.0)
+
+    def overrun(_name: str) -> None:
+        clock.now = 30.5
+
+    toolbox = FakeToolBox(on_run=overrun)
+    client = FakeClient([_tools(_tool_use("t1")), _answer()])
+    with pytest.raises(AgentTimeout):
+        _run(client, toolbox, clock=clock)
+    assert len(toolbox.runs) == 1
+    assert len(client.calls) == 1
+
+
+def test_tool_failure_after_the_deadline_is_a_timeout() -> None:
+    from psycopg_pool import PoolTimeout
+
+    clock = Clock(0.0)
+
+    class Stuck(FakeToolBox):
+        def run(self, name: str, tool_input: Mapping[str, Any], remaining: float | None = None) -> ToolOutcome:
+            clock.now = 31.0
+            raise PoolTimeout("no connection")
+
+    with pytest.raises(AgentTimeout):
+        _run(FakeClient([_tools(_tool_use("t1")), _answer()]), Stuck(), clock=clock)
+
+
+def test_tool_failure_inside_the_deadline_propagates() -> None:
+    from psycopg_pool import PoolTimeout
+
+    class Stuck(FakeToolBox):
+        def run(self, name: str, tool_input: Mapping[str, Any], remaining: float | None = None) -> ToolOutcome:
+            raise PoolTimeout("no connection")
+
+    with pytest.raises(PoolTimeout):
+        _run(FakeClient([_tools(_tool_use("t1")), _answer()]), Stuck())

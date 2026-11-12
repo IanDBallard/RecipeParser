@@ -90,7 +90,11 @@ def _work(
                 toolbox = ToolBox(
                     db,
                     claims,
-                    lambda text: gemini.get_embeddings(text, get_gemini(), max_retries=1),
+                    # Bounded by the request's time left (the tool box passes it), and no
+                    # retry: a second attempt could not fit inside the 30 s budget.
+                    lambda text, timeout: gemini.get_embeddings(
+                        text, get_gemini(), max_retries=0, timeout_secs=timeout
+                    ),
                     catalogue,
                 )
                 if body.previous is not None:

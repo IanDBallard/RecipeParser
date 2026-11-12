@@ -5,7 +5,9 @@ A manual loop, not the SDK's tool runner, because it must enforce the limits its
 ``rounds`` tool rounds, a ``seconds`` wall clock across the whole request, and a cancel flag checked
 before every model call and every tool run. A model call is not started with less than
 ``MIN_CALL_SECONDS`` left, and the SDK's own retries are off (``max_retries=0``) so one call cannot
-outlast the time it was given. Each call's usage is recorded as step ``agent``. The final answer is
+outlast the time it was given. Each tool run is handed the seconds left (it bounds its statements
+and its embedding call by them), and a tool round that ends past the deadline raises
+``AgentTimeout`` at once. Each call's usage is recorded as step ``agent``. The final answer is
 the structured-output text block of the ``end_turn`` response, parsed as ``RawAnswer``.
 
 ``PoolTimeout`` and ``NotAiReader`` raised by the tool box propagate unchanged; the endpoint maps
@@ -56,7 +58,7 @@ class AgentLimits:
 
 
 class _ToolRunner(Protocol):
-    def run(self, name: str, tool_input: Any) -> ToolOutcome: ...
+    def run(self, name: str, tool_input: Any, remaining: float | None = None) -> ToolOutcome: ...
 
 
 def _output_config(limits: AgentLimits) -> dict[str, Any]:
@@ -91,14 +93,22 @@ def _tool_results(
     response: Any,
     toolbox: _ToolRunner,
     on_progress: Callable[[str], None],
-    check: Callable[[], object],
+    check: Callable[[], float],
+    expired: Callable[[], bool],
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for block in response.content:
         if getattr(block, "type", None) != "tool_use":
             continue
-        check()
-        outcome = toolbox.run(block.name, block.input)
+        remaining = check()
+        try:
+            outcome = toolbox.run(block.name, block.input, remaining=remaining)
+        except Exception as exc:
+            if expired():
+                raise AgentTimeout() from exc  # a pool wait or the like that ran out the clock
+            raise
+        if expired():
+            raise AgentTimeout()  # the tool returned after the deadline: no further round
         if outcome.progress:
             on_progress(outcome.progress)
         results.append(
@@ -165,9 +175,18 @@ def run_agent(
             raise AgentFailed(f"stopped with {stop}")
 
         if stop == "tool_use":
-            messages.append({"role": "user", "content": _tool_results(
-                response, toolbox, on_progress, lambda: _check(cancel, deadline, clock, 0.0)
-            )})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": _tool_results(
+                        response,
+                        toolbox,
+                        on_progress,
+                        lambda: _check(cancel, deadline, clock, 0.0),
+                        lambda: clock() >= deadline,
+                    ),
+                }
+            )
         rounds += 1
         if rounds >= limits.rounds:
             final = True

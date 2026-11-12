@@ -35,12 +35,12 @@ dependencies = [
     "Pillow>=11.0",
     # Parses the search agent's SQL for the statement gate (adapters/ai_search/sql_gate.py).
     # pglast 8 needs Python 3.10 or later.
-    "pglast>=8.7",
+    "pglast>=8.7,<9",
     # The ai_reader connection the search agent's SQL runs through (adapters/ai_search/ai_db.py).
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",
     # The search agent's Claude calls (adapters/ai_search/agent.py): task budgets and fallbacks need 2.8.
-    "anthropic>=2.8.0",
+    "anthropic>=2.8.0,<3",
 ]
 
 [project.scripts]

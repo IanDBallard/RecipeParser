@@ -188,3 +188,69 @@ def test_previous_bounds() -> None:
     ):
         with pytest.raises(ValidationError):
             Previous.model_validate(bad)
+
+
+# -- limits: a previous answer cannot be made big enough to bill many times over ----------------
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"kind": "text", "text": "x" * 2001, "recipe_ids": []},
+        {"kind": "none", "text": "x" * 2001},
+        {"kind": "text", "text": "ok", "recipe_ids": [str(uuid.uuid4()) for _ in range(101)]},
+        {"kind": "recipes", "alternatives": [{"note": "x" * 301, "groups": [{"heading": None, "recipe_ids": []}]}]},
+        {"kind": "recipes", "alternatives": [{"label": "x" * 301, "note": "n", "groups": []}]},
+        {"kind": "recipes", "alternatives": [{"note": "n", "groups": [{"heading": "x" * 301, "recipe_ids": []}]}]},
+        {
+            "kind": "recipes",
+            "alternatives": [{"note": "n", "groups": [{"heading": None, "recipe_ids": []}] * 11}],
+        },
+        {
+            "kind": "recipes",
+            "alternatives": [
+                {"note": "n", "groups": [{"heading": None, "recipe_ids": [str(uuid.uuid4()) for _ in range(101)]}]}
+            ],
+        },
+        {"kind": "recipes", "alternatives": [{"note": "n", "groups": []}] * 5},
+    ],
+)
+def test_answer_limits_refuse_oversize(answer: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        ADAPTER.validate_python(answer)
+
+
+def test_answer_limits_accept_the_maximum() -> None:
+    ids = [str(uuid.uuid4()) for _ in range(100)]
+    ADAPTER.validate_python({"kind": "text", "text": "x" * 2000, "recipe_ids": ids})
+    group = {"heading": "h" * 300, "recipe_ids": ids}
+    alt_ = {"label": "l" * 300, "note": "n" * 300, "groups": [group] * 10}
+    ADAPTER.validate_python({"kind": "recipes", "alternatives": [alt_] * 4})
+
+
+def test_finalize_output_always_validates_within_limits() -> None:
+    """The agent's own answer is cut to the limits, never refused on its way out."""
+    many = [str(uuid.uuid4()) for _ in range(150)]
+    permitted = set(many)
+    big_alt = {
+        "label": "L" * 500,
+        "note": "N" * 500,
+        "groups": [{"heading": "H" * 500, "recipe_ids": many} for _ in range(15)],
+    }
+    out = finalize(raw(alternatives=[big_alt] * 6), permitted=permitted)
+    assert isinstance(out, RecipesAnswer)
+    ADAPTER.validate_python(ADAPTER.dump_python(out, mode="json"))
+    first = out.alternatives[0]
+    assert len(out.alternatives) == 4
+    assert len(first.groups) == 10
+    assert len(first.groups[0].recipe_ids) == 100
+    assert first.label is not None and len(first.label) == 300 and first.label.endswith("…")
+    assert len(first.note) == 300 and first.groups[0].heading is not None and len(first.groups[0].heading) == 300
+
+    text = finalize(raw(kind="text", text="T" * 5000, recipe_ids=many), permitted=permitted)
+    assert isinstance(text, TextAnswer)
+    assert len(text.text) == 2000 and text.text.endswith("…") and len(text.recipe_ids) == 100
+    ADAPTER.validate_python(ADAPTER.dump_python(text, mode="json"))
+
+    none = finalize(raw(kind="none", text="Z" * 5000), permitted=set())
+    assert isinstance(none, NoneAnswer) and len(none.text) == 2000

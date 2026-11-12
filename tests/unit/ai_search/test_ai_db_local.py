@@ -6,9 +6,14 @@ follows the claims ``run`` sets (also on a pooled connection reused by another c
 writable, and the gate is what keeps the role away from tables PUBLIC grants let it read.
 
 Skipped unless ``AI_SEARCH_TEST_ADMIN_DSN`` names a local database; see ``local_db.py``.
+
+``run`` declares a server-side cursor for the statement, so only a SELECT (or VALUES) can run
+through it: settings are read with ``current_setting``, never ``show``.
 """
 
 from __future__ import annotations
+
+import time
 
 import pytest
 
@@ -26,7 +31,7 @@ def test_connects_as_ai_reader_itself(db: AiReaderDb, seeded: Seeded) -> None:
 
 def test_role_settings_present(db: AiReaderDb, seeded: Seeded) -> None:
     def show(name: str) -> str:
-        return str(db.run(seeded.a.claims, f"show {name}").rows[0][0])
+        return str(db.run(seeded.a.claims, f"select current_setting('{name}')").rows[0][0])
 
     assert show("search_path") == "ai"
     assert show("statement_timeout") == "5s"
@@ -85,21 +90,36 @@ def test_auth_uid_reads_claim_sub(db: AiReaderDb, seeded: Seeded) -> None:
 
 
 def test_writes_refused_read_only(db: AiReaderDb, seeded: Seeded) -> None:
-    if not seeded.has_net:
-        pytest.skip("pg_net is not installed on this local stack")
+    # A write inside a SELECT (lo_create is PUBLIC) reaches the transaction, which refuses it.
     with pytest.raises(QueryFailed) as caught:
-        db.run(
-            seeded.a.claims,
-            "insert into net.http_request_queue (method, url, headers, timeout_milliseconds)"
-            " values ('GET', 'http://ai-db-test.invalid/write', '{}'::jsonb, 1000)",
-        )
+        db.run(seeded.a.claims, "select lo_create(0)")
     assert "read-only" in caught.value.message
 
 
+def test_insert_refused(db: AiReaderDb, seeded: Seeded) -> None:
+    if not seeded.has_net:
+        pytest.skip("pg_net is not installed on this local stack")
+    # A plain INSERT cannot even be declared as a cursor; a data-modifying WITH cannot either.
+    for sql in (
+        "insert into net.http_request_queue (method, url, headers, timeout_milliseconds)"
+        " values ('GET', 'http://ai-db-test.invalid/write', '{}'::jsonb, 1000)",
+        "with w as (insert into net.http_request_queue (method, url, headers, timeout_milliseconds)"
+        " values ('GET', 'http://ai-db-test.invalid/write', '{}'::jsonb, 1000) returning id) select * from w",
+    ):
+        with pytest.raises(QueryFailed):
+            db.run(seeded.a.claims, sql)
+    leftover = db.run(
+        seeded.a.claims, "select count(*) from net.http_request_queue where url = 'http://ai-db-test.invalid/write'"
+    )
+    assert leftover.rows == [(0,)]
+
+
 def test_reset_role_gains_nothing(db: AiReaderDb, seeded: Seeded) -> None:
-    # Gate bypassed on purpose: a session that logged in as ai_reader has no other role to return to.
-    result = db.run(seeded.a.claims, "reset role")
-    assert result.rows == []
+    # Gate bypassed on purpose: a session that logged in as ai_reader has no other role to return to,
+    # and RESET is not a SELECT, so it cannot run at all; set_config('role', 'none') changes nothing.
+    with pytest.raises(QueryFailed):
+        db.run(seeded.a.claims, "reset role")
+    db.run(seeded.a.claims, "select set_config('role', 'none', true)")
     after = db.run(seeded.a.claims, "select current_user::text, session_user::text")
     assert after.rows == [("ai_reader", "ai_reader")]
 
@@ -145,28 +165,29 @@ def test_statement_timeout_applies(db: AiReaderDb, seeded: Seeded) -> None:
 
 
 def test_multiple_statements_refused_and_nothing_leaks(seeded: Seeded) -> None:
-    # Gate bypassed on purpose. The extended protocol runs one statement only, so the COMMIT and the
-    # session SET never run, and the next cook on the same connection keeps the role's settings.
+    # Gate bypassed on purpose. DECLARE ... FOR goes by the extended protocol, which runs one
+    # statement only, so the COMMIT and the session SET never run, and the next cook on the same
+    # connection keeps the role's settings.
     db = AiReaderDb(seeded.reader_dsn, max_size=1)
     try:
-        with pytest.raises(QueryFailed, match="multiple commands"):
-            db.run(seeded.a.claims, "select 1; commit; set statement_timeout = 0")
-        assert db.run(seeded.b.claims, "show statement_timeout").rows == [("5s",)]
-        assert db.run(seeded.b.claims, "show transaction_read_only").rows == [("on",)]
+        for sql in ("select 1; commit; set statement_timeout = 0", "select 1; select 2"):
+            with pytest.raises(QueryFailed, match="multiple commands"):
+                db.run(seeded.a.claims, sql)
+        after = db.run(
+            seeded.b.claims, "select current_setting('statement_timeout'), current_setting('transaction_read_only')"
+        )
+        assert after.rows == [("5s", "on")]
     finally:
         db.close()
 
 
-def test_commit_discards_the_connection(seeded: Seeded) -> None:
+def test_commit_refused_and_nothing_leaks(seeded: Seeded) -> None:
     db = AiReaderDb(seeded.reader_dsn, max_size=1)
     try:
-        pid = db.run(seeded.a.claims, "select pg_backend_pid()").rows[0][0]
-        with pytest.raises(QueryFailed) as caught:
+        with pytest.raises(QueryFailed):
             db.run(seeded.a.claims, "commit")
-        assert "transaction" in caught.value.message
-        after = db.run(seeded.b.claims, "select pg_backend_pid(), current_setting('statement_timeout')").rows[0]
-        assert after[0] != pid  # the connection that left its transaction was not lent again
-        assert after[1] == "5s"
+        after = db.run(seeded.b.claims, "select current_setting('statement_timeout'), current_user::text").rows[0]
+        assert after == ("5s", "ai_reader")
     finally:
         db.close()
 
@@ -174,10 +195,46 @@ def test_commit_discards_the_connection(seeded: Seeded) -> None:
 def test_session_set_does_not_outlive_run(seeded: Seeded) -> None:
     db = AiReaderDb(seeded.reader_dsn, max_size=1)
     try:
-        db.run(seeded.a.claims, "set statement_timeout = 0")
-        assert db.run(seeded.b.claims, "show statement_timeout").rows == [("5s",)]
+        # A session-level set_config inside run()'s transaction is undone by its rollback.
+        db.run(seeded.a.claims, "select set_config('statement_timeout', '0', false)")
+        db.run(seeded.a.claims, "select set_config('search_path', 'public', false)")
+        after = db.run(
+            seeded.b.claims, "select current_setting('statement_timeout'), current_setting('search_path')"
+        ).rows[0]
+        assert after == ("5s", "ai")
     finally:
         db.close()
+
+
+def test_huge_result_is_bounded_on_the_server(seeded: Seeded) -> None:
+    """A cross join of ten billion rows: 200 come back at once, and the connection is fine afterwards."""
+    db = AiReaderDb(seeded.reader_dsn, max_size=1)
+    try:
+        started = time.monotonic()
+        result = db.run(
+            seeded.a.claims,
+            "select a.i, b.i from generate_series(1, 100000) a(i) cross join generate_series(1, 100000) b(i)",
+        )
+        assert time.monotonic() - started < 3.0
+        assert len(result.rows) == 200 and result.truncated is True
+        after = db.run(seeded.b.claims, "select current_setting('transaction_read_only'), id::text from ai.recipes")
+        assert {r[1] for r in after.rows} == set(seeded.b.recipe_ids)
+        assert all(r[0] == "on" for r in after.rows)
+    finally:
+        db.close()
+
+
+def test_statement_timeout_follows_the_time_left(db: AiReaderDb, seeded: Seeded) -> None:
+    setting = db.run(seeded.a.claims, "select current_setting('statement_timeout')", timeout_ms=1234)
+    assert setting.rows == [("1234ms",)]
+    started = time.monotonic()
+    with pytest.raises(QueryFailed) as caught:
+        db.run(seeded.a.claims, "select pg_sleep(3)", timeout_ms=300)
+    assert "statement timeout" in caught.value.message
+    assert time.monotonic() - started < 2.0
+    # Never above the role's 5 s, however much time is left.
+    capped = db.run(seeded.a.claims, "select current_setting('statement_timeout')", timeout_ms=60_000)
+    assert capped.rows == [("5s",)]
 
 
 def test_like_pattern_with_percent_runs(db: AiReaderDb, seeded: Seeded) -> None:

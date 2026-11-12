@@ -34,10 +34,14 @@ class FakeDb:
     def __init__(self, results: list[Any] | None = None, owned: set[str] | None = None) -> None:
         self.results = list(results or [])
         self.calls: list[tuple[str, Any]] = []
+        self.timeouts: list[int | None] = []
         self.owned = owned if owned is not None else {A, B}
 
-    def run(self, claims: Any, sql: str, params: Any = None, *, max_rows: int = 200) -> QueryResult:
+    def run(
+        self, claims: Any, sql: str, params: Any = None, *, max_rows: int = 200, timeout_ms: int | None = None
+    ) -> QueryResult:
         self.calls.append((sql, params))
+        self.timeouts.append(timeout_ms)
         item = self.results.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -55,8 +59,14 @@ class FakeDb:
         return out
 
 
-def _box(db: FakeDb, embed: Any = None) -> ToolBox:
-    return ToolBox(db, CLAIMS, embed or (lambda text: [0.5, 1.0, -2.0]), _catalogue())  # type: ignore[arg-type]
+def _box(db: FakeDb, embed: Any = None, clock: Any = None) -> ToolBox:
+    return ToolBox(
+        db,  # type: ignore[arg-type]
+        CLAIMS,
+        embed or (lambda text, timeout: [0.5, 1.0, -2.0]),
+        _catalogue(),
+        **({"clock": clock} if clock else {}),
+    )
 
 
 def test_run_sql_refused_never_reaches_db(caplog: pytest.LogCaptureFixture) -> None:
@@ -147,7 +157,7 @@ def test_keyword_search_records_ids() -> None:
 
 
 def test_embed_failure_is_error_not_exception() -> None:
-    def boom(text: str) -> list[float]:
+    def boom(text: str, timeout: float) -> list[float]:
         raise RuntimeError("gemini down")
 
     out = _box(FakeDb(), boom).run("semantic_search", {"text": "x", "limit": 5})
@@ -339,3 +349,76 @@ def test_progress_collapses_whitespace_and_cuts_title() -> None:
 def test_non_ascii_not_escaped() -> None:
     db = FakeDb([_result(["t"], [("crème brûlée",)])])
     assert "crème brûlée" in _box(db).run("run_sql", {"query": "select title from recipes"}).content
+
+
+# -- the request's time left (§7.7's 30 s) bounds every statement and the embed call --------------
+
+
+class Clock:
+    def __init__(self, now: float = 100.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_statement_timeout_is_the_time_left() -> None:
+    db = FakeDb([_result(["id", "title", "rank"], [])])
+    _box(db, clock=Clock()).run("keyword_search", {"text": "x", "limit": 5}, remaining=3.25)
+    assert db.timeouts == [3250]  # ai_db caps it at the role's 5000
+
+
+def test_no_deadline_leaves_the_role_timeout() -> None:
+    db = FakeDb([_result(["id", "title", "rank"], [])])
+    _box(db).run("keyword_search", {"text": "x", "limit": 5})
+    assert db.timeouts == [None]
+
+
+def test_get_recipe_statements_each_get_the_time_still_left() -> None:
+    clock = Clock()
+    results = [
+        _result(["id", "title"], [(uuid.UUID(A), "Miso soup")]),
+        _result(["position", "name"], []),
+        _result(["position", "text"], []),
+    ]
+
+    class Slow(FakeDb):
+        def run(self, *args: Any, **kwargs: Any) -> QueryResult:
+            out = super().run(*args, **kwargs)
+            clock.now += 2.0  # each statement takes 2 s
+            return out
+
+    db = Slow(results)
+    _box(db, clock=clock).run("get_recipe", {"id": A}, remaining=10.0)
+    assert db.timeouts == [10000, 8000, 6000]
+
+
+def test_run_sql_statement_timeout_is_the_time_left() -> None:
+    db = FakeDb([_result(["id"], [])])
+    _box(db, clock=Clock()).run("run_sql", {"query": "select id from recipes"}, remaining=0.5)
+    assert db.timeouts == [500]
+
+
+@pytest.mark.parametrize(("remaining", "expected"), [(None, 8.0), (30.0, 8.0), (3.0, 3.0), (0.01, 0.1)])
+def test_embed_gets_at_most_8s_of_the_time_left(remaining: float | None, expected: float) -> None:
+    timeouts: list[float] = []
+
+    def embed(text: str, timeout: float) -> list[float]:
+        timeouts.append(timeout)
+        return [0.1]
+
+    db = FakeDb([_result(["id", "title", "score"], [])])
+    _box(db, embed, clock=Clock()).run("semantic_search", {"text": "x", "limit": 5}, remaining=remaining)
+    assert timeouts == [pytest.approx(expected)]
+
+
+def test_embed_timeout_becomes_a_tool_error() -> None:
+    """A bounded embed that times out is a tool error the agent can read, not a hang."""
+
+    def timed_out(text: str, timeout: float) -> list[float]:
+        raise TimeoutError(f"no answer in {timeout}s")
+
+    db = FakeDb()
+    out = _box(db, timed_out, clock=Clock()).run("semantic_search", {"text": "x", "limit": 5}, remaining=20.0)
+    assert out.is_error
+    assert db.calls == []

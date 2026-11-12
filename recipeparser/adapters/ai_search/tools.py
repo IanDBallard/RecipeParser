@@ -5,6 +5,10 @@
 comes back as an error outcome the agent can read and recover from. Every UUID that a tool result
 carries is remembered in ``seen_ids`` (canonical lowercase); the endpoint later lets only ids that
 were seen *and* are the cook's own reach the answer (A2).
+
+``run`` takes the request's time left (§7.7's 30 s): every statement's timeout is the smaller of the
+role's 5 s and that time, and the meaning search's embedding call gets at most ``EMBED_TIMEOUT_S``
+of it, with no retry.
 """
 
 from __future__ import annotations
@@ -38,6 +42,8 @@ MAX_TEXT_CHARS = 300
 MAX_ROWS = 200
 MAX_SEARCH_LIMIT = 50
 PROGRESS_TEXT_CHARS = 40
+EMBED_TIMEOUT_S = 8.0
+MIN_EMBED_TIMEOUT_S = 0.1
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -200,13 +206,18 @@ class ToolBox:
         self,
         db: AiReaderDb,
         claims: Mapping[str, Any],
-        embed: Callable[[str], list[float]],
+        embed: Callable[[str, float], list[float]],
         catalogue: Catalogue,
+        *,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        """``embed(text, timeout_s)`` returns the text's embedding within ``timeout_s`` or raises."""
         self._db = db
         self._claims = claims
         self._embed = embed
         self._catalogue = catalogue
+        self._clock = clock
+        self._deadline: float | None = None
         self.seen_ids: set[str] = set()
 
     # -- provenance ---------------------------------------------------------------------------
@@ -228,7 +239,9 @@ class ToolBox:
 
     # -- dispatch -----------------------------------------------------------------------------
 
-    def run(self, name: str, tool_input: Mapping[str, Any]) -> ToolOutcome:
+    def run(self, name: str, tool_input: Mapping[str, Any], remaining: float | None = None) -> ToolOutcome:
+        """Run one tool; ``remaining`` is the request's seconds left (None: no request deadline)."""
+        self._deadline = None if remaining is None else self._clock() + remaining
         handlers: dict[str, Callable[[Mapping[str, Any]], ToolOutcome]] = {
             "run_sql": self._run_sql,
             "semantic_search": self._semantic_search,
@@ -253,6 +266,17 @@ class ToolBox:
     def _user(self) -> str:
         return str(self._claims.get("sub", ""))
 
+    def _timeout_ms(self) -> int | None:
+        """The request's milliseconds left for the next statement (ai_db caps it at the role's 5 s)."""
+        if self._deadline is None:
+            return None
+        return int((self._deadline - self._clock()) * 1000)
+
+    def _embed_timeout(self) -> float:
+        if self._deadline is None:
+            return EMBED_TIMEOUT_S
+        return max(MIN_EMBED_TIMEOUT_S, min(EMBED_TIMEOUT_S, self._deadline - self._clock()))
+
     # -- tools --------------------------------------------------------------------------------
 
     def _run_sql(self, tool_input: Mapping[str, Any]) -> ToolOutcome:
@@ -264,7 +288,7 @@ class ToolBox:
             return ToolOutcome(e.reason, True, None)
         started = time.monotonic()
         try:
-            result = self._db.run(self._claims, query, max_rows=MAX_ROWS)
+            result = self._db.run(self._claims, query, max_rows=MAX_ROWS, timeout_ms=self._timeout_ms())
         except QueryFailed as e:
             logger.warning(
                 "tool=run_sql user=%s duration_ms=%.0f outcome=failed message=%s sql=%s",
@@ -287,7 +311,7 @@ class ToolBox:
         return ToolOutcome(_dumps(payload), False, "Checking the details")
 
     def _search(self, sql: str, params: list[Any], tool: str, text: str) -> ToolOutcome:
-        result = self._db.run(self._claims, sql, params, max_rows=MAX_SEARCH_LIMIT)
+        result = self._db.run(self._claims, sql, params, max_rows=MAX_SEARCH_LIMIT, timeout_ms=self._timeout_ms())
         logger.info(
             "tool=%s user=%s duration_ms=%.0f rows=%d", tool, self._user(), result.duration_ms, len(result.rows)
         )
@@ -298,7 +322,7 @@ class ToolBox:
     def _semantic_search(self, tool_input: Mapping[str, Any]) -> ToolOutcome:
         text = _require_text(tool_input, "text")
         limit = _require_limit(tool_input)
-        vector = _vector_text(self._embed(text))
+        vector = _vector_text(self._embed(text, self._embed_timeout()))
         return self._search(
             "select id, title, score from ai.semantic_search(%s, %s)", [vector, limit], "semantic_search", text
         )
@@ -315,11 +339,13 @@ class ToolBox:
         if recipe_id is None:
             raise _BadInput("id must be a recipe id, as returned by another tool.")
         started = time.monotonic()
-        head = self._db.run(self._claims, _RECIPE_SQL, [recipe_id], max_rows=1)
+        head = self._db.run(self._claims, _RECIPE_SQL, [recipe_id], max_rows=1, timeout_ms=self._timeout_ms())
         if not head.rows:
             return ToolOutcome("No recipe with that id.", True, "Checking the details")
-        ingredients = self._db.run(self._claims, _INGREDIENTS_SQL, [recipe_id], max_rows=MAX_ROWS)
-        steps = self._db.run(self._claims, _STEPS_SQL, [recipe_id], max_rows=MAX_ROWS)
+        ingredients = self._db.run(
+            self._claims, _INGREDIENTS_SQL, [recipe_id], max_rows=MAX_ROWS, timeout_ms=self._timeout_ms()
+        )
+        steps = self._db.run(self._claims, _STEPS_SQL, [recipe_id], max_rows=MAX_ROWS, timeout_ms=self._timeout_ms())
         logger.info(
             "tool=get_recipe user=%s duration_ms=%.0f ingredients=%d steps=%d",
             self._user(),

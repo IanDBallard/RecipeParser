@@ -7,7 +7,13 @@ that cook's rows and nothing else. The transaction is always rolled back, so not
 sets (the claims included) outlives it on a pooled connection.
 
 The role's own settings (``search_path = ai``, ``statement_timeout = 5s``,
-``default_transaction_read_only = on``) apply at login; this module sets none of them.
+``default_transaction_read_only = on``) apply at login. The one thing this module sets is a
+transaction-local ``statement_timeout`` alongside the claims, never above the role's 5 s and shorter
+when the request has less time left.
+
+The statement runs through a server-side cursor (``DECLARE ... CURSOR FOR``) and only
+``max_rows + 1`` rows are fetched from it, so a statement that matches millions of rows costs the
+server's work up to the timeout, never this process's memory.
 
 The statement gate (``sql_gate.check_statement``) runs before ``run``; this module trusts its input
 only that far, and Postgres is the second line.
@@ -29,6 +35,8 @@ from psycopg_pool import ConnectionPool, PoolTimeout
 
 ROLE = "ai_reader"
 DEFAULT_MAX_ROWS = 200
+STATEMENT_TIMEOUT_MS = 5000  # the role's own statement_timeout; a request may only shorten it
+_CURSOR = "ai_statement"
 POOL_TIMEOUT_S = 10.0
 # Bound at import: the pool checks each connection before lending it.
 _CHECK_CONNECTION = ConnectionPool.check_connection
@@ -50,7 +58,10 @@ CONNECTION_KWARGS: dict[str, Any] = {
 
 _BEGIN = "begin transaction read only"
 _ROLLBACK = "rollback"
-_SET_CLAIMS = "select set_config('request.jwt.claim.sub', %s, true), set_config('request.jwt.claims', %s, true)"
+_SET_CLAIMS = (
+    "select set_config('request.jwt.claim.sub', %s, true), set_config('request.jwt.claims', %s, true),"
+    " set_config('statement_timeout', %s, true)"
+)
 _OWN_RECIPES = "select id::text from ai.recipes where id = any(%s::uuid[])"
 
 # Views with their columns, and functions with their output columns (TABLE/OUT arguments), in schema ai.
@@ -170,12 +181,24 @@ class AiReaderDb:
         params: Sequence[Any] | None = None,
         *,
         max_rows: int = DEFAULT_MAX_ROWS,
+        timeout_ms: int | None = None,
     ) -> QueryResult:
-        """Run one statement as the cook in ``claims`` inside a read-only transaction, always rolled back."""
+        """Run one statement as the cook in ``claims`` inside a read-only transaction, always rolled back.
+
+        ``timeout_ms`` (the request's time left) shortens the statement timeout and the wait for a
+        pooled connection; it never lengthens either past the role's 5 s.
+        """
         sub = claims.get("sub")
         if not isinstance(sub, str) or not sub:
             raise ValueError("claims must carry the cook's sub")
-        return self._execute((sub, json.dumps(dict(claims))), sql, params, max_rows)
+        limit_ms = statement_timeout_ms(timeout_ms)
+        return self._execute(
+            (sub, json.dumps(dict(claims)), str(limit_ms)),
+            sql,
+            params,
+            max_rows,
+            wait_s=POOL_TIMEOUT_S if timeout_ms is None else min(POOL_TIMEOUT_S, limit_ms / 1000),
+        )
 
     def own_recipe_ids(self, claims: Mapping[str, Any], ids: Iterable[str]) -> set[str]:
         """The subset of ``ids`` that are the cook's own recipes, as ai.recipes shows them."""
@@ -203,31 +226,30 @@ class AiReaderDb:
 
     def _execute(
         self,
-        claim_params: tuple[str, str] | None,
+        claim_params: tuple[str, str, str] | None,
         sql: str,
         params: Sequence[Any] | None,
         max_rows: int,
+        *,
+        wait_s: float = POOL_TIMEOUT_S,
     ) -> QueryResult:
         try:
-            with self._pool.connection() as conn:
+            with self._pool.connection(timeout=wait_s) as conn:
                 try:
                     with conn.cursor() as cur:
                         cur.execute(_BEGIN)
+                        statement = conn.cursor(name=_CURSOR)
                         try:
                             if claim_params is not None:
                                 cur.execute(_SET_CLAIMS, claim_params)
                             started = time.perf_counter()
-                            # Pipeline mode always sends the extended protocol, which runs exactly one
-                            # statement: outside it, psycopg sends a parameterless query with the simple
-                            # protocol, where "select 1; commit; set ..." would run all three.
-                            with conn.pipeline():
-                                cur.execute(sql, params, prepare=False)
-                            if cur.description is None:
-                                columns: list[str] = []
-                                rows: list[tuple[Any, ...]] = []
-                            else:
-                                columns = [d.name for d in cur.description]
-                                rows = list(cur.fetchmany(max_rows + 1))
+                            # A server-side cursor: psycopg always DECLAREs it with the extended
+                            # protocol, which runs exactly one statement ("select 1; commit" is refused
+                            # outright), and with no params it leaves a literal % alone. Only
+                            # max_rows + 1 rows ever cross the wire.
+                            statement.execute(sql, params)
+                            columns = [d.name for d in statement.description or []]
+                            rows: list[tuple[Any, ...]] = list(statement.fetchmany(max_rows + 1))
                             duration_ms = (time.perf_counter() - started) * 1000
                         finally:
                             if conn.info.transaction_status not in _OPEN_TRANSACTION:
@@ -241,6 +263,10 @@ class AiReaderDb:
                             except psycopg.Error:
                                 conn.close()
                                 raise
+                            # After the rollback the cursor is gone on the server; this only frees
+                            # the client object (psycopg sends nothing for a WITHOUT HOLD cursor
+                            # once the transaction has ended).
+                            statement.close()
                 except psycopg.Error as e:
                     # Stale connections included (BEGIN or ROLLBACK failing): the pool discards a
                     # closed or broken connection on return.
@@ -250,6 +276,16 @@ class AiReaderDb:
                 raise self._identity_error from e
             raise
         return QueryResult(columns, rows[:max_rows], len(rows) > max_rows, duration_ms)
+
+
+def statement_timeout_ms(remaining_ms: int | None) -> int:
+    """The statement timeout for a request with ``remaining_ms`` left: at most the role's 5 s, at least 1 ms.
+
+    Never 0, which Postgres reads as no timeout at all.
+    """
+    if remaining_ms is None:
+        return STATEMENT_TIMEOUT_MS
+    return max(1, min(STATEMENT_TIMEOUT_MS, int(remaining_ms)))
 
 
 def _message(error: psycopg.Error) -> str:
