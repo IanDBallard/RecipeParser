@@ -71,3 +71,26 @@ def test_flush_runs_when_the_body_raises() -> None:
     except ValueError:
         pass
     sb.table.return_value.insert.assert_called_once()
+
+
+def _claude(i=100, o=20, cc=30, cr=50):
+    return SimpleNamespace(input_tokens=i, output_tokens=o, cache_creation_input_tokens=cc, cache_read_input_tokens=cr)
+
+
+def test_record_claude_sums_prompt_tokens() -> None:
+    with usage.attributed("u1", "search", get_client=lambda: None) as ctx:
+        usage.record_claude("agent", "claude-opus-5-5", _claude())
+        usage.record_claude("agent", "claude-opus-5-5", _claude(cc=None, cr=None))
+        usage.record_claude("agent", "claude-opus-5-5", None)
+        rows = list(ctx.records)
+    assert rows[0] == {
+        "user_id": "u1", "action": "search", "step": "agent", "job_id": None, "recipe_id": None,
+        "model": "claude-opus-5-5", "calls": 1, "prompt_tokens": 180, "output_tokens": 20, "thought_tokens": None,
+    }
+    assert rows[1]["prompt_tokens"] == 100
+    assert rows[2]["prompt_tokens"] is None and rows[2]["output_tokens"] is None
+
+
+def test_record_claude_without_context_keeps_nothing() -> None:
+    usage.record_claude("agent", "m", _claude())
+    assert usage.ai_context.get() is None

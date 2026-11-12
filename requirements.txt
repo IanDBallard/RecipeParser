@@ -17,3 +17,4 @@ Pillow>=11.0
 pglast>=8.7
 psycopg[binary]>=3.2
 psycopg-pool>=3.2
+anthropic>=2.8.0

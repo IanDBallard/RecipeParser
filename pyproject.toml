@@ -39,6 +39,8 @@ dependencies = [
     # The ai_reader connection the search agent's SQL runs through (adapters/ai_search/ai_db.py).
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",
+    # The search agent's Claude calls (adapters/ai_search/agent.py): task budgets and fallbacks need 2.8.
+    "anthropic>=2.8.0",
 ]
 
 [project.scripts]
