@@ -12,7 +12,10 @@ seconds, tokens and the estimated cost. Judging the grouping and the voice is le
     python scripts/ask_goldens.py --user <uuid> --out report.md
     python scripts/ask_goldens.py --user <uuid> --only menu-picnic --out one.md
 
-Requires AI_READER_DATABASE_URL, ANTHROPIC_API_KEY and GOOGLE_API_KEY in the environment. The
+Requires AI_READER_DATABASE_URL, ANTHROPIC_API_KEY and GOOGLE_API_KEY in the environment.
+WARNING: importing recipeparser loads the repository's .env file, so those variables may be
+satisfied by .env without you having set them. Nothing runs until you pass --yes; without it the
+script prints the database host, port and user (never the password) and the model, and exits 2. The
 database role is ai_reader and the cook is the --user uuid (claims sub + role authenticated).
 A refinement entry (`previous: <id>`) is fed the earlier entry's question and finalized answer.
 """
@@ -27,6 +30,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import TypeAdapter
@@ -37,8 +41,9 @@ from recipeparser.adapters.ai_search.ai_db import AiReaderDb
 from recipeparser.adapters.ai_search.answer import Answer, Previous, finalize, raw_ids
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
 from recipeparser.adapters.ai_search.tools import ToolBox
+from recipeparser.config import AI_SEARCH_MODEL
 
-MODEL = "claude-opus-5-5"
+MODEL = AI_SEARCH_MODEL
 DEFAULT_MEASURING = "metric, °C"
 KINDS = {"recipes", "text", "none", "out_of_scope"}
 # Dollars per million tokens.
@@ -88,6 +93,7 @@ class Result:
     seconds: float = 0.0
     usage: Usage = field(default_factory=Usage)
     error: str | None = None
+    note: str | None = None
 
 
 def estimate_cost(u: Usage) -> float:
@@ -160,6 +166,8 @@ def render_report(results: list[Result]) -> str:
             f"{r.usage.cache_write} cache written, {r.usage.output_tokens} out, "
             f"cost: ${estimate_cost(r.usage):.3f}"
         )
+        if r.note:
+            out.append(f"- note: {r.note}")
         if r.error:
             out.append(f"- error: {r.error}")
         a = r.answer or {}
@@ -261,11 +269,26 @@ def run_golden(
     return result, answer
 
 
+def dsn_summary(dsn: str) -> str:
+    """Host, port and user of a database url; the password is never part of it."""
+    parts = urlsplit(dsn)
+    return f"host={parts.hostname} port={parts.port} user={parts.username}"
+
+
+def build_previous(entry: Golden, finished: dict[str, tuple[str, Answer, int]]) -> Previous | None:
+    """The turn a refinement entry refines, or None when the entry has none or its earlier turn is missing."""
+    if not entry.previous or entry.previous not in finished:
+        return None
+    question, prior, round_no = finished[entry.previous]
+    return Previous(question=question, answer=prior, round=round_no)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--user", required=True, help="the cook's user uuid (jwt sub)")
     parser.add_argument("--only", help="run only this entry id (a refinement then runs without its earlier turn)")
     parser.add_argument("--out", required=True, type=Path, help="where to write the markdown report")
+    parser.add_argument("--yes", action="store_true", help="go ahead: this spends real money on the live library")
     parser.add_argument("--measuring", default=DEFAULT_MEASURING)
     parser.add_argument("--goldens", type=Path, default=Path(__file__).with_name("ask_goldens.yaml"))
     args = parser.parse_args(argv)
@@ -273,6 +296,10 @@ def main(argv: list[str] | None = None) -> int:
     dsn = _require("AI_READER_DATABASE_URL")
     api_key = _require("GOOGLE_API_KEY")
     _require("ANTHROPIC_API_KEY")
+    print(f"database: {dsn_summary(dsn)}; model: {MODEL}", file=sys.stderr)
+    if not args.yes:
+        print("Not running: pass --yes to run these questions against that database.", file=sys.stderr)
+        return 2
 
     import anthropic  # noqa: PLC0415
     from google import genai  # noqa: PLC0415
@@ -294,10 +321,7 @@ def main(argv: list[str] | None = None) -> int:
         catalogue = db.catalogue()
         for entry in selected:
             print(f"{entry.id}: {entry.question}", file=sys.stderr)
-            previous: Previous | None = None
-            if entry.previous and entry.previous in finished:
-                question, prior, round_no = finished[entry.previous]
-                previous = Previous(question=question, answer=prior, round=round_no)
+            previous = build_previous(entry, finished)
             result, answer = run_golden(
                 entry,
                 db=db,
@@ -308,6 +332,8 @@ def main(argv: list[str] | None = None) -> int:
                 measuring=args.measuring,
                 previous=previous,
             )
+            if entry.previous and previous is None:
+                result.note = "ran fresh: previous turn missing"
             results.append(result)
             if answer is not None:
                 # A turn's round: 1 for a fresh question, one more than the turn it refines.

@@ -119,3 +119,40 @@ def test_answer_ids_reads_a_dumped_answer():
     assert goldens.dumped_ids(_result().answer) == [ID_A, ID_B]
     assert goldens.dumped_ids({"kind": "text", "text": "x", "recipe_ids": [ID_B]}) == [ID_B]
     assert goldens.dumped_ids({"kind": "out_of_scope"}) == []
+
+
+def test_dsn_summary_hides_the_password():
+    text = goldens.dsn_summary("postgresql://ai_reader.proj:s3cret@aws-0.pooler.example.com:6543/postgres")
+    assert "s3cret" not in text
+    assert "aws-0.pooler.example.com" in text and "6543" in text and "ai_reader.proj" in text
+
+
+def test_main_without_yes_exits_before_building_anything(monkeypatch, tmp_path):
+    def boom(*a, **k):
+        raise AssertionError("a client was built")
+
+    monkeypatch.setenv("AI_READER_DATABASE_URL", "postgresql://u:pw@h:5432/d")
+    monkeypatch.setenv("GOOGLE_API_KEY", "x")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setattr(goldens, "AiReaderDb", boom)
+    monkeypatch.setattr("anthropic.Anthropic", boom)
+    monkeypatch.setattr("google.genai.Client", boom)
+    assert goldens.main(["--user", "u", "--out", str(tmp_path / "r.md")]) == 2
+    assert not (tmp_path / "r.md").exists()
+
+
+def test_build_previous_validates_against_the_api_model():
+    Previous = goldens.Previous
+    entries = [goldens.Golden(id="a", question="q1"), goldens.Golden(id="b", question="q2", previous="a")]
+    finished = {"a": ("q1", goldens._ANSWER.validate_python({"kind": "none", "text": "Nothing."}), 2)}
+    prev = goldens.build_previous(entries[1], finished)
+    assert prev is not None
+    again = Previous.model_validate(prev.model_dump(mode="json"))
+    assert (again.question, again.round, again.answer.kind) == ("q1", 2, "none")
+    assert goldens.build_previous(entries[0], finished) is None
+    assert goldens.build_previous(entries[1], {}) is None  # the earlier turn failed or was skipped
+
+
+def test_report_shows_the_ran_fresh_note():
+    note = "ran fresh: previous turn missing"
+    assert note in goldens.render_report([_result(note=note)])
