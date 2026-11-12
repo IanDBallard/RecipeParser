@@ -3,8 +3,13 @@
 
 A manual loop, not the SDK's tool runner, because it must enforce the limits itself: at most
 ``rounds`` tool rounds, a ``seconds`` wall clock across the whole request, and a cancel flag checked
-before every model call. Each call's usage is recorded as step ``agent``. The final answer is the
-structured-output text block of the ``end_turn`` response, parsed as ``RawAnswer``.
+before every model call and every tool run. A model call is not started with less than
+``MIN_CALL_SECONDS`` left, and the SDK's own retries are off (``max_retries=0``) so one call cannot
+outlast the time it was given. Each call's usage is recorded as step ``agent``. The final answer is
+the structured-output text block of the ``end_turn`` response, parsed as ``RawAnswer``.
+
+``PoolTimeout`` and ``NotAiReader`` raised by the tool box propagate unchanged; the endpoint maps
+them (infrastructure failures, not something the agent can recover from).
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from recipeparser.adapters.ai_search.tools import TOOL_DEFINITIONS, ToolOutcome
 logger = logging.getLogger(__name__)
 
 BETAS = ["task-budgets-2026-03-13", "server-side-fallback-2026-07-01"]
+MIN_CALL_SECONDS = 1.5
 FINAL_NOTICE = "You have used all your searches. Answer now from what you found."
 
 
@@ -41,7 +47,7 @@ class AgentCancelled(Exception):
     """The cook left; the loop stopped before its next model call."""
 
 
-@dataclass
+@dataclass(frozen=True)
 class AgentLimits:
     rounds: int = 10
     seconds: float = 30.0
@@ -71,11 +77,27 @@ def _parse_answer(response: Any) -> RawAnswer:
         raise AgentFailed(f"the final answer did not match the schema: {exc.error_count()} error(s)") from exc
 
 
-def _tool_results(response: Any, toolbox: _ToolRunner, on_progress: Callable[[str], None]) -> list[dict[str, Any]]:
+def _check(cancel: threading.Event, deadline: float, clock: Callable[[], float], margin: float) -> float:
+    """Raise if the cook left or fewer than ``margin`` seconds remain; return the seconds left."""
+    if cancel.is_set():
+        raise AgentCancelled()
+    remaining = deadline - clock()
+    if remaining <= margin:
+        raise AgentTimeout()
+    return remaining
+
+
+def _tool_results(
+    response: Any,
+    toolbox: _ToolRunner,
+    on_progress: Callable[[str], None],
+    check: Callable[[], object],
+) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for block in response.content:
         if getattr(block, "type", None) != "tool_use":
             continue
+        check()
         outcome = toolbox.run(block.name, block.input)
         if outcome.progress:
             on_progress(outcome.progress)
@@ -108,15 +130,11 @@ def run_agent(
     rounds = 0
     final = False
     while True:
-        if cancel.is_set():
-            raise AgentCancelled()
-        remaining = deadline - clock()
-        if remaining <= 0:
-            raise AgentTimeout()
+        remaining = _check(cancel, deadline, clock, MIN_CALL_SECONDS)
         extra: dict[str, Any] = {"tool_choice": {"type": "none"}} if final else {}
         try:
             # The request dicts are plain dicts, not the SDK TypedDicts, so no overload matches statically.
-            response = client.beta.messages.create(  # type: ignore[call-overload]
+            response = client.with_options(max_retries=0).beta.messages.create(  # type: ignore[call-overload]
                 model=model,
                 max_tokens=limits.max_tokens,
                 system=system,
@@ -147,7 +165,9 @@ def run_agent(
             raise AgentFailed(f"stopped with {stop}")
 
         if stop == "tool_use":
-            messages.append({"role": "user", "content": _tool_results(response, toolbox, on_progress)})
+            messages.append({"role": "user", "content": _tool_results(
+                response, toolbox, on_progress, lambda: _check(cancel, deadline, clock, 0.0)
+            )})
         rounds += 1
         if rounds >= limits.rounds:
             final = True

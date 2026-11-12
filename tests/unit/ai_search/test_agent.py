@@ -55,7 +55,16 @@ class FakeClient:
         self.script = list(script)
         self.calls: list[dict[str, Any]] = []
         self.on_call = on_call
-        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+        self.options: list[dict[str, Any]] = []
+        self._beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+
+    @property
+    def beta(self) -> Any:
+        raise AssertionError("every call must go through with_options(max_retries=0)")
+
+    def with_options(self, **options: Any) -> Any:
+        self.options.append(options)
+        return SimpleNamespace(beta=self._beta)
 
     def _create(self, **kwargs: Any) -> Any:
         snapshot = dict(kwargs)
@@ -198,7 +207,7 @@ def test_deadline_raises_timeout() -> None:
     def advance(_name: str) -> None:
         clock.now = 31.0
 
-    client = FakeClient([_tools(_tool_use("t1")), _answer()], on_call=lambda n: None)
+    client = FakeClient([_tools(_tool_use("t1")), _answer()])
     with pytest.raises(AgentTimeout):
         _run(client, FakeToolBox(on_run=advance), clock=clock)
     assert len(client.calls) == 1
@@ -318,3 +327,62 @@ def test_progress_forwarded() -> None:
     )
     _run(client, Mixed(), on_progress=seen.append)
     assert seen == ["Looking for leeks", "Looking for barley"]
+
+
+def test_sdk_retries_are_off_for_every_call() -> None:
+    client = FakeClient([_tools(_tool_use("t1")), _answer()])
+    _run(client)
+    assert client.options == [{"max_retries": 0}, {"max_retries": 0}]
+
+
+def test_cancel_checked_before_each_tool_run() -> None:
+    cancel = threading.Event()
+    toolbox = FakeToolBox(on_run=lambda _n: cancel.set())
+    client = FakeClient([_tools(_tool_use("t1"), _tool_use("t2")), _answer()])
+    with pytest.raises(AgentCancelled):
+        _run(client, toolbox, cancel=cancel)
+    assert [r[0] for r in toolbox.runs] == ["keyword_search"]  # t2 never ran
+    assert len(client.calls) == 1
+
+
+def test_deadline_checked_before_each_tool_run() -> None:
+    clock = Clock(0.0)
+
+    def advance(_name: str) -> None:
+        clock.now = 30.0
+
+    toolbox = FakeToolBox(on_run=advance)
+    client = FakeClient([_tools(_tool_use("t1"), _tool_use("t2")), _answer()])
+    with pytest.raises(AgentTimeout):
+        _run(client, toolbox, clock=clock)
+    assert len(toolbox.runs) == 1
+
+
+def test_no_call_with_too_little_time_left() -> None:
+    clock = Clock(0.0)
+
+    def advance(_name: str) -> None:
+        clock.now = 28.6  # 1.4 s left: a call could not finish
+
+    client = FakeClient([_tools(_tool_use("t1")), _answer()])
+    with pytest.raises(AgentTimeout):
+        _run(client, FakeToolBox(on_run=advance), clock=clock)
+    assert len(client.calls) == 1
+
+
+def test_pause_turn_at_the_cap_forces_answer_without_notice() -> None:
+    paused = _response("pause_turn", [SimpleNamespace(type="thinking", thinking="", signature="s")])
+    client = FakeClient([_tools(_tool_use("t1")), paused, _answer()])
+    answer = _run(client, limits=AgentLimits(rounds=2))
+    assert answer.kind == "text"
+    last = client.calls[2]
+    assert last["tool_choice"] == {"type": "none"}
+    assert last["messages"][-1]["role"] == "assistant"
+    assert all(m["role"] != "system" for m in last["messages"])
+
+
+def test_limits_are_frozen() -> None:
+    import dataclasses
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        AgentLimits().rounds = 3  # type: ignore[misc]
