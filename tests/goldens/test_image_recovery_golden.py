@@ -76,6 +76,9 @@ NOT_APPLICABLE = {
         "no qualifying images (its reader golden pins qualifying_images == []), and a full "
         "pipeline replay of it does not finish; test_e2e_golden.py does not run it either"
     ),
+    "banana-bread.melarecipes": (
+        "a Mela entry has no recorded model replies yet; its reader golden pins the picture"
+    ),
     "saved-page.html": "the URL path picks its image in the API adapter; see test_url_hero_image_golden",
 }
 

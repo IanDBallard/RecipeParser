@@ -401,6 +401,28 @@ def build_oven_temperatures() -> None:
         )
 
 
+MELA_SAMPLE_URL = (
+    "https://raw.githubusercontent.com/markmals/mela-decoder-js/"
+    "HEAD/test/files/Banana%20Bread.melarecipe"
+)
+
+
+def build_mela_banana_bread() -> None:
+    """banana-bread.melarecipes: mela-decoder-js's MIT sample, its picture swapped for a small JPEG.
+
+    The recipe JSON is Mela's own, as exported; only ``images`` is replaced (the
+    original is a 1.4 MB photo), and the result is zipped as a library of one.
+    """
+    import urllib.request
+
+    with urllib.request.urlopen(MELA_SAMPLE_URL, timeout=30) as resp:  # noqa: S310 - fixed https URL
+        recipe = json.loads(resp.read().decode("utf-8"))
+    recipe["images"] = [base64.b64encode(_make_hero_jpeg(20261113)).decode("ascii")]
+    out = CORPUS / "banana-bread.melarecipes"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("Banana Bread.melarecipe", json.dumps(recipe, ensure_ascii=False, indent=2))
+
+
 def build_text_pages(pages: list[str]) -> None:
     """A four-page PDF with a real text layer and one embedded image."""
     import re
@@ -567,10 +589,15 @@ def fetch_and_trim_gutenberg() -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--all", action="store_true", help="Fetch Gutenberg, then build everything.")
+    parser.add_argument("--mela", action="store_true", help="Build only banana-bread.melarecipes (needs network).")
     args = parser.parse_args()
 
     CORPUS.mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    if args.mela:
+        build_mela_banana_bread()
+        return 0
 
     if args.all:
         provenance = fetch_and_trim_gutenberg()
@@ -595,6 +622,7 @@ def main() -> int:
     build_au_measures()
     build_imperial_measures()
     build_oven_temperatures()
+    build_mela_banana_bread()
     pages_file.unlink()
 
     total = sum(p.stat().st_size for p in CORPUS.iterdir())
