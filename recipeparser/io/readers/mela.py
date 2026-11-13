@@ -47,14 +47,23 @@ def clean_text(value: object) -> str:
     ``# Heading`` lines become the heading alone. ``[label](mela://…)`` becomes the
     label, and ``[label](url)`` becomes ``label (url)``. Nothing else changes.
     """
+    return _HEADING.sub(r"\1", _clean_links(value))
+
+
+def _clean_links(value: object) -> str:
+    """Links only (spec §5.1): ``mela://`` gives the label, a web link ``label (url)``; all else is verbatim."""
     if not isinstance(value, str):
         return ""
 
     def _link(match: "re.Match[str]") -> str:
         label, url = match.group(1), match.group(2).strip()
-        return label if url.lower().startswith("mela://") else f"{label} ({url})"
+        if url.lower().startswith("mela://"):
+            return label
+        if url.lower().startswith(("http://", "https://")):
+            return f"{label} ({url})"
+        return match.group(0)
 
-    return _HEADING.sub(r"\1", _LINK.sub(_link, value))
+    return _LINK.sub(_link, value)
 
 
 def _text(value: object) -> str:
@@ -122,7 +131,7 @@ def _entry_chunk(name: str, entry: dict) -> Chunk:
             source=source,
             notes=clean_text(entry.get("notes")),
             nutritional_info=_text(entry.get("nutrition")),
-            description=clean_text(entry.get("text")),
+            description=_clean_links(entry.get("text")),
         ),
         restore=RestoreFields(is_favourite=True) if entry.get("favorite") is True else None,
     )
@@ -171,7 +180,11 @@ class MelaReader(RecipeReader):
 
         if not zipfile.is_zipfile(path):
             raise MelaExtractionError("is not a Mela export: not a ZIP archive.")
-        with zipfile.ZipFile(path, "r") as zf:
+        try:
+            zf = zipfile.ZipFile(path, "r")
+        except zipfile.BadZipFile as exc:
+            raise MelaExtractionError("is not a Mela export: not a ZIP archive.") from exc
+        with zf:
             for info in zf.infolist():
                 member = info.filename
                 leaf = member.rsplit("/", 1)[-1]
@@ -183,7 +196,7 @@ class MelaReader(RecipeReader):
                 try:
                     with zf.open(info) as fh:
                         data = fh.read(_MAX_ENTRY_BYTES + 1)
-                except (zipfile.BadZipFile, OSError, EOFError, NotImplementedError) as exc:
+                except Exception as exc:  # corrupt (zlib.error), encrypted (RuntimeError), unsupported, truncated
                     log.warning("MelaReader: could not open member %r: %s", member, exc)
                     yield name, b""  # empty bytes fail to parse and become "could not be read"
                     continue

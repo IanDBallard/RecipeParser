@@ -3,9 +3,14 @@ from __future__ import annotations
 
 import base64
 import json
+import zipfile
+from pathlib import Path
+
+import pytest
 
 from recipeparser.core.citation import classify_source, web_citation
 from recipeparser.core.models import InputType
+from recipeparser.exceptions import MelaExtractionError
 from recipeparser.io.readers.mela import MelaReader, clean_text
 from tests.unit.readers.mela_builder import TINY_JPEG, TINY_PNG, entry, make_archive, make_single
 
@@ -214,3 +219,70 @@ def test_categories_and_want_to_cook_never_reach_the_chunk(tmp_path):
 
 def test_categories_of_the_wrong_type_do_not_crash(tmp_path):
     assert _read_one(tmp_path, categories="Bread").skip_reason is None
+
+
+# ── Damaged archives ─────────────────────────────────────────────────────────
+
+def _two_member_zip(tmp_path):
+    """A zip of 'Good' and 'Bad' recipes (deflated); returns the path."""
+    path = tmp_path / "Library.melarecipes"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("Good.melarecipe", json.dumps(entry(title="Good", ingredients="flour " * 200)))
+        zf.writestr("Bad.melarecipe", json.dumps(entry(title="Bad", ingredients="sugar " * 200)))
+    return path
+
+
+def _assert_bad_member_skipped(path):
+    chunks = MelaReader().read(str(path))
+    assert [c.label for c in chunks] == ["Good", "Bad"]
+    assert chunks[0].skip_reason is None
+    assert chunks[1].skip_reason == "Bad: could not be read"
+
+
+def test_a_member_with_corrupt_deflate_data_is_skipped_and_the_library_kept(tmp_path):
+    path = _two_member_zip(tmp_path)
+    with zipfile.ZipFile(path) as zf:
+        info = zf.getinfo("Bad.melarecipe")
+        start = info.header_offset + 30 + len(info.filename.encode()) + len(info.extra) + 2
+    raw = bytearray(path.read_bytes())
+    raw[start:start + 12] = b"\xff" * 12
+    path.write_bytes(bytes(raw))
+    _assert_bad_member_skipped(path)
+
+
+def test_an_encrypted_member_is_skipped_and_the_library_kept(tmp_path):
+    path = _two_member_zip(tmp_path)
+    with zipfile.ZipFile(path) as zf:
+        offset = zf.getinfo("Bad.melarecipe").header_offset
+    raw = bytearray(path.read_bytes())
+    raw[offset + 6] |= 0x1  # the encryption bit of the local header's flags
+    central = raw.find(b"PK", raw.find(b"PK") + 1)  # the second (Bad) central entry
+    raw[central + 8] |= 0x1  # and of the central directory's
+    path.write_bytes(bytes(raw))
+    _assert_bad_member_skipped(path)
+
+
+# ── Link rule: only mela:// and web links are touched ────────────────────────
+
+def test_a_bracket_pair_that_is_not_a_mela_or_web_link_stays_verbatim():
+    assert clean_text("Add [optional](see note) salt") == "Add [optional](see note) salt"
+    assert clean_text("Mix [1/2](tsp)") == "Mix [1/2](tsp)"
+    assert clean_text("[a](ftp://x)") == "[a](ftp://x)"
+
+
+def test_the_description_gets_link_cleaning_but_no_heading_rule(tmp_path):
+    chunk = _read_one(tmp_path, text="# Not a heading\nA [rich](mela://x) pie.")
+    assert chunk.meta.description == "# Not a heading\nA rich pie."
+
+
+# ── A damaged central directory ──────────────────────────────────────────────
+
+def test_a_central_directory_that_will_not_open_is_not_a_mela_export(tmp_path):
+    path = make_archive(tmp_path, {"A.melarecipe": entry(title="A"), "B.melarecipe": entry(title="B")})
+    raw = bytearray(Path(path).read_bytes())
+    second = raw.find(b"PK\x01\x02", raw.find(b"PK\x01\x02") + 1)
+    raw[second:second + 4] = b"\x00\x00\x00\x00"  # EOCD intact, so is_zipfile still accepts it
+    Path(path).write_bytes(bytes(raw))
+    assert zipfile.is_zipfile(path)
+    with pytest.raises(MelaExtractionError, match="not a ZIP archive"):
+        MelaReader().read(path)
