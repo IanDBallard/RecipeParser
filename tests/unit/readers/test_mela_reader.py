@@ -291,7 +291,8 @@ def test_a_central_directory_that_will_not_open_is_not_a_mela_export(tmp_path):
 # ── Final review: notes-only entries, numeric facts, picture budget ──────────
 
 def test_a_notes_only_entry_sends_its_notes_as_the_directions(tmp_path):
-    chunk = _read_one(tmp_path, title="Gran's Stew", ingredients="", instructions="", notes="2 lb beef\n1 onion\nBrown it.")
+    notes = "2 lb beef\n1 onion\nBrown it."
+    chunk = _read_one(tmp_path, title="Gran's Stew", ingredients="", instructions="", notes=notes)
     assert chunk.skip_reason is None
     assert chunk.text.endswith("Directions:\n2 lb beef\n1 onion\nBrown it.")
     assert chunk.meta.notes == "2 lb beef\n1 onion\nBrown it."
