@@ -35,10 +35,10 @@ import zlib
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
 
-from recipeparser.core.citation import classify_source, web_citation
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.exceptions import PaprikaExtractionError
 from recipeparser.io.readers import RecipeReader
+from recipeparser.io.readers._recipe_text import recipe_text, source_citation
 
 log = logging.getLogger(__name__)
 
@@ -214,12 +214,7 @@ class PaprikaReader(RecipeReader):
                 # does for a book. core/servings.py classifies the extracted yield into
                 # base_servings and servings_source; the model's estimate is the last resort.
                 servings = str(entry.get("servings") or "").strip()
-                servings_line = f"Servings: {servings}\n\n" if servings else ""
-                text = (
-                    f"{name}\n\n{servings_line}"
-                    f"Ingredients:\n{ingredients}\n\n"
-                    f"Directions:\n{directions}"
-                )
+                text = recipe_text(name, ingredients, directions, facts=(("Servings", servings),))
 
                 photo_bytes, photo_type = _decode_photo(entry)
                 # Only when there is no embedded photo: the pipeline uploads bytes in
@@ -230,12 +225,7 @@ class PaprikaReader(RecipeReader):
 
                 entry_source = str(entry.get("source") or "").strip()
                 entry_url = str(entry.get("source_url") or "").strip() or None
-                if entry_source:
-                    citation = classify_source(entry_source).citation
-                elif entry_url and entry_url.lower().startswith("http"):
-                    citation = web_citation(entry_url)
-                else:
-                    citation = classify_source(None).citation
+                citation = source_citation(entry_source or None, entry_url)
 
                 chunks.append(
                     Chunk(
