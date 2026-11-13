@@ -26,13 +26,13 @@ from typing import Annotated, Any
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, model_validator
 
 from recipeparser import usage
 from recipeparser.adapters.ai_gate import AiGate
 from recipeparser.adapters.ai_search.agent import AgentCancelled, AgentTimeout, run_agent
 from recipeparser.adapters.ai_search.ai_db import AiReaderDb
-from recipeparser.adapters.ai_search.answer import Answer, Previous, finalize, raw_ids
+from recipeparser.adapters.ai_search.answer import MAX_HISTORY, Answer, Previous, Turn, finalize, raw_ids
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
 from recipeparser.adapters.ai_search.tools import ToolBox
 
@@ -52,7 +52,18 @@ class AskRequest(BaseModel):
     today: date  # the device's local date
     measuring: str = Field(min_length=1, max_length=60)  # D1, e.g. "metric, °C"
     filters: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=12)  # D1
-    previous: Previous | None = None
+    history: list[Turn] = Field(default_factory=list, max_length=MAX_HISTORY)  # every earlier turn, oldest first
+    previous: Previous | None = None  # the previous release's one turn; accepted for one release
+
+    @model_validator(mode="after")
+    def _one_way_to_send_the_conversation(self) -> AskRequest:
+        if self.previous is None:
+            return self
+        if self.history:
+            raise ValueError("send history or previous, not both")
+        self.history = [Turn(question=self.previous.question, answer=self.previous.answer, chosen=0)]
+        self.previous = None
+        return self
 
 
 def _line(payload: dict[str, Any]) -> bytes:
@@ -97,8 +108,7 @@ def _work(
                     ),
                     catalogue,
                 )
-                if body.previous is not None:
-                    toolbox.admit_previous(body.previous.answer)
+                toolbox.admit_answers(t.answer for t in body.history)
                 raw = run_agent(
                     client=client,
                     model=model,
@@ -108,7 +118,7 @@ def _work(
                         measuring=body.measuring,
                         filters=list(body.filters),
                         question=body.text,
-                        previous=body.previous,
+                        history=body.history,
                     ),
                     toolbox=toolbox,
                     on_progress=lambda text: emit({"type": "progress", "text": text}),

@@ -19,6 +19,7 @@ import pytest
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from recipeparser.adapters import api, search_api
 from recipeparser.adapters.ai_gate import PAUSED_DETAIL, AiGate
@@ -222,6 +223,12 @@ def test_paused_503() -> None:
         {"today": "not a date"},
         {"previous": {"question": "soup", "answer": {"kind": "out_of_scope"}, "round": 6}},
         {"previous": {"question": "", "answer": {"kind": "out_of_scope"}, "round": 1}},
+        {"history": [{"question": "q", "answer": {"kind": "out_of_scope"}}] * 6},
+        {"history": [{"question": "q", "answer": {"kind": "out_of_scope"}, "chosen": 4}]},
+        {
+            "history": [{"question": "q", "answer": {"kind": "out_of_scope"}}],
+            "previous": {"question": "q", "answer": {"kind": "out_of_scope"}, "round": 1},
+        },
     ],
 )
 def test_validation_422(change: dict[str, Any]) -> None:
@@ -280,6 +287,38 @@ def test_previous_answer_ids_are_admitted() -> None:
     tc, _ = _app(client=client)
     answer = _lines(tc.post("/search/ask", json={**BODY, "previous": previous}, headers=AUTH))[-1]["answer"]
     assert answer["alternatives"][0]["groups"][0]["recipe_ids"] == [OWNED_2]
+
+
+def test_history_answer_ids_are_admitted_from_every_turn() -> None:
+    history = [
+        {"question": "soups", "answer": {"kind": "text", "text": "This.", "recipe_ids": [OWNED, INVENTED]}},
+        {"question": "more", "answer": {"kind": "text", "text": "That.", "recipe_ids": [OWNED_2]}},
+    ]
+    client = FakeAnthropic([_final(_recipes(OWNED, OWNED_2, INVENTED))])
+    tc, _ = _app(client=client)
+    answer = _lines(tc.post("/search/ask", json={**BODY, "history": history}, headers=AUTH))[-1]["answer"]
+    assert answer["alternatives"][0]["groups"][0]["recipe_ids"] == [OWNED, OWNED_2]
+
+
+def test_ask_request_rejects_six_turns() -> None:
+    turn = {"question": "q", "answer": {"kind": "out_of_scope"}}
+    with pytest.raises(ValidationError):
+        search_api.AskRequest.model_validate({**BODY, "history": [turn] * 6})
+    assert len(search_api.AskRequest.model_validate({**BODY, "history": [turn] * 5}).history) == 5
+
+
+def test_ask_request_rejects_history_and_previous() -> None:
+    turn = {"question": "q", "answer": {"kind": "out_of_scope"}}
+    with pytest.raises(ValidationError):
+        search_api.AskRequest.model_validate({**BODY, "history": [turn], "previous": {**turn, "round": 1}})
+
+
+def test_ask_request_previous_maps_to_one_turn() -> None:
+    previous = {"question": "soups", "answer": {"kind": "out_of_scope"}, "round": 2}
+    req = search_api.AskRequest.model_validate({**BODY, "previous": previous})
+    assert len(req.history) == 1
+    turn = req.history[0]
+    assert (turn.question, turn.answer.kind, turn.chosen) == ("soups", "out_of_scope", 0)
 
 
 def test_failure_becomes_error_line(caplog: pytest.LogCaptureFixture) -> None:

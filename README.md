@@ -267,7 +267,7 @@ which is the source of truth; `recipeparser/adapters/api.py` implements it. Ever
 | `POST /recipes/{recipe_id}/image/generate` | Ask Gemini for a picture of the recipe as drafted. |
 | `DELETE /recipes/{recipe_id}/image` | Remove the recipe's picture. |
 | `POST /embed` | `{ text }` → `{ embedding }`, a 1536-float vector from `gemini-embedding-001`, for Cayenne's search. |
-| `POST /search/ask` | A deeper Library search: `{ text, today, measuring, filters, previous? }` → an NDJSON stream of `progress` lines, then one `answer` or `error` line. Rate-limited to 10 an hour and 30 a day per user; 503 until `ANTHROPIC_API_KEY` and `AI_READER_DATABASE_URL` are both set. See ARCHITECTURE.md §15. |
+| `POST /search/ask` | A deeper Library search: `{ text, today, measuring, history }` (`history`: 0–5 earlier turns of the conversation, oldest first, each `{ question, answer, chosen }`; `previous` and `filters` are still accepted for now and a later release removes them) → an NDJSON stream of `progress` lines, then one `answer` or `error` line. Rate-limited to 10 an hour and 30 a day per user; 503 until `ANTHROPIC_API_KEY` and `AI_READER_DATABASE_URL` are both set. See ARCHITECTURE.md §15. |
 | `GET /health` | Liveness and boot state (above). |
 
 Ingestion is never synchronous: there is no `POST /ingest` (removed; recipes are written by the job

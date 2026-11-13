@@ -13,9 +13,7 @@ from datetime import date
 from typing import Any
 
 from recipeparser.adapters.ai_search.ai_db import Catalogue
-from recipeparser.adapters.ai_search.answer import Previous
-
-MAX_ROUNDS = 5
+from recipeparser.adapters.ai_search.answer import MAX_HISTORY, RecipesAnswer, Turn
 
 SYSTEM_PROMPT = """You answer questions about one cook's personal recipe library inside Cayenne,
 a recipe app. Answers appear in the app's Library as ordinary recipe rows,
@@ -51,6 +49,10 @@ How to search
   with SQL.
 - Check details with get_recipe before relying on them, for example oven
   temperatures when two dishes must share an oven.
+- When the request has a conversation so far, the new question continues
+  it: build on those answers, and treat the option the cook was looking at
+  as the one they mean. A short follow-up such as "make it vegetarian" or
+  "only the quick ones" is about the earlier answer, so it is in scope.
 - The active filters in the request are hard constraints. Never return a
   recipe outside them.
 - Stop when you have a good answer. Most questions need two to five tool
@@ -116,15 +118,29 @@ def system_blocks(catalogue: Catalogue) -> list[dict[str, Any]]:
     return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
 
 
+def _option_line(number: int, turn: Turn) -> str | None:
+    """Which alternative the cook was looking at, when the answer had several."""
+    answer = turn.answer
+    if not isinstance(answer, RecipesAnswer) or len(answer.alternatives) < 2:
+        return None
+    if turn.chosen >= len(answer.alternatives):
+        return None
+    label = (answer.alternatives[turn.chosen].label or "").strip() or f"Option {turn.chosen + 1}"
+    return f"Turn {number} option the cook was looking at: {label}"
+
+
 def request_text(
     *,
     today: date,
     measuring: str,
     filters: list[str],
     question: str,
-    previous: Previous | None,
+    history: list[Turn],
 ) -> str:
-    """The part of the request that changes every time: date, settings, filters, the question."""
+    """The part of the request that changes every time: date, settings, the conversation, the question.
+
+    ``filters`` is only ever non-empty for the previous release's app; the current one sends none.
+    """
     lines = [
         f"Today: {today:%A} {today.day} {today:%B %Y}",
         f"Measuring system: {measuring}",
@@ -132,11 +148,13 @@ def request_text(
     if filters:
         lines.append("Active filters:")
         lines.extend(f"- {f}" for f in filters)
-    else:
-        lines.append("Active filters: none")
-    if previous is not None:
-        lines.append(f"Refining the previous answer (round {previous.round} of {MAX_ROUNDS}).")
-        lines.append(f"Previous question: {previous.question}")
-        lines.append(f"Previous answer: {previous.answer.model_dump_json()}")
+    if history:
+        lines.append(f"Conversation so far (this is turn {len(history) + 1} of {MAX_HISTORY + 1}):")
+        for number, turn in enumerate(history, start=1):
+            lines.append(f"Turn {number} question: {turn.question}")
+            lines.append(f"Turn {number} answer: {turn.answer.model_dump_json()}")
+            option = _option_line(number, turn)
+            if option is not None:
+                lines.append(option)
     lines.append(f"Question: {question}")
     return "\n".join(lines)

@@ -224,15 +224,21 @@ def test_progress_phrases() -> None:
     assert box.run("run_sql", {"query": "select title from recipes"}).progress == "Checking the details"
 
 
-def test_previous_ids_verified() -> None:
-    box = _box(FakeDb(owned={A}))
-    box.admit_previous(TextAnswer(kind="text", text="t", recipe_ids=[uuid.UUID(A), uuid.UUID(FOREIGN)]))
-    assert box.seen_ids == {A}
+def test_admit_answers_admits_every_turn() -> None:
+    box = _box(FakeDb(owned={A, B}))
+    box.admit_answers(
+        [
+            TextAnswer(kind="text", text="t", recipe_ids=[uuid.UUID(A), uuid.UUID(FOREIGN)]),
+            TextAnswer(kind="text", text="u", recipe_ids=[uuid.UUID(B)]),
+        ]
+    )
+    assert box.seen_ids == {A, B}
 
 
-def test_admit_previous_without_ids_is_noop() -> None:
+def test_admit_answers_without_ids_is_noop() -> None:
     box = _box(FakeDb())
-    box.admit_previous(NoneAnswer(kind="none", text="None of your recipes fit that."))
+    box.admit_answers([NoneAnswer(kind="none", text="None of your recipes fit that.")])
+    box.admit_answers([])
     assert box.seen_ids == set()
 
 
