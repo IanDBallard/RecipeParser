@@ -17,6 +17,7 @@ from recipeparser.adapters.ai_search.answer import (
     NoneAnswer,
     OutOfScopeAnswer,
     Previous,
+    Turn,
     RawAnswer,
     RecipesAnswer,
     TextAnswer,
@@ -188,6 +189,21 @@ def test_previous_bounds() -> None:
     ):
         with pytest.raises(ValidationError):
             Previous.model_validate(bad)
+
+
+def test_turn_bounds() -> None:
+    ans = {"kind": "out_of_scope"}
+    assert Turn.model_validate({"question": "q", "answer": ans}).chosen == 0
+    assert Turn.model_validate({"question": "q", "answer": ans, "chosen": 3}).chosen == 3
+    for bad in (
+        {"question": "", "answer": ans},
+        {"question": "x" * 1001, "answer": ans},
+        {"question": "q", "answer": ans, "chosen": -1},
+        {"question": "q", "answer": ans, "chosen": 4},
+        {"question": "q", "answer": {"kind": "bogus"}},
+    ):
+        with pytest.raises(ValidationError):
+            Turn.model_validate(bad)
 
 
 # -- limits: a previous answer cannot be made big enough to bill many times over ----------------

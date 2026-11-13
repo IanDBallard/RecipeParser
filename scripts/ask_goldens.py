@@ -17,7 +17,8 @@ WARNING: importing recipeparser loads the repository's .env file, so those varia
 satisfied by .env without you having set them. Nothing runs until you pass --yes; without it the
 script prints the database host, port and user (never the password) and the model, and exits 2. The
 database role is ai_reader and the cook is the --user uuid (claims sub + role authenticated).
-A refinement entry (`previous: <id>`) is fed the earlier entry's question and finalized answer.
+A refinement entry (`previous: <id>`) is fed the whole chain of earlier entries it refines (each one's
+question and finalized answer) as the conversation history.
 """
 from __future__ import annotations
 
@@ -38,7 +39,7 @@ from pydantic import TypeAdapter
 from recipeparser import usage as usage_module
 from recipeparser.adapters.ai_search.agent import run_agent
 from recipeparser.adapters.ai_search.ai_db import AiReaderDb
-from recipeparser.adapters.ai_search.answer import Answer, Previous, finalize, raw_ids
+from recipeparser.adapters.ai_search.answer import Answer, Turn, finalize, raw_ids
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
 from recipeparser.adapters.ai_search.tools import ToolBox
 from recipeparser.config import AI_SEARCH_MODEL
@@ -215,7 +216,7 @@ def run_golden(
     embed: Any,
     catalogue: Any,
     measuring: str,
-    previous: Previous | None,
+    history: list[Turn],
 ) -> tuple[Result, Answer | None]:
     """The /search/ask flow for one question (see search_api._work), timed and with usage tallied."""
     use = Usage()
@@ -230,8 +231,7 @@ def run_golden(
     error: str | None = None
     try:
         toolbox = ToolBox(db, claims, embed, catalogue)
-        if previous is not None:
-            toolbox.admit_previous(previous.answer)
+        toolbox.admit_answers(t.answer for t in history)
         raw = run_agent(
             client=client,
             model=MODEL,
@@ -241,7 +241,7 @@ def run_golden(
                 measuring=measuring,
                 filters=list(entry.filters),
                 question=entry.question,
-                previous=previous,
+                history=history,
             ),
             toolbox=toolbox,
             on_progress=lambda text: print(f"    {text}", file=sys.stderr),
@@ -329,12 +329,23 @@ def _keyword_fields(dsn: str) -> dict[str, str]:
     return fields
 
 
-def build_previous(entry: Golden, finished: dict[str, tuple[str, Answer, int]]) -> Previous | None:
-    """The turn a refinement entry refines, or None when the entry has none or its earlier turn is missing."""
-    if not entry.previous or entry.previous not in finished:
-        return None
-    question, prior, round_no = finished[entry.previous]
-    return Previous(question=question, answer=prior, round=round_no)
+def build_history(entry: Golden, entries: list[Golden], finished: dict[str, tuple[str, Answer]]) -> list[Turn]:
+    """The earlier turns a refinement entry continues, oldest first.
+
+    The script walks back along ``previous`` and returns an empty history when any link was
+    not finished (it failed or was skipped): the entry then runs fresh.
+    """
+    by_id = {e.id: e for e in entries}
+    turns: list[Turn] = []
+    link = entry.previous
+    while link:
+        if link not in finished:
+            return []
+        question, answer = finished[link]
+        turns.append(Turn(question=question, answer=answer))
+        link = by_id[link].previous if link in by_id else None
+    turns.reverse()
+    return turns
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -370,12 +381,12 @@ def main(argv: list[str] | None = None) -> int:
     client = anthropic.Anthropic()
     db = AiReaderDb(dsn)
     results: list[Result] = []
-    finished: dict[str, tuple[str, Answer, int]] = {}
+    finished: dict[str, tuple[str, Answer]] = {}
     try:
         catalogue = db.catalogue()
         for entry in selected:
             print(f"{entry.id}: {entry.question}", file=sys.stderr)
-            previous = build_previous(entry, finished)
+            history = build_history(entry, entries, finished)
             result, answer = run_golden(
                 entry,
                 db=db,
@@ -386,14 +397,13 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 catalogue=catalogue,
                 measuring=args.measuring,
-                previous=previous,
+                history=history,
             )
-            if entry.previous and previous is None:
+            if entry.previous and not history:
                 result.note = "ran fresh: previous turn missing"
             results.append(result)
             if answer is not None:
-                # A turn's round: 1 for a fresh question, one more than the turn it refines.
-                finished[entry.id] = (entry.question, answer, previous.round + 1 if previous else 1)
+                finished[entry.id] = (entry.question, answer)
     finally:
         db.close()
         args.out.write_text(render_report(results), encoding="utf-8")

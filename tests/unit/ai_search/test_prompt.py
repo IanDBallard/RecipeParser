@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 from recipeparser.adapters.ai_search.ai_db import Catalogue, ColumnInfo, ViewInfo
-from recipeparser.adapters.ai_search.answer import OutOfScopeAnswer, Previous
+from recipeparser.adapters.ai_search.answer import Alternative, Group, OutOfScopeAnswer, RecipesAnswer, TextAnswer, Turn
 from recipeparser.adapters.ai_search.prompt import (
     SYSTEM_PROMPT,
     request_text,
@@ -69,21 +70,68 @@ def test_system_block_is_cached() -> None:
 
 
 def test_request_text_layout() -> None:
-    out = request_text(today=date(2026, 11, 11), measuring="metric, °C", filters=[], question="soups?", previous=None)
-    expected = "Today: Wednesday 11 November 2026\nMeasuring system: metric, °C\nActive filters: none\nQuestion: soups?"
+    out = request_text(today=date(2026, 11, 11), measuring="metric, °C", filters=[], question="soups?", history=[])
+    expected = "Today: Wednesday 11 November 2026\nMeasuring system: metric, °C\nQuestion: soups?"
     assert out == expected
 
 
 def test_request_text_filters_one_per_line() -> None:
     out = request_text(
-        today=date(2026, 11, 11), measuring="m", filters=["Course: Main", "Rated 4+"], question="q", previous=None
+        today=date(2026, 11, 11), measuring="m", filters=["Course: Main", "Rated 4+"], question="q", history=[]
     )
     assert "Active filters:\n- Course: Main\n- Rated 4+\nQuestion: q" in out
 
 
-def test_request_text_refinement() -> None:
-    prev = Previous(question="a menu", answer=OutOfScopeAnswer(kind="out_of_scope"), round=2)
-    out = request_text(today=date(2026, 11, 11), measuring="m", filters=[], question="swap the stuffing", previous=prev)
-    assert out.index("Refining the previous answer (round 2 of 5).") < out.index("Question: swap the stuffing")
-    assert "Previous question: a menu" in out
-    assert 'Previous answer: {"kind":"out_of_scope"}' in out
+def _recipes(*labels: str | None) -> RecipesAnswer:
+    alts = [
+        Alternative(label=label, note="n", groups=[Group(heading=None, recipe_ids=[uuid.uuid4()])]) for label in labels
+    ]
+    return RecipesAnswer(kind="recipes", alternatives=alts)
+
+
+def _ask(history: list[Turn], filters: list[str] | None = None) -> str:
+    return request_text(
+        today=date(2026, 11, 11), measuring="m", filters=filters or [], question="q", history=history
+    )
+
+
+def test_request_text_history_lists_turns_in_order() -> None:
+    t1 = Turn(question="dinner for six?", answer=OutOfScopeAnswer(kind="out_of_scope"))
+    t2 = Turn(question="make it vegetarian", answer=TextAnswer(kind="text", text="ok", recipe_ids=[]))
+    out = _ask([t1, t2])
+    marks = [
+        "Conversation so far (this is turn 3 of 6):",
+        "Turn 1 question: dinner for six?",
+        "Turn 1 answer: " + t1.answer.model_dump_json(),
+        "Turn 2 question: make it vegetarian",
+        "Turn 2 answer: " + t2.answer.model_dump_json(),
+        "Question: q",
+    ]
+    positions = [out.index(m) for m in marks]
+    assert positions == sorted(positions)
+    assert out.endswith("Question: q")
+
+
+def test_request_text_marks_shown_option() -> None:
+    two = Turn(question="menu", answer=_recipes("Classic", "Vegetarian"), chosen=1)
+    assert "Turn 1 option the cook was looking at: Vegetarian" in _ask([two])
+    one = Turn(question="menu", answer=_recipes(None), chosen=0)
+    assert "option the cook was looking at" not in _ask([one])
+
+
+def test_request_text_option_without_label_is_numbered() -> None:
+    turn = Turn(question="menu", answer=_recipes("Classic", None), chosen=1)
+    assert "Turn 1 option the cook was looking at: Option 2" in _ask([turn])
+
+
+def test_request_text_chosen_out_of_range_omits_the_line() -> None:
+    turn = Turn(question="menu", answer=_recipes("A", "B"), chosen=3)
+    assert "option the cook was looking at" not in _ask([turn])
+
+
+def test_request_text_no_history_no_conversation_block() -> None:
+    assert "Conversation so far" not in _ask([])
+
+
+def test_request_text_omits_empty_filters() -> None:
+    assert "Active filters" not in _ask([], filters=[])

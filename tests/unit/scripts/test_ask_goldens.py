@@ -141,16 +141,25 @@ def test_main_without_yes_exits_before_building_anything(monkeypatch, tmp_path):
     assert not (tmp_path / "r.md").exists()
 
 
-def test_build_previous_validates_against_the_api_model():
-    Previous = goldens.Previous
-    entries = [goldens.Golden(id="a", question="q1"), goldens.Golden(id="b", question="q2", previous="a")]
-    finished = {"a": ("q1", goldens._ANSWER.validate_python({"kind": "none", "text": "Nothing."}), 2)}
-    prev = goldens.build_previous(entries[1], finished)
-    assert prev is not None
-    again = Previous.model_validate(prev.model_dump(mode="json"))
-    assert (again.question, again.round, again.answer.kind) == ("q1", 2, "none")
-    assert goldens.build_previous(entries[0], finished) is None
-    assert goldens.build_previous(entries[1], {}) is None  # the earlier turn failed or was skipped
+def test_build_history_walks_the_chain():
+    entries = [
+        goldens.Golden(id="a", question="qa"),
+        goldens.Golden(id="b", question="qb", previous="a"),
+        goldens.Golden(id="c", question="qc", previous="b"),
+    ]
+    ans_a = goldens._ANSWER.validate_python({"kind": "none", "text": "Nothing."})
+    ans_b = goldens._ANSWER.validate_python({"kind": "out_of_scope"})
+    finished = {"a": ("qa", ans_a), "b": ("qb", ans_b)}
+    history = goldens.build_history(entries[2], entries, finished)
+    assert [(t.question, t.answer.kind) for t in history] == [("qa", "none"), ("qb", "out_of_scope")]
+    assert all(isinstance(t, goldens.Turn) for t in history)
+    assert goldens.build_history(entries[0], entries, finished) == []
+    assert [t.question for t in goldens.build_history(entries[1], entries, finished)] == ["qa"]
+
+
+def test_build_history_is_empty_when_a_link_is_missing():
+    entries = [goldens.Golden(id="a", question="qa"), goldens.Golden(id="b", question="qb", previous="a")]
+    assert goldens.build_history(entries[1], entries, {}) == []  # the earlier turn failed or was skipped
 
 
 def test_report_shows_the_ran_fresh_note():

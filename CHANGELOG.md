@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.32.0] — 2026-11-13
+
+Cayenne Library AI search becomes a continuing conversation: the phone sends every earlier turn, and the server reads them all.
+
+### ✨ Added
+- `/search/ask` takes `history`, every earlier turn of the conversation (0 to 5 turns of `{ question, answer, chosen }`, oldest first; `chosen` is the alternative the cook was looking at). More than 5 turns, or `history` together with `previous`, is a 422. The request text lists each turn, and the answers' recipe ids are admitted from every turn. `previous` and `filters` are still accepted for one release (an old app's `previous` is served as a one-turn history); the next release drops them.
+- `ToolBox.admit_answers` replaces `admit_previous`; `scripts/ask_goldens.py` feeds a refinement the whole chain of entries it refines.
+
 ## [9.31.0] — 2026-11-11
 
 Cayenne Library AI search, stage 3: `POST /search/ask`, the agent behind a deeper Library search, answered as a stream. Inert until Cayenne's Stage 4 calls it. **Deploy note:** two new secrets, `ANTHROPIC_API_KEY` and `AI_READER_DATABASE_URL` (a Supavisor pooler DSN that logs in as Cayenne's `ai_reader` role, with its password); a Cayenne deploy PR carries them to the VM. Until both are set the endpoint answers 503 and nothing else changes. The owner sets `ai_reader`'s password and creates both secrets.

@@ -222,9 +222,9 @@ class ToolBox:
 
     # -- provenance ---------------------------------------------------------------------------
 
-    def admit_previous(self, answer: Answer) -> None:
-        """Let the ids of the previous turn's answer back in, but only the ones the cook owns (D2)."""
-        ids = answer_ids(answer)
+    def admit_answers(self, answers: Iterable[Answer]) -> None:
+        """Let the ids of earlier turns' answers back in, but only the ones the cook owns (D2)."""
+        ids = list(dict.fromkeys(i for answer in answers for i in answer_ids(answer)))
         if ids:
             self.seen_ids |= self._db.own_recipe_ids(self._claims, ids)
 

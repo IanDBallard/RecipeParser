@@ -1,7 +1,8 @@
 # The golden questions for the Library's deeper search (Cayenne AI search section 10).
 # Fields: id, question, expect_kind (recipes | text | none | out_of_scope), filters (plain text
-# lines, as the Library writes them), today (YYYY-MM-DD), previous (id of an earlier entry: the
-# question is a refinement of that entry's answer).
+# lines, as the Library writes them), today (YYYY-MM-DD), previous (id of the entry just
+# before this one in its conversation: the question continues it, and the script feeds the whole
+# chain of earlier entries as history).
 
 # Menus with parts
 - id: menu-sunday-roast

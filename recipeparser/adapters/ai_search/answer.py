@@ -5,7 +5,7 @@
 structured-output schema is strict). ``finalize`` turns it into an ``Answer``: only recipes the cook
 owns survive (A2), empty parts disappear, and everything is cut to the ``Answer`` limits.
 
-The limits bound what a device can send back as ``previous.answer``: that answer is re-sent to the
+The limits bound what a device can send back as ``history[].answer``: that answer is re-sent to the
 agent on every call of the refinement, so an unbounded one would be billed many times over.
 """
 
@@ -74,8 +74,22 @@ Answer = Annotated[
 ]
 
 
+MAX_HISTORY = 5  # earlier turns of one conversation (the sixth question is the sixth turn)
+
+
+class Turn(BaseModel):
+    """One earlier turn of the conversation: the device holds it and sends it back (nothing is stored here).
+
+    ``chosen`` is the alternative the cook was looking at when they asked the next question.
+    """
+
+    question: str = Field(min_length=1, max_length=1000)
+    answer: Answer
+    chosen: int = Field(default=0, ge=0, le=MAX_ALTERNATIVES - 1)
+
+
 class Previous(BaseModel):
-    """The turn being refined: the device holds it and sends it back (nothing is stored here)."""
+    """The turn being refined, as the previous release's app sends it. Kept for one release; see ``Turn``."""
 
     question: str = Field(min_length=1, max_length=1000)
     answer: Answer
