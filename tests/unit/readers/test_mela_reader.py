@@ -256,7 +256,7 @@ def test_an_encrypted_member_is_skipped_and_the_library_kept(tmp_path):
         offset = zf.getinfo("Bad.melarecipe").header_offset
     raw = bytearray(path.read_bytes())
     raw[offset + 6] |= 0x1  # the encryption bit of the local header's flags
-    central = raw.find(b"PK", raw.find(b"PK") + 1)  # the second (Bad) central entry
+    central = raw.find(b"PK\x01\x02", raw.find(b"PK\x01\x02") + 1)  # the second (Bad) central entry
     raw[central + 8] |= 0x1  # and of the central directory's
     path.write_bytes(bytes(raw))
     _assert_bad_member_skipped(path)
@@ -286,3 +286,50 @@ def test_a_central_directory_that_will_not_open_is_not_a_mela_export(tmp_path):
     assert zipfile.is_zipfile(path)
     with pytest.raises(MelaExtractionError, match="not a ZIP archive"):
         MelaReader().read(path)
+
+
+# ── Final review: notes-only entries, numeric facts, picture budget ──────────
+
+def test_a_notes_only_entry_sends_its_notes_as_the_directions(tmp_path):
+    chunk = _read_one(tmp_path, title="Gran's Stew", ingredients="", instructions="", notes="2 lb beef\n1 onion\nBrown it.")
+    assert chunk.skip_reason is None
+    assert chunk.text.endswith("Directions:\n2 lb beef\n1 onion\nBrown it.")
+    assert chunk.meta.notes == "2 lb beef\n1 onion\nBrown it."
+
+
+def test_a_title_only_entry_is_skipped_with_a_line(tmp_path):
+    path = make_archive(tmp_path, {
+        "Good.melarecipe": entry(title="Good"),
+        "Bare.melarecipe": {"title": "Bare", "link": "https://example.com/bare"},
+    })
+    chunks = MelaReader().read(path)
+    assert chunks[0].skip_reason is None
+    assert chunks[1].skip_reason == "Bare: has no recipe text"
+
+
+def test_a_numeric_yield_and_times_are_kept(tmp_path):
+    chunk = _read_one(tmp_path, **{"yield": 8, "totalTime": 12.5, "prepTime": 10, "cookTime": True})
+    assert "Servings: 8" in chunk.text
+    assert "Total time: 12.5" in chunk.text
+    assert chunk.meta.prep_time == "10"
+    assert not chunk.meta.cook_time
+
+
+def test_an_oversized_picture_is_dropped_and_the_recipe_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr("recipeparser.io.readers.mela._MAX_PICTURE_BYTES", len(TINY_JPEG) - 1)
+    chunk = _read_one(tmp_path, images=[base64.b64encode(TINY_JPEG).decode()])
+    assert chunk.image_bytes is None
+    assert chunk.skip_reason is None
+
+
+def test_pictures_past_the_read_budget_are_dropped_and_the_recipes_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr("recipeparser.io.readers.mela._MAX_KEPT_PICTURE_BYTES", len(TINY_JPEG) + 1)
+    pic = [base64.b64encode(TINY_JPEG).decode()]
+    path = make_archive(tmp_path, {
+        "A.melarecipe": entry(title="A", images=pic),
+        "B.melarecipe": entry(title="B", images=pic),
+        "C.melarecipe": entry(title="C", images=pic),
+    })
+    chunks = MelaReader().read(path)
+    assert [c.skip_reason for c in chunks] == [None, None, None]
+    assert [c.image_bytes for c in chunks] == [TINY_JPEG, None, None]

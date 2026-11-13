@@ -403,20 +403,32 @@ def build_oven_temperatures() -> None:
 
 MELA_SAMPLE_URL = (
     "https://raw.githubusercontent.com/markmals/mela-decoder-js/"
-    "HEAD/test/files/Banana%20Bread.melarecipe"
+    "edc6c5623d3a6bdd3158e7d9bb3a16ebab63c3cf/test/files/Banana%20Bread.melarecipe"
 )
+
+# Written for this corpus so that none of the clipped recipe's own prose is carried.
+MELA_BANANA_BREAD_INSTRUCTIONS = (
+    "Heat the oven and grease a loaf tin.\n"
+    "Mash the bananas well, then stir in the melted butter, sugar and eggs.\n"
+    "Fold in the dry ingredients until just combined.\n"
+    "Pour the batter into the tin and bake until a skewer comes out clean. Cool before slicing."
+)
+MELA_BANANA_BREAD_DESCRIPTION = "A moist, simple loaf made with very ripe bananas."
 
 
 def build_mela_banana_bread() -> None:
-    """banana-bread.melarecipes: mela-decoder-js's MIT sample, its picture swapped for a small JPEG.
+    """banana-bread.melarecipes: mela-decoder-js's MIT sample (pinned commit), zipped as a library of one.
 
-    The recipe JSON is Mela's own, as exported; only ``images`` is replaced (the
-    original is a 1.4 MB photo), and the result is zipped as a library of one.
+    The recipe JSON is Mela's own, as exported, except: ``images`` is replaced (the
+    original is a 1.4 MB photo) and ``instructions`` and ``text`` are rewritten by
+    hand, so no clipped prose is carried.
     """
     import urllib.request
 
     with urllib.request.urlopen(MELA_SAMPLE_URL, timeout=30) as resp:  # noqa: S310 - fixed https URL
         recipe = json.loads(resp.read().decode("utf-8"))
+    recipe["instructions"] = MELA_BANANA_BREAD_INSTRUCTIONS
+    recipe["text"] = MELA_BANANA_BREAD_DESCRIPTION
     recipe["images"] = [base64.b64encode(_make_hero_jpeg(20261113)).decode("ascii")]
     out = CORPUS / "banana-bread.melarecipes"
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:

@@ -31,6 +31,12 @@ log = logging.getLogger(__name__)
 # ceiling (it is a whole collection), so each entry is bounded instead.
 _MAX_ENTRY_BYTES = 50_000_000
 
+# A picture is a nicety, so it is bounded twice: each decoded picture, and all the
+# pictures one read keeps (a hostile archive deflates ~1000:1, so a small file can
+# otherwise claim gigabytes). A recipe is never dropped for its picture.
+_MAX_PICTURE_BYTES = 15_000_000
+_MAX_KEPT_PICTURE_BYTES = 512_000_000
+
 _ENTRY_SUFFIX = ".melarecipe"
 
 _HEADING = re.compile(r"^[ \t]*#+[ \t]+(.+?)[ \t]*$", re.MULTILINE)
@@ -67,6 +73,11 @@ def _clean_links(value: object) -> str:
 
 
 def _text(value: object) -> str:
+    """A string field trimmed; a number (not a bool) as its text, e.g. ``"yield": 8``; else empty."""
+    if isinstance(value, bool):
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value).strip()
     return value.strip() if isinstance(value, str) else ""
 
 
@@ -78,16 +89,45 @@ def _picture_type(data: bytes) -> str:
     return "image/jpeg"
 
 
-def _picture(images: object, label: str) -> Tuple[Optional[bytes], str]:
-    """The first image, decoded; a picture that will not decode is dropped, never the recipe."""
+class _PictureBudget:
+    """What one read may still keep in pictures; once spent, every later picture is dropped."""
+
+    def __init__(self) -> None:
+        self.kept = 0
+        self.spent = False
+
+    def admit(self, size: int, label: str) -> bool:
+        if self.spent or self.kept + size > _MAX_KEPT_PICTURE_BYTES:
+            if not self.spent:
+                log.warning(
+                    "MelaReader: pictures kept reached %d bytes at %r — later recipes import without pictures.",
+                    _MAX_KEPT_PICTURE_BYTES, label,
+                )
+            self.spent = True
+            return False
+        self.kept += size
+        return True
+
+
+def _picture(images: object, label: str, budget: _PictureBudget) -> Tuple[Optional[bytes], str]:
+    """The first image, decoded; one too big, over budget or undecodable is dropped, never the recipe."""
     if not isinstance(images, list) or not images or not isinstance(images[0], str):
         return None, "image/jpeg"
+    encoded = "".join(images[0].split())
+    if len(encoded) * 3 // 4 > _MAX_PICTURE_BYTES + 3:  # judged before decoding, so it is never decoded
+        log.warning("MelaReader: the picture of %r is over %d bytes — continuing without it.", label, _MAX_PICTURE_BYTES)
+        return None, "image/jpeg"
     try:
-        data = base64.b64decode("".join(images[0].split()), validate=True)
+        data = base64.b64decode(encoded, validate=True)
     except (binascii.Error, ValueError):
         log.warning("MelaReader: could not decode the picture of %r — continuing without it.", label)
         return None, "image/jpeg"
     if not data:
+        return None, "image/jpeg"
+    if len(data) > _MAX_PICTURE_BYTES:
+        log.warning("MelaReader: the picture of %r is over %d bytes — continuing without it.", label, _MAX_PICTURE_BYTES)
+        return None, "image/jpeg"
+    if not budget.admit(len(data), label):
         return None, "image/jpeg"
     return data, _picture_type(data)
 
@@ -97,26 +137,29 @@ def _skipped(name: str, reason: str) -> Chunk:
     return Chunk(text="", input_type=InputType.MELA, skip_reason=f"{name}: {reason}", label=name or None)
 
 
-def _entry_chunk(name: str, entry: dict) -> Chunk:
+def _entry_chunk(name: str, entry: dict, budget: _PictureBudget) -> Chunk:
     """One Mela recipe as a full-pipeline chunk (spec §5.1 mapping table)."""
     title = _text(entry.get("title"))
     ingredients = clean_text(entry.get("ingredients")).strip()
     instructions = clean_text(entry.get("instructions")).strip()
-    if not (title or ingredients or instructions):
-        return _skipped(name, "has no recipe text")
+    notes = clean_text(entry.get("notes")).strip()
+    if not (ingredients or instructions or notes):
+        return _skipped(name, "has no recipe text")  # a title alone is not a recipe
+    # Notes-only entries (the whole recipe typed into Notes) go to the AI as the directions.
+    directions = instructions if (ingredients or instructions) else notes
 
     label = title or "Untitled recipe"
     link = _text(entry.get("link"))
     is_web = link.lower().startswith(("http://", "https://"))
     source_url = link if is_web else None
     source = None if is_web or link.lower().startswith("mela://") else (link or None)
-    picture, picture_type = _picture(entry.get("images"), label)
+    picture, picture_type = _picture(entry.get("images"), label, budget)
 
     return Chunk(
         text=recipe_text(
             title,
             ingredients,
-            instructions,
+            directions,
             facts=(("Servings", _text(entry.get("yield"))), ("Total time", _text(entry.get("totalTime")))),
         ),
         input_type=InputType.MELA,
@@ -145,8 +188,10 @@ class MelaReader(RecipeReader):
         single = path.suffix.lower() == _ENTRY_SUFFIX
         chunks: List[Chunk] = []
 
-        # One entry at a time: each entry's JSON (and its base64 pictures) is released
-        # once its chunk is built, so a library of any size is never decoded all at once.
+        # Entries are parsed one at a time, each entry's JSON released once its chunk is
+        # built. The chunks themselves are all kept, so pictures are bounded per picture
+        # and per read (_MAX_PICTURE_BYTES, _MAX_KEPT_PICTURE_BYTES).
+        budget = _PictureBudget()
         for name, data in self._entries(path, single):
             entry = None
             if data is not None:
@@ -163,7 +208,7 @@ class MelaReader(RecipeReader):
                 log.warning("MelaReader: skipping %r — %s.", name, reason)
                 chunks.append(_skipped(name, reason))
                 continue
-            chunks.append(_entry_chunk(name, entry))
+            chunks.append(_entry_chunk(name, entry, budget))
 
         if not any(chunk.skip_reason is None for chunk in chunks):
             raise MelaExtractionError("contains no recipes.")
