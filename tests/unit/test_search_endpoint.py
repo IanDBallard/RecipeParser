@@ -16,10 +16,10 @@ from unittest.mock import MagicMock
 import anthropic
 import httpx
 import pytest
-from pydantic import ValidationError
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from recipeparser.adapters import api, search_api
 from recipeparser.adapters.ai_gate import PAUSED_DETAIL, AiGate

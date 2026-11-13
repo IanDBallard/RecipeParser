@@ -89,7 +89,10 @@ class Turn(BaseModel):
 
 
 class Previous(BaseModel):
-    """The turn being refined, as the previous release's app sends it. Kept for one release; see ``Turn``."""
+    """The turn being refined, as the previous release's app sends it. Kept for one release; see ``Turn``.
+
+    ``round`` is accepted but ignored (transitional).
+    """
 
     question: str = Field(min_length=1, max_length=1000)
     answer: Answer

@@ -49,6 +49,10 @@ How to search
   with SQL.
 - Check details with get_recipe before relying on them, for example oven
   temperatures when two dishes must share an oven.
+- When the request has a conversation so far, the new question continues
+  it: build on those answers, and treat the option the cook was looking at
+  as the one they mean. A short follow-up such as "make it vegetarian" or
+  "only the quick ones" is about the earlier answer, so it is in scope.
 - The active filters in the request are hard constraints. Never return a
   recipe outside them.
 - Stop when you have a good answer. Most questions need two to five tool

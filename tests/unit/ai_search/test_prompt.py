@@ -6,7 +6,14 @@ import uuid
 from datetime import date
 
 from recipeparser.adapters.ai_search.ai_db import Catalogue, ColumnInfo, ViewInfo
-from recipeparser.adapters.ai_search.answer import Alternative, Group, OutOfScopeAnswer, RecipesAnswer, TextAnswer, Turn
+from recipeparser.adapters.ai_search.answer import (
+    Alternative,
+    Group,
+    OutOfScopeAnswer,
+    RecipesAnswer,
+    TextAnswer,
+    Turn,
+)
 from recipeparser.adapters.ai_search.prompt import (
     SYSTEM_PROMPT,
     request_text,
@@ -135,3 +142,9 @@ def test_request_text_no_history_no_conversation_block() -> None:
 
 def test_request_text_omits_empty_filters() -> None:
     assert "Active filters" not in _ask([], filters=[])
+
+
+def test_system_prompt_continues_the_conversation() -> None:
+    flat = " ".join(SYSTEM_PROMPT.split())
+    assert "conversation so far" in flat
+    assert "is about the earlier answer, so it is in scope" in flat
