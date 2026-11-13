@@ -115,7 +115,7 @@ def _picture(images: object, label: str, budget: _PictureBudget) -> Tuple[Option
         return None, "image/jpeg"
     encoded = "".join(images[0].split())
     if len(encoded) * 3 // 4 > _MAX_PICTURE_BYTES + 3:  # judged before decoding, so it is never decoded
-        log.warning("MelaReader: the picture of %r is over %d bytes — continuing without it.", label, _MAX_PICTURE_BYTES)
+        log.warning("MelaReader: picture of %r is over %d bytes — continuing without it.", label, _MAX_PICTURE_BYTES)
         return None, "image/jpeg"
     try:
         data = base64.b64decode(encoded, validate=True)
@@ -125,7 +125,7 @@ def _picture(images: object, label: str, budget: _PictureBudget) -> Tuple[Option
     if not data:
         return None, "image/jpeg"
     if len(data) > _MAX_PICTURE_BYTES:
-        log.warning("MelaReader: the picture of %r is over %d bytes — continuing without it.", label, _MAX_PICTURE_BYTES)
+        log.warning("MelaReader: picture of %r is over %d bytes — continuing without it.", label, _MAX_PICTURE_BYTES)
         return None, "image/jpeg"
     if not budget.admit(len(data), label):
         return None, "image/jpeg"
