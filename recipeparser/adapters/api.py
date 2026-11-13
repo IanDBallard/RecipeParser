@@ -76,6 +76,7 @@ from recipeparser.exceptions import AIServiceTimeoutError, JobCancelledError, Si
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
+from recipeparser.io.readers.mela import MelaReader as _MelaReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
 from recipeparser.io.readers.url import PAGE_USER_AGENT as _PAGE_USER_AGENT
@@ -1100,7 +1101,7 @@ def _too_large_sentence(size: int) -> str:
 def _select_reader(filename: str, content_type: str) -> str:
     """Return a reader tag from the filename extension, falling back to the content type.
 
-    Returns one of: 'pdf', 'epub', 'paprika', 'image'.
+    Returns one of: 'pdf', 'epub', 'paprika', 'mela', 'image'.
     A recognised extension decides on its own, whatever the content type says —
     browsers mislabel content types, and a ``.jpg`` sent as ``image/heic`` is
     still a JPEG (and a ``.docx`` sent as ``image/jpeg`` is still a ``.docx``).
@@ -1122,6 +1123,10 @@ def _select_reader(filename: str, content_type: str) -> str:
         # by name, whatever content type the browser or Node sent it as.
         if ext == ".paprikarecipes":
             return "paprika"
+        # A Mela library (.melarecipes, a ZIP) or one shared Mela recipe (.melarecipe, JSON),
+        # decided by name whatever content type it arrives with (Mela import 5.2).
+        if ext in (".melarecipes", ".melarecipe"):
+            return "mela"
         if ext in _HEIC_EXTENSIONS:
             # The iOS picker hands the browser a JPEG anyway; a HEIC only
             # arrives through a share or a desktop drop, and there is no
@@ -1478,7 +1483,7 @@ async def submit_file_job(
 ) -> AsyncJobResponse:
     """Fire-and-forget file upload ingestion job.
 
-    Accepts PDF, EPUB, .paprikarecipes or a photo (JPEG or PNG).  Routes
+    Accepts PDF, EPUB, .paprikarecipes, .melarecipes / .melarecipe or a photo (JPEG or PNG).  Routes
     to the correct reader via ``_select_reader()``.  Returns 202 +
     ``{ job_id }`` immediately.
     """
@@ -1506,9 +1511,9 @@ async def submit_file_job(
             size = tmp.tell()
 
         # The ceiling (config.MAX_UPLOAD_BYTES), after the type check so a small .docx is still a 422.
-        # A Paprika export is exempt: it is a whole library with its photos, not a single item, and
-        # its reader takes one entry at a time.
-        if reader_tag != "paprika" and size > MAX_UPLOAD_BYTES:
+        # A Paprika or Mela export is exempt: it is a whole library with its photos, not a single item,
+        # and its reader takes one entry at a time, bounding each.
+        if reader_tag not in ("paprika", "mela") and size > MAX_UPLOAD_BYTES:
             os.unlink(tmp_path)
             raise HTTPException(
                 status_code=status.HTTP_413_CONTENT_TOO_LARGE,
@@ -1526,6 +1531,7 @@ async def submit_file_job(
                 #   PDF / EPUB          → full pipeline (EXTRACT→…→ASSEMBLE)
                 #   IMAGE               → full pipeline (EXTRACT→…→ASSEMBLE)
                 #   PAPRIKA_LEGACY      → full pipeline (EXTRACT→…→ASSEMBLE)
+                #   MELA                → full pipeline (EXTRACT→…→ASSEMBLE)
                 #   PAPRIKA_CAYENNE + embedding  → ASSEMBLE only ($0)
                 #   PAPRIKA_CAYENNE no embedding → EMBED + ASSEMBLE (1 call)
                 if reader_tag == "pdf":
@@ -1536,6 +1542,8 @@ async def submit_file_job(
                 elif reader_tag == "image":
                     # A model call inside the reader: the OCR is the read.
                     chunks = await asyncio.to_thread(_ImageReader(client).read, tmp_path)
+                elif reader_tag == "mela":
+                    chunks = await asyncio.to_thread(_MelaReader().read, tmp_path)
                 else:  # paprika
                     chunks = await asyncio.to_thread(_PaprikaReader().read, tmp_path)
             finally:
