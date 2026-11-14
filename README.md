@@ -259,7 +259,7 @@ which is the source of truth; `recipeparser/adapters/api.py` implements it. Ever
 | Endpoint | Purpose |
 |---|---|
 | `POST /jobs` | Ingest a URL or pasted text. Answers `202 { job_id }` at once; the recipes reach the app by sync. |
-| `POST /jobs/file` | Ingest a PDF, EPUB, `.paprikarecipes` export or a JPEG/PNG photo, the same way. |
+| `POST /jobs/file` | Ingest a PDF, EPUB, `.paprikarecipes` export, Mela `.melarecipes` export or single `.melarecipe`, or a JPEG/PNG photo, the same way. |
 | `POST /jobs/recategorize` | Queue a recategorisation of the caller's whole library, run by the recategorise worker. |
 | `POST /jobs/{job_id}/cancel` | Stop the caller's job. |
 | `GET /jobs/{job_id}`, `POST /jobs/{job_id}/pause`, `POST /jobs/{job_id}/resume` | Over the in-memory job registry; Cayenne calls none of them. |

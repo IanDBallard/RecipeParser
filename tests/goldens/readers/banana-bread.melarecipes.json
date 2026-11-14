@@ -1,0 +1,24 @@
+{
+  "chunks": [
+    {
+      "citation": {
+        "author": null,
+        "key": "bonappetit.com",
+        "kind": "web",
+        "title": "bonappetit.com"
+      },
+      "image_bytes_len": 29800,
+      "image_bytes_sha256": "d5bd8ffdf472b217b399ed8a78537939f9abb6f2b3618f935ad936e9f51c0029",
+      "image_content_type": "image/jpeg",
+      "image_url": null,
+      "input_type": "MELA",
+      "is_favourite": true,
+      "label": "Banana Bread",
+      "pre_parsed_embedding_len": null,
+      "pre_parsed_title": null,
+      "source_url": "https://www.bonappetit.com/recipe/banana-bread",
+      "text": "Banana Bread\n\nServings: Makes one 8½x4½\" loaf\n\nIngredients:\nNonstick vegetable oil spray\n1½ cups all-purpose flour\n1¼ teaspoons baking soda\n¾ teaspoon kosher salt\n1 cup (packed) dark brown sugar\n⅓ cup mascarpone, plain whole-milk Greek yogurt, or sour cream\n¼ cup (½ stick) unsalted butter, room temperature\n2 large eggs\n4 large very ripe bananas, mashed (about 1½ cups)\n½ cup chopped bittersweet or semisweet chocolate (optional)\n½ cup chopped walnuts (optional)\n\nDirections:\nHeat the oven and grease a loaf tin.\nMash the bananas well, then stir in the melted butter, sugar and eggs.\nFold in the dry ingredients until just combined.\nPour the batter into the tin and bake until a skewer comes out clean. Cool before slicing."
+    }
+  ],
+  "qualifying_images": []
+}

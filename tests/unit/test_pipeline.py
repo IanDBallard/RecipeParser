@@ -15,7 +15,7 @@ import pytest
 
 from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
-from recipeparser.core.models import Chunk, InputType, SourceMeta
+from recipeparser.core.models import Chunk, InputType, RestoreFields, SourceMeta
 from recipeparser.core.pipeline import ChunkResult, RecipePipeline
 from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.ports import CategorySource, ImageStore
@@ -590,7 +590,7 @@ _CAPTURED_META: dict = {}
 def _assemble_capturing_meta(
     *, recipe, embedding, source_url, image_url, grid_categories, prep_time, cook_time, meta,
     ingredient_lines=None, direction_steps=None, servings_text=None, citation=None,
-    total_time=None, description=None, nutritional_info=None, notes=None
+    total_time=None, description=None, nutritional_info=None, notes=None, **_
 ):
     """Stand-in for assemble() that records the meta it was handed."""
     _CAPTURED_META["meta"] = meta
@@ -1281,3 +1281,47 @@ def test_restore_with_embedded_bytes_does_not_download():
     assert store.calls == [b"embedded"]
     client.storage.from_.assert_not_called()
     assert results[0].image_url == "https://example.test/stored.jpg"
+
+
+_CAPTURED_ASSEMBLE: dict = {}
+
+
+def _assemble_capturing_all(**kwargs):
+    """Stand-in for assemble() that records every keyword it was handed."""
+    _CAPTURED_ASSEMBLE.update(kwargs)
+    return _make_ingest_response("R")
+
+
+def _run_full_pipeline(chunk: Chunk) -> dict:
+    _CAPTURED_ASSEMBLE.clear()
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=Extraction([
+        RecipeExtraction(name="Pie", ingredients=["x"], directions=["y"])
+    ], [])) as extract, \
+         patch(_PATCH_REFINE, return_value=_make_refinement("Pie")), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING), \
+         patch(_PATCH_ASSEMBLE, side_effect=_assemble_capturing_all):
+        pipeline.run([chunk])
+    return {"assemble": dict(_CAPTURED_ASSEMBLE), "plain_text_mode": extract.call_args.kwargs["plain_text_mode"]}
+
+
+def test_a_mela_chunk_routes_to_the_full_pipeline():
+    assert _make_pipeline()._get_stages(Chunk(text="t", input_type=InputType.MELA)) == FULL_PIPELINE
+
+
+def test_a_mela_chunk_is_extracted_in_plain_text_mode():
+    """A Mela entry is recipe text with no page around it, like a legacy Paprika entry."""
+    seen = _run_full_pipeline(Chunk(text="Pie\n\nIngredients:\nx\n\nDirections:\ny", input_type=InputType.MELA))
+    assert seen["plain_text_mode"] is True
+
+
+def test_a_full_pipeline_chunks_restore_fields_reach_assemble():
+    """Mela import 5.3: an imported Favourite rides RestoreFields to the row's is_favourite."""
+    restore = RestoreFields(is_favourite=True)
+    seen = _run_full_pipeline(Chunk(text="Pie", input_type=InputType.MELA, restore=restore))
+    assert seen["assemble"]["restore"] is restore
+
+
+def test_a_chunk_without_restore_hands_assemble_none():
+    seen = _run_full_pipeline(Chunk(text="Pie", input_type=InputType.URL))
+    assert seen["assemble"]["restore"] is None

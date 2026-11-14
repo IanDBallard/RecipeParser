@@ -73,7 +73,7 @@ def chunk_stages(chunk: Chunk) -> List[str]:
         if chunk.pre_parsed_embedding is not None:
             return ["ASSEMBLE"]          # $0 — skip all Gemini calls
         return ["EMBED", "ASSEMBLE"]     # Only embed: skip extract, refine and tag
-    # URL, PDF, EPUB, IMAGE, PAPRIKA_LEGACY — full pipeline
+    # URL, PDF, EPUB, IMAGE, PAPRIKA_LEGACY, MELA — full pipeline
     return ["EXTRACT", "REFINE", "EMBED", "ASSEMBLE", "TAG"]
 
 
@@ -584,7 +584,7 @@ class RecipePipeline:
             return ChunkResult([result], [])
 
         # ── Full pipeline: EXTRACT → REFINE → CATEGORIZE → EMBED → ASSEMBLE ──
-        plain_text = chunk.input_type == InputType.PAPRIKA_LEGACY
+        plain_text = chunk.input_type in (InputType.PAPRIKA_LEGACY, InputType.MELA)
 
         # EXTRACT
         self._enter_stage("EXTRACTING")
@@ -659,6 +659,7 @@ class RecipePipeline:
                     description=getattr(raw, "description", None),
                     nutritional_info=getattr(raw, "nutritional_info", None),
                     notes=getattr(raw, "notes", None),
+                    restore=chunk.restore,
                 )
                 result.attach_photo(photo)
                 results.append(result)

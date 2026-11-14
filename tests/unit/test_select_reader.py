@@ -35,6 +35,17 @@ class TestSelectReaderByExtension:
         """Primary path: .paprikarecipes extension is present."""
         assert _select_reader("export.paprikarecipes", "application/zip") == "paprika"
 
+    def test_melarecipes_extension_returns_mela(self):
+        assert _select_reader("Recipes.melarecipes", "application/zip") == "mela"
+
+    def test_a_single_melarecipe_returns_mela(self):
+        assert _select_reader("Banana Bread.melarecipe", "application/json") == "mela"
+
+    @pytest.mark.parametrize("content_type", ["application/octet-stream", "application/zip", "", "text/plain"])
+    def test_mela_routes_by_extension_whatever_the_content_type(self, content_type):
+        """Review Focus 5: a zip is never taken for Paprika, nor refused, because of its label."""
+        assert _select_reader("Recipes.MELARECIPES", content_type) == "mela"
+
     def test_paprikarecipes_extension_case_insensitive(self):
         assert _select_reader("EXPORT.PAPRIKARECIPES", "application/zip") == "paprika"
 
