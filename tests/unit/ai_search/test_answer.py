@@ -9,10 +9,14 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from recipeparser.adapters.ai_search.answer import (
+    MAX_GAPS,
+    MAX_MISSING_CHARS,
     NONE_LEFT,
     RAW_ANSWER_SCHEMA,
+    Added,
     Alternative,
     Answer,
+    Gap,
     Group,
     NoneAnswer,
     OutOfScopeAnswer,
@@ -31,13 +35,20 @@ ADAPTER: TypeAdapter[Answer] = TypeAdapter(Answer)
 
 
 def raw(**kw: Any) -> RawAnswer:
-    base: dict[str, Any] = {"kind": "recipes", "text": "", "recipe_ids": [], "alternatives": []}
+    base: dict[str, Any] = {"kind": "recipes", "text": "", "recipe_ids": [], "alternatives": [], "gap": ""}
     base.update(kw)
     return RawAnswer.model_validate(base)
 
 
-def alt(*groups: tuple[str, list[str]], label: str = "", note: str = "Why these.") -> dict[str, Any]:
-    return {"label": label, "note": note, "groups": [{"heading": h, "recipe_ids": ids} for h, ids in groups]}
+def alt(
+    *groups: tuple[str, list[str]], label: str = "", note: str = "Why these.", gaps: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    return {
+        "label": label,
+        "note": note,
+        "groups": [{"heading": h, "recipe_ids": ids} for h, ids in groups],
+        "gaps": gaps or [],
+    }
 
 
 def test_raw_schema_strict() -> None:
@@ -252,6 +263,7 @@ def test_finalize_output_always_validates_within_limits() -> None:
         "label": "L" * 500,
         "note": "N" * 500,
         "groups": [{"heading": "H" * 500, "recipe_ids": many} for _ in range(15)],
+        "gaps": [{"group": n, "missing": "M" * 500} for n in range(-1, 8)],
     }
     out = finalize(raw(alternatives=[big_alt] * 6), permitted=permitted)
     assert isinstance(out, RecipesAnswer)
@@ -261,6 +273,7 @@ def test_finalize_output_always_validates_within_limits() -> None:
     assert len(first.groups) == 10
     assert len(first.groups[0].recipe_ids) == 100
     assert first.label is not None and len(first.label) == 300 and first.label.endswith("…")
+    assert len(first.gaps) == 4 and all(len(g.missing) == 120 for g in first.gaps)
     assert len(first.note) == 300 and first.groups[0].heading is not None and len(first.groups[0].heading) == 300
 
     text = finalize(raw(kind="text", text="T" * 5000, recipe_ids=many), permitted=permitted)
@@ -270,3 +283,123 @@ def test_finalize_output_always_validates_within_limits() -> None:
 
     none = finalize(raw(kind="none", text="Z" * 5000), permitted=set())
     assert isinstance(none, NoneAnswer) and len(none.text) == 2000
+    gapped = finalize(raw(kind="none", text="x", gap="G" * 500), permitted=set())
+    assert isinstance(gapped, NoneAnswer) and len(gapped.gap) == 120
+    ADAPTER.validate_python(ADAPTER.dump_python(gapped, mode="json"))
+
+
+def gap(group: int, missing: str) -> dict[str, Any]:
+    return {"group": group, "missing": missing}
+
+
+def test_finalize_keeps_gaps_and_remaps_groups() -> None:
+    # raw groups: 0 Main (kept), 1 Sides (unowned, dropped), 2 Dessert (kept)
+    r = raw(
+        alternatives=[
+            alt(
+                ("Main", [A]),
+                ("Sides", [B]),
+                ("Dessert", [C]),
+                gaps=[gap(2, "a lighter dessert"), gap(1, "a side"), gap(7, "wine"), gap(0, "a bigger main")],
+            )
+        ]
+    )
+    out = finalize(r, permitted={A, C})
+    assert isinstance(out, RecipesAnswer)
+    assert [(g.group, g.missing) for g in out.alternatives[0].gaps] == [
+        (1, "a lighter dessert"),
+        (-1, "a side"),
+        (-1, "wine"),
+        (0, "a bigger main"),
+    ]
+
+
+def test_finalize_keeps_whole_answer_gap_group() -> None:
+    out = finalize(raw(alternatives=[alt(("", [A]), gaps=[gap(-1, "a vegan option")])]), permitted={A})
+    assert isinstance(out, RecipesAnswer)
+    assert out.alternatives[0].gaps == [Gap(group=-1, missing="a vegan option")]
+
+
+def test_finalize_caps_gaps() -> None:
+    gaps = [gap(0, f"thing {n}") for n in range(6)]
+    out = finalize(raw(alternatives=[alt(("", [A]), gaps=gaps)]), permitted={A})
+    assert isinstance(out, RecipesAnswer)
+    assert len(out.alternatives[0].gaps) == MAX_GAPS == 4
+
+
+def test_finalize_trims_missing() -> None:
+    gaps = [gap(0, "  a side  "), gap(0, "x" * 300)]
+    out = finalize(raw(alternatives=[alt(("", [A]), gaps=gaps)]), permitted={A})
+    assert isinstance(out, RecipesAnswer)
+    kept = out.alternatives[0].gaps
+    assert kept[0].missing == "a side"
+    assert len(kept[1].missing) == MAX_MISSING_CHARS == 120
+
+
+def test_finalize_drops_blank_gap() -> None:
+    out = finalize(raw(alternatives=[alt(("", [A]), gaps=[gap(0, "   "), gap(0, "")])]), permitted={A})
+    assert isinstance(out, RecipesAnswer)
+    assert out.alternatives[0].gaps == []
+
+
+def test_finalize_none_gap() -> None:
+    out = finalize(raw(kind="none", text="Nothing fits.", gap=" a vegan side "), permitted=set())
+    assert isinstance(out, NoneAnswer)
+    assert out.gap == "a vegan side"
+    assert ADAPTER.dump_python(out, mode="json")["gap"] == "a vegan side"
+    blank = finalize(raw(kind="none", text="Nothing fits.", gap="  "), permitted=set())
+    assert "gap" not in ADAPTER.dump_python(blank, mode="json")
+
+
+def test_answer_dump_omits_empty_gaps() -> None:
+    out = finalize(raw(alternatives=[alt(("Main", [A]))]), permitted={A})
+    dumped = ADAPTER.dump_python(out, mode="json")
+    assert "gaps" not in dumped["alternatives"][0]
+    assert "label" not in dumped["alternatives"][0]
+    assert "gap" not in ADAPTER.dump_python(NoneAnswer(kind="none", text="x"), mode="json")
+
+
+def test_raw_schema_requires_gap_fields() -> None:
+    props = RAW_ANSWER_SCHEMA["properties"]
+    assert "gap" in props and "gap" in RAW_ANSWER_SCHEMA["required"]
+    assert "gaps" in props["alternatives"]["items"]["properties"]
+
+
+def test_gap_wire_limits() -> None:
+    with pytest.raises(ValidationError):
+        Gap(group=0, missing="")
+    with pytest.raises(ValidationError):
+        Gap(group=0, missing="x" * 121)
+    with pytest.raises(ValidationError):
+        Alternative(label=None, note="n", groups=[], gaps=[Gap(group=0, missing="m")] * 5)
+
+
+def _turn(**kw: Any) -> dict[str, Any]:
+    return {"question": "q", "answer": {"kind": "out_of_scope"}, **kw}
+
+
+def test_turn_accepts_added() -> None:
+    added = {"alternative": 1, "group": -1, "heading": None, "recipe_ids": [A]}
+    turn = Turn.model_validate(_turn(added=[added]))
+    assert turn.added == [Added(alternative=1, group=-1, heading=None, recipe_ids=[uuid.UUID(A)])]
+    assert Turn.model_validate(_turn()).added == []
+
+
+def test_turn_rejects_nine_added() -> None:
+    added = {"alternative": 0, "group": 0, "heading": "Main", "recipe_ids": [A]}
+    assert len(Turn.model_validate(_turn(added=[added] * 8)).added) == 8
+    with pytest.raises(ValidationError):
+        Turn.model_validate(_turn(added=[added] * 9))
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"alternative": 4, "group": 0, "heading": None, "recipe_ids": []},
+        {"alternative": 0, "group": -2, "heading": None, "recipe_ids": []},
+        {"alternative": 0, "group": 0, "heading": "h" * 301, "recipe_ids": []},
+    ],
+)
+def test_added_limits(bad: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        Added.model_validate(bad)

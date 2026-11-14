@@ -7,6 +7,7 @@ from datetime import date
 
 from recipeparser.adapters.ai_search.ai_db import Catalogue, ColumnInfo, ViewInfo
 from recipeparser.adapters.ai_search.answer import (
+    Added,
     Alternative,
     Group,
     OutOfScopeAnswer,
@@ -97,9 +98,7 @@ def _recipes(*labels: str | None) -> RecipesAnswer:
 
 
 def _ask(history: list[Turn], filters: list[str] | None = None) -> str:
-    return request_text(
-        today=date(2026, 11, 11), measuring="m", filters=filters or [], question="q", history=history
-    )
+    return request_text(today=date(2026, 11, 11), measuring="m", filters=filters or [], question="q", history=history)
 
 
 def test_request_text_history_lists_turns_in_order() -> None:
@@ -148,3 +147,20 @@ def test_system_prompt_continues_the_conversation() -> None:
     flat = " ".join(SYSTEM_PROMPT.split())
     assert "conversation so far" in flat
     assert "is about the earlier answer, so it is in scope" in flat
+
+
+def test_request_text_lists_added() -> None:
+    rid = uuid.uuid4()
+    turn = Turn(
+        question="menu",
+        answer=OutOfScopeAnswer(kind="out_of_scope"),
+        added=[Added(alternative=0, group=-1, heading=None, recipe_ids=[rid])],
+    )
+    lines = _ask([turn]).splitlines()
+    i = next(n for n, line in enumerate(lines) if line.startswith("Turn 1 answer:"))
+    assert lines[i + 1] == f"Turn 1 recipes added from sites you use: {rid}"
+    assert "added from sites" not in _ask([Turn(question="menu", answer=OutOfScopeAnswer(kind="out_of_scope"))])
+
+
+def test_system_prompt_has_gap_rule() -> None:
+    assert "only where the question asked for it" in SYSTEM_PROMPT

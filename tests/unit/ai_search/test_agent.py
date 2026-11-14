@@ -25,7 +25,7 @@ from recipeparser.adapters.ai_search.tools import TOOL_DEFINITIONS, ToolOutcome
 
 MODEL = "claude-opus-5-5"
 SYSTEM = [{"type": "text", "text": "instructions", "cache_control": {"type": "ephemeral"}}]
-FINAL = {"kind": "text", "text": "Yes, three.", "recipe_ids": [], "alternatives": []}
+FINAL = {"kind": "text", "text": "Yes, three.", "recipe_ids": [], "alternatives": [], "gap": ""}
 FINAL_SYSTEM = "You have used all your searches. Answer now from what you found."
 
 

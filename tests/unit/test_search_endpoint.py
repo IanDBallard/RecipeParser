@@ -92,7 +92,15 @@ def _recipes(*ids: str) -> dict[str, Any]:
         "kind": "recipes",
         "text": "",
         "recipe_ids": [],
-        "alternatives": [{"label": "", "note": "Quick ones.", "groups": [{"heading": "", "recipe_ids": list(ids)}]}],
+        "alternatives": [
+            {
+                "label": "",
+                "note": "Quick ones.",
+                "groups": [{"heading": "", "recipe_ids": list(ids)}],
+                "gaps": [],
+            }
+        ],
+        "gap": "",
     }
 
 
@@ -120,9 +128,11 @@ def _supabase(*, paused: bool = False, exempt: bool = False) -> MagicMock:
 
     def table(name: str) -> MagicMock:
         q = MagicMock()
-        data = [{"paused": paused}] if name == "ai_settings" else [
-            {"recipes_processed": 0, "recipe_cap": 10, "exempt": exempt}
-        ]
+        data = (
+            [{"paused": paused}]
+            if name == "ai_settings"
+            else [{"recipes_processed": 0, "recipe_cap": 10, "exempt": exempt}]
+        )
         q.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = data
         return q
 
@@ -190,7 +200,8 @@ def test_not_configured_503() -> None:
 
 
 def test_rate_limited_429_before_stream() -> None:
-    script = [_final({"kind": "out_of_scope", "text": "", "recipe_ids": [], "alternatives": []}) for _ in range(10)]
+    final = {"kind": "out_of_scope", "text": "", "recipe_ids": [], "alternatives": [], "gap": ""}
+    script = [_final(final) for _ in range(10)]
     client = FakeAnthropic(script)
     tc, _ = _app(client=client)
     for _ in range(10):
@@ -262,9 +273,10 @@ def test_streams_progress_then_answer() -> None:
     assert lines[0] == {"type": "progress", "text": "Looking for soup"}
     assert lines[-1] == {
         "type": "answer",
-        "answer": {"kind": "recipes", "alternatives": [{"note": "Quick ones.", "groups": [
-            {"heading": None, "recipe_ids": [OWNED]}
-        ]}]},
+        "answer": {
+            "kind": "recipes",
+            "alternatives": [{"note": "Quick ones.", "groups": [{"heading": None, "recipe_ids": [OWNED]}]}],
+        },
     }
     assert [line["type"] for line in lines].count("answer") == 1
 
@@ -357,7 +369,8 @@ def test_timeout_becomes_error_line() -> None:
 
 
 def test_out_of_scope_passthrough() -> None:
-    client = FakeAnthropic([_final({"kind": "out_of_scope", "text": "nope", "recipe_ids": [], "alternatives": []})])
+    final = {"kind": "out_of_scope", "text": "nope", "recipe_ids": [], "alternatives": [], "gap": ""}
+    client = FakeAnthropic([_final(final)])
     tc, _ = _app(client=client)
     assert _lines(tc.post("/search/ask", json=BODY, headers=AUTH)) == [
         {"type": "answer", "answer": {"kind": "out_of_scope"}}

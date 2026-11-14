@@ -108,7 +108,9 @@ def _work(
                     ),
                     catalogue,
                 )
-                toolbox.admit_answers(t.answer for t in body.history)
+                toolbox.admit_answers(
+                    (t.answer for t in body.history), (a for t in body.history for a in t.added)
+                )
                 raw = run_agent(
                     client=client,
                     model=model,

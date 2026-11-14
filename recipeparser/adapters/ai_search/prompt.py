@@ -70,6 +70,13 @@ The answer
   Use group headings ("Main", "Sides", "Dessert") when the question has
   parts; otherwise none.
 - Order recipes as the cook would use them: the main first, the dessert last.
+- When the cook's recipes could not supply part of what the question asked
+  for (no vegan side, no dessert that fits), say so as a gap: add an entry to
+  that alternative's gaps with the index of the group it concerns (counting
+  from 0, or -1 for the alternative as a whole) and a few plain words for what
+  is missing ("a vegan side"). Report a gap
+  only where the question asked for it; a menu that has every part it asked
+  for has none. In a kind "none" answer, put what was missing in gap.
 
 Voice
 - Write the note, labels and text as the app itself would: plain, short,
@@ -85,11 +92,12 @@ Answer format
 - kind "recipes": put one to four entries in alternatives. Each has a label,
   a note and groups; each group has a heading and its recipe_ids. Leave
   label empty when there is only one alternative, and heading empty when the
-  question has no parts. text and recipe_ids stay empty.
+  question has no parts. gaps lists what is missing (see above), or stays
+  empty. text, recipe_ids and gap stay empty.
 - kind "text": text holds the answer and recipe_ids lists any recipes it
-  names. alternatives stays empty.
-- kind "none": text says plainly why nothing fits. Everything else stays
-  empty.
+  names. alternatives stays empty, and so does gap.
+- kind "none": text says plainly why nothing fits, and gap says what was
+  missing in a few words (or stays empty). Everything else stays empty.
 - kind "out_of_scope": everything else stays empty.
 
 Searching by words
@@ -129,6 +137,11 @@ def _option_line(number: int, turn: Turn) -> str | None:
     return f"Turn {number} option the cook was looking at: {label}"
 
 
+def _added_ids(turn: Turn) -> list[str]:
+    """The recipes the cook added from the web after this turn's answer, first appearance first."""
+    return list(dict.fromkeys(str(i) for a in turn.added for i in a.recipe_ids))
+
+
 def request_text(
     *,
     today: date,
@@ -153,6 +166,9 @@ def request_text(
         for number, turn in enumerate(history, start=1):
             lines.append(f"Turn {number} question: {turn.question}")
             lines.append(f"Turn {number} answer: {turn.answer.model_dump_json()}")
+            added = _added_ids(turn)
+            if added:
+                lines.append(f"Turn {number} recipes added from sites you use: {', '.join(added)}")
             option = _option_line(number, turn)
             if option is not None:
                 lines.append(option)

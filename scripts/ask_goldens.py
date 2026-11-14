@@ -6,7 +6,9 @@ It runs the same flow as POST /search/ask (recipeparser/adapters/search_api.py):
 agent loop, ownership check, finalize. It is NOT a test. It calls Anthropic and Gemini and reads the
 live library as the given cook, so it costs real money (roughly a few dollars for all 30). Run it
 before the Library's launch and whenever the prompt changes. The report gives per question the kind
-(checked against expect_kind), the recipe titles per group with the note and label, model calls,
+(checked against expect_kind), whether a gap was reported (checked against expect_gap: true where the
+question plants one the library cannot fill, false where the library should cover it), the recipe
+titles per group with the note and label, model calls,
 seconds, tokens and the estimated cost. Judging the grouping and the voice is left to you.
 
     python scripts/ask_goldens.py --user <uuid> --out report.md
@@ -64,6 +66,7 @@ class Golden:
     filters: tuple[str, ...] = ()
     today: date | None = None
     previous: str | None = None
+    expect_gap: bool | None = None
 
 
 @dataclass
@@ -90,6 +93,7 @@ class Result:
     expect_kind: str | None
     kind: str | None
     answer: dict[str, Any] | None
+    expect_gap: bool | None = None
     titles: dict[str, str] = field(default_factory=dict)
     seconds: float = 0.0
     usage: Usage = field(default_factory=Usage)
@@ -110,6 +114,22 @@ def total_cost(results: list[Result]) -> float:
     return sum(estimate_cost(r.usage) for r in results)
 
 
+def has_gap(answer: dict[str, Any] | None) -> bool:
+    """Whether a dumped answer reports a gap: on any alternative, or on a kind none."""
+    if not answer:
+        return False
+    if answer.get("kind") == "none":
+        return bool(answer.get("gap"))
+    return any(alt.get("gaps") for alt in answer.get("alternatives", []))
+
+
+def score_gap(expect_gap: bool | None, answer: dict[str, Any] | None) -> str | None:
+    """``expect_gap`` scored against the answer: None when no expectation was set, else a check mark or a cross."""
+    if expect_gap is None:
+        return None
+    return "✓" if has_gap(answer) == expect_gap else "✗"
+
+
 def load_goldens(path: Path) -> list[Golden]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     entries: list[Golden] = []
@@ -121,6 +141,9 @@ def load_goldens(path: Path) -> list[Golden]:
         kind = item.get("expect_kind")
         if kind is not None and kind not in KINDS:
             raise ValueError(f"{item['id']}: unknown expect_kind {kind!r}")
+        expect_gap = item.get("expect_gap")
+        if expect_gap is not None and not isinstance(expect_gap, bool):
+            raise ValueError(f"{item['id']}: expect_gap must be true or false")
         today = item.get("today")
         entries.append(
             Golden(
@@ -130,6 +153,7 @@ def load_goldens(path: Path) -> list[Golden]:
                 filters=tuple(item.get("filters") or ()),
                 today=date.fromisoformat(str(today)) if today else None,
                 previous=previous,
+                expect_gap=expect_gap,
             )
         )
         seen.add(item["id"])
@@ -167,6 +191,11 @@ def render_report(results: list[Result]) -> str:
             f"{r.usage.cache_write} cache written, {r.usage.output_tokens} out, "
             f"cost: ${estimate_cost(r.usage):.3f}"
         )
+        gap_mark = score_gap(r.expect_gap, r.answer)
+        if gap_mark is not None:
+            found = "reported" if has_gap(r.answer) else "none reported"
+            wanted = "a gap" if r.expect_gap else "no gap"
+            out.append(f"- gap: {found} (expected {wanted}) {gap_mark}")
         if r.note:
             out.append(f"- note: {r.note}")
         if r.error:
@@ -174,6 +203,8 @@ def render_report(results: list[Result]) -> str:
         a = r.answer or {}
         if a.get("kind") in ("text", "none"):
             out.append(f"- text: {a.get('text', '')}")
+        if a.get("gap"):
+            out.append(f"- missing: {a['gap']}")
         if a.get("kind") == "text":
             out.extend(f"  - {r.titles.get(i, i)}" for i in a.get("recipe_ids", []))
         if a.get("kind") == "recipes":
@@ -183,6 +214,9 @@ def render_report(results: list[Result]) -> str:
                 for group in alt.get("groups", []):
                     out.append(f"  - {group.get('heading') or '(no heading)'}")
                     out.extend(f"    - {r.titles.get(i, i)}" for i in group.get("recipe_ids", []))
+                for g in alt.get("gaps", []):
+                    where = "whole answer" if g.get("group", -1) < 0 else f"group {g['group'] + 1}"
+                    out.append(f"  - missing ({where}): {g.get('missing', '')}")
         out.append("")
     cost = total_cost(results)
     calls = sum(r.usage.calls for r in results)
@@ -231,7 +265,7 @@ def run_golden(
     error: str | None = None
     try:
         toolbox = ToolBox(db, claims, embed, catalogue)
-        toolbox.admit_answers(t.answer for t in history)
+        toolbox.admit_answers((t.answer for t in history), (a for t in history for a in t.added))
         raw = run_agent(
             client=client,
             model=MODEL,
@@ -259,6 +293,7 @@ def run_golden(
         id=entry.id,
         question=entry.question,
         expect_kind=entry.expect_kind,
+        expect_gap=entry.expect_gap,
         kind=answer.kind if answer is not None else None,
         answer=dumped,
         titles=titles,
