@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.34.0] — 2026-11-14
+
+Answers report gaps; `POST /search/look` looks for them on the cook's own sites; refusing sites are recorded; pasted text may carry its web address. Cayenne Library AI search Stage 5 (spec `docs/superpowers/specs/2026-11-13-ai-search-stage-5-sites-you-use-design.md` in IanDBallard/Cayenne). **Deploy order:** Cayenne's `refusing_hosts` migration first, then this release, then the Cayenne client.
+
+### ✨ Added
+- Answers report gaps: each alternative of a recipes answer carries `gaps` (`{group, missing}`, at most 4; `group` -1 is the alternative as a whole) and a `none` answer carries `gap`. Out-of-range gaps are dropped; the prompt says never to invent one.
+- `history[].added`: recipes the cook added from a site to an earlier answer (`{alternative, group, heading, recipe_ids}`, at most 8 per turn); their ids are admitted and named in the request text.
+- `POST /search/look`: a look on the cook's own sites (their top 8 recipe hosts, read through `ai_reader` under the cook's claims) for the chosen alternative's gaps, with Anthropic's web search (at most 4) and web fetch (at most 8), 8 rounds, 60 s and a 40k task budget. Request `{question, answer, chosen, measuring, exclude}`; no gaps → 422. Refusals before the stream as `/search/ask` (401, 422, 503, 429); a look spends one search slot. The stream is progress lines, then one `candidates` line (`{gap, url, title, site, note, status: importable|blocked|yours, recipe_id?}`) or one `error` line (`no_sites`, `timeout`, `failed`). A candidate survives only when it is `https`, on one of the cook's sites, and was read by a successful web fetch in that request; titles are cut to 200 characters and notes to 160, as plain text; at most 3 per gap and 8 in all; excluded addresses are dropped. Usage is recorded as step `look`.
+- Sites Anthropic's crawler refuses (the whole request fails with a 400 naming them) are remembered for a day in the process, dropped, and the look retried once; with none left the error is `no_sites` ("None of the sites you use can be searched.").
+- `scripts/look_goldens.py` and `look_goldens.yaml`: 10 on-demand golden looks with seeded hosts; the report gives each look's cost and time and checks every candidate's host and that it loads. It spends real money; run it only with the owner's OK.
+- `public.refusing_hosts` (Cayenne's table, service role only): a URL import refused by a site records its host; a successful URL import from the host clears it. Best effort; never fails an import.
+- `POST /jobs` takes `source_url` with pasted `text` (`https`, at most 2,000 characters, never fetched): it becomes the chunk's source address and web citation.
+
 ## [9.33.0] — 2026-11-14
 
 Mela import (Cayenne spec `docs/superpowers/specs/2026-11-13-mela-import-design.md` in IanDBallard/Cayenne). Merging deploys (container restart); deploy before the Cayenne client PR merges, since the client starts offering Mela files at Add Recipe.

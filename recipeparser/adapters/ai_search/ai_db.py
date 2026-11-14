@@ -307,3 +307,71 @@ def _build_catalogue(rows: Sequence[tuple[Any, ...]]) -> Catalogue:
             if column is not None:
                 cols.append(column)
     return Catalogue(views=views, functions=functions, function_columns=function_columns)
+
+
+# -- the look's fixed queries (Stage 5, §7.2 and §7.5) ---------------------------------------------
+# Fixed statements, not the agent's SQL: they run through run() under the cook's claims, so
+# ai.recipes shows the cook's own recipes only (never a household member's).
+
+MAX_SITES = 8
+_SITE_ROWS = 50  # enough to fill MAX_SITES after skipping hosts Anthropic cannot search
+_OWN_URL_ROWS = 10_000
+# The host of a web address, lower-cased, without user info, port or a leading www.
+_HOST_SQL = r"regexp_replace(substring(lower(source_url) from '^https?://(?:[^/?#@]*@)?([^/?#:]+)'), '^www\.', '')"
+_COOK_SITES = f"""
+with r as (
+    select {_HOST_SQL} as host, nullif(btrim(source), '') as source
+      from ai.recipes
+     where source_url ~* '^https?://'
+)
+select host, count(*)::int as recipes,
+       (select s.source from r s where s.host = r.host and s.source is not null
+         group by s.source order by count(*) desc, s.source limit 1) as site
+  from r
+ where host is not null and host <> ''
+ group by host
+ order by recipes desc, host
+"""
+_OWN_SOURCE_URLS = f"""
+select id::text, source_url
+  from ai.recipes
+ where source_url ~* '^https?://' and {_HOST_SQL} = any(%s::text[])
+ order by id
+"""
+
+
+def cook_sites(db: AiReaderDb, claims: Mapping[str, Any], *, skip: Iterable[str] = ()) -> list[tuple[str, str]]:
+    """The cook's sites, most recipes first, the top ``MAX_SITES``: ``(host, display name)``.
+
+    The host is lower-cased, without ``www.``; the display name is the most common ``source`` among
+    the cook's recipes from that host, or the host itself. Hosts in ``skip`` are passed over.
+    """
+    skipped = set(skip)
+    rows = db.run(claims, _COOK_SITES, max_rows=_SITE_ROWS).rows
+    sites: list[tuple[str, str]] = []
+    for host, _count, site in rows:
+        if host in skipped:
+            continue
+        sites.append((str(host), str(site) if site else str(host)))
+        if len(sites) == MAX_SITES:
+            break
+    return sites
+
+
+def own_source_urls(db: AiReaderDb, claims: Mapping[str, Any], urls: Iterable[str]) -> dict[str, str]:
+    """For each of ``urls`` that is one of the cook's recipes' ``source_url``: normalised url -> recipe id."""
+    # Imported here: look.py imports nothing from this module, and this keeps it that way.
+    from recipeparser.adapters.ai_search.look import normalise_url, url_host  # noqa: PLC0415
+
+    urls = list(urls)
+    wanted = {normalise_url(u) for u in urls}
+    hosts = sorted({h for h in (url_host(u) for u in urls) if h})
+    if not hosts:
+        return {}
+    result = db.run(claims, _OWN_SOURCE_URLS, [hosts], max_rows=_OWN_URL_ROWS)
+    found: dict[str, str] = {}
+    for recipe_id, source_url in result.rows:
+        key = normalise_url(str(source_url))
+        if key in wanted and key not in found:
+            found[key] = str(recipe_id)
+    return found
