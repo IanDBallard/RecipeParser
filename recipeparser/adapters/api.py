@@ -62,8 +62,9 @@ from recipeparser.adapters.shopping_api import build_router as _build_shopping_r
 from recipeparser.adapters.search_api import build_router as _build_search_router
 from recipeparser.adapters.household_api import build_router as _build_household_router
 from recipeparser.config import AI_SEARCH_MODEL, MAX_UPLOAD_BYTES, ai_search_secrets
+from recipeparser.adapters import refusing_hosts
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
-from recipeparser.core.citation import web_citation
+from recipeparser.core.citation import host_of, web_citation
 from recipeparser.core.clock import utc_timestamp
 from recipeparser.core import job_signal
 from recipeparser.core.fsm import PipelineController, PipelineStatus
@@ -1237,6 +1238,20 @@ def _reporting_deep_paths(
     return _write
 
 
+def _note_refusal(host: str, refused: bool) -> None:
+    """Record (``refused``) or clear ``host`` in the shared refusal record; never raises.
+
+    The client is None in a test run and without credentials, so nothing is written then.
+    """
+    try:
+        sb = _get_supabase_service_client()
+        if sb is None:
+            return
+        (refusing_hosts.record_refusal if refused else refusing_hosts.clear_refusal)(sb, host)
+    except Exception:
+        logger.exception("Could not update the refusal record for %s.", host)
+
+
 async def _run_ingestion_job(
     job_id: str,
     user_id: str,
@@ -1245,6 +1260,7 @@ async def _run_ingestion_job(
     failure_name: Optional[str],
     log_label: str,
     gate_after_read: bool = False,
+    url_host: Optional[str] = None,
 ) -> None:
     """Run one ingestion job to its end: the half ``POST /jobs`` and ``POST /jobs/file`` share.
 
@@ -1258,6 +1274,9 @@ async def _run_ingestion_job(
     once the chunks are read, the import gate runs if any of them needs AI, and the pause alone if
     only an EMBED call is left. A restore with stored embeddings (no AI call) runs at the cap and
     while paused; one without them is covered by the pause but never by the cap.
+
+    ``url_host`` is set only for a job that fetched a web address: a clean finish clears that
+    host from the refusal record, and a SiteRefusedError records it. A pasted text never sets it.
     """
     # NOTE: Do NOT call controller.transition("start") here.
     # RecipePipeline.run() calls it internally (IDLE → RUNNING).
@@ -1337,6 +1356,8 @@ async def _run_ingestion_job(
                 # also knows a cancel that came before the controller left IDLE.
                 sink.finalize_payload(True, cancelled=controller.cancel_requested or signal.cancelled),
             )
+            if url_host and not (controller.cancel_requested or signal.cancelled):
+                await asyncio.to_thread(_note_refusal, url_host, False)
         except JobCancelledError:
             # Stopped by its owner at a checkpoint (Cayenne F-426): not a failure. The row
             # already reads 'cancelled' (the endpoint wrote it); this adds the counts, and
@@ -1367,6 +1388,8 @@ async def _run_ingestion_job(
             reason = _job_error_reason(exc)
             if reason is not None:
                 payload["error_reason"] = reason
+            if isinstance(exc, SiteRefusedError):
+                await asyncio.to_thread(_note_refusal, exc.host, True)
             await asyncio.to_thread(_finalize_ingestion_job, job_id, payload)
         finally:
             _active_jobs.pop(job_id, None)
@@ -1378,10 +1401,15 @@ async def _run_ingestion_job(
 # POST /jobs  — canonical URL/text fire-and-forget endpoint
 # ---------------------------------------------------------------------------
 
+_SOURCE_URL_MAX = 2000
+
+
 class JobsRequest(BaseModel):
     """Request body for POST /jobs."""
     url: Optional[str] = None
     text: Optional[str] = None
+    # The web address a pasted text came from: kept as the recipe's source, never fetched.
+    source_url: Optional[str] = None
 
 
 @app.post("/jobs", response_model=AsyncJobResponse, status_code=202)
@@ -1404,6 +1432,18 @@ async def submit_job(
             detail="Either 'url' or 'text' must be provided.",
         )
 
+    if body.source_url is not None:
+        if not body.text or body.url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="'source_url' is accepted only together with 'text'.",
+            )
+        if len(body.source_url) > _SOURCE_URL_MAX or not body.source_url.lower().startswith("https://"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'source_url' must be an https address of at most {_SOURCE_URL_MAX} characters.",
+            )
+
     user_id: str = user.get("sub", "")
     with _idempotency.once(user_id, idempotency_key) as slot:
         if slot.replay is not None:
@@ -1414,7 +1454,7 @@ async def submit_job(
         async def _read() -> Tuple[Any, List[Chunk]]:
             client = _get_client()
             source_text: str
-            source_url: Optional[str] = None
+            source_url: Optional[str] = body.source_url
             stored_image_url: Optional[str] = None
 
             page_meta = PageMeta(None, None)
@@ -1458,14 +1498,17 @@ async def submit_job(
                     input_type=InputType.URL,
                     source_url=source_url,
                     image_url=stored_image_url,
-                    citation=web_citation(body.url) if body.url else None,
+                    citation=web_citation(source_url) if source_url else None,
                     meta=SourceMeta(description=page_meta.description) if page_meta.description else None,
                 )
             ]
             return client, chunks
 
         _create_ingestion_job(job_id, user_id, source_hint=body.url or None)
-        asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, body.url, "Job"))
+        asyncio.create_task(_run_ingestion_job(
+            job_id, user_id, controller, _read, body.url, "Job",
+            url_host=host_of(body.url) if body.url else None,
+        ))
         slot.done({"job_id": job_id})
         return AsyncJobResponse(job_id=job_id)
 
