@@ -545,6 +545,51 @@ class TestPostJobsFile:
             resp = self._upload(client, "library.paprikarecipes", b"PK\x03\x04" + b"\x00" * 40, "application/octet-stream")
         assert resp.status_code == 202
 
+    def test_a_mela_export_over_the_ceiling_is_accepted(self, client: TestClient) -> None:
+        """A Mela library is a whole collection with its photos; the ceiling is for single items."""
+        with _patch_pipeline_and_writer()[0], \
+             patch("recipeparser.adapters.api._MelaReader") as mock_reader_cls, \
+             patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            mock_reader_cls.return_value.read.return_value = [MagicMock(text="Pie")]
+            body = b"PK\x03\x04" + b"\x00" * 40
+            resp = self._upload(client, "Recipes.melarecipes", body, "application/octet-stream")
+        assert resp.status_code == 202
+
+    def test_a_single_mela_recipe_over_the_ceiling_is_accepted_and_bounded_by_the_reader(self, client: TestClient) -> None:
+        with _patch_pipeline_and_writer()[0], \
+             patch("recipeparser.adapters.api._MelaReader") as mock_reader_cls, \
+             patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+            mock_reader_cls.return_value.read.return_value = [MagicMock(text="Pie")]
+            resp = self._upload(client, "Pie.melarecipe", b"{" + b" " * 40 + b"}", "application/json")
+        assert resp.status_code == 202
+
+    def test_a_mela_export_is_not_deferred_past_the_ai_gate(self) -> None:
+        """Every Mela recipe needs AI, so the import check runs at upload, not after the read."""
+        from recipeparser.adapters.api import _defers_ai_gate
+        assert _defers_ai_gate("Recipes.melarecipes") is False
+        assert _defers_ai_gate("Pie.melarecipe") is False
+
+    def test_a_mela_upload_is_read_by_the_mela_reader(self) -> None:
+        """No existing test asserts the Paprika read call directly; this follows the
+        byte-for-byte test's pattern: the Mela reader is called and Paprika's is not."""
+        stack, _mock_client, _mock_pipeline_cls = _patch_pipeline_and_writer()
+        with stack, \
+             patch("recipeparser.adapters.api._MelaReader") as mock_reader_cls, \
+             patch("recipeparser.adapters.api._PaprikaReader") as mock_paprika_cls, \
+             TestClient(app, raise_server_exceptions=False) as tc:
+            mock_reader_cls.return_value.read.return_value = [MagicMock(text="Pie")]
+            resp = tc.post(
+                "/jobs/file",
+                files={"file": ("Recipes.melarecipes", io.BytesIO(b"PK\x03\x04"), "application/octet-stream")},
+            )
+            assert resp.status_code == 202
+            job_id = resp.json()["job_id"]
+            deadline = time.monotonic() + 5.0
+            while job_id in _active_jobs and time.monotonic() < deadline:
+                time.sleep(0.05)
+        mock_reader_cls.return_value.read.assert_called_once()
+        mock_paprika_cls.return_value.read.assert_not_called()
+
     def test_the_reader_is_handed_the_upload_byte_for_byte(self) -> None:
         """The upload is streamed to the temporary file the reader opens, not held in memory."""
         body = b"PK\x03\x04" + bytes(range(256)) * 64

@@ -1,4 +1,5 @@
 *.paprikarecipes binary
+*.melarecipes binary
 
 # The scaling-text cases are one file kept in two repositories (Cayenne cayenne-web/tests/fixtures/); keep it LF in both.
 tests/fixtures/scaling_text_cases.json text eol=lf

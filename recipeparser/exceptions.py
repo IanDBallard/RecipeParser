@@ -44,6 +44,10 @@ class PaprikaExtractionError(UnreadableInputError):
     """Raised when a .paprikarecipes archive cannot be opened or holds no recipe."""
 
 
+class MelaExtractionError(UnreadableInputError):
+    """Raised when a Mela export (.melarecipes) or recipe (.melarecipe) cannot be read or holds no recipe."""
+
+
 class UrlFetchError(UnreadableInputError):
     """Raised when a page cannot be fetched, fetched but holds no text, or
     fetched but is a bot-protection challenge page rather than the article.

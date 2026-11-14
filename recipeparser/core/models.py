@@ -42,6 +42,9 @@ class InputType(Enum):
     PAPRIKA_CAYENNE = "PAPRIKA_CAYENNE"
     """A Paprika recipe entry with a valid _cayenne_meta key — fast-path restore."""
 
+    MELA = "MELA"
+    """One recipe from a Mela export (.melarecipes or .melarecipe) — requires full pipeline."""
+
 
 @dataclass
 class SourceMeta:
@@ -158,6 +161,10 @@ class Chunk:
         Set by a reader for an entry it could not turn into a chunk worth running
         (a Cayenne entry whose ``_cayenne_meta`` failed validation). The pipeline
         runs no stage for it and reports the reason as a skipped line.
+    restore:
+        Row fields a library carries that no stage derives — today an imported
+        Favourite (Mela). Handed to ``assemble(restore=…)`` on the full pipeline;
+        the Cayenne fast paths take theirs from ``pre_parsed`` instead.
     citation:
         What the reader knows about where the recipe came from: a book's
         metadata, a URL's host, a Paprika entry's source. None when only the
@@ -178,3 +185,4 @@ class Chunk:
     label: Optional[str] = None
     meta: Optional[SourceMeta] = None
     skip_reason: Optional[str] = None
+    restore: Optional[RestoreFields] = None

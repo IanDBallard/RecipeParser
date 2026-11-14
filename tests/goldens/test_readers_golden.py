@@ -14,6 +14,7 @@ import pytest
 from recipeparser.core.models import Chunk
 from recipeparser.exceptions import PdfExtractionError
 from recipeparser.io.readers.epub import EpubReader, load_epub
+from recipeparser.io.readers.mela import MelaReader
 from recipeparser.io.readers.paprika import PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader, load_pdf
 from recipeparser.io.readers.url import UrlReader
@@ -157,3 +158,27 @@ def test_the_legacy_photo_fixture_really_carries_a_photo():
     chunk = PaprikaReader().read(str(corpus_path("legacy-photo.paprikarecipes")))[0]
     assert chunk.image_bytes, "legacy-photo fixture lost its photo_data"
     assert chunk.pre_parsed is None, "legacy entry must route to the full pipeline"
+
+
+def test_mela_reader_golden(update_goldens):
+    chunks = MelaReader().read(str(corpus_path("banana-bread.melarecipes")))
+    _assert_golden(
+        "banana-bread.melarecipes",
+        {
+            "chunks": [
+                {**_chunk_to_dict(c), "is_favourite": bool(c.restore and c.restore.is_favourite)}
+                for c in chunks
+            ],
+            "qualifying_images": [],
+        },
+        update_goldens,
+    )
+
+
+def test_the_mela_fixture_really_is_a_favourite_with_a_picture():
+    """Guards the fixture itself."""
+    chunk = MelaReader().read(str(corpus_path("banana-bread.melarecipes")))[0]
+    assert chunk.image_bytes, "banana-bread fixture lost its picture"
+    assert chunk.restore is not None and chunk.restore.is_favourite
+    assert chunk.source_url == "https://www.bonappetit.com/recipe/banana-bread"
+
