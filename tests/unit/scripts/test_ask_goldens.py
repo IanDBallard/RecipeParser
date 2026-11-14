@@ -199,3 +199,45 @@ def test_golden_embed_is_bounded_and_not_retried():
 
     source = inspect.getsource(goldens.main)
     assert "max_retries=0" in source and "timeout_secs=timeout" in source
+
+
+def test_yaml_expects_gaps_on_eight_entries_and_none_on_four():
+    entries = goldens.load_goldens(_ROOT / "scripts" / "ask_goldens.yaml")
+    assert sum(1 for e in entries if e.expect_gap is True) == 8
+    assert sum(1 for e in entries if e.expect_gap is False) == 4
+
+
+def test_load_rejects_a_non_boolean_expect_gap(tmp_path):
+    p = tmp_path / "g.yaml"
+    p.write_text("- {id: a, question: q, expect_gap: maybe}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="expect_gap"):
+        goldens.load_goldens(p)
+
+
+def _gapped() -> dict:
+    answer = _result().answer
+    answer["alternatives"][0]["gaps"] = [{"group": 1, "missing": "a vegan side"}]
+    return answer
+
+
+def test_score_expect_gap():
+    with_gap = _gapped()
+    without = _result().answer
+    none_gap = {"kind": "none", "text": "Nothing.", "gap": "a vegan side"}
+    assert goldens.score_gap(True, with_gap) == "✓"
+    assert goldens.score_gap(True, without) == "✗"
+    assert goldens.score_gap(False, without) == "✓"
+    assert goldens.score_gap(False, with_gap) == "✗"
+    assert goldens.score_gap(True, none_gap) == "✓"
+    assert goldens.score_gap(True, {"kind": "none", "text": "Nothing."}) == "✗"
+    assert goldens.score_gap(True, None) == "✗"
+    assert goldens.score_gap(None, with_gap) is None
+
+
+def test_report_shows_gaps_and_their_score():
+    text = goldens.render_report([_result(answer=_gapped(), expect_gap=True)])
+    assert "missing (group 2): a vegan side" in text
+    assert "gap: reported (expected a gap) ✓" in text
+    miss = goldens.render_report([_result(expect_gap=True)])
+    assert "gap: none reported (expected a gap) ✗" in miss
+    assert "gap:" not in goldens.render_report([_result()])

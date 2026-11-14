@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from recipeparser.adapters.ai_search.ai_db import Catalogue, ColumnInfo, QueryFailed, QueryResult, ViewInfo
-from recipeparser.adapters.ai_search.answer import NoneAnswer, TextAnswer
+from recipeparser.adapters.ai_search.answer import Added, NoneAnswer, TextAnswer
 from recipeparser.adapters.ai_search.tools import TOOL_DEFINITIONS, ToolBox
 
 A = "11111111-1111-1111-1111-111111111111"
@@ -233,6 +233,13 @@ def test_admit_answers_admits_every_turn() -> None:
         ]
     )
     assert box.seen_ids == {A, B}
+
+
+def test_admit_answers_admits_added_recipes_the_cook_owns() -> None:
+    box = _box(FakeDb(owned={A, B}))
+    added = [Added(alternative=0, group=-1, heading=None, recipe_ids=[uuid.UUID(B), uuid.UUID(FOREIGN)])]
+    box.admit_answers([NoneAnswer(kind="none", text="None of your recipes fit that.")], added)
+    assert box.seen_ids == {B}
 
 
 def test_admit_answers_without_ids_is_noop() -> None:

@@ -91,6 +91,31 @@ def test_record_claude_sums_prompt_tokens() -> None:
     assert rows[2]["prompt_tokens"] is None and rows[2]["output_tokens"] is None
 
 
+def test_record_claude_adds_a_row_per_server_tool_kind() -> None:
+    def with_tools(tools: object) -> SimpleNamespace:
+        return SimpleNamespace(**vars(_claude()), server_tool_use=tools)
+
+    with usage.attributed("u1", "search", get_client=lambda: None) as ctx:
+        usage.record_claude("look", "m", with_tools(SimpleNamespace(web_search_requests=2, web_fetch_requests=3)))
+        usage.record_claude("look", "m", with_tools(None))
+        usage.record_claude("look", "m", with_tools(SimpleNamespace(web_search_requests=0, web_fetch_requests=1)))
+        rows = ctx.snapshot()
+    assert [(r["step"], r["calls"], r["prompt_tokens"]) for r in rows] == [
+        ("look", 1, 180), ("look_search", 2, None), ("look_fetch", 3, None),
+        ("look", 1, 180),
+        ("look", 1, 180), ("look_fetch", 1, None),
+    ]
+    assert all(r["output_tokens"] is None for r in rows if r["step"] != "look")
+
+
+def test_snapshot_is_a_copy() -> None:
+    with usage.attributed("u1", "search", get_client=lambda: None) as ctx:
+        usage.record_claude("agent", "m", _claude())
+        snap = ctx.snapshot()
+        snap.clear()
+        assert len(ctx.snapshot()) == 1
+
+
 def test_record_claude_without_context_keeps_nothing() -> None:
     usage.record_claude("agent", "m", _claude())
     assert usage.ai_context.get() is None

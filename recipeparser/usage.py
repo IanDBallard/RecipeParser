@@ -30,6 +30,14 @@ class UsageContext:
     records: List[Dict[str, Any]] = field(default_factory=list)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
+    def snapshot(self) -> List[Dict[str, Any]]:
+        """A copy of the records buffered so far, taken under the lock."""
+        with self._lock:
+            return list(self.records)
+
+
+#: Anthropic server tools billed per use, as (``server_tool_use`` field, step suffix).
+_SERVER_TOOLS = (("web_search_requests", "search"), ("web_fetch_requests", "fetch"))
 
 ai_context: ContextVar[Optional[UsageContext]] = ContextVar("ai_context", default=None)
 
@@ -65,6 +73,10 @@ def record_claude(step: str, model: str, usage: object | None) -> None:
 
     ``prompt_tokens`` counts every input token, cached or not: uncached input, cache writes and
     cache reads. Claude reports no separate thinking count, so ``thought_tokens`` stays empty.
+
+    Server tools are billed per use, apart from tokens: when ``usage.server_tool_use`` reports web
+    searches or web fetches, each kind adds a row of its own, step ``<step>_search`` or
+    ``<step>_fetch``, with ``calls`` the number of uses and no token counts.
     """
     ctx = ai_context.get()
     if ctx is None:
@@ -89,8 +101,16 @@ def record_claude(step: str, model: str, usage: object | None) -> None:
         "output_tokens": _tokens(usage, "output_tokens"),
         "thought_tokens": None,
     }
+    rows = [row]
+    tools = getattr(usage, "server_tool_use", None) if usage is not None else None
+    for name, suffix in _SERVER_TOOLS:
+        uses = _tokens(tools, name)
+        if uses:
+            rows.append(
+                {**row, "step": f"{step}_{suffix}", "calls": uses, "prompt_tokens": None, "output_tokens": None}
+            )
     with ctx._lock:
-        ctx.records.append(row)
+        ctx.records.extend(rows)
 
 
 def flush(ctx: UsageContext, get_client: Callable[[], Any]) -> None:

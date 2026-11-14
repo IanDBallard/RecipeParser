@@ -1,5 +1,7 @@
 # The golden questions for the Library's deeper search (Cayenne AI search section 10).
-# Fields: id, question, expect_kind (recipes | text | none | out_of_scope), filters (plain text
+# Fields: id, question, expect_kind (recipes | text | none | out_of_scope), expect_gap (true: the
+# question plants a gap the library cannot fill and the answer should report it; false: the
+# library covers it and no gap should be reported; leave out where it does not matter), filters (plain text
 # lines, as the Library writes them), today (YYYY-MM-DD), previous (id of the entry just
 # before this one in its conversation: the question continues it, and the script feeds the whole
 # chain of earlier entries as history).
@@ -8,26 +10,33 @@
 - id: menu-sunday-roast
   question: Plan a Sunday roast for six with a starter, a main with sides, and a pudding.
   expect_kind: recipes
+  expect_gap: true
 - id: menu-vegetarian-dinner
   question: I'm having two vegetarian friends over. Give me a three course dinner.
   expect_kind: recipes
+  expect_gap: true
 - id: menu-picnic
   question: What could I take to a picnic? A couple of savoury things and something sweet.
   expect_kind: recipes
+  expect_gap: true
 - id: menu-christmas-sides
   question: Which side dishes would go with a roast turkey?
   expect_kind: recipes
+  expect_gap: true
 - id: menu-brunch
   question: Put together a brunch for eight, nothing that needs frying at the last minute.
   expect_kind: recipes
+  expect_gap: true
 - id: menu-kids-party
   question: Food for a children's birthday party, savoury and sweet, that can be made the day before.
   expect_kind: recipes
+  expect_gap: true
 
 # Constraints: time, diet, oven sharing
 - id: time-weeknight
   question: Dinner on the table in 30 minutes, start to finish.
   expect_kind: recipes
+  expect_gap: false
 - id: time-slow
   question: Something I can put on in the morning and leave all day.
   expect_kind: recipes
@@ -37,12 +46,15 @@
 - id: diet-dairy-free-dessert
   question: A dessert without any dairy.
   expect_kind: recipes
+  expect_gap: true
 - id: diet-vegan-lunch
   question: Vegan lunches I can pack for work.
   expect_kind: recipes
+  expect_gap: true
 - id: oven-share
   question: A main and a side that can both go in the oven at the same temperature, so I only use it once.
   expect_kind: recipes
+  expect_gap: false
 - id: oven-hot-and-cool
   question: I have one oven. Which of my bakes work at 180 degrees along with a roast chicken?
   expect_kind: recipes
@@ -50,10 +62,12 @@
   question: Something for a weeknight.
   filters: ["Only recipes in the category Dinner", "Only recipes rated 4 stars or more"]
   expect_kind: recipes
+  expect_gap: false
 - id: dated-season
   question: What should I cook this weekend?
   today: "2026-12-23"
   expect_kind: recipes
+  expect_gap: false
 
 # Counts and facts: the answer is text
 - id: fact-count-soups

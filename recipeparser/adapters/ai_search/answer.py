@@ -22,6 +22,9 @@ MAX_TEXT_CHARS = 2000  # an answer's text
 MAX_SHORT_CHARS = 300  # a note, label or heading
 MAX_IDS = 100  # recipe ids in one list
 MAX_GROUPS = 10  # groups in one alternative
+MAX_GAPS = 4  # gaps reported for one alternative
+MAX_MISSING_CHARS = 120  # what a gap says is missing
+MAX_ADDED = MAX_ALTERNATIVES * MAX_GAPS  # added entries on one turn: one per gap, at most
 
 _Text = Annotated[str, Field(max_length=MAX_TEXT_CHARS)]
 _Short = Annotated[str, Field(max_length=MAX_SHORT_CHARS)]
@@ -35,16 +38,38 @@ class Group(BaseModel):
     recipe_ids: _Ids
 
 
+class Gap(BaseModel):
+    """What the cook's recipes could not supply for one part of an alternative.
+
+    ``group`` is the index of the group it concerns, or -1 for the alternative as a whole.
+    """
+
+    group: int = Field(ge=-1)
+    missing: str = Field(min_length=1, max_length=MAX_MISSING_CHARS)
+
+
+class Added(BaseModel):
+    """Recipes the cook later added from the web to one place in an earlier answer."""
+
+    alternative: int = Field(ge=0, le=MAX_ALTERNATIVES - 1)
+    group: int = Field(ge=-1)
+    heading: _Short | None
+    recipe_ids: _Ids
+
+
 class Alternative(BaseModel):
     label: _Short | None = None
     note: _Short
     groups: list[Group] = Field(max_length=MAX_GROUPS)
+    gaps: list[Gap] = Field(default_factory=list, max_length=MAX_GAPS)
 
     @model_serializer(mode="wrap")
     def _omit_empty_label(self, handler: Any) -> dict[str, Any]:
         data: dict[str, Any] = handler(self)
         if data.get("label") is None:
             data.pop("label", None)
+        if not data.get("gaps"):
+            data.pop("gaps", None)
         return data
 
 
@@ -62,6 +87,14 @@ class TextAnswer(BaseModel):
 class NoneAnswer(BaseModel):
     kind: Literal["none"]
     text: _Text
+    gap: str = Field(default="", max_length=MAX_MISSING_CHARS)
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_gap(self, handler: Any) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if not data.get("gap"):
+            data.pop("gap", None)
+        return data
 
 
 class OutOfScopeAnswer(BaseModel):
@@ -86,6 +119,7 @@ class Turn(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     answer: Answer
     chosen: int = Field(default=0, ge=0, le=MAX_ALTERNATIVES - 1)
+    added: list[Added] = Field(default_factory=list, max_length=MAX_ADDED)
 
 
 class Previous(BaseModel):
@@ -105,11 +139,18 @@ class RawGroup(BaseModel):
     recipe_ids: list[str]
 
 
+class RawGap(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    group: int
+    missing: str
+
+
 class RawAlternative(BaseModel):
     model_config = ConfigDict(extra="forbid")
     label: str
     note: str
     groups: list[RawGroup]
+    gaps: list[RawGap]
 
 
 class RawAnswer(BaseModel):
@@ -118,6 +159,7 @@ class RawAnswer(BaseModel):
     text: str
     recipe_ids: list[str]
     alternatives: list[RawAlternative]
+    gap: str
 
 
 RAW_ANSWER_SCHEMA: dict[str, Any] = {
@@ -145,13 +187,23 @@ RAW_ANSWER_SCHEMA: dict[str, Any] = {
                             "additionalProperties": False,
                         },
                     },
+                    "gaps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {"group": {"type": "integer"}, "missing": {"type": "string"}},
+                            "required": ["group", "missing"],
+                            "additionalProperties": False,
+                        },
+                    },
                 },
-                "required": ["label", "note", "groups"],
+                "required": ["label", "note", "groups", "gaps"],
                 "additionalProperties": False,
             },
         },
+        "gap": {"type": "string"},
     },
-    "required": ["kind", "text", "recipe_ids", "alternatives"],
+    "required": ["kind", "text", "recipe_ids", "alternatives", "gap"],
     "additionalProperties": False,
 }
 
@@ -204,27 +256,57 @@ def _owned(ids: list[str], allowed: set[str]) -> list[uuid.UUID]:
     return kept
 
 
+def _gaps(raw_gaps: list[RawGap], kept: dict[int, int], raw_group_count: int) -> list[Gap]:
+    """The gaps with a non-blank ``missing``, trimmed and cut, groups renumbered by ``kept``, at most ``MAX_GAPS``.
+
+    ``kept`` maps a raw group's index to its index after empty groups were dropped. A gap on a raw
+    group that existed but did not survive becomes -1 (the alternative as a whole); a gap whose index
+    is out of range (below -1, or past the raw groups) is dropped.
+    """
+    gaps: list[Gap] = []
+    for g in raw_gaps:
+        missing = _clip(g.missing.strip(), MAX_MISSING_CHARS)
+        if not missing or not -1 <= g.group < raw_group_count:
+            continue
+        gaps.append(Gap(group=kept.get(g.group, -1), missing=missing))
+    return gaps[:MAX_GAPS]
+
+
 def finalize(raw: RawAnswer, *, permitted: set[str]) -> Answer:
     """The raw answer with every id outside ``permitted`` removed and empty parts dropped."""
     allowed = {p.lower() for p in permitted}
     if raw.kind == "out_of_scope":
         return OutOfScopeAnswer(kind="out_of_scope")
     if raw.kind == "none":
-        return NoneAnswer(kind="none", text=_clip(raw.text.strip(), MAX_TEXT_CHARS) or NONE_LEFT)
+        return NoneAnswer(
+            kind="none",
+            text=_clip(raw.text.strip(), MAX_TEXT_CHARS) or NONE_LEFT,
+            gap=_clip(raw.gap.strip(), MAX_MISSING_CHARS),
+        )
     if raw.kind == "text":
         if not raw.text.strip():
             return NoneAnswer(kind="none", text=NONE_LEFT)
         return TextAnswer(kind="text", text=_clip(raw.text, MAX_TEXT_CHARS), recipe_ids=_owned(raw.recipe_ids, allowed))
     alternatives: list[Alternative] = []
     for a in raw.alternatives:
-        groups = [
-            Group(heading=_clip(g.heading.strip(), MAX_SHORT_CHARS) or None, recipe_ids=ids)
-            for g in a.groups
-            if (ids := _owned(g.recipe_ids, allowed))
-        ][:MAX_GROUPS]
+        groups: list[Group] = []
+        kept: dict[int, int] = {}  # raw group index -> index among the groups that survive
+        for raw_index, g in enumerate(a.groups):
+            if len(groups) == MAX_GROUPS:
+                break
+            if ids := _owned(g.recipe_ids, allowed):
+                kept[raw_index] = len(groups)
+                groups.append(Group(heading=_clip(g.heading.strip(), MAX_SHORT_CHARS) or None, recipe_ids=ids))
         if groups:
             label = _clip(a.label.strip(), MAX_SHORT_CHARS) or None
-            alternatives.append(Alternative(label=label, note=_clip(a.note, MAX_SHORT_CHARS), groups=groups))
+            alternatives.append(
+                Alternative(
+                    label=label,
+                    note=_clip(a.note, MAX_SHORT_CHARS),
+                    groups=groups,
+                    gaps=_gaps(a.gaps, kept, len(a.groups)),
+                )
+            )
     alternatives = alternatives[:MAX_ALTERNATIVES]
     if not alternatives:
         return NoneAnswer(kind="none", text=NONE_LEFT)

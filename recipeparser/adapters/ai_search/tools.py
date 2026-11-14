@@ -33,7 +33,7 @@ from recipeparser.adapters.ai_search.ai_db import (
     QueryFailed,
     QueryResult,
 )
-from recipeparser.adapters.ai_search.answer import Answer, answer_ids
+from recipeparser.adapters.ai_search.answer import Added, Answer, answer_ids
 from recipeparser.adapters.ai_search.sql_gate import MAX_SQL_CHARS, StatementRefused, check_statement
 
 logger = logging.getLogger(__name__)
@@ -222,9 +222,13 @@ class ToolBox:
 
     # -- provenance ---------------------------------------------------------------------------
 
-    def admit_answers(self, answers: Iterable[Answer]) -> None:
-        """Let the ids of earlier turns' answers back in, but only the ones the cook owns (D2)."""
-        ids = list(dict.fromkeys(i for answer in answers for i in answer_ids(answer)))
+    def admit_answers(self, answers: Iterable[Answer], added: Iterable[Added] = ()) -> None:
+        """Let earlier answers' ids, and those of recipes added after them, back in; only ones the cook owns (D2)."""
+        ids = list(
+            dict.fromkeys(
+                [*(i for answer in answers for i in answer_ids(answer)), *(str(i) for a in added for i in a.recipe_ids)]
+            )
+        )
         if ids:
             self.seen_ids |= self._db.own_recipe_ids(self._claims, ids)
 
