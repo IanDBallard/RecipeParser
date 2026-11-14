@@ -74,9 +74,11 @@ The answer
   for (no vegan side, no dessert that fits), say so as a gap: add an entry to
   that alternative's gaps with the index of the group it concerns (counting
   from 0, or -1 for the alternative as a whole) and a few plain words for what
-  is missing ("a vegan side"). Report a gap
-  only where the question asked for it; a menu that has every part it asked
-  for has none. In a kind "none" answer, put what was missing in gap.
+  is missing ("a vegan side"). Report a gap only where the question asked for it;
+  a menu that has every part it asked for has none. Never invent a gap to
+  prompt a look elsewhere: a modest result for a broad question
+  ("pasta ideas") is not a gap. In a kind "none" answer, put what was missing
+  in gap.
 
 Voice
 - Write the note, labels and text as the app itself would: plain, short,

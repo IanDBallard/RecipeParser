@@ -164,3 +164,4 @@ def test_request_text_lists_added() -> None:
 
 def test_system_prompt_has_gap_rule() -> None:
     assert "only where the question asked for it" in SYSTEM_PROMPT
+    assert "pasta ideas" in SYSTEM_PROMPT

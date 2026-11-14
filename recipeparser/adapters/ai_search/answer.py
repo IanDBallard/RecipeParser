@@ -256,17 +256,19 @@ def _owned(ids: list[str], allowed: set[str]) -> list[uuid.UUID]:
     return kept
 
 
-def _gaps(raw_gaps: list[RawGap], kept: dict[int, int]) -> list[Gap]:
+def _gaps(raw_gaps: list[RawGap], kept: dict[int, int], raw_group_count: int) -> list[Gap]:
     """The gaps with a non-blank ``missing``, trimmed and cut, groups renumbered by ``kept``, at most ``MAX_GAPS``.
 
-    ``kept`` maps a raw group's index to its index after empty groups were dropped; a gap on a group
-    that was dropped, or that never existed, becomes -1 (the alternative as a whole).
+    ``kept`` maps a raw group's index to its index after empty groups were dropped. A gap on a raw
+    group that existed but did not survive becomes -1 (the alternative as a whole); a gap whose index
+    is out of range (below -1, or past the raw groups) is dropped.
     """
     gaps: list[Gap] = []
     for g in raw_gaps:
         missing = _clip(g.missing.strip(), MAX_MISSING_CHARS)
-        if missing:
-            gaps.append(Gap(group=kept.get(g.group, -1), missing=missing))
+        if not missing or not -1 <= g.group < raw_group_count:
+            continue
+        gaps.append(Gap(group=kept.get(g.group, -1), missing=missing))
     return gaps[:MAX_GAPS]
 
 
@@ -298,7 +300,12 @@ def finalize(raw: RawAnswer, *, permitted: set[str]) -> Answer:
         if groups:
             label = _clip(a.label.strip(), MAX_SHORT_CHARS) or None
             alternatives.append(
-                Alternative(label=label, note=_clip(a.note, MAX_SHORT_CHARS), groups=groups, gaps=_gaps(a.gaps, kept))
+                Alternative(
+                    label=label,
+                    note=_clip(a.note, MAX_SHORT_CHARS),
+                    groups=groups,
+                    gaps=_gaps(a.gaps, kept, len(a.groups)),
+                )
             )
     alternatives = alternatives[:MAX_ALTERNATIVES]
     if not alternatives:

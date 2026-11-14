@@ -300,7 +300,7 @@ def test_finalize_keeps_gaps_and_remaps_groups() -> None:
                 ("Main", [A]),
                 ("Sides", [B]),
                 ("Dessert", [C]),
-                gaps=[gap(2, "a lighter dessert"), gap(1, "a side"), gap(7, "wine"), gap(0, "a bigger main")],
+                gaps=[gap(2, "a lighter dessert"), gap(1, "a side"), gap(0, "a bigger main")],
             )
         ]
     )
@@ -309,9 +309,15 @@ def test_finalize_keeps_gaps_and_remaps_groups() -> None:
     assert [(g.group, g.missing) for g in out.alternatives[0].gaps] == [
         (1, "a lighter dessert"),
         (-1, "a side"),
-        (-1, "wine"),
         (0, "a bigger main"),
     ]
+
+
+def test_finalize_drops_out_of_range_gap() -> None:
+    gaps = [gap(7, "wine"), gap(3, "past the end"), gap(-2, "negative"), gap(0, "kept")]
+    out = finalize(raw(alternatives=[alt(("Main", [A]), ("Dessert", [C]), gaps=gaps)]), permitted={A, C})
+    assert isinstance(out, RecipesAnswer)
+    assert [(g.group, g.missing) for g in out.alternatives[0].gaps] == [(0, "kept")]
 
 
 def test_finalize_keeps_whole_answer_gap_group() -> None:
