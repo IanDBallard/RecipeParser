@@ -54,6 +54,8 @@ BODY = {"question": "A vegan dinner for four", "answer": ANSWER, "chosen": 0, "m
 def _isolated(monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.delenv("AI_READER_DATABASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # The fakes use real hostnames; the known-refused list is switched back on where a test needs it.
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset())
     UNSEARCHABLE.clear()
     yield
     UNSEARCHABLE.clear()
@@ -411,16 +413,54 @@ def test_no_searchable_site_is_a_no_sites_line() -> None:
     assert len(client.calls) == 1
 
 
-def test_a_second_refusal_fails() -> None:
+def test_a_second_refusal_is_dropped_too() -> None:
+    """Bug 5c6f4904 (2026-11-14): the retry's refill brought in epicurious.com, and the look failed."""
     db = FakeDb(sites=[("food52.com", 3, None), ("seriouseats.com", 2, None), ("nytimes.com", 1, None)])
-    client = FakeAnthropic([_refused("seriouseats.com"), _refused("nytimes.com")])
+    client = FakeAnthropic([_refused("seriouseats.com"), _refused("nytimes.com"), _found()])
+    tc, _ = _app(db=db, client=client)
+    assert _lines(_post(tc))[-1]["type"] == "candidates"
+    assert [c["tools"][0]["allowed_domains"] for c in client.calls] == [
+        ["food52.com", "seriouseats.com", "nytimes.com"],
+        ["food52.com", "nytimes.com"],
+        ["food52.com"],
+    ]
+
+
+def test_a_refusal_on_every_attempt_fails() -> None:
+    db = FakeDb(sites=[("food52.com", 9, None)] + [(f"refuser{i}.com", 8 - i, None) for i in range(5)])
+    client = FakeAnthropic([_refused(f"refuser{i}.com") for i in range(4)])
     tc, _ = _app(db=db, client=client)
     assert _lines(_post(tc))[-1] == {
         "type": "error",
         "code": "failed",
         "detail": "Couldn't answer that just now. Try again.",
     }
-    assert len(client.calls) == 2
+    assert len(client.calls) == search_api.MAX_SITE_ATTEMPTS == 4
+
+
+def test_known_refused_sites_are_skipped_from_the_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    from recipeparser.adapters.ai_search.look import KNOWN_UNSEARCHABLE
+
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", KNOWN_UNSEARCHABLE)
+    assert {"epicurious.com", "bbcgoodfood.com", "seriouseats.com", "nytimes.com"} <= KNOWN_UNSEARCHABLE
+    assert "cooking.nytimes.com" not in KNOWN_UNSEARCHABLE  # Anthropic accepts it
+    db = FakeDb(sites=[("food52.com", 3, None), ("epicurious.com", 2, None), ("bbcgoodfood.com", 1, None)])
+    client = FakeAnthropic([_found()])
+    tc, _ = _app(db=db, client=client)
+    assert _lines(_post(tc))[-1]["type"] == "candidates"
+    assert [c["tools"][0]["allowed_domains"] for c in client.calls] == [["food52.com"]]
+
+
+def test_only_known_refused_sites_is_a_no_sites_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    from recipeparser.adapters.ai_search.look import KNOWN_UNSEARCHABLE
+
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", KNOWN_UNSEARCHABLE)
+    client = FakeAnthropic([])
+    tc, _ = _app(db=FakeDb(sites=[("epicurious.com", 2, None)]), client=client)
+    assert _lines(_post(tc)) == [
+        {"type": "error", "code": "no_sites", "detail": "None of the sites you use can be searched."}
+    ]
+    assert client.calls == []
 
 
 def test_timeout_becomes_error_line() -> None:
