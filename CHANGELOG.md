@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.33.0] — 2026-11-14
+
+Mela import (Cayenne spec `docs/superpowers/specs/2026-11-13-mela-import-design.md` in IanDBallard/Cayenne). Merging deploys (container restart); deploy before the Cayenne client PR merges, since the client starts offering Mela files at Add Recipe.
+
+### ✨ Added
+- `MelaReader` (`io/readers/mela.py`): reads a Mela library export (`.melarecipes`, a zip of `.melarecipe` JSON files) or one shared `.melarecipe`. Each recipe becomes one chunk with its picture, times, yield, notes and source link; `favorite` sets `is_favourite` when the row is created (`Chunk.restore` → `RestoreFields`). Mela categories, Want to Cook, `id` and `date` are dropped, as Paprika import drops categories. `#` lines are headings; `mela://` and web links in text are reduced to their labels.
+- `InputType.MELA`; `POST /jobs/file` routes `.melarecipes` and `.melarecipe` to it, and exempts both from `MAX_UPLOAD_BYTES`, as Paprika exports are.
+- Refusals: "is not a Mela export: not a ZIP archive.", "is not a Mela recipe: not readable JSON.", "is not a Mela recipe: larger than 50 MB.", "contains no recipes." A recipe that cannot be read, is over 50 MB, or has no recipe text is named under "What was missed"; a notes-only recipe sends its notes as the method.
+- Pictures are capped at 15 MB each and 512 MB per read; recipes past the cap import without their picture (logged).
+- Golden corpus fixture `banana-bread.melarecipes` and its reader golden.
+
+### 🔧 Changed
+- `PaprikaReader` and `MelaReader` share the chunk text and citation builders (`io/readers/_recipe_text.py`); Paprika output is unchanged.
+
 ## [9.32.0] — 2026-11-13
 
 Cayenne Library AI search becomes a continuing conversation: the phone sends every earlier turn, and the server reads them all.
