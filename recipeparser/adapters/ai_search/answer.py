@@ -24,7 +24,7 @@ MAX_IDS = 100  # recipe ids in one list
 MAX_GROUPS = 10  # groups in one alternative
 MAX_GAPS = 4  # gaps reported for one alternative
 MAX_MISSING_CHARS = 120  # what a gap says is missing
-MAX_ADDED = 8  # added entries on one turn
+MAX_ADDED = MAX_ALTERNATIVES * MAX_GAPS  # added entries on one turn: one per gap, at most
 
 _Text = Annotated[str, Field(max_length=MAX_TEXT_CHARS)]
 _Short = Annotated[str, Field(max_length=MAX_SHORT_CHARS)]

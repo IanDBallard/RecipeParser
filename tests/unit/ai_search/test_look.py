@@ -20,6 +20,7 @@ from recipeparser.adapters.ai_search import look
 from recipeparser.adapters.ai_search.agent import AgentFailed, AgentTimeout
 from recipeparser.adapters.ai_search.ai_db import QueryResult, cook_sites, own_source_urls
 from recipeparser.adapters.ai_search.look import (
+    MAX_URL_CHARS,
     RawCandidate,
     UnsearchableCache,
     UnsearchableSites,
@@ -163,6 +164,9 @@ def _bad_request(message: str) -> anthropic.BadRequestError:
         ("https://WWW.food52.com/", "https://food52.com"),
         ("https://food52.com", "https://food52.com"),
         ("https://food52.com:8443/r/1/", "https://food52.com:8443/r/1"),
+        ("https://food52.com:443/r//", "https://food52.com/r"),  # a default port and every trailing slash go
+        ("http://food52.com:80/r/", "https://food52.com/r"),
+        ("https://food52.com:8443/r/", "https://food52.com:8443/r"),
         ("https://cooking.nytimes.com/recipes/1-Soup", "https://cooking.nytimes.com/recipes/1-Soup"),
     ],
 )
@@ -240,12 +244,53 @@ def test_emitted_url_equals_the_fetched_url() -> None:
         "https://food52.com/recipes/1 ",
         "https://food52.com/recipes/\t1",
         "https://food52.com/recipes/\x001",
+        "https://[food52.com/recipes/1",  # urlsplit raises on it
+        "https://[::1]/recipes/1",
+        "https://food52.com\u3002evil.com/recipes/1",  # non-ASCII in the authority
     ],
 )
 def test_ambiguous_addresses_are_dropped(url: str) -> None:
     """Even when the very same string was fetched, an address parsers may read differently is dropped."""
     assert check_candidates([_raw(url)], hosts=HOSTS, fetched={url}, exclude=set()) == []
     assert check_candidates([_raw(url)], hosts=HOSTS, fetched={"https://food52.com/recipes/1"}, exclude=set()) == []
+
+
+def test_a_malformed_candidate_does_not_cost_the_valid_one() -> None:
+    """One address urlsplit cannot read is skipped; the look is not failed."""
+    kept = check_candidates([_raw("https://[food52.com/x"), _raw(GRAVY)], hosts=HOSTS, fetched={GRAVY}, exclude=set())
+    assert [c.url for c in kept] == [GRAVY]
+
+
+def test_a_malformed_fetched_url_is_ignored() -> None:
+    kept = check_candidates([_raw(GRAVY)], hosts=HOSTS, fetched={"https://[food52.com/x", GRAVY}, exclude=set())
+    assert [c.url for c in kept] == [GRAVY]
+
+
+def test_a_malformed_excluded_url_is_ignored() -> None:
+    kept = check_candidates([_raw(GRAVY)], hosts=HOSTS, fetched={GRAVY}, exclude={"https://[food52.com/x"})
+    assert [c.url for c in kept] == [GRAVY]
+
+
+@pytest.mark.parametrize(
+    "twin",
+    [
+        "http://food52.com/recipes/1",  # sorts before the https address and shares its key
+        "https://evil.com\\@food52.com/recipes/1",  # ambiguous; Python reads the same key
+    ],
+)
+def test_an_invalid_twin_never_displaces_the_valid_fetched_address(twin: str) -> None:
+    good = "https://food52.com/recipes/1"
+    kept = check_candidates([_raw(good)], hosts=HOSTS, fetched={good, twin}, exclude=set())
+    assert [c.url for c in kept] == [good]
+
+
+def test_an_over_long_fetched_address_is_dropped() -> None:
+    prefix = "https://food52.com/recipes/"
+    at_limit = prefix + "a" * (MAX_URL_CHARS - len(prefix))
+    too_long = at_limit + "a"
+    assert check_candidates([_raw(too_long)], hosts=HOSTS, fetched={too_long}, exclude=set()) == []
+    kept = check_candidates([_raw(at_limit)], hosts=HOSTS, fetched={at_limit}, exclude=set())
+    assert [c.url for c in kept] == [at_limit]
 
 
 def test_truncates_title_and_note() -> None:

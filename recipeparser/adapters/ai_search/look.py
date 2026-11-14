@@ -10,7 +10,8 @@ server's own records (§7.5).
 
 ``run_look`` mirrors ``agent.py``'s manual loop: the cancel flag is checked before every model call,
 a call is not started with less than ``MIN_CALL_SECONDS`` left, the SDK's retries are off, and each
-call's usage is recorded as step ``look``. Server tools run inside one response; a ``pause_turn``
+call's usage is recorded as step ``look`` (its web searches and fetches as ``look_search`` and
+``look_fetch``, see ``usage.record_claude``). Server tools run inside one response; a ``pause_turn``
 is continued by sending the conversation back, within the same limits. A ninth call is a timeout.
 
 The fetched-address set is read from the response blocks (R0, ruling 15): every top-level
@@ -52,6 +53,7 @@ MAX_CANDIDATES = 8
 MAX_TITLE_CHARS = 200
 MAX_NOTE_CHARS = 160
 MAX_PROGRESS_CHARS = 80
+MAX_URL_CHARS = 2000  # an address on the wire, either way
 UNSEARCHABLE_TTL_S = 24 * 60 * 60
 
 _REFUSED_DOMAINS = re.compile(r"not accessible to our user agent:\s*\[([^\]]*)\]")
@@ -60,6 +62,7 @@ _TAG = re.compile(r"<[^>]*>")
 _SPACE = re.compile(r"\s+")
 # A backslash, whitespace or a control character anywhere in an address: parsers disagree on them.
 _UNSAFE_CHARS = re.compile(r"[\\\s\x00-\x1f\x7f]")
+_DEFAULT_PORTS = {"https": 443, "http": 80}
 
 
 @dataclass(frozen=True)
@@ -124,13 +127,18 @@ UNSEARCHABLE = UnsearchableCache()
 
 
 def normalise_url(url: str) -> str:
-    """``https``, the host lower-cased without ``www.`` (an explicit port kept), the path without a
-    trailing slash, no query or fragment. Matches the Cayenne client's normalisation."""
+    """``https``, the host lower-cased without ``www.`` (an explicit port kept unless it is the
+    scheme's default), the path without trailing slashes, no query or fragment. Matches the Cayenne
+    client's normalisation (``normaliseUrl`` in ``domain/look.ts``).
+
+    Raises ``ValueError`` for an address ``urlsplit`` cannot read (an unclosed ``[``, say)."""
     parts = urlsplit(url.strip())
     host = (parts.hostname or "").removeprefix("www.")
     try:
         port = parts.port
     except ValueError:
+        port = None
+    if port is not None and port == _DEFAULT_PORTS.get(parts.scheme.lower()):
         port = None
     netloc = f"{host}:{port}" if port is not None else host
     return f"https://{netloc}{parts.path.rstrip('/')}"
@@ -139,7 +147,7 @@ def normalise_url(url: str) -> str:
 def fetch_key(url: str) -> str:
     """The key a candidate's address must share with a fetched one: like ``normalise_url`` but the
     query is kept (it can name a different page); only http/https, a leading ``www.``, a trailing
-    slash and the fragment are ignored."""
+    slash and the fragment are ignored. Raises ``ValueError`` like ``normalise_url``."""
     parts = urlsplit(url.strip())
     key = normalise_url(url)
     return f"{key}?{parts.query}" if parts.query else key
@@ -147,15 +155,16 @@ def fetch_key(url: str) -> str:
 
 def is_unambiguous(url: str) -> bool:
     """Whether every URL parser reads ``url`` the same way: no backslash, whitespace or control
-    character anywhere, and no user info (``@``) in the authority. ``https://evil.com\\@food52.com/``
-    is food52.com to Python but evil.com to a browser."""
+    character anywhere, and in the authority no user info (``@``), no brackets (an IPv6 literal or
+    a malformed address ``urlsplit`` refuses) and nothing outside ASCII (an IDN a browser rewrites).
+    ``https://evil.com\\@food52.com/`` is food52.com to Python but evil.com to a browser."""
     if _UNSAFE_CHARS.search(url):
         return False
     _, sep, rest = url.partition("://")
     if not sep:
         return False
     authority = re.split(r"[/?#]", rest, maxsplit=1)[0]
-    return "@" not in authority
+    return authority.isascii() and not any(ch in authority for ch in "@[]")
 
 
 def url_host(url: str) -> str:
@@ -218,14 +227,23 @@ def check_candidates(
 
     The model's address is never emitted. It must be unambiguous (``is_unambiguous``) and match a
     successfully fetched address on ``fetch_key`` (query kept); the candidate then carries that
-    fetched address, which must itself be unambiguous, ``https`` and on one of ``hosts`` (or a
-    subdomain). It is dropped when in ``exclude`` or offered already (both compared on
-    ``normalise_url``), or, given ``gap_count``, when its gap is not one of those looked for.
+    fetched address. Only fetched addresses that are unambiguous, ``https``, at most
+    ``MAX_URL_CHARS`` long and on one of ``hosts`` (or a subdomain) can be matched, so an ``http``
+    or ambiguous twin of a good address never displaces it. A candidate is dropped when in
+    ``exclude`` or offered already (both compared on ``normalise_url``), or, given ``gap_count``,
+    when its gap is not one of those looked for. An address no parser can read is skipped, never
+    an error: one bad address does not cost the good finds.
     """
     read: dict[str, str] = {}
     for u in sorted(fetched):  # sorted: the same fetched address wins every time
-        read.setdefault(fetch_key(u), u)
-    excluded = {normalise_url(u) for u in exclude}
+        if _emittable(u, hosts):
+            read.setdefault(fetch_key(u), u)
+    excluded: set[str] = set()
+    for u in exclude:
+        try:
+            excluded.add(normalise_url(u))
+        except ValueError:
+            continue
     seen: set[str] = set()
     per_gap: dict[int, int] = {}
     kept: list[RawCandidate] = []
@@ -234,14 +252,13 @@ def check_candidates(
             break
         if not is_unambiguous(c.url):
             continue
-        url = read.get(fetch_key(c.url))
-        if url is None or not is_unambiguous(url):
+        try:
+            url = read.get(fetch_key(c.url))
+        except ValueError:
             continue
-        if urlsplit(url).scheme.lower() != "https":
+        if url is None:
             continue
-        if site_of(url_host(url), hosts) is None:
-            continue
-        key = normalise_url(url)
+        key = normalise_url(url)  # url came through _emittable, which parsed it
         if key in excluded or key in seen:
             continue
         if gap_count is not None and not 0 <= c.gap < gap_count:
@@ -255,6 +272,21 @@ def check_candidates(
         per_gap[c.gap] = per_gap.get(c.gap, 0) + 1
         kept.append(RawCandidate(gap=c.gap, url=url, title=title, note=_clip(_plain(c.note), MAX_NOTE_CHARS)))
     return kept
+
+
+def _emittable(url: str, hosts: set[str]) -> bool:
+    """Whether a fetched address may be emitted: unambiguous, readable, ``https``, at most
+    ``MAX_URL_CHARS`` long, on one of ``hosts`` (or a subdomain)."""
+    if len(url) > MAX_URL_CHARS or not is_unambiguous(url):
+        return False
+    try:
+        parts = urlsplit(url)
+        normalise_url(url)
+    except ValueError:
+        return False
+    if parts.scheme.lower() != "https":
+        return False
+    return site_of(url_host(url), hosts) is not None
 
 
 def classify(

@@ -25,7 +25,10 @@ _TABLE = "refusing_hosts"
 
 
 def record_refusal(sb: Any, host: str) -> None:
-    """Upsert ``host`` with last_refused_at = now; log and swallow any error."""
+    """Upsert ``host`` with last_refused_at = now; log and swallow any error. An empty host (an
+    address without one) is not recorded."""
+    if not host_of(host):
+        return
     try:
         sb.table(_TABLE).upsert(
             {"host": host_of(host), "last_refused_at": datetime.now(timezone.utc).isoformat()}

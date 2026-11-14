@@ -1241,8 +1241,11 @@ def _reporting_deep_paths(
 def _note_refusal(host: str, refused: bool) -> None:
     """Record (``refused``) or clear ``host`` in the shared refusal record; never raises.
 
-    The client is None in a test run and without credentials, so nothing is written then.
+    The client is None in a test run and without credentials, so nothing is written then; an
+    empty host (an address without one) is never written either.
     """
+    if not host:
+        return
     try:
         sb = _get_supabase_service_client()
         if sb is None:

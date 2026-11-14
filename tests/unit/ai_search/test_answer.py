@@ -9,6 +9,8 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from recipeparser.adapters.ai_search.answer import (
+    MAX_ADDED,
+    MAX_ALTERNATIVES,
     MAX_GAPS,
     MAX_MISSING_CHARS,
     NONE_LEFT,
@@ -391,11 +393,13 @@ def test_turn_accepts_added() -> None:
     assert Turn.model_validate(_turn()).added == []
 
 
-def test_turn_rejects_nine_added() -> None:
+def test_turn_accepts_one_added_per_gap_and_no_more() -> None:
+    """A device may add a find for every gap of every alternative: 4 x 4 = 16."""
     added = {"alternative": 0, "group": 0, "heading": "Main", "recipe_ids": [A]}
-    assert len(Turn.model_validate(_turn(added=[added] * 8)).added) == 8
+    assert MAX_ADDED == MAX_ALTERNATIVES * MAX_GAPS == 16
+    assert len(Turn.model_validate(_turn(added=[added] * 16)).added) == 16
     with pytest.raises(ValidationError):
-        Turn.model_validate(_turn(added=[added] * 9))
+        Turn.model_validate(_turn(added=[added] * 17))
 
 
 @pytest.mark.parametrize(

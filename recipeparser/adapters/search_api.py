@@ -48,6 +48,7 @@ from recipeparser.adapters.ai_search.answer import (
     raw_ids,
 )
 from recipeparser.adapters.ai_search.look import (
+    MAX_URL_CHARS,
     UNSEARCHABLE,
     LookLimits,
     UnsearchableSites,
@@ -71,7 +72,6 @@ LOOK_WORKER_NAME = "search-look"
 NO_SITES_DETAIL = "None of your recipes come from a website."
 NO_SEARCHABLE_SITES_DETAIL = "None of the sites you use can be searched."
 MAX_EXCLUDE = 100
-MAX_URL_CHARS = 2000
 
 _ANSWER: TypeAdapter[Answer] = TypeAdapter(Answer)
 
@@ -167,9 +167,9 @@ def _work(
                 logger.error("search ask failed for user %s", sub, exc_info=True)
                 emit(_error("failed", FAILED_DETAIL))
             finally:
-                with ctx._lock:
-                    rounds = sum(1 for r in ctx.records if r["step"] == "agent")
-                    tokens = sum((r["prompt_tokens"] or 0) + (r["output_tokens"] or 0) for r in ctx.records)
+                records = ctx.snapshot()
+                rounds = sum(1 for r in records if r["step"] == "agent")
+                tokens = sum((r["prompt_tokens"] or 0) + (r["output_tokens"] or 0) for r in records)
     finally:
         logger.info(
             "search ask user=%s rounds=%d kind=%s duration_ms=%.0f tokens=%d",
@@ -372,9 +372,9 @@ def _look_work(
                 logger.error("search look failed for user %s", sub, exc_info=True)
                 emit(_error("failed", FAILED_DETAIL))
             finally:
-                with ctx._lock:
-                    calls = sum(1 for r in ctx.records if r["step"] == "look")
-                    tokens = sum((r["prompt_tokens"] or 0) + (r["output_tokens"] or 0) for r in ctx.records)
+                records = ctx.snapshot()
+                calls = sum(1 for r in records if r["step"] == "look")
+                tokens = sum((r["prompt_tokens"] or 0) + (r["output_tokens"] or 0) for r in records)
     finally:
         logger.info(
             "search look user=%s calls=%d kind=%s found=%d duration_ms=%.0f tokens=%d",

@@ -78,6 +78,15 @@ def test_record_and_clear_normalise_the_host():
     assert ("eq", "host", "food52.com") in sb.t.calls
 
 
+def test_an_empty_host_is_not_recorded(monkeypatch):
+    sb = FakeSb()
+    refusing_hosts.record_refusal(sb, "")
+    refusing_hosts.record_refusal(sb, "  ")
+    monkeypatch.setattr(api, "_get_supabase_service_client", lambda: sb)
+    api._note_refusal("", True)
+    assert sb.t.calls == []
+
+
 def test_record_refusal_swallows_errors():
     sb = MagicMock()
     sb.table.side_effect = RuntimeError("db down")
