@@ -205,8 +205,47 @@ def test_rejects_http_url() -> None:
 
 
 def test_fetched_matches_after_normalising() -> None:
-    kept = check_candidates([_raw(GRAVY + "/")], hosts=HOSTS, fetched={GRAVY + "?ref=x"}, exclude=set())
-    assert [c.url for c in kept] == [GRAVY + "/"]
+    """Scheme, a leading www., a trailing slash and the fragment are ignored; the query is not."""
+    fetched = GRAVY + "?ref=x"
+    raw = "http://www.food52.com/recipes/78215-ultimate-vegan-thanksgiving-gravy/?ref=x#comments"
+    kept = check_candidates([_raw(raw)], hosts=HOSTS, fetched={fetched}, exclude=set())
+    assert [c.url for c in kept] == [fetched]
+
+
+def test_a_different_query_is_a_different_page() -> None:
+    page = "https://food52.com/recipe.php"
+    kept = check_candidates([_raw(page + "?id=999")], hosts=HOSTS, fetched={page + "?id=1"}, exclude=set())
+    assert kept == []
+    assert check_candidates([_raw(page)], hosts=HOSTS, fetched={page + "?id=1"}, exclude=set()) == []
+
+
+def test_emitted_url_equals_the_fetched_url() -> None:
+    """The model's string is never emitted: the candidate carries the address the fetch read."""
+    fetched = "https://food52.com/recipes/78215-ultimate-vegan-thanksgiving-gravy"
+    kept = check_candidates(
+        [_raw("https://WWW.Food52.com/recipes/78215-ultimate-vegan-thanksgiving-gravy/#x")],
+        hosts=HOSTS,
+        fetched={fetched},
+        exclude=set(),
+    )
+    assert [c.url for c in kept] == [fetched]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.com\\@food52.com/recipes/1",  # Python reads food52.com; a browser reads evil.com
+        "https://food52.com@evil.com/recipes/1",
+        "https://user@food52.com/recipes/1",
+        "https://food52.com/recipes/1 ",
+        "https://food52.com/recipes/\t1",
+        "https://food52.com/recipes/\x001",
+    ],
+)
+def test_ambiguous_addresses_are_dropped(url: str) -> None:
+    """Even when the very same string was fetched, an address parsers may read differently is dropped."""
+    assert check_candidates([_raw(url)], hosts=HOSTS, fetched={url}, exclude=set()) == []
+    assert check_candidates([_raw(url)], hosts=HOSTS, fetched={"https://food52.com/recipes/1"}, exclude=set()) == []
 
 
 def test_truncates_title_and_note() -> None:

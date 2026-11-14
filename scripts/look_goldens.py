@@ -7,8 +7,9 @@ prompt and request, ``run_look`` with the seeded hosts, then ``check_candidates`
 is not read: each entry seeds its own host list, and nothing is classified. It is NOT a test. It
 calls Anthropic's web search and web fetch, so it costs real money (roughly 10-30 cents a look).
 Run it with the owner's OK, after a prompt or limit change. The report gives per look the seconds,
-model calls, searches, fetches, tokens and estimated cost, and per candidate whether its address
-is on an allowed host and whether it loads.
+model calls, searches, fetches, tokens and estimated cost, and per candidate the agent offered
+(before the server's checks) whether its address is on an allowed host, whether it loads, and
+whether the checks kept it, so the run measures what the checks remove.
 
     python scripts/look_goldens.py --out report.md --yes
     python scripts/look_goldens.py --only vegan-side --out one.md --yes
@@ -34,6 +35,8 @@ from recipeparser import usage as usage_module
 from recipeparser.adapters.ai_search.look import (
     RawCandidate,
     check_candidates,
+    fetch_key,
+    is_unambiguous,
     run_look,
     site_of,
     url_host,
@@ -86,6 +89,7 @@ class Scored:
     candidate: RawCandidate
     on_host: bool
     loads: bool | None  # None: not tried (off host)
+    kept: bool  # whether it survived check_candidates
 
 
 @dataclass
@@ -94,8 +98,7 @@ class LookResult:
     question: str
     seconds: float = 0.0
     usage: Usage = field(default_factory=Usage)
-    offered: int = 0  # candidates the agent named, before the checks
-    scored: list[Scored] = field(default_factory=list)
+    scored: list[Scored] = field(default_factory=list)  # every candidate the agent offered
     error: str | None = None
 
 
@@ -110,16 +113,22 @@ def estimate_cost(u: Usage) -> float:
 
 
 def score_host(url: str, hosts: tuple[str, ...] | list[str] | set[str]) -> bool:
-    """Whether ``url`` is ``https`` and on one of ``hosts`` (or a subdomain of one)."""
-    return url.strip().lower().startswith("https://") and site_of(url_host(url), hosts) is not None
+    """Whether ``url`` is ``https``, unambiguous (every parser reads one host) and on one of ``hosts``
+    (or a subdomain of one)."""
+    return url.lower().startswith("https://") and is_unambiguous(url) and site_of(url_host(url), hosts) is not None
 
 
-def score_candidates(candidates: list[RawCandidate], hosts: tuple[str, ...], loads: Any) -> list[Scored]:
-    """Each candidate with its host check and, when on a host, ``loads(url)``."""
+def score_candidates(
+    offered: list[RawCandidate], kept: list[RawCandidate], hosts: tuple[str, ...], loads: Any
+) -> list[Scored]:
+    """Each offered candidate, as the agent gave it, with its host check, ``loads(url)`` when on a
+    host, and whether the server's checks kept it (``kept`` is ``check_candidates``'s output)."""
+    kept_keys = {(k.gap, fetch_key(k.url)) for k in kept}
     scored: list[Scored] = []
-    for c in candidates:
+    for c in offered:
         on_host = score_host(c.url, hosts)
-        scored.append(Scored(c, on_host, loads(c.url) if on_host else None))
+        survived = is_unambiguous(c.url) and (c.gap, fetch_key(c.url)) in kept_keys
+        scored.append(Scored(c, on_host, loads(c.url) if on_host else None, survived))
     return scored
 
 
@@ -157,13 +166,16 @@ def render_report(results: list[LookResult]) -> str:
             "",
             f"{r.seconds:.1f} s · {u.calls} calls · {u.searches} searches · {u.fetches} fetches · "
             f"{u.input_tokens + u.cache_read + u.cache_write} in / {u.output_tokens} out · ${estimate_cost(u):.3f}",
-            f"Offered {r.offered}, kept {len(r.scored)}.",
+            f"Offered {len(r.scored)}, kept {sum(1 for s in r.scored if s.kept)}.",
         ]
         if r.error:
             lines.append(f"Error: {r.error}")
         for s in r.scored:
             c = s.candidate
-            lines.append(f"- gap {c.gap} · host {_mark(s.on_host)} · loads {_mark(s.loads)} · {c.title} · {c.url}")
+            lines.append(
+                f"- gap {c.gap} · host {_mark(s.on_host)} · loads {_mark(s.loads)} · kept {_mark(s.kept)}"
+                f" · {c.title} · {c.url!r}"
+            )
             if c.note:
                 lines.append(f"  {c.note}")
     return "\n".join(lines) + "\n"
@@ -205,12 +217,11 @@ def run_one(entry: LookGolden, *, client: Any, measuring: str) -> LookResult:
             on_progress=lambda text: print(f"    {text}", file=sys.stderr),
             cancel=threading.Event(),
         )
-        result.offered = len(raw)
         checked = check_candidates(
             raw, hosts=set(entry.hosts), fetched=fetched, exclude=set(), gap_count=len(entry.gaps)
         )
         result.seconds = time.monotonic() - started
-        result.scored = score_candidates(checked, entry.hosts, _loads)
+        result.scored = score_candidates(raw, checked, entry.hosts, _loads)
     except Exception as exc:  # noqa: BLE001 - one failed look must not lose the rest of the run
         result.error = f"{type(exc).__name__}: {exc}"
         result.seconds = time.monotonic() - started

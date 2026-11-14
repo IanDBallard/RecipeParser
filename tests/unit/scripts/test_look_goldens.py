@@ -27,19 +27,28 @@ HOSTS = ("food52.com", "nytimes.com")
         ("http://food52.com/recipes/1", False),
         ("https://notfood52.com/recipes/1", False),
         ("https://evil.example/food52.com", False),
+        ("https://evil.com\\@food52.com/recipes/1", False),  # a browser reads evil.com
+        ("https://food52.com@evil.com/recipes/1", False),
     ],
 )
 def test_look_goldens_scores_host(url: str, expected: bool) -> None:
     assert goldens.score_host(url, HOSTS) is expected
 
 
-def test_score_candidates_loads_only_on_host_addresses() -> None:
+def test_score_candidates_scores_every_offered_candidate() -> None:
+    """The raw offers are scored before the checks, so the report shows what the checks removed."""
     tried: list[str] = []
-    on = goldens.RawCandidate(gap=0, url="https://food52.com/recipes/1", title="A", note="")
-    off = goldens.RawCandidate(gap=0, url="https://evil.example/x", title="B", note="")
-    scored = goldens.score_candidates([on, off], HOSTS, lambda u: tried.append(u) or True)
-    assert [(s.on_host, s.loads) for s in scored] == [(True, True), (False, None)]
-    assert tried == [on.url]
+    on = goldens.RawCandidate(gap=0, url="https://www.food52.com/recipes/1/", title="A", note="")
+    unread = goldens.RawCandidate(gap=0, url="https://food52.com/recipes/2", title="C", note="")
+    off = goldens.RawCandidate(gap=1, url="https://evil.example/x", title="B", note="")
+    kept = [goldens.RawCandidate(gap=0, url="https://food52.com/recipes/1", title="A", note="")]
+    scored = goldens.score_candidates([on, unread, off], kept, HOSTS, lambda u: tried.append(u) or True)
+    assert [(s.on_host, s.loads, s.kept) for s in scored] == [
+        (True, True, True),
+        (True, True, False),
+        (False, None, False),
+    ]
+    assert tried == [on.url, unread.url]
 
 
 def test_yaml_has_ten_looks_each_with_gaps_and_hosts() -> None:
@@ -66,12 +75,14 @@ def test_cost_counts_tokens_and_searches() -> None:
 
 
 def test_report_shows_marks_and_cost() -> None:
-    result = goldens.LookResult(id="vegan-side", question="q", seconds=12.0, offered=2)
+    result = goldens.LookResult(id="vegan-side", question="q", seconds=12.0)
     c = goldens.RawCandidate(gap=0, url="https://food52.com/recipes/1", title="Gravy", note="Vegan · 1 hr")
-    result.scored = [goldens.Scored(c, True, False)]
+    d = goldens.RawCandidate(gap=0, url="https://evil.example/x", title="Evil", note="")
+    result.scored = [goldens.Scored(c, True, False, True), goldens.Scored(d, False, None, False)]
     report = goldens.render_report([result])
     assert "## vegan-side" in report
-    assert "host ✓ · loads ✗ · Gravy" in report
+    assert "host ✓ · loads ✗ · kept ✓ · Gravy" in report
+    assert "host ✗ · loads – · kept ✗ · Evil" in report
     assert "Offered 2, kept 1." in report
 
 

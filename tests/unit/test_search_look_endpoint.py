@@ -321,7 +321,7 @@ def test_look_streams_progress_then_candidates() -> None:
             },
             {
                 "gap": 1,
-                "url": "https://www.food52.com/recipes/1-squash",
+                "url": MINE,  # the address the fetch read, not the model's www. spelling
                 "title": "Squash",
                 "site": "Food52",
                 "note": "Vegan · 40 min",
@@ -384,6 +384,19 @@ def test_refused_site_is_dropped_and_the_look_retried() -> None:
     client.script.append(_found())
     _post(tc)
     assert client.calls[-1]["tools"][0]["allowed_domains"] == ["food52.com"]
+
+
+def test_retry_rereads_the_sites_so_the_next_ones_move_up() -> None:
+    """Ruling 14: the refused sites are replaced by the cook's next sites, still the top 8."""
+    hosts = ["food52.com", "seriouseats.com"] + [f"site{i}.com" for i in range(3, 11)]  # 10 hosts
+    db = FakeDb(sites=[(h, 20 - i, None) for i, h in enumerate(hosts)])
+    client = FakeAnthropic([_refused("seriouseats.com"), _found()])
+    tc, _ = _app(db=db, client=client)
+    assert _lines(_post(tc))[-1]["type"] == "candidates"
+    first, second = (c["tools"][0]["allowed_domains"] for c in client.calls)
+    assert first == hosts[:8]
+    assert second == ["food52.com"] + [f"site{i}.com" for i in range(3, 10)]
+    assert len(second) == 8 and "site9.com" in second and "seriouseats.com" not in second
 
 
 def test_no_searchable_site_is_a_no_sites_line() -> None:

@@ -58,6 +58,8 @@ _REFUSED_DOMAINS = re.compile(r"not accessible to our user agent:\s*\[([^\]]*)\]
 _QUOTED = re.compile(r"'([^']+)'|\"([^\"]+)\"")
 _TAG = re.compile(r"<[^>]*>")
 _SPACE = re.compile(r"\s+")
+# A backslash, whitespace or a control character anywhere in an address: parsers disagree on them.
+_UNSAFE_CHARS = re.compile(r"[\\\s\x00-\x1f\x7f]")
 
 
 @dataclass(frozen=True)
@@ -134,6 +136,28 @@ def normalise_url(url: str) -> str:
     return f"https://{netloc}{parts.path.rstrip('/')}"
 
 
+def fetch_key(url: str) -> str:
+    """The key a candidate's address must share with a fetched one: like ``normalise_url`` but the
+    query is kept (it can name a different page); only http/https, a leading ``www.``, a trailing
+    slash and the fragment are ignored."""
+    parts = urlsplit(url.strip())
+    key = normalise_url(url)
+    return f"{key}?{parts.query}" if parts.query else key
+
+
+def is_unambiguous(url: str) -> bool:
+    """Whether every URL parser reads ``url`` the same way: no backslash, whitespace or control
+    character anywhere, and no user info (``@``) in the authority. ``https://evil.com\\@food52.com/``
+    is food52.com to Python but evil.com to a browser."""
+    if _UNSAFE_CHARS.search(url):
+        return False
+    _, sep, rest = url.partition("://")
+    if not sep:
+        return False
+    authority = re.split(r"[/?#]", rest, maxsplit=1)[0]
+    return "@" not in authority
+
+
 def url_host(url: str) -> str:
     """The address's host, lower-cased, without ``www.`` and without a port."""
     try:
@@ -192,11 +216,15 @@ def check_candidates(
 ) -> list[RawCandidate]:
     """The candidates that survive §7.4, cut to the limits: at most 3 per gap and 8 in all.
 
-    A candidate survives when its address is ``https``, on one of ``hosts`` (or a subdomain), read
-    by a successful fetch (``fetched``), not in ``exclude`` and not offered already; and, given
-    ``gap_count``, its gap is one of those looked for. Addresses compare normalised.
+    The model's address is never emitted. It must be unambiguous (``is_unambiguous``) and match a
+    successfully fetched address on ``fetch_key`` (query kept); the candidate then carries that
+    fetched address, which must itself be unambiguous, ``https`` and on one of ``hosts`` (or a
+    subdomain). It is dropped when in ``exclude`` or offered already (both compared on
+    ``normalise_url``), or, given ``gap_count``, when its gap is not one of those looked for.
     """
-    read = {normalise_url(u) for u in fetched}
+    read: dict[str, str] = {}
+    for u in sorted(fetched):  # sorted: the same fetched address wins every time
+        read.setdefault(fetch_key(u), u)
     excluded = {normalise_url(u) for u in exclude}
     seen: set[str] = set()
     per_gap: dict[int, int] = {}
@@ -204,13 +232,17 @@ def check_candidates(
     for c in raw:
         if len(kept) == MAX_CANDIDATES:
             break
-        url = c.url.strip()
+        if not is_unambiguous(c.url):
+            continue
+        url = read.get(fetch_key(c.url))
+        if url is None or not is_unambiguous(url):
+            continue
         if urlsplit(url).scheme.lower() != "https":
             continue
         if site_of(url_host(url), hosts) is None:
             continue
         key = normalise_url(url)
-        if key not in read or key in excluded or key in seen:
+        if key in excluded or key in seen:
             continue
         if gap_count is not None and not 0 <= c.gap < gap_count:
             continue

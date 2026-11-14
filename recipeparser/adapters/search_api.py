@@ -291,20 +291,21 @@ def _look_sites(
     the ``no_sites`` detail.
 
     Sites Anthropic's crawler refuses are skipped (``UNSEARCHABLE``). When a request names one
-    anyway (``UnsearchableSites``), they are remembered and dropped, and the look runs once more.
+    anyway (``UnsearchableSites``), they are remembered, the site list is read again (so the next
+    sites take their places in the top 8), and the look runs once more.
     """
-    sites = dict(cook_sites(db, claims, skip=UNSEARCHABLE.current()))
     for attempt in (1, 2):
+        sites = dict(cook_sites(db, claims, skip=UNSEARCHABLE.current()))
         if not sites:
             return NO_SEARCHABLE_SITES_DETAIL if cook_sites(db, claims) else NO_SITES_DETAIL
         try:
             return sites, run(sites)
         except UnsearchableSites as exc:
             UNSEARCHABLE.add(exc.domains)
-            remaining = {h: n for h, n in sites.items() if h not in exc.domains}
-            if remaining and (attempt == 2 or len(remaining) == len(sites)):
-                raise  # nothing new to drop, or already retried: a failure
-            sites = remaining
+            if not exc.domains & set(sites):
+                raise  # it named none of the sites asked for: dropping nothing would not help
+            if attempt == 2 and cook_sites(db, claims, skip=UNSEARCHABLE.current()):
+                raise  # already retried once: a failure
     return NO_SEARCHABLE_SITES_DETAIL
 
 
