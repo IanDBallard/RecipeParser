@@ -55,6 +55,19 @@ MAX_NOTE_CHARS = 160
 MAX_PROGRESS_CHARS = 80
 MAX_URL_CHARS = 2000  # an address on the wire, either way
 UNSEARCHABLE_TTL_S = 24 * 60 * 60
+# Sites Anthropic's crawler is known to refuse (seen 2026-11-14), skipped from the start so a cook's
+# first look does not spend its attempts discovering them. ``cooking.nytimes.com`` is accepted.
+KNOWN_UNSEARCHABLE = frozenset(
+    {
+        "bbcgoodfood.com",
+        "bonappetit.com",
+        "epicurious.com",
+        "nytimes.com",
+        "seriouseats.com",
+        "simplyrecipes.com",
+        "theguardian.com",
+    }
+)
 
 _REFUSED_DOMAINS = re.compile(r"not accessible to our user agent:\s*\[([^\]]*)\]")
 _QUOTED = re.compile(r"'([^']+)'|\"([^\"]+)\"")

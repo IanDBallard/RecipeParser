@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.34.1] — 2026-11-14
+
+### 🐛 Fixed
+
+- **"Look on sites you use" failed when the retry met another crawler-refused site** (Cayenne bug report 5c6f4904, Cayenne F-626). A request naming a site Anthropic's crawler refuses fails with an unbilled 400. The look dropped the refused sites and retried only once, so when the refill brought in another refused site (`epicurious.com`), the cook saw "Couldn't answer that just now." The look now retries up to `MAX_SITE_ATTEMPTS` (4) requests while each refusal names a site it sent. It also skips the sites known to be refused from the start (`KNOWN_UNSEARCHABLE`): `bbcgoodfood.com`, `bonappetit.com`, `epicurious.com`, `nytimes.com`, `seriouseats.com`, `simplyrecipes.com` and `theguardian.com`. `cooking.nytimes.com` is accepted.
+- `scripts/look_goldens.yaml` no longer seeds refused sites (Cayenne F-627).
+
 ## [9.34.0] — 2026-11-14
 
 Answers report gaps; `POST /search/look` looks for them on the cook's own sites; refusing sites are recorded; pasted text may carry its web address. Cayenne Library AI search Stage 5 (spec `docs/superpowers/specs/2026-11-13-ai-search-stage-5-sites-you-use-design.md` in IanDBallard/Cayenne). **Deploy order:** Cayenne's `refusing_hosts` migration first, then this release, then the Cayenne client.

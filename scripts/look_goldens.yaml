@@ -9,33 +9,33 @@
   question: A vegan Thanksgiving dinner for six, with sides.
   gaps:
     - {missing: a vegan side, heading: Sides}
-  hosts: [food52.com, bbcgoodfood.com, budgetbytes.com]
+  hosts: [food52.com, budgetbytes.com]
 - id: pudding
   question: Plan a Sunday roast for six with a starter, a main with sides, and a pudding.
   gaps:
     - {missing: a pudding, heading: Pudding}
-  hosts: [bbcgoodfood.com, deliciousmagazine.co.uk, food52.com]
+  hosts: [deliciousmagazine.co.uk, food52.com]
 - id: gluten-free-dessert
   question: A dinner party menu where everything is gluten free.
   gaps:
     - a gluten-free dessert
-  hosts: [smittenkitchen.com, food52.com, bonappetit.com]
+  hosts: [smittenkitchen.com, food52.com]
 - id: picnic-sweet
   question: What could I take to a picnic? A couple of savoury things and something sweet.
   gaps:
     - {missing: something sweet that travels well, heading: Sweet}
-  hosts: [smittenkitchen.com, bbcgoodfood.com, kingarthurbaking.com]
+  hosts: [smittenkitchen.com, kingarthurbaking.com]
 - id: make-ahead-starter
   question: A make-ahead dinner for eight, starter to dessert.
   gaps:
     - {missing: a make-ahead starter, heading: Starter}
     - {missing: a make-ahead dessert, heading: Dessert}
-  hosts: [food52.com, bonappetit.com, epicurious.com]
+  hosts: [food52.com]
 - id: kids-party-savoury
   question: Food for a children's birthday party, savoury and sweet, that can be made the day before.
   gaps:
     - {missing: a savoury dish children like, heading: Savoury}
-  hosts: [bbcgoodfood.com, budgetbytes.com, cooking.nytimes.com]
+  hosts: [budgetbytes.com, cooking.nytimes.com]
 - id: none-vegan-baking
   question: Vegan brownies.
   gaps:
@@ -45,15 +45,15 @@
   question: A fish supper on the table in 30 minutes.
   gaps:
     - a quick fish main
-  hosts: [bbcgoodfood.com, budgetbytes.com, simplyrecipes.com]
+  hosts: [budgetbytes.com]
 - id: indian-sides
   question: An Indian feast with a curry, a dal, rice and a bread.
   gaps:
     - {missing: a flatbread, heading: Bread}
     - {missing: a dal, heading: Dal}
-  hosts: [recipetineats.com, bbcgoodfood.com, food52.com]
+  hosts: [recipetineats.com, food52.com]
 - id: brunch-no-frying
   question: Put together a brunch for eight, nothing that needs frying at the last minute.
   gaps:
     - {missing: a baked egg dish, heading: Eggs}
-  hosts: [smittenkitchen.com, food52.com, simplyrecipes.com]
+  hosts: [smittenkitchen.com, food52.com]

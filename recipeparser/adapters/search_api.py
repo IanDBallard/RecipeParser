@@ -48,6 +48,7 @@ from recipeparser.adapters.ai_search.answer import (
     raw_ids,
 )
 from recipeparser.adapters.ai_search.look import (
+    KNOWN_UNSEARCHABLE,
     MAX_URL_CHARS,
     UNSEARCHABLE,
     LookLimits,
@@ -72,6 +73,8 @@ LOOK_WORKER_NAME = "search-look"
 NO_SITES_DETAIL = "None of your recipes come from a website."
 NO_SEARCHABLE_SITES_DETAIL = "None of the sites you use can be searched."
 MAX_EXCLUDE = 100
+# Requests a look may make while Anthropic keeps refusing sites; each refusal is an unbilled 400.
+MAX_SITE_ATTEMPTS = 4
 
 _ANSWER: TypeAdapter[Answer] = TypeAdapter(Answer)
 
@@ -290,12 +293,18 @@ def _look_sites(
     """Run ``run(sites)`` over the cook's searchable sites; the result with the sites it ran on, or
     the ``no_sites`` detail.
 
-    Sites Anthropic's crawler refuses are skipped (``UNSEARCHABLE``). When a request names one
-    anyway (``UnsearchableSites``), they are remembered, the site list is read again (so the next
-    sites take their places in the top 8), and the look runs once more.
+    Sites Anthropic's crawler refuses are skipped: the known ones (``KNOWN_UNSEARCHABLE``) and the
+    ones learned in this process (``UNSEARCHABLE``). When a request names one anyway
+    (``UnsearchableSites``), they are remembered, the site list is read again (so the next sites take
+    their places in the top 8), and the look runs again, up to ``MAX_SITE_ATTEMPTS`` requests in all:
+    the refill can bring in another refused site (bug 5c6f4904, epicurious.com).
     """
-    for attempt in (1, 2):
-        sites = dict(cook_sites(db, claims, skip=UNSEARCHABLE.current()))
+
+    def searchable() -> list[tuple[str, str]]:
+        return cook_sites(db, claims, skip=KNOWN_UNSEARCHABLE | UNSEARCHABLE.current())
+
+    for attempt in range(1, MAX_SITE_ATTEMPTS + 1):
+        sites = dict(searchable())
         if not sites:
             return NO_SEARCHABLE_SITES_DETAIL if cook_sites(db, claims) else NO_SITES_DETAIL
         try:
@@ -304,8 +313,8 @@ def _look_sites(
             UNSEARCHABLE.add(exc.domains)
             if not exc.domains & set(sites):
                 raise  # it named none of the sites asked for: dropping nothing would not help
-            if attempt == 2 and cook_sites(db, claims, skip=UNSEARCHABLE.current()):
-                raise  # already retried once: a failure
+            if attempt == MAX_SITE_ATTEMPTS and searchable():
+                raise  # out of attempts: a failure
     return NO_SEARCHABLE_SITES_DETAIL
 
 
