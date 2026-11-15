@@ -980,6 +980,58 @@ class TestFetchPageMeta:
 
         assert result == PageMeta("https://static01.nyt.com/hero.jpg", None)
 
+    def _recording_http(self, clients: list, fail_with_proxy: bool = False) -> type:
+        """An AsyncClient stand-in that records each client's ``proxy`` and serves a page with an og:image."""
+
+        class _Resp:
+            text = '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
+            headers = {"content-type": "text/html"}
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class _Http:
+            def __init__(self, *a: Any, **kw: Any) -> None:
+                self.proxy = kw.get("proxy")
+                clients.append(self.proxy)
+
+            async def __aenter__(self) -> "_Http":
+                return self
+
+            async def __aexit__(self, *a: Any) -> bool:
+                return False
+
+            async def get(self, url: str, **kw: Any) -> Any:
+                if fail_with_proxy and self.proxy:
+                    raise httpx.ProxyError("proxy down")
+                return _Resp()
+
+        return _Http
+
+    def test_with_no_proxy_set_the_page_is_fetched_without_one(self, monkeypatch: Any) -> None:
+        monkeypatch.delenv("PAGE_FETCH_PROXY", raising=False)
+        clients: list = []
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._recording_http(clients)):
+            result = asyncio.run(_fetch_page_meta("https://www.allrecipes.com/recipe/1/x/"))
+        assert clients == [None]
+        assert result.image_url == "https://static01.nyt.com/hero.jpg"
+
+    def test_the_page_is_fetched_through_the_page_proxy(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("PAGE_FETCH_PROXY", "http://100.70.123.60:8888")
+        clients: list = []
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._recording_http(clients)):
+            result = asyncio.run(_fetch_page_meta("https://www.allrecipes.com/recipe/1/x/"))
+        assert clients == ["http://100.70.123.60:8888"]
+        assert result.image_url == "https://static01.nyt.com/hero.jpg"
+
+    def test_a_proxy_that_fails_is_skipped_and_the_page_fetched_without_it(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("PAGE_FETCH_PROXY", "http://100.70.123.60:8888")
+        clients: list = []
+        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._recording_http(clients, fail_with_proxy=True)):
+            result = asyncio.run(_fetch_page_meta("https://www.allrecipes.com/recipe/1/x/"))
+        assert clients == ["http://100.70.123.60:8888", None]
+        assert result.image_url == "https://static01.nyt.com/hero.jpg"
+
     def _refusing_http(self, get_calls: list) -> type:
         """An AsyncClient stand-in whose `get` records every call it did NOT refuse to make."""
 

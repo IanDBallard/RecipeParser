@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.35.0] — 2026-11-15
+
+A recipe page is fetched from the owner's home connection, and the image is pinned to Debian bookworm, so Dotdash Meredith's sites (Allrecipes, Serious Eats, EatingWell, Simply Recipes, The Spruce Eats) import again. The owner's decision of 2026-11-15 revisits the 9.21.0 ruling ("no evasion of bot protection") for these two changes only. A browser-fingerprint imitation (curl_cffi and the like) is still out. Every URL import from these sites failed: 18 of the 22 URL jobs since 2026-09-01 (the four that succeeded were all NYT Cooking; the other failures were The Woks of Life, which serves the VM again today).
+
+Root cause, measured from the production VM on 2026-11-15 with the reader's own request (same headers, same `requests`):
+- From the VM's Google Cloud address (AS396982) every Dotdash page answers **402** (pay-per-crawl), or a 403 challenge, whatever the client.
+- From the home address through the Pi, `python:3.11-slim` (now Debian trixie, OpenSSL 3.5, JA4 `t13d1713h1_…`) is still challenged on four of the five sites (403, `cf-mitigated: challenge`).
+- From the home address with `python:3.11-slim-bookworm` (OpenSSL 3.0, JA4 `t13d1812h1_…`, the same handshake as the owner's PC), all six test pages came back 200 with their Recipe JSON-LD.
+
+**Deploy notes:** `PAGE_FETCH_PROXY: http://100.70.123.60:8888` is already in the `api` service's `environment:` in Cayenne's `deploy/docker-compose.yml` (Cayenne #511; it is not a secret). That address is the Pi's tinyproxy, which admits only the VM's tailnet address. Without the setting nothing changes but the base image. Merging deploys (container restart); nothing to migrate.
+
+### ✨ Added
+- `PAGE_FETCH_PROXY`: an HTTP proxy the page fetches go through: `UrlReader`'s direct fetch (every redirect hop) and `_fetch_page_meta`. Jina, Gemini, Supabase and picture downloads never use it. A proxy that cannot be reached (a `ProxyError` or connect timeout, with a 10 s connect limit) is logged and skipped, so the Pi being off is no worse than no proxy: a refusing site still ends in "refuses automated readers (HTTP 402). Open it in your browser…".
+- `is_cloudflare_challenge(headers)`: a `cf-mitigated: challenge` response header is a challenge page, whatever the page is titled. Dotdash Meredith's challenge is titled "Simple Page", which `looks_like_html_challenge` never knew; a 403 already refused, but a challenge served with a 200 would have been read as the recipe.
+
+### ⚠️ Changed
+- `Dockerfile`: `FROM python:3.11-slim-bookworm` (was `python:3.11-slim`, which moved to trixie). Bookworm is Debian oldstable with security support. Cloudflare may start challenging OpenSSL 3.0's handshake too; then these sites fail as they did before this release, with the same message.
+- A direct fetch that Cloudflare challenges says "is blocked by the site's bot-protection challenge page." (was "refuses automated readers (HTTP 403).").
+
+### 🧪 Tests
+- `tests/unit/readers/test_url_direct_fallback.py`: no proxy, the proxy for the direct fetch and never Jina's, every redirect hop through it, a dead proxy falling back to a plain fetch, a dead proxy and a 402 still naming the site, a blank setting, the challenge header on a 403 and on a 200.
+- `tests/test_api.py::TestFetchPageMeta`: the page meta fetched without a proxy, through it, and without it when it fails.
+
 ## [9.34.2] — 2026-11-14
 
 ### 🐛 Fixed

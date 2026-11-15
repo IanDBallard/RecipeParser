@@ -216,6 +216,7 @@ stops advancing is a stuck worker. Cayenne's deploy requires `"auth_mode":"verif
 | `AI_READER_DATABASE_URL` | unset | A Supavisor pooler DSN that logs in as Cayenne's `ai_reader` role, with its password: where the search agent's SQL runs. |
 | `AI_SEARCH_MODEL` | `claude-opus-5-5` | The model behind `POST /search/ask`. |
 | `REGEN_WORKER_ENABLED` | `0` | Set to `1` to run the regen and bulk-recategorise workers inside the API process. Requires `SUPABASE_SERVICE_ROLE_KEY` and Cayenne migration 014 (`regen_rpcs`) on top of the mandatory 013 above — without 014 the `claim_stale_recipes` / `regen_failed` RPCs do not exist and every poll raises. This flag gates only the workers; migration 013 is required regardless of its value. |
+| `PAGE_FETCH_PROXY` | unset | HTTP proxy for recipe-page fetches only (`UrlReader`'s direct fetch and the page-meta GET), e.g. `http://100.70.123.60:8888`, the owner's Pi on the tailnet. Jina, Gemini and Supabase never use it; an unreachable proxy is skipped. See CHANGELOG 9.35.0. |
 
 ### Authentication
 
