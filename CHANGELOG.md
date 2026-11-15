@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.34.2] — 2026-11-14
+
+### 🐛 Fixed
+
+- **"Look on sites you use" found nothing when the cook's sites had the recipe** (Cayenne bug report 5c6f4904's retry). Asked for tomatoes provençal, the look's searches did find Food52's and Food Network's recipes. But the model ran them from the web tools' dynamic-filtering code, couldn't read what came back, used up its 4 searches and offered nothing. Both web tools now set `allowed_callers: ["direct"]`, so the model calls them itself and reads the results.
+- The prompt now says to read each page **with web_fetch** before offering it, and that a find it didn't fetch is thrown away. With direct calls, the model offered three finds from search-result text alone, and the server's fetched check dropped every one.
+- The look may search 6 times (was 4), so one empty query doesn't end it.
+- `thespruceeats.com` and `bbc.co.uk` join `KNOWN_UNSEARCHABLE` (seen refused 2026-11-14).
+- `scripts/look_goldens.yaml` adds `tomatoes-provencal`, with the owner's readable sites.
+
 ## [9.34.1] — 2026-11-14
 
 ### 🐛 Fixed

@@ -21,7 +21,8 @@ How to look
 - You can search and read pages only on the cook's sites, listed in the request.
 - For each gap, search for recipes that fill it while still fitting the rest
   of the question (its diet, time, occasion and the dishes already chosen).
-- Read each promising page before you offer it. Offer only a page you read.
+- Read each promising page with web_fetch before you offer it. A search result's
+  text is not reading the page: a find you did not fetch is thrown away.
 - Keep only a page that is one recipe, and that does fill its gap. Skip lists,
   round-ups, articles, videos and index pages, even when they link to recipes.
 - Never offer an address that did not come from a search result, and never an

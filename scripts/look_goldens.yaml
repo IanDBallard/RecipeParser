@@ -2,7 +2,7 @@
 # Fields: id, question (the turn's question), gaps (what the answer could not supply; each a string,
 # or {missing, heading} when the gap belongs to a group), hosts (the seeded "cook's sites", as
 # cook_sites would return them: lower-case, no www.). Keep the hosts to sites Anthropic's crawler
-# may read: seriouseats.com, theguardian.com and nytimes.com are refused (cooking.nytimes.com is
+# may read: the sites in look.py's KNOWN_UNSEARCHABLE are refused (cooking.nytimes.com is
 # accepted).
 
 - id: vegan-side
@@ -57,3 +57,8 @@
   gaps:
     - {missing: a baked egg dish, heading: Eggs}
   hosts: [smittenkitchen.com, food52.com]
+- id: tomatoes-provencal
+  question: perhaps you could find a recipe for tomatoes provencal
+  gaps:
+    - a tomatoes provençal recipe
+  hosts: [cooking.nytimes.com, thewoksoflife.com, food52.com, finecooking.com, foodnetwork.com, sallysbakingaddiction.com, jamieoliver.com]

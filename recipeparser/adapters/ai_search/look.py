@@ -59,6 +59,7 @@ UNSEARCHABLE_TTL_S = 24 * 60 * 60
 # first look does not spend its attempts discovering them. ``cooking.nytimes.com`` is accepted.
 KNOWN_UNSEARCHABLE = frozenset(
     {
+        "bbc.co.uk",
         "bbcgoodfood.com",
         "bonappetit.com",
         "epicurious.com",
@@ -66,6 +67,7 @@ KNOWN_UNSEARCHABLE = frozenset(
         "seriouseats.com",
         "simplyrecipes.com",
         "theguardian.com",
+        "thespruceeats.com",
     }
 )
 
@@ -80,7 +82,7 @@ _DEFAULT_PORTS = {"https": 443, "http": 80}
 
 @dataclass(frozen=True)
 class LookLimits:
-    searches: int = 4
+    searches: int = 6
     fetches: int = 8
     rounds: int = 8
     seconds: float = 60.0
@@ -339,18 +341,23 @@ def classify(
 
 
 def tool_definitions(hosts: list[str], limits: LookLimits) -> list[dict[str, Any]]:
+    """Both tools are called directly, never from the dynamic-filtering code: on 2026-11-14 the
+    model searched from code, could not read what came back and spent the searches, so a look
+    whose searches had found the recipe offered nothing."""
     return [
         {
             "type": "web_search_20260209",
             "name": "web_search",
             "max_uses": limits.searches,
             "allowed_domains": list(hosts),
+            "allowed_callers": ["direct"],
         },
         {
             "type": "web_fetch_20260209",
             "name": "web_fetch",
             "max_uses": limits.fetches,
             "allowed_domains": list(hosts),
+            "allowed_callers": ["direct"],
         },
     ]
 
