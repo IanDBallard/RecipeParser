@@ -443,6 +443,7 @@ def test_known_refused_sites_are_skipped_from_the_start(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", KNOWN_UNSEARCHABLE)
     assert {"epicurious.com", "bbcgoodfood.com", "seriouseats.com", "nytimes.com"} <= KNOWN_UNSEARCHABLE
+    assert {"thespruceeats.com", "bbc.co.uk"} <= KNOWN_UNSEARCHABLE  # seen refused 2026-11-14
     assert "cooking.nytimes.com" not in KNOWN_UNSEARCHABLE  # Anthropic accepts it
     db = FakeDb(sites=[("food52.com", 3, None), ("epicurious.com", 2, None), ("bbcgoodfood.com", 1, None)])
     client = FakeAnthropic([_found()])

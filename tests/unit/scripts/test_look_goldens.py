@@ -51,10 +51,20 @@ def test_score_candidates_scores_every_offered_candidate() -> None:
     assert tried == [on.url, unread.url]
 
 
-def test_yaml_has_ten_looks_each_with_gaps_and_hosts() -> None:
+def test_yaml_has_eleven_looks_each_with_gaps_and_hosts() -> None:
     entries = goldens.load_goldens(_ROOT / "scripts" / "look_goldens.yaml")
-    assert len(entries) == 10 and len({e.id for e in entries}) == 10
-    refused = {"seriouseats.com", "theguardian.com", "nytimes.com"}
+    assert len(entries) == 11 and len({e.id for e in entries}) == 11
+    refused = {  # look.py's KNOWN_UNSEARCHABLE (this folder may not import adapters)
+        "bbc.co.uk",
+        "bbcgoodfood.com",
+        "bonappetit.com",
+        "epicurious.com",
+        "nytimes.com",
+        "seriouseats.com",
+        "simplyrecipes.com",
+        "theguardian.com",
+        "thespruceeats.com",
+    }
     for e in entries:
         assert e.gaps and 1 <= len(e.hosts) <= 8
         assert not refused & set(e.hosts)
