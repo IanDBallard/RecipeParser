@@ -12,6 +12,11 @@ its visible text. Jina answers 451 for whole domains it will not read —
 seriouseats.com, 2026-10-02 — and those sites serve the page itself to an
 ordinary GET.
 
+With ``PAGE_FETCH_PROXY`` set, the direct fetch (never Jina's) goes through that
+HTTP proxy: in production the owner's Raspberry Pi, so the page is fetched from
+a home connection rather than the VM's Google Cloud address, which Dotdash
+Meredith answers with 402. A proxy that cannot be reached is skipped.
+
 This reader is intentionally thin — all AI work happens downstream in the
 pipeline stages.
 
@@ -29,6 +34,7 @@ import html as html_mod
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 from dataclasses import dataclass
@@ -63,6 +69,32 @@ _PAGE_HEADERS = {
     "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
+
+# An HTTP proxy the page fetches (never Jina's) leave through, e.g. "http://100.70.123.60:8888".
+# On the production VM it is the owner's Raspberry Pi on the tailnet, so a page is fetched
+# from a home connection: from the VM's Google Cloud address Dotdash Meredith's sites answer
+# 402 (pay-per-crawl) to every request (2026-11-15). Unset or blank: no proxy.
+PAGE_FETCH_PROXY_ENV = "PAGE_FETCH_PROXY"
+_PROXY_CONNECT_TIMEOUT = 10  # seconds: an unreachable proxy is given up on quickly, then skipped
+
+
+def page_fetch_proxy() -> Optional[str]:
+    """The proxy URL page fetches use, or None."""
+    value = os.environ.get(PAGE_FETCH_PROXY_ENV, "").strip()
+    return value or None
+
+
+def is_cloudflare_challenge(headers: Any) -> bool:
+    """True when Cloudflare says it answered with a challenge, whatever the page is titled.
+
+    Dotdash Meredith's challenge page is titled "Simple Page", which the title check
+    (``looks_like_html_challenge``) never knew (2026-11-15).
+    """
+    try:
+        value = headers.get("cf-mitigated") or ""
+    except AttributeError:
+        return False
+    return isinstance(value, str) and value.strip().lower() == "challenge"
 
 
 def _is_private_address(addr: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bool:
@@ -549,11 +581,29 @@ class UrlReader(RecipeReader):
     def _read_directly(self, source: str) -> str:
         """The page fetched with a browser user-agent, read from its Recipe JSON-LD or visible text.
 
+        With ``PAGE_FETCH_PROXY`` set the fetch goes through that proxy; a proxy that
+        cannot be reached (or cannot open the tunnel) is skipped and the page is
+        fetched without it, so the proxy being down is never worse than no proxy.
+        """
+        proxy = page_fetch_proxy()
+        if proxy:
+            try:
+                return self._fetch_page_text(source, proxy)
+            except (requests.exceptions.ProxyError, requests.exceptions.ConnectTimeout) as exc:
+                log.warning("UrlReader: page proxy %s failed (%r) — fetching %s without it.", proxy, exc, source)
+        return self._fetch_page_text(source, None)
+
+    def _fetch_page_text(self, source: str, proxy: Optional[str]) -> str:
+        """``_read_directly``'s fetch, through ``proxy`` when one is given.
+
         Redirects are followed by hand, at most ``_MAX_REDIRECTS``, so every hop
-        passes the same private-address checks as the first.
+        passes the same private-address checks as the first. With a proxy, a
+        ProxyError or a connect timeout propagates for the caller to retry without it.
         """
         from recipeparser.exceptions import SiteRefusedError, UrlFetchError
 
+        proxies = {"http": proxy, "https": proxy} if proxy else None
+        timeout: Any = (_PROXY_CONNECT_TIMEOUT, self.timeout) if proxy else self.timeout
         url = source
         for _ in range(_MAX_REDIRECTS + 1):
             try:
@@ -563,7 +613,15 @@ class UrlReader(RecipeReader):
             if unsafe or not _resolves_to_public(urlparse(url).hostname or ""):
                 raise UrlFetchError("is not a public web address.")
             try:
-                response = requests.get(url, headers=_PAGE_HEADERS, timeout=self.timeout, allow_redirects=False)
+                response = requests.get(
+                    url, headers=_PAGE_HEADERS, timeout=timeout, allow_redirects=False, proxies=proxies
+                )
+            except (requests.exceptions.ProxyError, requests.exceptions.ConnectTimeout) as exc:
+                if proxy:
+                    raise
+                if isinstance(exc, requests.Timeout):
+                    raise UrlFetchError("did not respond in time.") from exc
+                raise UrlFetchError(f"could not be fetched: {exc}") from exc
             except requests.Timeout as exc:
                 raise UrlFetchError("did not respond in time.") from exc
             except requests.RequestException as exc:
@@ -575,6 +633,10 @@ class UrlReader(RecipeReader):
         else:
             raise UrlFetchError("redirected too many times.")
 
+        if is_cloudflare_challenge(response.headers):
+            raise SiteRefusedError(
+                f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}", host=host_of(url)
+            )
         if response.status_code in _REFUSING_STATUSES:
             raise SiteRefusedError(
                 f"refuses automated readers (HTTP {response.status_code}). {_PASTE_INSTEAD}", host=host_of(url)

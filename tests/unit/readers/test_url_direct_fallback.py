@@ -327,3 +327,89 @@ def test_a_public_name_that_resolves_to_a_private_address_is_not_public() -> Non
 )
 def test_iso_durations_read_as_words(value: Any, words: str) -> None:
     assert _duration(value) == words
+
+
+# ---------------------------------------------------------------------------
+# PAGE_FETCH_PROXY: the direct fetch leaves through the owner's home connection
+# (2026-11-15). From the VM's Google Cloud address Dotdash Meredith answered 402
+# (pay-per-crawl); through the Pi's tinyproxy the same request was served.
+# ---------------------------------------------------------------------------
+
+_PROXY = "http://100.70.123.60:8888"
+
+
+def test_with_no_proxy_set_the_direct_fetch_goes_out_as_before(public_dns: Any, monkeypatch: Any) -> None:
+    monkeypatch.delenv("PAGE_FETCH_PROXY", raising=False)
+    responses = [_jina_refusal(451), _page(_html_with_json_ld(_SERIOUS_EATS_LD))]
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=responses) as mock_get:
+        UrlReader().read(SOURCE)
+    assert mock_get.call_args_list[1].kwargs.get("proxies") is None
+
+
+def test_the_direct_fetch_goes_through_the_proxy_and_jina_does_not(public_dns: Any, monkeypatch: Any) -> None:
+    monkeypatch.setenv("PAGE_FETCH_PROXY", _PROXY)
+    responses = [_jina_refusal(451), _page(_html_with_json_ld(_SERIOUS_EATS_LD))]
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=responses) as mock_get:
+        [chunk] = UrlReader().read(SOURCE)
+    assert chunk.text.startswith("# 5-Ingredient Black Bean Soup")
+    jina_call, direct_call = mock_get.call_args_list
+    assert jina_call.kwargs.get("proxies") is None
+    assert direct_call.kwargs["proxies"] == {"http": _PROXY, "https": _PROXY}
+
+
+def test_every_redirect_hop_goes_through_the_proxy(public_dns: Any, monkeypatch: Any) -> None:
+    monkeypatch.setenv("PAGE_FETCH_PROXY", _PROXY)
+    hop = _page("", status=301, location="https://www.seriouseats.com/final")
+    responses = [_jina_refusal(451), hop, _page(_html_with_json_ld(_SERIOUS_EATS_LD))]
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=responses) as mock_get:
+        UrlReader().read(SOURCE)
+    assert [c.kwargs["proxies"] for c in mock_get.call_args_list[1:]] == [{"http": _PROXY, "https": _PROXY}] * 2
+
+
+def test_a_proxy_that_cannot_be_reached_falls_back_to_fetching_without_it(public_dns: Any, monkeypatch: Any) -> None:
+    """The Pi offline is no worse than no proxy: the VM fetches the page itself."""
+    monkeypatch.setenv("PAGE_FETCH_PROXY", _PROXY)
+    responses = [
+        _jina_refusal(451),
+        requests.exceptions.ProxyError("Unable to connect to proxy"),
+        _page(_html_with_json_ld(_SERIOUS_EATS_LD)),
+    ]
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=responses) as mock_get:
+        [chunk] = UrlReader().read(SOURCE)
+    assert chunk.text.startswith("# 5-Ingredient Black Bean Soup")
+    assert mock_get.call_args_list[2].kwargs.get("proxies") is None
+
+
+def test_a_dead_proxy_and_a_refusing_site_still_name_the_site(public_dns: Any, monkeypatch: Any) -> None:
+    monkeypatch.setenv("PAGE_FETCH_PROXY", _PROXY)
+    responses = [_jina_refusal(451), requests.exceptions.ProxyError("down"), _page("Payment Required", status=402)]
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=responses):
+        with pytest.raises(SiteRefusedError) as excinfo:
+            UrlReader().read(SOURCE)
+    assert str(excinfo.value) == f"refuses automated readers (HTTP 402). {_PASTE}"
+
+
+def test_a_blank_proxy_setting_is_no_proxy(public_dns: Any, monkeypatch: Any) -> None:
+    monkeypatch.setenv("PAGE_FETCH_PROXY", "   ")
+    responses = [_jina_refusal(451), _page(_html_with_json_ld(_SERIOUS_EATS_LD))]
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=responses) as mock_get:
+        UrlReader().read(SOURCE)
+    assert mock_get.call_args_list[1].kwargs.get("proxies") is None
+
+
+def test_a_cloudflare_challenge_header_is_a_challenge_whatever_the_page_is_titled(public_dns: Any) -> None:
+    """Dotdash Meredith's challenge is titled "Simple Page", which the title check never knew."""
+    page = _page("<html><head><title>Simple Page</title></head><body></body></html>", status=403)
+    page.headers["cf-mitigated"] = "challenge"
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=[_jina_refusal(451), page]):
+        with pytest.raises(SiteRefusedError) as excinfo:
+            UrlReader().read(SOURCE)
+    assert str(excinfo.value) == f"is blocked by the site's bot-protection challenge page. {_PASTE}"
+
+
+def test_a_challenge_header_on_a_200_is_never_read_as_a_recipe(public_dns: Any) -> None:
+    page = _page("<html><head><title>Simple Page</title></head><body><article>Loading</article></body></html>")
+    page.headers["cf-mitigated"] = "challenge"
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=[_jina_refusal(451), page]):
+        with pytest.raises(SiteRefusedError):
+            UrlReader().read(SOURCE)

@@ -83,6 +83,7 @@ from recipeparser.io.readers.pdf import PdfReader as _PdfReader
 from recipeparser.io.readers.url import PAGE_USER_AGENT as _PAGE_USER_AGENT
 from recipeparser.io.readers.url import PageMeta, UrlReader, looks_like_badge, page_meta_from_html
 from recipeparser.io.readers.url import is_unsafe_fetch_target as _is_unsafe_fetch_target
+from recipeparser.io.readers.url import page_fetch_proxy as _page_fetch_proxy
 from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.category_sources.restore_paths import clean_path, ensure_category_paths, restore_grid
 from recipeparser.io.writers.supabase import _get_creds, write_recipe_to_supabase
@@ -600,28 +601,42 @@ async def _fetch_page_meta(url: str) -> PageMeta:
     timeout — is a page without meta, never a failed job. A non-http(s)
     scheme, an empty host, or a host that is plainly local or private
     (``is_unsafe_fetch_target``) is refused before the GET, with no DNS
-    resolution performed.
+    resolution performed. With ``PAGE_FETCH_PROXY`` set the GET goes through that
+    proxy, and is made without it when the proxy cannot be reached.
     """
     try:
         # Inside the try: urlparse raises on a malformed address ("http://[::1"), and a malformed
         # address is a page without meta, not a failed job.
         if _is_unsafe_fetch_target(url):
             return PageMeta(None, None)
-        async with httpx.AsyncClient(
-            timeout=15,
-            follow_redirects=True,
-            headers={"User-Agent": _PAGE_USER_AGENT, "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
-        ) as http:
-            resp = await http.get(url)
-            resp.raise_for_status()
-            ctype = resp.headers.get("content-type", "")
-            if ctype and "html" not in ctype.lower():
-                return PageMeta(None, None)
-            # The head is at the top; a megabyte is more than any head needs.
-            return page_meta_from_html(resp.text[:1_000_000])
+        proxy = _page_fetch_proxy()
+        if proxy:
+            # Through the page proxy, as UrlReader's direct fetch goes; a proxy that fails is skipped.
+            try:
+                return await _get_page_meta(url, proxy)
+            except (httpx.ProxyError, httpx.ConnectTimeout, httpx.ConnectError) as exc:
+                logger.warning("Page proxy %s failed for %s (%r) — fetching its meta without it.", proxy, url, exc)
+        return await _get_page_meta(url, None)
     except Exception as exc:
         logger.info("Page meta unavailable for %s (%s) — falling back to the scraper's markdown.", url, exc)
         return PageMeta(None, None)
+
+
+async def _get_page_meta(url: str, proxy: Optional[str]) -> PageMeta:
+    """_fetch_page_meta's GET, through ``proxy`` when one is given; raises on any failure."""
+    async with httpx.AsyncClient(
+        timeout=15,
+        follow_redirects=True,
+        proxy=proxy,
+        headers={"User-Agent": _PAGE_USER_AGENT, "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
+    ) as http:
+        resp = await http.get(url)
+        resp.raise_for_status()
+        ctype = resp.headers.get("content-type", "")
+        if ctype and "html" not in ctype.lower():
+            return PageMeta(None, None)
+        # The head is at the top; a megabyte is more than any head needs.
+        return page_meta_from_html(resp.text[:1_000_000])
 
 
 # ---------------------------------------------------------------------------
