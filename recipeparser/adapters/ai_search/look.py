@@ -250,8 +250,8 @@ def check_candidates(
     ``MAX_URL_CHARS`` long and on one of ``hosts`` (or a subdomain; ``hosts=None`` skips the host
     condition) can be matched, so an ``http`` or ambiguous twin of a good address never displaces it.
     A candidate is dropped when in ``exclude`` or offered already (both compared on
-    ``normalise_url``), or, given ``gap_count``, when its gap is not one of those looked for. An address no parser can read is skipped,
-    never an error: one bad address does not cost the good finds.
+    ``normalise_url``), or, given ``gap_count``, when its gap is not one of those looked for.
+    An address no parser can read is skipped, never an error: one bad address does not cost the good finds.
     """
     read: dict[str, str] = {}
     for u in sorted(fetched):  # sorted: the same fetched address wins every time
