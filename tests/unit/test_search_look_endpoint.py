@@ -369,6 +369,37 @@ def test_web_scope_sends_blocked_domains_cook_sites_first(monkeypatch: pytest.Mo
         assert set(tool["blocked_domains"][2:]) == {"x.com", "nytimes.com"}
 
 
+def test_web_blocked_trims_at_the_cap_and_keeps_the_cook_sites(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_api, "MAX_BLOCKED_DOMAINS", 3)
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset({"nytimes.com"}))
+    monkeypatch.setattr(search_api.refusing_hosts, "blocked_now", lambda sb, now: {"a.com", "b.com", "food52.com"})
+    db = FakeDb(sites=[("food52.com", 12, "Food52"), ("smittenkitchen.com", 9, None)])
+    blocked, cook = search_api._web_blocked(db, PAYLOAD, lambda: object())
+    assert blocked == ["food52.com", "smittenkitchen.com", "a.com"]
+    assert cook == {"food52.com": "Food52", "smittenkitchen.com": "smittenkitchen.com"}
+
+
+def test_web_blocked_survives_a_refusing_hosts_read_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset({"nytimes.com"}))
+    UNSEARCHABLE.add({"epicurious.com"})
+
+    def boom(sb: Any, now: Any) -> set[str]:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(search_api.refusing_hosts, "blocked_now", boom)
+    blocked, _ = search_api._web_blocked(FakeDb(), PAYLOAD, lambda: object())
+    assert blocked == ["food52.com", "seriouseats.com", "epicurious.com", "nytimes.com"]
+
+
+def test_web_scope_unsearchable_sites_fail_and_are_remembered() -> None:
+    client = FakeAnthropic([_refused("bbc.co.uk")])
+    tc, _ = _app(client=client)
+    lines = _lines(_post(tc, WEB))
+    assert lines[-1]["type"] == "error" and lines[-1]["code"] == "failed"
+    assert "bbc.co.uk" in UNSEARCHABLE.current()
+    assert len(client.calls) == 1  # no retry in the web scope
+
+
 def test_web_scope_never_returns_no_sites() -> None:
     tc, _ = _app(db=FakeDb(sites=[]))
     lines = _lines(_post(tc, WEB))

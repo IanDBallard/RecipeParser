@@ -294,10 +294,10 @@ def _blocked(get_service_client: Callable[[], Any], hosts: set[str]) -> set[str]
         return set()
 
 
-# Anthropic documents no limit for ``blocked_domains`` (neither the SDK's parameter docs nor the tool
-# pages give one), so this is a conservative cap that keeps the request small. The cook's own sites
-# come first in the list, so they are the last to be cut.
-MAX_BLOCKED_DOMAINS = 100
+# Anthropic documents no cap on ``blocked_domains`` for the Messages API; the only documented number
+# is the 64-domain cap per list for Managed Agents, so that is the conservative limit used here. The
+# cook's own sites come first in the list, so they are the last to be cut.
+MAX_BLOCKED_DOMAINS = 64
 
 
 def _web_blocked(
