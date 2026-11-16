@@ -61,7 +61,7 @@ from recipeparser.adapters.shares_api import build_router as _build_share_router
 from recipeparser.adapters.shopping_api import build_router as _build_shopping_router
 from recipeparser.adapters.search_api import build_router as _build_search_router
 from recipeparser.adapters.household_api import build_router as _build_household_router
-from recipeparser.config import AI_SEARCH_MODEL, MAX_UPLOAD_BYTES, ai_search_secrets
+from recipeparser.config import AI_SEARCH_MODEL, MAX_PICTURE_BYTES, MAX_UPLOAD_BYTES, ai_search_secrets
 from recipeparser.adapters import refusing_hosts
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import host_of, web_citation
@@ -1104,13 +1104,18 @@ _HEIC_SENTENCE = "Cayenne can't read HEIC photos yet. Share it as a JPEG instead
 _WEBP_SENTENCE = "Cayenne can't read WebP photos yet. Share it as a JPEG instead."
 
 
-def _too_large_sentence(size: int) -> str:
-    """The 413 detail: the client shows it verbatim, like the 422 sentences above."""
+def _too_large_sentence(size: int, ceiling: Optional[int] = None) -> str:
+    """The 413 detail: the client shows it verbatim, like the 422 sentences above.
+
+    ``ceiling`` is the limit that refused it: ``MAX_UPLOAD_BYTES`` (the default,
+    read at call time) for an import, ``MAX_PICTURE_BYTES`` for a picture.
+    """
+    ceiling = MAX_UPLOAD_BYTES if ceiling is None else ceiling
     # Always MB with one decimal; Cayenne's formatBytes agrees at or above 1 MB —
     # the two must stay in step if the ceiling ever drops below that.
     return (
         f"This file is {size / 1_000_000:.1f} MB. "
-        f"Cayenne takes files up to {MAX_UPLOAD_BYTES // 1_000_000} MB."
+        f"Cayenne takes files up to {ceiling // 1_000_000} MB."
     )
 
 
@@ -2034,15 +2039,19 @@ async def set_recipe_image(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
-    # The ceiling and its sentence are `/jobs/file`'s, after the type check for
-    # the same reason: a small file of the wrong kind is a 422, not a 413.
+    # The picture ceiling (config.MAX_PICTURE_BYTES, lower than an import's) and
+    # `/jobs/file`'s sentence, after the type check for the same reason: a small
+    # file of the wrong kind is a 422, not a 413.
     size = file.size
     data: Optional[bytes] = None
     if size is None:
         data = await file.read()
         size = len(data)
-    if size > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=_too_large_sentence(size))
+    if size > MAX_PICTURE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=_too_large_sentence(size, MAX_PICTURE_BYTES),
+        )
     if data is None:
         data = await file.read()
     if not data:

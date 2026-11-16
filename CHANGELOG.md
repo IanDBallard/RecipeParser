@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.36.3] — 2026-11-16
+
+`POST /jobs/file` takes files up to 100 MB (was 50 MB). An illustrated cookbook EPUB runs past 50 MB, and one was refused (Cayenne bug report 63285b5d). Cayenne's intake carries the same number and must ship with it (Cayenne `domain/ingestion.ts`); until it does, the web app still refuses at 50 MB before uploading.
+
+### ⚠️ Changed
+- `config.MAX_UPLOAD_BYTES`: 100,000,000 (was 50,000,000). The 413 sentence follows: "Cayenne takes files up to 100 MB." Paprika and Mela exports stay exempt.
+
+### ✨ Added
+- `config.MAX_PICTURE_BYTES` = 50,000,000: `POST /recipes/{id}/image` keeps the old ceiling. That endpoint holds the whole picture in memory on a 2 GB VM (F-426), and no recipe photo needs more. `_too_large_sentence` takes the ceiling that refused the file.
+
+---
+
 ## [9.36.2] — 2026-11-16
 
 ### 🐛 Fixed
