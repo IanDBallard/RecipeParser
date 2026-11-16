@@ -233,7 +233,7 @@ def _plain(text: str) -> str:
 def check_candidates(
     raw: Iterable[RawCandidate],
     *,
-    hosts: set[str],
+    hosts: set[str] | None,
     fetched: set[str],
     exclude: set[str],
     gap_count: int | None = None,
@@ -289,9 +289,10 @@ def check_candidates(
     return kept
 
 
-def _emittable(url: str, hosts: set[str]) -> bool:
+def _emittable(url: str, hosts: set[str] | None) -> bool:
     """Whether a fetched address may be emitted: unambiguous, readable, ``https``, at most
-    ``MAX_URL_CHARS`` long, on one of ``hosts`` (or a subdomain)."""
+    ``MAX_URL_CHARS`` long, on one of ``hosts`` (or a subdomain); ``hosts=None`` (the open web)
+    drops only the host condition."""
     if len(url) > MAX_URL_CHARS or not is_unambiguous(url):
         return False
     try:
@@ -301,7 +302,7 @@ def _emittable(url: str, hosts: set[str]) -> bool:
         return False
     if parts.scheme.lower() != "https":
         return False
-    return site_of(url_host(url), hosts) is not None
+    return hosts is None or site_of(url_host(url), hosts) is not None
 
 
 def classify(
@@ -340,23 +341,33 @@ def classify(
 # -- the agent ------------------------------------------------------------------------------------
 
 
-def tool_definitions(hosts: list[str], limits: LookLimits) -> list[dict[str, Any]]:
+def tool_definitions(
+    hosts: list[str] | None, limits: LookLimits, *, blocked: list[str] | None = None
+) -> list[dict[str, Any]]:
     """Both tools are called directly, never from the dynamic-filtering code: on 2026-11-14 the
     model searched from code, could not read what came back and spent the searches, so a look
-    whose searches had found the recipe offered nothing."""
+    whose searches had found the recipe offered nothing.
+
+    ``hosts=None`` is the open web: no ``allowed_domains``, and ``blocked_domains`` when ``blocked``
+    is non-empty (the API refuses both on one tool, so the sites path never sends ``blocked``)."""
+    scope: dict[str, Any] = {}
+    if hosts is not None:
+        scope["allowed_domains"] = list(hosts)
+    elif blocked:
+        scope["blocked_domains"] = list(blocked)
     return [
         {
             "type": "web_search_20260209",
             "name": "web_search",
             "max_uses": limits.searches,
-            "allowed_domains": list(hosts),
+            **scope,
             "allowed_callers": ["direct"],
         },
         {
             "type": "web_fetch_20260209",
             "name": "web_fetch",
             "max_uses": limits.fetches,
-            "allowed_domains": list(hosts),
+            **scope,
             "allowed_callers": ["direct"],
         },
     ]
@@ -455,7 +466,8 @@ def run_look(
     model: str,
     system: list[dict[str, Any]],
     user_text: str,
-    hosts: list[str],
+    hosts: list[str] | None,
+    blocked: list[str] | None = None,
     on_progress: Callable[[str], None],
     cancel: threading.Event,
     limits: LookLimits = LookLimits(),
@@ -466,7 +478,7 @@ def run_look(
     Raises ``AgentTimeout``, ``AgentFailed``, ``AgentCancelled`` or ``UnsearchableSites``.
     """
     deadline = clock() + limits.seconds
-    tools = tool_definitions(hosts, limits)
+    tools = tool_definitions(hosts, limits, blocked=blocked)
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_text}]
     fetched: set[str] = set()
     calls = 0
