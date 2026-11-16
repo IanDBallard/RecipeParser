@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.36.1] — 2026-11-16
+
+Two defects in the local CLI and GUI, reported in issue #149.
+
+### 🐛 Fixed
+- **Local imports tagged nothing.** `YamlCategorySource` read only an `axes:` file, but the app writes `categories.yaml` as a `categories:` tree (the bundled default, `--sync-categories`, the GUI editor), so every CLI and GUI run logged "missing top-level 'axes' key" and gave every recipe 0 categories. It now reads the tree too: every name is offered on one axis, `Category`, so TAG makes one call per batch (not one per top-level name, which a 5-RPM free key cannot afford), and a child keeps its parent through `load_parents`. Names are stripped and offered once; the first occurrence decides the parent. An `axes:` file reads as before.
+- **`--concurrency` defaulted to 4, not 1.** With no `--concurrency`, `run_cli_pipeline` left the pipeline at its server default (`core/pipeline.py`, 4) while `--help`, the README and `config.MAX_CONCURRENT_API_CALLS` all say 1. The CLI now passes `config.MAX_CONCURRENT_API_CALLS`. The server's default is unchanged, and the GUI always passed its own value.
+
+---
+
 ## [9.36.0] — 2026-11-15
 
 `POST /search/look` takes `scope`: `"sites"` (the default, today's look on the cook's own sites) or `"web"`, a look on the open web for the gaps in an answer. The web look sends no `allowed_domains`; it sends `blocked_domains` instead (the cook's own sites first, then hosts that refused an import in the last 30 days, then sites Anthropic's crawler refuses, at most 100), and uses its own prompt. It never returns `no_sites`, and a find on any site is checked as before (fetched in this request, `https`, unambiguous). The response stream is unchanged. Request body: `{"question", "answer", "chosen", "measuring", "exclude", "scope"}`.
