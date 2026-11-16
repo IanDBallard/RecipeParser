@@ -225,12 +225,19 @@ PDF_OCR_MAX_PAGES: int = 40
 
 # The largest upload POST /jobs/file takes, refused with a 413 and a sentence. The same number
 # sits in Cayenne's domain/ingestion.ts (MAX_UPLOAD_BYTES), where the intake refuses a file before
-# the upload with the same sentence; change one, change both. Fifty megabytes is a phone photo
-# (3–8), a cookbook EPUB with images (2–20) or a multi-page scan (10–20) with room, and the OCR
-# cap above already bounds what a scan can cost. A .paprikarecipes export is exempt: it is a
-# whole library with its photos (a 250 MB one is real), and its reader bounds each entry instead
-# (io/readers/paprika.py, _MAX_ENTRY_BYTES).
-MAX_UPLOAD_BYTES: int = 50_000_000
+# the upload with the same sentence; change one, change both. A hundred megabytes (was fifty,
+# raised 2026-11-16 by the owner after a cookbook EPUB over 50 MB was refused, bug report
+# 63285b5d): a phone photo is 3–8, a multi-page scan 10–20, and an illustrated cookbook EPUB
+# runs past 50. The OCR cap above already bounds what a scan can cost. A .paprikarecipes export
+# is exempt: it is a whole library with its photos (a 250 MB one is real), and its reader bounds
+# each entry instead (io/readers/paprika.py, _MAX_ENTRY_BYTES).
+MAX_UPLOAD_BYTES: int = 100_000_000
+
+# The largest picture POST /recipes/{id}/image takes. It stays at fifty megabytes: that endpoint
+# holds the whole picture in memory to store it, on a VM with 2 GB (deploy/README.md, *Memory and
+# swap*; F-426), and no recipe photo needs more. Cayenne's domain/recipeImage.ts has the same
+# number (MAX_PICTURE_BYTES); change one, change both.
+MAX_PICTURE_BYTES: int = 50_000_000
 
 # ---------------------------------------------------------------------------
 # Phase 3 — Pipeline control and rate-limit auto-pause

@@ -441,7 +441,15 @@ class TestPostJobsFile:
 
     def test_the_ceiling_sentence_is_the_one_the_client_shows(self) -> None:
         # The exact string Cayenne's intake shows before the upload; the two repos must agree.
-        assert _too_large_sentence(120_300_000) == "This file is 120.3 MB. Cayenne takes files up to 50 MB."
+        assert _too_large_sentence(120_300_000) == "This file is 120.3 MB. Cayenne takes files up to 100 MB."
+
+    def test_imports_take_100_mb_and_pictures_50(self) -> None:
+        # A cookbook EPUB over 50 MB was refused (bug report 63285b5d, 2026-11-16).
+        # A picture keeps 50 MB: the endpoint holds it in memory on a 2 GB VM (F-426).
+        from recipeparser.config import MAX_PICTURE_BYTES, MAX_UPLOAD_BYTES
+        assert MAX_UPLOAD_BYTES == 100_000_000
+        assert MAX_PICTURE_BYTES == 50_000_000
+        assert _too_large_sentence(60_000_000, MAX_PICTURE_BYTES) == "This file is 60.0 MB. Cayenne takes files up to 50 MB."
 
     def test_pdf_returns_202(self, client: TestClient) -> None:
         with _patch_pipeline_and_writer()[0], \
@@ -1333,13 +1341,13 @@ class TestRecipeImage:
         assert resp.json()["detail"] == "Cayenne can't use .pdf files as a picture."
 
     def test_a_body_over_the_ceiling_is_a_413_with_the_sentence(self, client: TestClient) -> None:
-        with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+        with patch("recipeparser.adapters.api.MAX_PICTURE_BYTES", 16):
             resp = self._post(client, "big.jpg", b"\xff\xd8" + b"\x00" * 20, "image/jpeg")
         assert resp.status_code == 413
         assert resp.json()["detail"] == "This file is 0.0 MB. Cayenne takes files up to 0 MB."
 
     def test_the_type_is_refused_before_the_size(self, client: TestClient) -> None:
-        with patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
+        with patch("recipeparser.adapters.api.MAX_PICTURE_BYTES", 16):
             resp = self._post(client, "menu.pdf", b"\x00" * 17, "application/pdf")
         assert resp.status_code == 422
 
