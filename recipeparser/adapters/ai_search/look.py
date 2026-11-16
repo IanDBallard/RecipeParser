@@ -18,6 +18,10 @@ The fetched-address set is read from the response blocks (R0, ruling 15): every 
 ``web_fetch_tool_result`` whose content is a ``web_fetch_result`` adds its ``url``; the error variant
 and code execution's output are ignored.
 
+The ``web`` scope (``hosts=None``) runs the same loop on the open web: no ``allowed_domains``, the
+cook's own sites, recently refusing sites and crawler-refused sites in ``blocked_domains`` instead, and
+``check_candidates`` drops only the host condition; every other check stands.
+
 A request whose ``allowed_domains`` name a site Anthropic's crawler refuses fails as a whole with a
 400 (ruling 14). ``run_look`` raises ``UnsearchableSites`` with the refused domains; the endpoint
 remembers them in ``UNSEARCHABLE`` for a day and retries once without them.
@@ -233,7 +237,7 @@ def _plain(text: str) -> str:
 def check_candidates(
     raw: Iterable[RawCandidate],
     *,
-    hosts: set[str],
+    hosts: set[str] | None,
     fetched: set[str],
     exclude: set[str],
     gap_count: int | None = None,
@@ -243,11 +247,11 @@ def check_candidates(
     The model's address is never emitted. It must be unambiguous (``is_unambiguous``) and match a
     successfully fetched address on ``fetch_key`` (query kept); the candidate then carries that
     fetched address. Only fetched addresses that are unambiguous, ``https``, at most
-    ``MAX_URL_CHARS`` long and on one of ``hosts`` (or a subdomain) can be matched, so an ``http``
-    or ambiguous twin of a good address never displaces it. A candidate is dropped when in
-    ``exclude`` or offered already (both compared on ``normalise_url``), or, given ``gap_count``,
-    when its gap is not one of those looked for. An address no parser can read is skipped, never
-    an error: one bad address does not cost the good finds.
+    ``MAX_URL_CHARS`` long and on one of ``hosts`` (or a subdomain; ``hosts=None`` skips the host
+    condition) can be matched, so an ``http`` or ambiguous twin of a good address never displaces it.
+    A candidate is dropped when in ``exclude`` or offered already (both compared on
+    ``normalise_url``), or, given ``gap_count``, when its gap is not one of those looked for.
+    An address no parser can read is skipped, never an error: one bad address does not cost the good finds.
     """
     read: dict[str, str] = {}
     for u in sorted(fetched):  # sorted: the same fetched address wins every time
@@ -289,9 +293,10 @@ def check_candidates(
     return kept
 
 
-def _emittable(url: str, hosts: set[str]) -> bool:
+def _emittable(url: str, hosts: set[str] | None) -> bool:
     """Whether a fetched address may be emitted: unambiguous, readable, ``https``, at most
-    ``MAX_URL_CHARS`` long, on one of ``hosts`` (or a subdomain)."""
+    ``MAX_URL_CHARS`` long, on one of ``hosts`` (or a subdomain); ``hosts=None`` (the open web)
+    drops only the host condition."""
     if len(url) > MAX_URL_CHARS or not is_unambiguous(url):
         return False
     try:
@@ -301,7 +306,7 @@ def _emittable(url: str, hosts: set[str]) -> bool:
         return False
     if parts.scheme.lower() != "https":
         return False
-    return site_of(url_host(url), hosts) is not None
+    return hosts is None or site_of(url_host(url), hosts) is not None
 
 
 def classify(
@@ -340,23 +345,33 @@ def classify(
 # -- the agent ------------------------------------------------------------------------------------
 
 
-def tool_definitions(hosts: list[str], limits: LookLimits) -> list[dict[str, Any]]:
+def tool_definitions(
+    hosts: list[str] | None, limits: LookLimits, *, blocked: list[str] | None = None
+) -> list[dict[str, Any]]:
     """Both tools are called directly, never from the dynamic-filtering code: on 2026-11-14 the
     model searched from code, could not read what came back and spent the searches, so a look
-    whose searches had found the recipe offered nothing."""
+    whose searches had found the recipe offered nothing.
+
+    ``hosts=None`` is the open web: no ``allowed_domains``, and ``blocked_domains`` when ``blocked``
+    is non-empty (the API refuses both on one tool, so the sites path never sends ``blocked``)."""
+    scope: dict[str, Any] = {}
+    if hosts is not None:
+        scope["allowed_domains"] = list(hosts)
+    elif blocked:
+        scope["blocked_domains"] = list(blocked)
     return [
         {
             "type": "web_search_20260209",
             "name": "web_search",
             "max_uses": limits.searches,
-            "allowed_domains": list(hosts),
+            **scope,
             "allowed_callers": ["direct"],
         },
         {
             "type": "web_fetch_20260209",
             "name": "web_fetch",
             "max_uses": limits.fetches,
-            "allowed_domains": list(hosts),
+            **scope,
             "allowed_callers": ["direct"],
         },
     ]
@@ -455,7 +470,8 @@ def run_look(
     model: str,
     system: list[dict[str, Any]],
     user_text: str,
-    hosts: list[str],
+    hosts: list[str] | None,
+    blocked: list[str] | None = None,
     on_progress: Callable[[str], None],
     cancel: threading.Event,
     limits: LookLimits = LookLimits(),
@@ -466,7 +482,7 @@ def run_look(
     Raises ``AgentTimeout``, ``AgentFailed``, ``AgentCancelled`` or ``UnsearchableSites``.
     """
     deadline = clock() + limits.seconds
-    tools = tool_definitions(hosts, limits)
+    tools = tool_definitions(hosts, limits, blocked=blocked)
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_text}]
     fetched: set[str] = set()
     calls = 0

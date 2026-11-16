@@ -49,7 +49,11 @@ class FakeTable:
 
     def execute(self):
         out = MagicMock()
-        out.data = [r for r in self.rows if r["host"] in self._hosts and r["last_refused_at"] >= self._cutoff]
+        out.data = [
+            r
+            for r in self.rows
+            if (self._hosts is None or r["host"] in self._hosts) and r["last_refused_at"] >= self._cutoff
+        ]
         return out
 
 
@@ -68,6 +72,14 @@ def test_blocked_hosts_window():
         {"host": "b.com", "last_refused_at": (NOW - timedelta(days=31)).isoformat()},
     ])
     assert refusing_hosts.blocked_hosts(sb, ["https://www.a.com/x", "b.com"], NOW) == {"a.com"}
+
+
+def test_blocked_now_lists_hosts_within_blocked_days():
+    sb = FakeSb([
+        {"host": "a.com", "last_refused_at": (NOW - timedelta(days=29)).isoformat()},
+        {"host": "b.com", "last_refused_at": (NOW - timedelta(days=31)).isoformat()},
+    ])
+    assert refusing_hosts.blocked_now(sb, NOW) == {"a.com"}
 
 
 def test_record_and_clear_normalise_the_host():

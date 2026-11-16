@@ -341,6 +341,100 @@ def test_look_streams_progress_then_candidates() -> None:
     assert state["db"].claims_seen and all(c == PAYLOAD for c in state["db"].claims_seen)
 
 
+def test_scope_defaults_to_sites() -> None:
+    tc, state = _app()
+    assert _lines(_post(tc))[-1]["type"] == "candidates"
+    tools = {t["name"]: t for t in state["client"].calls[0]["tools"]}
+    assert tools["web_search"]["allowed_domains"] == ["food52.com", "seriouseats.com"]
+    assert "blocked_domains" not in tools["web_search"]
+
+
+def test_scope_rejects_unknown_value() -> None:
+    tc, _ = _app()
+    assert _post(tc, {**BODY, "scope": "everywhere"}).status_code == 422
+
+
+WEB = {**BODY, "scope": "web"}
+
+
+def test_web_scope_sends_blocked_domains_cook_sites_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset({"nytimes.com"}))
+    monkeypatch.setattr(search_api.refusing_hosts, "blocked_now", lambda sb, now: {"x.com"})
+    db = FakeDb(sites=[("food52.com", 12, "Food52"), ("smittenkitchen.com", 9, None)])
+    tc, state = _app(db=db, service=object())
+    assert _lines(_post(tc, WEB))[-1]["type"] == "candidates"
+    for tool in state["client"].calls[0]["tools"]:
+        assert "allowed_domains" not in tool
+        assert tool["blocked_domains"][:2] == ["food52.com", "smittenkitchen.com"]
+        assert set(tool["blocked_domains"][2:]) == {"x.com", "nytimes.com"}
+
+
+def test_web_blocked_trims_at_the_cap_and_keeps_the_cook_sites(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_api, "MAX_BLOCKED_DOMAINS", 3)
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset({"nytimes.com"}))
+    monkeypatch.setattr(search_api.refusing_hosts, "blocked_now", lambda sb, now: {"a.com", "b.com", "food52.com"})
+    db = FakeDb(sites=[("food52.com", 12, "Food52"), ("smittenkitchen.com", 9, None)])
+    blocked, cook = search_api._web_blocked(db, PAYLOAD, lambda: object())
+    assert blocked == ["food52.com", "smittenkitchen.com", "a.com"]
+    assert cook == {"food52.com": "Food52", "smittenkitchen.com": "smittenkitchen.com"}
+
+
+def test_web_blocked_survives_a_refusing_hosts_read_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset({"nytimes.com"}))
+    UNSEARCHABLE.add({"epicurious.com"})
+
+    def boom(sb: Any, now: Any) -> set[str]:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(search_api.refusing_hosts, "blocked_now", boom)
+    blocked, _ = search_api._web_blocked(FakeDb(), PAYLOAD, lambda: object())
+    assert blocked == ["food52.com", "seriouseats.com", "epicurious.com", "nytimes.com"]
+
+
+def test_web_scope_unsearchable_sites_fail_and_are_remembered() -> None:
+    client = FakeAnthropic([_refused("bbc.co.uk")])
+    tc, _ = _app(client=client)
+    lines = _lines(_post(tc, WEB))
+    assert lines[-1]["type"] == "error" and lines[-1]["code"] == "failed"
+    assert "bbc.co.uk" in UNSEARCHABLE.current()
+    assert len(client.calls) == 1  # no retry in the web scope
+
+
+def test_web_scope_never_returns_no_sites() -> None:
+    tc, _ = _app(db=FakeDb(sites=[]))
+    lines = _lines(_post(tc, WEB))
+    assert lines[-1]["type"] == "candidates"
+    assert all(line.get("code") != "no_sites" for line in lines)
+
+
+def test_web_scope_emits_a_find_off_the_cook_sites() -> None:
+    url = "https://anysite.example/r/1"
+    candidates = [{"gap": 0, "url": url, "title": "Any", "note": "x"}]
+    response = _response(
+        "end_turn",
+        [*_fetch(url, "f1"), SimpleNamespace(type="text", text=json.dumps({"candidates": candidates}), citations=None)],
+    )
+    tc, _ = _app(client=FakeAnthropic([response]))
+    found = _lines(_post(tc, WEB))[-1]["candidates"]
+    assert len(found) == 1
+    assert found[0]["site"] == "anysite.example" and found[0]["status"] == "importable"
+
+
+def test_web_scope_uses_the_web_prompt() -> None:
+    from recipeparser.adapters.ai_search.look_prompt import web_look_system_blocks
+
+    tc, state = _app()
+    _post(tc, WEB)
+    assert state["client"].calls[0]["system"] == web_look_system_blocks()
+
+
+def test_web_scope_spends_one_search_slot() -> None:
+    gate = AiGate(lambda: _supabase())
+    tc, _ = _app(gate=gate)
+    assert _post(tc, WEB).status_code == 200
+    assert len(gate._search_hour[SUB]) == 1
+
+
 def test_blocked_hosts_mark_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[set[str]] = []
 

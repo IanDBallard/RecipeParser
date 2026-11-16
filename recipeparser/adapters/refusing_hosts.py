@@ -55,3 +55,10 @@ def blocked_hosts(sb: Any, hosts: Iterable[str], now: datetime) -> set[str]:
         sb.table(_TABLE).select("host").in_("host", sorted(wanted)).gte("last_refused_at", cutoff).execute().data
     )
     return {r["host"] for r in rows or []}
+
+
+def blocked_now(sb: Any, now: datetime) -> set[str]:
+    """Every host that refused within the last BLOCKED_DAYS days (the open-web look steers off them)."""
+    cutoff = (now - timedelta(days=BLOCKED_DAYS)).isoformat()
+    rows = sb.table(_TABLE).select("host").gte("last_refused_at", cutoff).execute().data
+    return {r["host"] for r in rows or []}
