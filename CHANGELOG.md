@@ -5,6 +5,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.36.0] — 2026-11-15
+
+`POST /search/look` takes `scope`: `"sites"` (the default, today's look on the cook's own sites) or `"web"`, a look on the open web for the gaps in an answer. The web look sends no `allowed_domains`; it sends `blocked_domains` instead (the cook's own sites first, then hosts that refused an import in the last 30 days, then sites Anthropic's crawler refuses, at most 100), and uses its own prompt. It never returns `no_sites`, and a find on any site is checked as before (fetched in this request, `https`, unambiguous). The response stream is unchanged. Request body: `{"question", "answer", "chosen", "measuring", "exclude", "scope"}`.
+
+---
+
 ## [9.35.0] — 2026-11-15
 
 A recipe page is fetched from the owner's home connection, and the image is pinned to Debian bookworm, so Dotdash Meredith's sites (Allrecipes, Serious Eats, EatingWell, Simply Recipes, The Spruce Eats) import again. The owner's decision of 2026-11-15 revisits the 9.21.0 ruling ("no evasion of bot protection") for these two changes only. A browser-fingerprint imitation (curl_cffi and the like) is still out. Every URL import from these sites failed: 18 of the 22 URL jobs since 2026-09-01 (the four that succeeded were all NYT Cooking; the other failures were The Woks of Life, which serves the VM again today).

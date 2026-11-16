@@ -18,6 +18,10 @@ The fetched-address set is read from the response blocks (R0, ruling 15): every 
 ``web_fetch_tool_result`` whose content is a ``web_fetch_result`` adds its ``url``; the error variant
 and code execution's output are ignored.
 
+The ``web`` scope (``hosts=None``) runs the same loop on the open web: no ``allowed_domains``, the
+cook's own sites, recently refusing sites and crawler-refused sites in ``blocked_domains`` instead, and
+``check_candidates`` drops only the host condition; every other check stands.
+
 A request whose ``allowed_domains`` name a site Anthropic's crawler refuses fails as a whole with a
 400 (ruling 14). ``run_look`` raises ``UnsearchableSites`` with the refused domains; the endpoint
 remembers them in ``UNSEARCHABLE`` for a day and retries once without them.
@@ -243,8 +247,9 @@ def check_candidates(
     The model's address is never emitted. It must be unambiguous (``is_unambiguous``) and match a
     successfully fetched address on ``fetch_key`` (query kept); the candidate then carries that
     fetched address. Only fetched addresses that are unambiguous, ``https``, at most
-    ``MAX_URL_CHARS`` long and on one of ``hosts`` (or a subdomain) can be matched, so an ``http``
-    or ambiguous twin of a good address never displaces it. A candidate is dropped when in
+    ``MAX_URL_CHARS`` long and on one of ``hosts`` (or a subdomain; ``hosts=None`` skips the host
+    condition) can be matched, so an ``http`` or ambiguous twin of a good address never displaces it.
+    A candidate is dropped when in
     ``exclude`` or offered already (both compared on ``normalise_url``), or, given ``gap_count``,
     when its gap is not one of those looked for. An address no parser can read is skipped, never
     an error: one bad address does not cost the good finds.

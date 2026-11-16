@@ -1,5 +1,6 @@
 """POST /search/ask: the agent behind a deeper Library search, streamed (Cayenne AI search §7.1).
-POST /search/look: the look on the cook's own sites for an answer's gaps (Stage 5, §7.2).
+POST /search/look: the look on the cook's own sites (``scope`` "sites", the default) or on the open
+web (``scope`` "web") for an answer's gaps (Stage 5, §7.2).
 
 Refusals before the agent starts are ordinary JSON errors: 401 (token), 422 (body), 503 (not
 configured, or paused) and 429 (the search rate limit, with Retry-After). The gate's slot is spent
@@ -24,7 +25,7 @@ import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
 from datetime import date, datetime, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -58,7 +59,12 @@ from recipeparser.adapters.ai_search.look import (
     run_look,
     url_host,
 )
-from recipeparser.adapters.ai_search.look_prompt import look_request_text, look_system_blocks
+from recipeparser.adapters.ai_search.look_prompt import (
+    look_request_text,
+    look_system_blocks,
+    web_look_request_text,
+    web_look_system_blocks,
+)
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
 from recipeparser.adapters.ai_search.tools import ToolBox
 
@@ -247,6 +253,7 @@ class LookRequest(BaseModel):
     chosen: int = Field(ge=0, le=MAX_ALTERNATIVES - 1)
     measuring: str = Field(min_length=1, max_length=60)
     exclude: list[Annotated[str, Field(max_length=MAX_URL_CHARS)]] = Field(default_factory=list, max_length=MAX_EXCLUDE)
+    scope: Literal["sites", "web"] = "sites"
 
     @model_validator(mode="after")
     def _has_gaps(self) -> LookRequest:
@@ -285,6 +292,34 @@ def _blocked(get_service_client: Callable[[], Any], hosts: set[str]) -> set[str]
     except Exception:  # noqa: BLE001 - the record only colours the rows; it never fails a look
         logger.warning("search look: could not read refusing_hosts", exc_info=True)
         return set()
+
+
+# Anthropic documents no limit for ``blocked_domains`` (neither the SDK's parameter docs nor the tool
+# pages give one), so this is a conservative cap that keeps the request small. The cook's own sites
+# come first in the list, so they are the last to be cut.
+MAX_BLOCKED_DOMAINS = 100
+
+
+def _web_blocked(
+    db: AiReaderDb, claims: dict[str, Any], get_service_client: Callable[[], Any]
+) -> tuple[list[str], dict[str, str]]:
+    """The domains the open-web look must not use, and the cook's searchable sites (host -> name).
+
+    The cook's sites come first (a find on the open web is one they do not already have), then the
+    hosts that refused an import lately, then the sites Anthropic's crawler refuses. De-duplicated
+    in that order and cut to ``MAX_BLOCKED_DOMAINS``. A read error on ``refusing_hosts`` leaves that
+    part out."""
+    refused = KNOWN_UNSEARCHABLE | UNSEARCHABLE.current()
+    cook = cook_sites(db, claims, skip=refused)
+    lately: set[str] = set()
+    sb = get_service_client()
+    if sb is not None:
+        try:
+            lately = refusing_hosts.blocked_now(sb, datetime.now(timezone.utc))
+        except Exception:  # noqa: BLE001 - the record only steers the look; it never fails one
+            logger.warning("search look: could not read refusing_hosts", exc_info=True)
+    ordered = [host for host, _ in cook] + sorted(lately) + sorted(refused)
+    return list(dict.fromkeys(ordered))[:MAX_BLOCKED_DOMAINS], dict(cook)
 
 
 def _look_sites(
@@ -337,6 +372,21 @@ def _look_work(
     calls = tokens = found = 0
     gaps = body.gaps()
 
+    def run_web(blocked: list[str]) -> Any:
+        return run_look(
+            client=client,
+            model=model,
+            system=web_look_system_blocks(),
+            user_text=web_look_request_text(
+                measuring=body.measuring, question=body.question, gaps=gaps, exclude=list(body.exclude)
+            ),
+            hosts=None,
+            blocked=blocked,
+            on_progress=lambda text: emit({"type": "progress", "text": text}),
+            cancel=cancel,
+            limits=replace(limits, seconds=limits.seconds - (time.monotonic() - started)),
+        )
+
     def run(sites: dict[str, str]) -> Any:
         return run_look(
             client=client,
@@ -358,14 +408,25 @@ def _look_work(
     try:
         with usage.attributed(sub, "search", get_client=get_service_client) as ctx:
             try:
-                outcome = _look_sites(db, claims, run)
+                if body.scope == "web":
+                    blocked_list, cook = _web_blocked(db, claims, get_service_client)
+                    try:
+                        raw, fetched = run_web(blocked_list)
+                    except UnsearchableSites as exc:
+                        UNSEARCHABLE.add(exc.domains)  # the next look steers off them
+                        raise
+                    outcome: Any = (cook, (raw, fetched))
+                    hosts: set[str] | None = None
+                else:
+                    outcome = _look_sites(db, claims, run)
+                    hosts = None if isinstance(outcome, str) else set(outcome[0])
                 if isinstance(outcome, str):
                     kind = "no_sites"
                     emit(_error("no_sites", outcome))
                 else:
                     sites, (raw, fetched) = outcome
                     checked = check_candidates(
-                        raw, hosts=set(sites), fetched=fetched, exclude=set(body.exclude), gap_count=len(gaps)
+                        raw, hosts=hosts, fetched=fetched, exclude=set(body.exclude), gap_count=len(gaps)
                     )
                     own = own_source_urls(db, claims, [c.url for c in checked]) if checked else {}
                     blocked = _blocked(get_service_client, {url_host(c.url) for c in checked})
