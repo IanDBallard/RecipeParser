@@ -24,7 +24,7 @@ from recipeparser.adapters import search_api
 from recipeparser.adapters.ai_gate import PAUSED_DETAIL, AiGate
 from recipeparser.adapters.ai_search import ai_db
 from recipeparser.adapters.ai_search.ai_db import QueryResult
-from recipeparser.adapters.ai_search.look import UNSEARCHABLE
+from recipeparser.adapters.ai_search.look import UNSEARCHABLE, WEB_BLOCK_REFUSED
 
 MODEL = "claude-opus-5-5"
 SUB = "11111111-1111-1111-1111-111111111111"
@@ -57,8 +57,10 @@ def _isolated(monkeypatch: pytest.MonkeyPatch) -> Any:
     # The fakes use real hostnames; the known-refused list is switched back on where a test needs it.
     monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset())
     UNSEARCHABLE.clear()
+    WEB_BLOCK_REFUSED.clear()
     yield
     UNSEARCHABLE.clear()
+    WEB_BLOCK_REFUSED.clear()
 
 
 # -- fakes ----------------------------------------------------------------------------------------
@@ -365,8 +367,8 @@ def test_web_scope_sends_blocked_domains_cook_sites_first(monkeypatch: pytest.Mo
     assert _lines(_post(tc, WEB))[-1]["type"] == "candidates"
     for tool in state["client"].calls[0]["tools"]:
         assert "allowed_domains" not in tool
-        assert tool["blocked_domains"][:2] == ["food52.com", "smittenkitchen.com"]
-        assert set(tool["blocked_domains"][2:]) == {"x.com", "nytimes.com"}
+        # The cook's sites, then the crawler-refused sites, then the hosts that refused an import lately.
+        assert tool["blocked_domains"] == ["food52.com", "smittenkitchen.com", "nytimes.com", "x.com"]
 
 
 def test_web_blocked_trims_at_the_cap_and_keeps_the_cook_sites(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -375,7 +377,8 @@ def test_web_blocked_trims_at_the_cap_and_keeps_the_cook_sites(monkeypatch: pyte
     monkeypatch.setattr(search_api.refusing_hosts, "blocked_now", lambda sb, now: {"a.com", "b.com", "food52.com"})
     db = FakeDb(sites=[("food52.com", 12, "Food52"), ("smittenkitchen.com", 9, None)])
     blocked, cook = search_api._web_blocked(db, PAYLOAD, lambda: object())
-    assert blocked == ["food52.com", "smittenkitchen.com", "a.com"]
+    # The cut falls on the recently refusing hosts first, and the crawler-refused sites outlast them.
+    assert blocked == ["food52.com", "smittenkitchen.com", "nytimes.com"]
     assert cook == {"food52.com": "Food52", "smittenkitchen.com": "smittenkitchen.com"}
 
 
@@ -391,13 +394,40 @@ def test_web_blocked_survives_a_refusing_hosts_read_error(monkeypatch: pytest.Mo
     assert blocked == ["food52.com", "seriouseats.com", "epicurious.com", "nytimes.com"]
 
 
-def test_web_scope_unsearchable_sites_fail_and_are_remembered() -> None:
+def test_web_scope_unsearchable_sites_are_dropped_and_the_look_retried_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset({"bbc.co.uk", "nytimes.com"}))
+    client = FakeAnthropic([_refused("bbc.co.uk"), _found()])
+    tc, _ = _app(client=client)
+    lines = _lines(_post(tc, WEB))
+    assert lines[-1]["type"] == "candidates"
+    assert len(client.calls) == 2  # one retry, without the refused domain
+    first, second = (c["tools"][0]["blocked_domains"] for c in client.calls)
+    assert "bbc.co.uk" in first and "nytimes.com" in first
+    assert "bbc.co.uk" not in second and "nytimes.com" in second
+    assert "bbc.co.uk" in UNSEARCHABLE.current()  # the sites look still needs it
+    assert "bbc.co.uk" in WEB_BLOCK_REFUSED.current()
+    # The next web request no longer lists it.
+    client.script.append(_found())
+    _post(tc, WEB)
+    assert "bbc.co.uk" not in client.calls[-1]["tools"][0]["blocked_domains"]
+
+
+def test_web_scope_a_second_refusal_is_a_failed_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_api, "KNOWN_UNSEARCHABLE", frozenset({"bbc.co.uk", "nytimes.com"}))
+    client = FakeAnthropic([_refused("bbc.co.uk"), _refused("nytimes.com")])
+    tc, _ = _app(client=client)
+    lines = _lines(_post(tc, WEB))
+    assert lines[-1]["type"] == "error" and lines[-1]["code"] == "failed"
+    assert len(client.calls) == 2
+    assert {"bbc.co.uk", "nytimes.com"} <= WEB_BLOCK_REFUSED.current()
+
+
+def test_web_scope_a_refusal_naming_none_of_the_blocked_domains_fails_without_a_retry() -> None:
     client = FakeAnthropic([_refused("bbc.co.uk")])
     tc, _ = _app(client=client)
     lines = _lines(_post(tc, WEB))
     assert lines[-1]["type"] == "error" and lines[-1]["code"] == "failed"
-    assert "bbc.co.uk" in UNSEARCHABLE.current()
-    assert len(client.calls) == 1  # no retry in the web scope
+    assert len(client.calls) == 1
 
 
 def test_web_scope_never_returns_no_sites() -> None:

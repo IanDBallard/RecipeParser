@@ -141,6 +141,11 @@ class UnsearchableCache:
 
 UNSEARCHABLE = UnsearchableCache()
 
+# Domains the API refused when they were sent as ``blocked_domains`` (the open-web look): a site the
+# crawler may not read cannot be listed as blocked either, so the web look leaves them off its list.
+# Kept apart from UNSEARCHABLE, which the sites look still needs as it is.
+WEB_BLOCK_REFUSED = UnsearchableCache()
+
 
 # -- addresses ------------------------------------------------------------------------------------
 
