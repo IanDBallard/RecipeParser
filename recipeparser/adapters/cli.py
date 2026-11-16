@@ -21,6 +21,7 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
+from recipeparser.config import MAX_CONCURRENT_API_CALLS
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.io.category_sources.yaml_source import YamlCategorySource
@@ -54,7 +55,8 @@ def run_cli_pipeline(
                             Defaults to ``get_default_output_dir()``.
         client:             An initialised ``google.genai.Client`` instance.
                             Required — raises ``ValueError`` if None.
-        concurrency:        Max parallel Gemini API calls (default: pipeline default).
+        concurrency:        Max parallel Gemini API calls (default:
+                            ``config.MAX_CONCURRENT_API_CALLS``, 1).
         rpm:                Optional RPM cap for the GlobalRateLimiter.
         verbose:            If True, print per-chunk progress to stdout.
         controller:         Optional PipelineController for Pause/Cancel (GUI use).
@@ -113,8 +115,12 @@ def run_cli_pipeline(
         controller=controller,
         category_source=category_source,
     )
-    if concurrency is not None:
-        pipeline_kwargs["concurrency"] = concurrency
+    # The CLI's own default, not RecipePipeline's: the pipeline defaults to 4 for
+    # the server, while --help and the README promise 1, which a free-tier key
+    # (5 requests a minute) can sustain (issue #149).
+    pipeline_kwargs["concurrency"] = (
+        concurrency if concurrency is not None else MAX_CONCURRENT_API_CALLS
+    )
     if rpm is not None:
         pipeline_kwargs["rpm"] = rpm
 

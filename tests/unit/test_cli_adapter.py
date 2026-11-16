@@ -117,11 +117,14 @@ class TestRunCliPipelineHappyPath:
         init_kwargs = MockPipeline.call_args.kwargs
         assert init_kwargs["rpm"] == 20
 
-    def test_concurrency_omitted_when_none(self, tmp_path):
-        """concurrency=None must NOT be forwarded (uses pipeline default)."""
+    def test_concurrency_defaults_to_the_documented_cli_default(self, tmp_path):
+        """concurrency=None runs at config.MAX_CONCURRENT_API_CALLS (1), what --help and
+        the README promise - not the pipeline's server default of 4 (issue #149)."""
+        from recipeparser.config import MAX_CONCURRENT_API_CALLS
         _, MockPipeline, _, _ = self._run(tmp_path, concurrency=None)
         init_kwargs = MockPipeline.call_args.kwargs
-        assert "concurrency" not in init_kwargs
+        assert MAX_CONCURRENT_API_CALLS == 1
+        assert init_kwargs["concurrency"] == MAX_CONCURRENT_API_CALLS
 
     def test_rpm_omitted_when_none(self, tmp_path):
         """rpm=None must NOT be forwarded (uses pipeline default)."""
