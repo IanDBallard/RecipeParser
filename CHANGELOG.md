@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.36.2] — 2026-11-16
+
+### 🐛 Fixed
+- **A refused web look failed for good.** If the API refused some of the web look's `blocked_domains` (HTTP 400, as it does for a site its crawler may not read), 9.36.0 remembered them and returned `failed`, and every later web look listed them again and failed the same way. The look now drops those domains and runs once more, inside the original time limits; the next web look no longer lists them, and a second refusal is a `failed` line.
+- **The blocked list's order.** The list is the cook's own sites, then the sites Anthropic's crawler refuses, then the hosts that refused an import in the last 30 days, cut at 64 (9.36.0's entry said 100; the code already used 64), so the recently refusing hosts are cut first and the cook's sites last.
+
+---
+
 ## [9.36.1] — 2026-11-16
 
 Two defects in the local CLI and GUI, reported in issue #149.

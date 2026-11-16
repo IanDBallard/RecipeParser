@@ -52,6 +52,7 @@ from recipeparser.adapters.ai_search.look import (
     KNOWN_UNSEARCHABLE,
     MAX_URL_CHARS,
     UNSEARCHABLE,
+    WEB_BLOCK_REFUSED,
     LookLimits,
     UnsearchableSites,
     check_candidates,
@@ -306,9 +307,10 @@ def _web_blocked(
     """The domains the open-web look must not use, and the cook's searchable sites (host -> name).
 
     The cook's sites come first (a find on the open web is one they do not already have), then the
-    hosts that refused an import lately, then the sites Anthropic's crawler refuses. De-duplicated
-    in that order and cut to ``MAX_BLOCKED_DOMAINS``. A read error on ``refusing_hosts`` leaves that
-    part out."""
+    sites Anthropic's crawler refuses, then the hosts that refused an import lately. De-duplicated
+    in that order and cut to ``MAX_BLOCKED_DOMAINS``, so the cut falls on the least certain first.
+    Domains the API itself refused as ``blocked_domains`` (``WEB_BLOCK_REFUSED``) are left off. A read
+    error on ``refusing_hosts`` leaves that part out."""
     refused = KNOWN_UNSEARCHABLE | UNSEARCHABLE.current()
     cook = cook_sites(db, claims, skip=refused)
     lately: set[str] = set()
@@ -318,7 +320,8 @@ def _web_blocked(
             lately = refusing_hosts.blocked_now(sb, datetime.now(timezone.utc))
         except Exception:  # noqa: BLE001 - the record only steers the look; it never fails one
             logger.warning("search look: could not read refusing_hosts", exc_info=True)
-    ordered = [host for host, _ in cook] + sorted(lately) + sorted(refused)
+    listable = refused - WEB_BLOCK_REFUSED.current()
+    ordered = [host for host, _ in cook] + sorted(listable) + sorted(lately)
     return list(dict.fromkeys(ordered))[:MAX_BLOCKED_DOMAINS], dict(cook)
 
 
@@ -413,8 +416,19 @@ def _look_work(
                     try:
                         raw, fetched = run_web(blocked_list)
                     except UnsearchableSites as exc:
-                        UNSEARCHABLE.add(exc.domains)  # the next look steers off them
-                        raise
+                        # The API may refuse a site as a blocked domain too: remember it for both lists, and
+                        # run once more without those domains, inside the same limits. A second refusal fails.
+                        UNSEARCHABLE.add(exc.domains)
+                        WEB_BLOCK_REFUSED.add(exc.domains)
+                        retry = [d for d in blocked_list if d not in exc.domains]
+                        if len(retry) == len(blocked_list):
+                            raise  # it named none of them: dropping nothing would not help
+                        try:
+                            raw, fetched = run_web(retry)
+                        except UnsearchableSites as again:
+                            UNSEARCHABLE.add(again.domains)
+                            WEB_BLOCK_REFUSED.add(again.domains)
+                            raise
                     outcome: Any = (cook, (raw, fetched))
                     hosts: set[str] | None = None
                 else:
