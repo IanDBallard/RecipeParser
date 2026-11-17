@@ -151,3 +151,54 @@ def test_search_reads_description_and_defaults_to_empty():
     }
     got = _client(lambda r: httpx.Response(200, json=body)).search("x")
     assert [r.description for r in got] == ["About one", "", ""]
+
+
+def test_search_reads_profile_and_recipe_fields():
+    body = {
+        "web": {
+            "results": [
+                {
+                    "url": "https://a.com/1",
+                    "title": "One",
+                    "profile": {"name": "Serious Eats"},
+                    "recipe": {
+                        "title": "Shakshuka",
+                        "description": "Eggs in sauce",
+                        "publisher": "Serious Eats",
+                        "ingredients": "3 eggs, ...",
+                        "instructions": [{"text": "Heat..."}],
+                    },
+                },
+                {"url": "https://a.com/2", "title": "Two"},
+            ]
+        }
+    }
+    first, second = _client(lambda r: httpx.Response(200, json=body)).search("x")
+    assert first.profile_name == "Serious Eats"
+    assert first.recipe_title == "Shakshuka"
+    assert first.recipe_description == "Eggs in sauce"
+    assert first.recipe_publisher == "Serious Eats"
+    assert first.has_recipe is True
+    assert second.has_recipe is False
+    assert second.profile_name == second.recipe_title == second.recipe_description == second.recipe_publisher == ""
+    assert "3 eggs" not in repr(first) and "Heat" not in repr(first)
+
+
+def test_search_ignores_non_string_recipe_fields():
+    body = {
+        "web": {
+            "results": [
+                {
+                    "url": "https://a.com/1",
+                    "title": "One",
+                    "profile": "oops",
+                    "recipe": {"title": 5, "publisher": {"name": "X"}},
+                },
+                {"url": "https://a.com/2", "title": "Two", "profile": {"name": 7}, "recipe": "nope"},
+            ]
+        }
+    }
+    first, second = _client(lambda r: httpx.Response(200, json=body)).search("x")
+    assert first.recipe_title == "" and first.recipe_publisher == "" and first.profile_name == ""
+    assert first.has_recipe is True
+    assert second.profile_name == "" and second.has_recipe is False

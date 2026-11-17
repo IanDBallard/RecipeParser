@@ -246,3 +246,53 @@ def test_search_does_not_touch_embed_window() -> None:
         gate.check("u1", search=True)
     for _ in range(60):
         gate.check("u1", embed=True)
+
+
+# --- find windows (Brave search turn): apart from the search slots ---
+
+
+def test_find_has_its_own_windows() -> None:
+    gate = _search_gate(_Clock())
+    for _ in range(30):
+        gate.check("u1", find=True)
+    with pytest.raises(HTTPException) as e:
+        gate.check("u1", find=True)
+    assert e.value.status_code == 429
+    assert "You can search again in" in e.value.detail
+    assert e.value.headers["Retry-After"] == "3600"
+    gate.check("u1", search=True)  # the search allowance is untouched
+    gate.check("u2", find=True)  # another user is unaffected
+
+
+def test_find_day_window() -> None:
+    clock = _Clock()
+    gate = _search_gate(clock)
+    for hour, count in enumerate((30, 30, 30, 10)):
+        clock.t = hour * 3600.0
+        for _ in range(count):
+            gate.check("u1", find=True)
+    clock.t = 4 * 3600.0  # the hour window is clear, the day holds 100
+    with pytest.raises(HTTPException) as e:
+        gate.check("u1", find=True)
+    assert e.value.status_code == 429
+    assert e.value.headers["Retry-After"] == str(86400 - 4 * 3600)
+    assert e.value.detail == "You can search again in 20 hours."
+
+
+def test_search_slots_do_not_spend_finds() -> None:
+    gate = _search_gate(_Clock())
+    for _ in range(10):
+        gate.check("u1", search=True)
+    gate.check("u1", find=True)
+
+
+def test_exempt_is_not_capped_for_finds() -> None:
+    gate = _search_gate(_Clock(), paused=True, exempt=True)
+    for _ in range(150):
+        gate.check("u1", find=True)
+
+
+def test_paused_refuses_finds() -> None:
+    with pytest.raises(HTTPException) as e:
+        _search_gate(_Clock(), paused=True).check("u1", find=True)
+    assert (e.value.status_code, e.value.detail) == (503, ai_gate.PAUSED_DETAIL)

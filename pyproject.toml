@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recipeparser"
-version = "9.37.0"
+version = "9.38.0"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -148,6 +148,7 @@ select = ["E", "F", "I", "TID"]
 "tests/unit/ai_search/**" = ["TID"]
 "tests/unit/test_search_endpoint.py" = ["TID"]
 "tests/unit/test_search_look_endpoint.py" = ["TID"]
+"tests/unit/test_search_find_endpoint.py" = ["TID"]
 # The Brave client's tests drive recipeparser.adapters.brave directly by design (Cayenne §11).
 "tests/unit/test_brave.py" = ["TID"]
 # Picture generation test has long assertion lines that cannot easily be split.

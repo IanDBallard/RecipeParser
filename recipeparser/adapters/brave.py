@@ -25,6 +25,17 @@ class BraveResult:
     url: str
     title: str
     description: str = ""
+    profile_name: str = ""
+    recipe_title: str = ""
+    recipe_description: str = ""
+    recipe_publisher: str = ""
+    has_recipe: bool = False
+
+
+def _text(source: object, key: str) -> str:
+    """``source[key]`` when ``source`` is a dict and the value is a string; otherwise empty."""
+    value = source.get(key) if isinstance(source, dict) else None
+    return value if isinstance(value, str) else ""
 
 
 # Brave's ``q`` accepts at most this many characters and words.
@@ -106,8 +117,20 @@ class BraveSearch:
             for item in raw:
                 url, title = item.get("url"), item.get("title")
                 if isinstance(url, str) and url and isinstance(title, str) and title:
-                    description = item.get("description")
-                    results.append(BraveResult(url, title, description if isinstance(description, str) else ""))
+                    profile, recipe = item.get("profile"), item.get("recipe")
+                    # Only these named fields are read; the recipe block's ingredients and steps are never touched.
+                    results.append(
+                        BraveResult(
+                            url,
+                            title,
+                            _text(item, "description"),
+                            _text(profile, "name"),
+                            _text(recipe, "title"),
+                            _text(recipe, "description"),
+                            _text(recipe, "publisher"),
+                            isinstance(recipe, dict),
+                        )
+                    )
             return results
         except (ValueError, AttributeError, TypeError):
             raise BraveError("Brave returned a malformed body") from None

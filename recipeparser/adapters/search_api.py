@@ -1,6 +1,8 @@
 """POST /search/ask: the agent behind a deeper Library search, streamed (Cayenne AI search §7.1).
 POST /search/look: the look on the cook's own sites (``scope`` "sites", the default) or on the open
 web (``scope`` "web") for an answer's gaps (Stage 5, §7.2).
+POST /search/find: Add Recipe's search turn, Brave Search alone on the cook's sites and on the web at
+once, no model; one JSON reply, capped by the gate's find windows (Brave search turn, 2026-11-17).
 
 Refusals before the agent starts are ordinary JSON errors: 401 (token), 422 (body), 503 (not
 configured, or paused) and 429 (the search rate limit, with Retry-After). The gate's slot is spent
@@ -31,7 +33,7 @@ from typing import Annotated, Any, Literal
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, TypeAdapter, model_validator
+from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_validator
 
 from recipeparser import usage
 from recipeparser.adapters import refusing_hosts
@@ -49,6 +51,7 @@ from recipeparser.adapters.ai_search.answer import (
     finalize,
     raw_ids,
 )
+from recipeparser.adapters.ai_search.find import SITES_MAX, WEB_MAX, pick, site_names, sites_query, web_query
 from recipeparser.adapters.ai_search.links import links_sites, to_links
 from recipeparser.adapters.ai_search.look import (
     KNOWN_UNSEARCHABLE,
@@ -60,6 +63,7 @@ from recipeparser.adapters.ai_search.look import (
     UnsearchableSites,
     check_candidates,
     classify,
+    normalise_url,
     run_look,
     url_host,
 )
@@ -92,6 +96,14 @@ LINKS_TIMEOUT_S = 5.0
 LINKS_MODEL = "brave-web-search"
 LINKS_STEP = "look_links"
 LINKS_WORKER_NAME = "search-look-links"
+# The find's Brave requests: the usage step they are recorded under (the model is LINKS_MODEL), how
+# long the find waits for them from submission, and the reply's own refusals.
+FIND_STEP = "find"
+FIND_TIMEOUT_S = 5.0
+FIND_WORKER_NAME = "search-find"
+MAX_QUERY_CHARS = 120
+FIND_UNSET_DETAIL = "Searching the web isn't set up."
+FIND_FAILED_DETAIL = "Couldn't search the web just now."
 
 _ANSWER: TypeAdapter[Answer] = TypeAdapter(Answer)
 
@@ -606,6 +618,111 @@ async def look_stream(
         yield line
 
 
+# -- POST /search/find ----------------------------------------------------------------------------
+
+
+class FindRequest(BaseModel):
+    query: str
+    exclude: list[Annotated[str, Field(max_length=MAX_URL_CHARS)]] = Field(default_factory=list, max_length=MAX_EXCLUDE)
+
+    @field_validator("query")
+    @classmethod
+    def _stripped_query(cls, value: str) -> str:
+        value = value.strip()
+        if not 1 <= len(value) <= MAX_QUERY_CHARS:
+            raise ValueError(f"the query must be 1 to {MAX_QUERY_CHARS} characters")
+        return value
+
+
+def _find_result(
+    future: concurrent.futures.Future[list[BraveResult]] | None, group: str, submitted: float
+) -> list[BraveResult] | None:
+    """One request's results, waiting no longer than ``FIND_TIMEOUT_S`` from submission; None when it
+    failed or timed out (and when it was never sent). The query is never logged."""
+    if future is None:
+        return None
+    remaining = max(0.0, FIND_TIMEOUT_S - (time.monotonic() - submitted))
+    try:
+        return future.result(timeout=remaining)
+    except concurrent.futures.TimeoutError:
+        logger.warning("search find: the %s request timed out after %.1f s", group, FIND_TIMEOUT_S)
+    except BraveError as exc:  # its message never carries the key or the query
+        logger.warning("search find: the %s request failed: %s", group, exc)
+    except Exception as exc:  # noqa: BLE001 - one request failing empties only its group
+        logger.warning("search find: the %s request failed: %s", group, type(exc).__name__)
+    return None
+
+
+def _find_work(
+    *,
+    body: FindRequest,
+    claims: dict[str, Any],
+    db: AiReaderDb,
+    brave: BraveSearch,
+    get_service_client: Callable[[], Any],
+) -> dict[str, Any]:
+    """Ask Brave about the cook's sites and the open web at once and build the two groups of rows.
+
+    Returns ``{"sites": [...], "web": [...], "sites_asked": bool}``; a group whose request failed is
+    empty. Raises 502 when every request sent failed. Each request sent is one ``ai_usage`` row."""
+    sub = str(claims.get("sub", ""))
+    started = time.monotonic()
+    sites_rows: list[dict[str, Any]] = []
+    web_rows: list[dict[str, Any]] = []
+    requests = 0
+    try:
+        with usage.attributed(sub, "search", get_client=get_service_client):
+            cook = cook_sites(db, claims)
+            cook_hosts = [host for host, _ in cook]
+            sites_q = sites_query(body.query, cook_hosts)
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix=FIND_WORKER_NAME)
+            try:
+                submitted = time.monotonic()
+                sites_future = executor.submit(brave.search, sites_q) if sites_q is not None else None
+                web_future = executor.submit(brave.search, web_query(body.query))
+                sites_results = _find_result(sites_future, "sites", submitted)
+                web_results = _find_result(web_future, "web", submitted)
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
+            # Recorded here, on the request's own thread: the workers do not inherit the usage context.
+            requests = 1 if sites_future is None else 2
+            for _ in range(requests):
+                usage.record_tool(FIND_STEP, LINKS_MODEL)
+            if sites_results is None and web_results is None:
+                raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=FIND_FAILED_DETAIL)
+
+            seen: set[str] = set()
+            for url in body.exclude:
+                try:
+                    seen.add(normalise_url(url))
+                except ValueError:
+                    continue
+            picked_sites = pick(
+                sites_results or [], hosts=set(cook_hosts), seen=seen, limit=SITES_MAX, recipes_first=True
+            )
+            picked_web = pick(web_results or [], hosts=None, seen=seen, limit=WEB_MAX)
+            picked = picked_sites + picked_web
+            if picked:
+                own = own_source_urls(db, claims, [c.url for c in picked])
+                blocked = _blocked(get_service_client, {url_host(c.url) for c in picked})
+                # Brave's names for any site, then the cook's own names for theirs.
+                names = {**site_names([*(sites_results or []), *(web_results or [])]), **dict(cook)}
+                rows = classify(picked, sites=names, own=own, blocked=blocked)
+                for row in rows:
+                    row.pop("gap", None)
+                sites_rows, web_rows = rows[: len(picked_sites)], rows[len(picked_sites) :]
+            return {"sites": sites_rows, "web": web_rows, "sites_asked": sites_future is not None}
+    finally:
+        logger.info(
+            "search find user=%s sites=%d web=%d requests=%d duration_ms=%.0f",
+            sub,
+            len(sites_rows),
+            len(web_rows),
+            requests,
+            (time.monotonic() - started) * 1000,
+        )
+
+
 def build_router(
     verify_jwt: Callable[..., Any],
     gate: AiGate,
@@ -658,5 +775,17 @@ def build_router(
             ),
             media_type=MEDIA_TYPE,
         )
+
+    # JSON, not a stream: no model runs, and both Brave requests end within FIND_TIMEOUT_S.
+    @router.post("/search/find")
+    def find(body: FindRequest, claims: dict[str, Any] = Depends(verify_jwt)) -> dict[str, Any]:
+        db = get_db()
+        if db is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=NOT_CONFIGURED_DETAIL)
+        brave = get_brave()
+        if brave is None:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=FIND_UNSET_DETAIL)
+        gate.check(str(claims.get("sub", "")), find=True)  # 503 / 429; a find spends one find slot
+        return _find_work(body=body, claims=dict(claims), db=db, brave=brave, get_service_client=get_service_client)
 
     return router
