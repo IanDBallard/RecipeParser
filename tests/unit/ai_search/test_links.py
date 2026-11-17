@@ -1,7 +1,7 @@
 import pytest
 
 from recipeparser.adapters.ai_search.links import MAX_LINKS, links_sites, to_links
-from recipeparser.adapters.ai_search.look import MAX_TITLE_CHARS, UNSEARCHABLE
+from recipeparser.adapters.ai_search.look import MAX_NOTE_CHARS, MAX_TITLE_CHARS, UNSEARCHABLE
 from recipeparser.adapters.brave import BraveResult
 
 SITES = ["seriouseats.com"]
@@ -100,3 +100,18 @@ def test_unreadable_address_is_skipped():
 def test_links_have_gap_zero_and_empty_note():
     (c,) = to_links([_r("https://seriouseats.com/a")], **_kw())
     assert c.gap == 0 and c.note == ""
+
+
+def test_note_is_brave_description_plain_and_unescaped():
+    r = BraveResult("https://seriouseats.com/a", "T", "Shakshuka is <strong>a versatile</strong> dish that&#x27;s")
+    assert to_links([r], **_kw())[0].note == "Shakshuka is a versatile dish that's"
+
+
+def test_long_description_is_clipped():
+    r = BraveResult("https://seriouseats.com/a", "T", "d" * (MAX_NOTE_CHARS + 50))
+    note = to_links([r], **_kw())[0].note
+    assert len(note) == MAX_NOTE_CHARS and note.endswith("…")
+
+
+def test_no_description_gives_empty_note():
+    assert to_links([_r("https://seriouseats.com/a")], **_kw())[0].note == ""

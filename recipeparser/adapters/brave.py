@@ -24,6 +24,7 @@ class BraveError(Exception):
 class BraveResult:
     url: str
     title: str
+    description: str = ""
 
 
 # Brave's ``q`` accepts at most this many characters and words.
@@ -105,7 +106,8 @@ class BraveSearch:
             for item in raw:
                 url, title = item.get("url"), item.get("title")
                 if isinstance(url, str) and url and isinstance(title, str) and title:
-                    results.append(BraveResult(url, title))
+                    description = item.get("description")
+                    results.append(BraveResult(url, title, description if isinstance(description, str) else ""))
             return results
         except (ValueError, AttributeError, TypeError):
             raise BraveError("Brave returned a malformed body") from None

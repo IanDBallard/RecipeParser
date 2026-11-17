@@ -8,6 +8,7 @@ from typing import Literal
 
 from recipeparser.adapters.ai_search.look import (
     KNOWN_UNSEARCHABLE,
+    MAX_NOTE_CHARS,
     MAX_TITLE_CHARS,
     UNSEARCHABLE,
     RawCandidate,
@@ -65,5 +66,12 @@ def to_links(
         if key in seen or not title:
             continue
         seen.add(key)
-        links.append(RawCandidate(gap=0, url=result.url, title=title, note=""))
+        links.append(
+            RawCandidate(
+                gap=0,
+                url=result.url,
+                title=title,
+                note=_clip(html.unescape(_plain(result.description)), MAX_NOTE_CHARS),
+            )
+        )
     return links

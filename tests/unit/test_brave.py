@@ -137,3 +137,17 @@ def test_fit_sites_caps_twenty_sites_to_leave_the_question_room():
 
 def test_fit_sites_none_fit():
     assert fit_sites("pie " * 100, ["x" * 300 + ".com"]) == []
+
+
+def test_search_reads_description_and_defaults_to_empty():
+    body = {
+        "web": {
+            "results": [
+                {"url": "https://a.com/1", "title": "One", "description": "About one"},
+                {"url": "https://a.com/2", "title": "Two"},
+                {"url": "https://a.com/3", "title": "Three", "description": 5},
+            ]
+        }
+    }
+    got = _client(lambda r: httpx.Response(200, json=body)).search("x")
+    assert [r.description for r in got] == ["About one", "", ""]
