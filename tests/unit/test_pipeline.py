@@ -924,7 +924,8 @@ def test_a_rewritten_title_is_reported_even_when_a_later_stage_fails_the_chunk()
         results = pipeline.run([chunk], on_skip=lambda c, reason, index: skips_seen.append((reason, index)))
     assert results == []
     assert ("ingredient lines did not match the source: Carbonara", 0) in skips_seen
-    assert ("RuntimeError: refine boom", 0) in skips_seen
+    # The failed recipe is named, now that it no longer takes its chunk with it (#149).
+    assert ("Kept: RuntimeError: refine boom", 0) in skips_seen
 
 
 # ---------------------------------------------------------------------------
@@ -1325,3 +1326,122 @@ def test_a_full_pipeline_chunks_restore_fields_reach_assemble():
 def test_a_chunk_without_restore_hands_assemble_none():
     seen = _run_full_pipeline(Chunk(text="Pie", input_type=InputType.URL))
     assert seen["assemble"]["restore"] is None
+
+
+# ---------------------------------------------------------------------------
+# Dropped recipes (RecipeParser #149): one failure must not lose a chunk's
+# other recipes, a transient failure gets a second chance, and the summary
+# says what was lost.
+# ---------------------------------------------------------------------------
+
+def _server_503():
+    from google.genai import errors as genai_errors
+    return genai_errors.ServerError(503, {"message": "high demand", "status": "UNAVAILABLE"})
+
+
+def _three_recipes() -> Extraction:
+    return Extraction([_named(n, None) for n in ("Pakoras", "Wings", "Bhajis")], [])
+
+
+def test_one_failed_recipe_costs_only_that_recipe_not_its_chunk():
+    """Brian's run lost a whole chunk because one recipe's REFINE failed twice."""
+    skips: List[tuple] = []
+    calls: Dict[str, int] = {}
+
+    def refine(raw, **_):
+        calls[raw.name] = calls.get(raw.name, 0) + 1
+        if raw.name == "Wings":
+            raise ValueError("refine(): Gemini returned None for recipe 'Wings'.")
+        return _make_refinement(raw.name)
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=_three_recipes()),          patch(_PATCH_REFINE, side_effect=refine),          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        results = pipeline.run([_book_chunk()], on_skip=lambda c, reason, index: skips.append(reason))
+
+    assert [r.title for r in results] == ["Pakoras", "Bhajis"]
+    assert calls["Wings"] == 2, "a failed recipe is tried once more before it is given up"
+    assert skips == ["Wings: ValueError: refine(): Gemini returned None for recipe 'Wings'."]
+
+
+def test_a_recipe_that_fails_once_is_kept_on_its_second_try_in_source_order():
+    calls: Dict[str, int] = {}
+
+    def refine(raw, **_):
+        calls[raw.name] = calls.get(raw.name, 0) + 1
+        if raw.name == "Pakoras" and calls[raw.name] == 1:
+            raise _server_503()
+        return _make_refinement(raw.name)
+
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, return_value=_three_recipes()),          patch(_PATCH_REFINE, side_effect=refine),          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        results = pipeline.run([_book_chunk()])
+
+    assert [r.title for r in results] == ["Pakoras", "Wings", "Bhajis"]
+
+
+def test_a_chunk_lost_to_a_503_is_tried_again_after_the_others():
+    """Two of Brian's chunks were lost when EXTRACT was still getting 503s after its retries."""
+    first = Chunk(text="first", input_type=InputType.EPUB)
+    second = Chunk(text="second", input_type=InputType.EPUB)
+    order: List[str] = []
+
+    def extract(chunk_text, **_):
+        order.append(chunk_text)
+        if chunk_text == "first" and order.count("first") == 1:
+            raise _server_503()
+        return Extraction([_named(chunk_text.title(), None)], [])
+
+    skips: List[tuple] = []
+    progress: List[tuple] = []
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, side_effect=extract),          patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)),          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        results = pipeline.run(
+            [first, second],
+            on_skip=lambda c, reason, index: skips.append(reason),
+            on_progress=lambda stage, done, total: progress.append((done, total)),
+        )
+
+    assert sorted(r.title for r in results) == ["First", "Second"]
+    assert order[-1] == "first", "the retry waits until the other chunks are done"
+    assert skips == []
+    assert progress[-1] == (2, 2), "a retried chunk counts once"
+
+
+def test_a_chunk_that_fails_its_second_try_too_is_reported_once():
+    chunk = Chunk(text="only", input_type=InputType.EPUB)
+    skips: List[tuple] = []
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, side_effect=_server_503()) as extract:
+        results = pipeline.run([chunk], on_skip=lambda c, reason, index: skips.append((reason, index)))
+
+    assert results == []
+    assert extract.call_count == 2
+    assert len(skips) == 1 and "503" in skips[0][0] and skips[0][1] == 0
+
+
+def test_a_chunk_that_fails_for_another_reason_is_not_tried_again():
+    """Only a transient or rate-limit failure is worth a second pass; a broken key is not."""
+    chunk = Chunk(text="only", input_type=InputType.EPUB)
+    pipeline = _make_pipeline()
+    with patch(_PATCH_EXTRACT, side_effect=ValueError("bad key")) as extract:
+        assert pipeline.run([chunk]) == []
+    assert extract.call_count == 1
+
+
+def test_the_summary_counts_the_chunks_that_failed(caplog):
+    """The log said "23/23 chunks succeeded" for a run that lost four."""
+    good = Chunk(text="good", input_type=InputType.EPUB)
+    bad = Chunk(text="bad", input_type=InputType.EPUB)
+
+    def extract(chunk_text, **_):
+        if chunk_text == "bad":
+            raise ValueError("broken")
+        return Extraction([_named("Good", None)], [])
+
+    pipeline = _make_pipeline()
+    with caplog.at_level("INFO", logger="recipeparser.core.pipeline"),          patch(_PATCH_EXTRACT, side_effect=extract),          patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)),          patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        pipeline.run([good, bad])
+
+    summary = [r.getMessage() for r in caplog.records if "finished" in r.getMessage()][-1]
+    assert "1/2 chunks succeeded" in summary
+    assert "1 failed" in summary

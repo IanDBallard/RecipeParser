@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.36.5] — 2026-11-17
+
+A failure no longer takes a chunk's other recipes with it. RecipeParser #149: a run of The Curry Guy Bible produced 176 recipes where the run before produced 217, while the log said "23/23 chunks succeeded". Four chunks, about forty recipes, were lost whole: two to EXTRACT still getting Gemini's free-tier 503 "high demand" after its retries, one to a single recipe whose REFINE failed after a 503, one to a single recipe whose Fat Token said `ing_1` for `ing_01`.
+
+The per-call retry budget (Cayenne F-426, 180 s for a transient error) is unchanged: no call waits longer. A failure gets another try later instead, when the spike may have passed.
+
+### 🐛 Fixed
+- `_process_chunk`: a recipe whose REFINE, EMBED or ASSEMBLE fails is tried once more after the chunk's other recipes, and failing again is skipped with a reason that names it ("Wings: ValueError: …"); the rest of the chunk is kept, in source order. A cancel still stops the chunk: `refine()` reads one as a failure, so the pipeline checks for it before retrying.
+- `run()`: a chunk lost to a transient Gemini failure (503, 500, 504) or a rate limit (429) is tried once more after every other chunk is done. It counts once in the progress and is reported as skipped only if the second try fails too. Any other failure is not retried, so a broken key fails no slower.
+- The summary says what was lost: "finished. 21/23 chunks succeeded, 2 failed (3 given a second try) → N recipe(s)." (was "23/23 chunks succeeded" whatever happened).
+- `refine()`: a Fat Token whose id differs from one ingredient's only by zero-padding (`ing_1`, `ing_001` for `ing_01`) is read as that ingredient, with a warning, instead of failing the recipe. An id that matches no ingredient still fails it.
+
+---
+
 ## [9.36.4] — 2026-11-17
 
 A `.paprikarecipes` archive from an EPUB or PDF imports into Paprika 4. Paprika 4.0.10 for Windows refused every recipe with a photo, logging "Refusing Paprika file with an invalid photo p264.jpg" (RecipeParser #149): the writer named each photo after the book's own image. Measured on Paprika 4 on 2026-11-17: the reporter's entry failed as written and with only `photo_hash` added, and imported once the photo was named `<UUID>.jpg`, with or without the hash. Paprika 3 accepts either name, which is why it went unseen.

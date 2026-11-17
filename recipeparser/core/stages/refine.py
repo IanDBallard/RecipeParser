@@ -155,6 +155,44 @@ def _check_temperatures(refinement: CayenneRefinement, raw: RecipeExtraction) ->
         log.warning("refine(): '%s': temperature token(s) unwrapped: %s", refinement.title, "; ".join(unwrapped))
 
 
+_ID_PARTS = re.compile(r"^(.*?)(\d+)$")
+
+
+def _repair_token_ids(refinement: CayenneRefinement) -> None:
+    """Read, in place, a Fat Token id that differs from one ingredient's only by zero-padding as that id.
+
+    The model writes ``ing_1`` for ``ing_01`` now and then; ``_validate_fat_tokens`` then failed the
+    recipe, and before #149 the recipe's whole chunk with it. A token whose id matches no ingredient
+    even then is left for the validator to refuse.
+    """
+    def key(token_id: str) -> Optional[tuple]:
+        parts = _ID_PARTS.match(token_id)
+        return (parts.group(1), int(parts.group(2))) if parts else None
+
+    valid_ids = {ing.id for ing in refinement.structured_ingredients}
+    by_key: Dict[tuple, List[str]] = {}
+    for ing_id in valid_ids:
+        k = key(ing_id)
+        if k is not None:
+            by_key.setdefault(k, []).append(ing_id)
+    repaired: List[str] = []
+
+    def fix(match: "re.Match[str]") -> str:
+        token_id = match.group(1)
+        if token_id in valid_ids or is_special_id(token_id):
+            return match.group(0)
+        candidates = by_key.get(key(token_id) or ("", -1), [])
+        if len(candidates) != 1:
+            return match.group(0)
+        repaired.append(f"{token_id}→{candidates[0]}")
+        return "{{" + candidates[0] + match.group(0)[2 + len(token_id):]
+
+    for step in refinement.tokenized_directions:
+        step.text = TOKEN_RE.sub(fix, step.text)
+    if repaired:
+        log.warning("refine(): '%s': Fat Token id(s) read as their ingredient: %s", refinement.title, ", ".join(repaired))
+
+
 def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
     """
     Verify that every Fat Token in tokenized_directions references a valid
@@ -557,6 +595,7 @@ def refine(
         result.yield_checked, yield_warnings = None, []
     for line in yield_warnings:
         log.warning("refine(): '%s': %s", result.title, line)
+    _repair_token_ids(result)
     _validate_fat_tokens(result)
     _check_mentions(result)
     _normalise_line_index(result, raw)
