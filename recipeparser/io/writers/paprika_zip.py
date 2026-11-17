@@ -247,9 +247,10 @@ def _ingest_to_paprika_dict(recipe: IngestResponse) -> Dict[str, Any]:
     - ``tokenized_directions`` → plain-text ``directions`` (Fat Tokens stripped
       to their fallback strings).
     - ``categories`` flat list → Paprika ``categories`` list.
-    - the recovered photo (``recipe.photo``) → ``photo`` + base64 ``photo_data``.
-      Both keys are omitted when there is none: an empty ``photo`` key crashes
-      Paprika for Windows with "Access is denied".
+    - the recovered photo (``recipe.photo``) → ``photo`` + base64 ``photo_data``
+      + ``photo_hash`` (see ``_photo_keys``). ``photo`` and ``photo_data`` are
+      omitted when there is none: an empty ``photo`` key crashes Paprika for
+      Windows with "Access is denied".
     """
     recipe_uid = str(uuid.uuid4()).upper()
     created = datetime.datetime.now(datetime.timezone.utc).strftime(
@@ -290,7 +291,7 @@ def _ingest_to_paprika_dict(recipe: IngestResponse) -> Dict[str, Any]:
         "categories": recipe.categories,
         "created": created,
         "hash": hashlib.sha256(recipe_uid.encode()).hexdigest(),
-        "photo_hash": "",
+        "photo_hash": "",  # replaced by _photo_keys when there is a photo
         "photo_large": None,
         **_photo_keys(recipe),
     }
@@ -300,17 +301,28 @@ _PHOTO_EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "web
 
 
 def _photo_keys(recipe: IngestResponse) -> Dict[str, str]:
-    """``photo`` and ``photo_data`` for a recipe with a recovered photo; nothing otherwise.
+    """``photo``, ``photo_data`` and ``photo_hash`` for a recipe with a photo; nothing otherwise.
 
-    A photo its source never named (Paprika's photo_data) is named by its own
-    digest, so the same photo gets the same name on every export.
+    Written as Paprika writes them in its own export:
+
+    - ``photo`` is a fresh ``<UUID>.<ext>``, never the source's name. Paprika 4
+      for Windows refuses an entry whose photo is named after the book's image
+      ("Refusing Paprika file with an invalid photo p264.jpg", RecipeParser #149)
+      and imports the same entry once the name is a UUID (measured 2026-11-17).
+      Fresh on every export, so neither two recipes sharing one book image nor a
+      book imported twice brings Paprika a photo it already has: Paprika 3
+      crashed on one whose name and bytes were both in its library (2026-11-16).
+    - ``photo_hash`` is the upper-case SHA-256 of the image bytes.
     """
     photo = recipe.photo
     if photo is None or not photo.data:
         return {}
     ext = _PHOTO_EXTENSIONS.get(photo.content_type, "jpg")
-    name = photo.filename or f"{hashlib.sha256(photo.data).hexdigest()[:16]}.{ext}"
-    return {"photo": name, "photo_data": base64.b64encode(photo.data).decode("ascii")}
+    return {
+        "photo": f"{str(uuid.uuid4()).upper()}.{ext}",
+        "photo_data": base64.b64encode(photo.data).decode("ascii"),
+        "photo_hash": hashlib.sha256(photo.data).hexdigest().upper(),
+    }
 
 
 class PaprikaWriter(RecipeWriter):

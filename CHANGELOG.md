@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.36.4] — 2026-11-17
+
+A `.paprikarecipes` archive from an EPUB or PDF imports into Paprika 4. Paprika 4.0.10 for Windows refused every recipe with a photo, logging "Refusing Paprika file with an invalid photo p264.jpg" (RecipeParser #149): the writer named each photo after the book's own image. Measured on Paprika 4 on 2026-11-17: the reporter's entry failed as written and with only `photo_hash` added, and imported once the photo was named `<UUID>.jpg`, with or without the hash. Paprika 3 accepts either name, which is why it went unseen.
+
+### 🐛 Fixed
+- `PaprikaWriter`: a photo is named `<UUID>.<ext>` as Paprika names its own, fresh on every export, so two recipes sharing one image, or a book imported twice, never bring Paprika a photo it already has (Paprika 3 crashed on one whose name and bytes it held, 2026-11-16). `photo_hash` is the upper-case SHA-256 of the image, as in Paprika's export (was always `""`). A recipe without a photo still has no `photo` key.
+
+### ⚠️ Changed
+- `tests/goldens/test_e2e_golden.py` normalises a photo's name to its extension, since it differs per run; the goldens gain `photo_hash`.
+
+---
+
 ## [9.36.3] — 2026-11-16
 
 `POST /jobs/file` takes files up to 100 MB (was 50 MB). An illustrated cookbook EPUB runs past 50 MB, and one was refused (Cayenne bug report 63285b5d). Cayenne's intake carries the same number and must ship with it (Cayenne `domain/ingestion.ts`); until it does, the web app still refuses at 50 MB before uploading.
