@@ -188,10 +188,18 @@ class AiGate:
             wait = max(wait, day[0] + _DAY - now)
         return wait
 
-    def _window_slot(self, hour: Deque[float], day: Deque[float], per_hour: int, per_day: int) -> float:
-        """Spend a slot in the two windows and return 0, or spend nothing and return the wait in seconds."""
+    def _window_slot(
+        self,
+        hours: Dict[str, Deque[float]],
+        days: Dict[str, Deque[float]],
+        user_id: str,
+        per_hour: int,
+        per_day: int,
+    ) -> float:
+        """Spend a slot in the user's two windows and return 0, or spend nothing and return the wait in seconds."""
         now = self._clock()
         with self._lock:
+            hour, day = hours[user_id], days[user_id]
             wait = self._window_wait(hour, day, per_hour, per_day, now)
             if wait > 0:
                 return wait
@@ -208,14 +216,12 @@ class AiGate:
     def _search_slot(self, user_id: str) -> float:
         """Spend a search slot and return 0, or spend nothing and return the wait in seconds."""
         return self._window_slot(
-            self._search_hour[user_id], self._search_day[user_id], self._search_per_hour, self._search_per_day
+            self._search_hour, self._search_day, user_id, self._search_per_hour, self._search_per_day
         )
 
     def _find_slot(self, user_id: str) -> float:
         """Spend a find slot (its own windows, apart from search) and return 0, or the wait in seconds."""
-        return self._window_slot(
-            self._find_hour[user_id], self._find_day[user_id], self._find_per_hour, self._find_per_day
-        )
+        return self._window_slot(self._find_hour, self._find_day, user_id, self._find_per_hour, self._find_per_day)
 
     def search_retry_after(self, user_id: str) -> float:
         """Seconds until a search slot frees for this user, 0 when one is free."""
