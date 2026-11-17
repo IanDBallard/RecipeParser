@@ -101,6 +101,33 @@ PICTURE_TIMEOUT_SECS: int = 60
 # the HTTP timeout of the classify call (shopping design, Part 3 §2).
 CLASSIFY_TIMEOUT_SECS: int = 60
 
+# The model behind POST /shopping/aisles (Cayenne "typed items get a section"): the
+# Gemini Decisions API, launched 2026-11-11, which answers closed-set questions with
+# calibrated probabilities in one forward pass and bills input tokens only. Typed items
+# only; recipe ingredients stay on /shopping/classify, which also names foods and
+# counts. Override with GEMINI_DECISION_MODEL.
+GEMINI_DECISION_MODEL: str = os.environ.get("GEMINI_DECISION_MODEL", "gemini-decision-1")
+
+# The Decisions endpoint. It is called over httpx rather than google-genai's
+# client.decisions, which needs google-genai >= 3.2: that release requires pydantic
+# >= 2.12.5 (pinned 2.11.9 here) and moves the SDK onto httpx2, so every route's
+# `except httpx.TimeoutException` would stop matching. Override for a test server.
+GEMINI_DECISIONS_URL: str = os.environ.get(
+    "GEMINI_DECISIONS_URL", "https://generativelanguage.googleapis.com/v1beta/decisions"
+)
+
+# The aisles call runs in the background after a typed Add, so it may take longer than a
+# cook would wait, but not forever. Applied as the HTTP timeout; never retried.
+AISLES_TIMEOUT_SECS: int = 30
+
+# Below this confidence (the calibrated probability of the winning aisle) a food is
+# answered "other", where a typed item already sits. The Decisions docs give no universal
+# threshold ("set thresholds using labeled examples"; their routing example is 0.7, where
+# the fallback is a human). Here the fallback costs nothing - the item stays in Other and
+# the shopper can move it - so 0.5 is used: the winner must be likelier than all eleven
+# other aisles together. Override with AISLE_MIN_CONFIDENCE.
+AISLE_MIN_CONFIDENCE: float = float(os.environ.get("AISLE_MIN_CONFIDENCE", "0.5"))
+
 # Every call this package makes is a bounded extraction, refinement or
 # classification task with one correct JSON (or plain-text) answer, not
 # open-ended reasoning — thinking tokens buy nothing here and bill at the

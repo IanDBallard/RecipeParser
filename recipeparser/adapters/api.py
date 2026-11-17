@@ -12,6 +12,7 @@ Endpoints (canonical — Phase 6):
   DELETE /recipes/{recipe_id}/image — clear it (200 + { image_url: null })
   POST /embed             — generate a 1536-dim embedding (returns 200 + {embedding})
   POST /shopping/classify — label a Generate's ingredients (200 + {items})
+  POST /shopping/aisles   — sort typed shopping foods into aisles (200 + {items})
   POST /search/ask        — a deeper Library search, answered as an NDJSON stream (Cayenne AI search)
   GET  /health            — liveness probe + the auth mode the app booted with
 
@@ -473,6 +474,19 @@ def _get_client() -> Any:
         raise RuntimeError("GOOGLE_API_KEY not found in environment")
     from google import genai  # noqa: PLC0415
     return genai.Client(api_key=api_key)
+
+
+def _get_decisions_client() -> Any:
+    """Return the Gemini Decisions client behind POST /shopping/aisles.
+
+    Raises RuntimeError if GOOGLE_API_KEY is not set. A named top-level so tests can
+    patch ``recipeparser.adapters.api._get_decisions_client``.
+    """
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("GOOGLE_API_KEY not found in environment")
+    from recipeparser.shopping_aisles import DecisionsClient  # noqa: PLC0415
+    return DecisionsClient(api_key)
 
 
 # ---------------------------------------------------------------------------
@@ -2206,7 +2220,10 @@ app.include_router(_build_share_router(
 # ---------------------------------------------------------------------------
 # The endpoint lives in shopping_api.py. The client factory is a lambda so a
 # test can replace _get_client, as the shares block does for Supabase.
-app.include_router(_build_shopping_router(_verify_supabase_jwt, lambda: _get_client(), _require_ai, lambda: _get_supabase_service_client()))
+app.include_router(_build_shopping_router(
+    _verify_supabase_jwt, lambda: _get_client(), _require_ai, lambda: _get_supabase_service_client(),
+    lambda: _get_decisions_client(),
+))
 
 # ---------------------------------------------------------------------------
 # Library AI search — POST /search/ask (Cayenne AI search §7.1)
