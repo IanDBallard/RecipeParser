@@ -729,6 +729,31 @@ def test_web_look_appends_links_after_finds(monkeypatch: pytest.MonkeyPatch) -> 
     assert brave.queries[0].endswith("(site:nytimes.com OR site:seriouseats.com)")
 
 
+def test_web_look_link_uses_the_cooks_site_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    _refuse(monkeypatch, "seriouseats.com")
+    brave = FakeBrave([BraveResult(SE_GRAVY, "Vegan Gravy")])
+    tc, _ = _app(
+        db=FakeDb(sites=[("seriouseats.com", 3, "Serious Eats")]), client=FakeAnthropic([_one_find()]), brave=brave
+    )
+    found = _lines(_post(tc, WEB))[-1]["candidates"]
+    assert found[-1]["url"] == SE_GRAVY and found[-1]["site"] == "Serious Eats"
+
+
+def test_web_look_caps_a_long_refused_set_and_warns(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    hosts = [f"refused-site-{i:02d}.example.com" for i in range(20)]
+    _refuse(monkeypatch, *hosts)
+    brave = FakeBrave([])
+    tc, _ = _app(client=FakeAnthropic([_one_find()]), brave=brave)
+    with caplog.at_level("WARNING"):
+        _post(tc, WEB)
+    assert len(brave.queries) == 1
+    q = brave.queries[0]
+    assert len(q) <= 400 and len(q.split()) <= 50 and "site:refused-site-00.example.com" in q
+    assert "of 20 sites" in caplog.text
+
+
 def test_sites_look_with_only_refused_sites_gives_links_not_no_sites(monkeypatch: pytest.MonkeyPatch) -> None:
     _refuse(monkeypatch, "seriouseats.com")
     client = FakeAnthropic([])

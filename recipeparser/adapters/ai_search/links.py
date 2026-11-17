@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from collections.abc import Iterable, Sequence
 from typing import Literal
 
@@ -26,11 +27,12 @@ def refused_set() -> frozenset[str]:
 
 
 def links_sites(scope: Literal["sites", "web"], cook_hosts: Iterable[str]) -> list[str]:
-    """The sites to ask Brave about: the whole refused set for the web, or the cook's own sites
-    that are in it (exact host membership, as ``cook_sites(skip=...)`` applies the same set)."""
+    """The sites to ask Brave about: the whole refused set for the web (the known sites first, sorted,
+    then those learned this process, sorted), or the cook's own sites that are in it (exact host
+    membership, as ``cook_sites(skip=...)`` applies the same set)."""
     refused = refused_set()
     if scope == "web":
-        return sorted(refused)
+        return [*sorted(KNOWN_UNSEARCHABLE), *sorted(refused - KNOWN_UNSEARCHABLE)]
     return [host for host in cook_hosts if host in refused]
 
 
@@ -59,7 +61,7 @@ def to_links(
             key = normalise_url(result.url)
         except ValueError:
             continue
-        title = _clip(_plain(result.title), MAX_TITLE_CHARS)
+        title = _clip(html.unescape(_plain(result.title)), MAX_TITLE_CHARS)
         if key in seen or not title:
             continue
         seen.add(key)

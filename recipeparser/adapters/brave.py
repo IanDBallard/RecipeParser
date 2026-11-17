@@ -31,13 +31,39 @@ MAX_QUERY_CHARS = 400
 MAX_QUERY_WORDS = 50
 
 
+# The question keeps at least this much of the query (characters; words) when sites are capped.
+MIN_QUESTION_CHARS = 150
+MIN_QUESTION_WORDS = 10
+
+
+def _group(sites: Sequence[str]) -> str:
+    return "(" + " OR ".join(f"site:{site}" for site in sites) + ")"
+
+
+def fit_sites(question: str, sites: Sequence[str]) -> list[str]:
+    """The longest leading run of ``sites`` whose ``site:`` group leaves the question room in the query.
+
+    The question keeps at least ``MIN_QUESTION_CHARS`` characters (or all of it, when shorter) of
+    ``MAX_QUERY_CHARS`` and ``MIN_QUESTION_WORDS`` words of ``MAX_QUERY_WORDS``. Order is the caller's:
+    what does not fit is cut from the end. Empty when not even the first site fits."""
+    reserve_chars = min(len(question), MIN_QUESTION_CHARS)
+    reserve_words = min(len(question.split()), MIN_QUESTION_WORDS)
+    kept = list(sites)
+    while kept:
+        group = _group(kept)
+        if len(group) + 1 + reserve_chars <= MAX_QUERY_CHARS and len(group.split()) + reserve_words <= MAX_QUERY_WORDS:
+            break
+        kept.pop()
+    return kept
+
+
 def links_query(question: str, sites: Sequence[str]) -> str | None:
     """The question restricted to the given sites with ``site:`` operators, within Brave's limits.
 
     The operator group is kept whole; the question loses whole words from its end until the query
     fits ``MAX_QUERY_CHARS`` and ``MAX_QUERY_WORDS``. None when the operator group alone does not fit.
     """
-    group = "(" + " OR ".join(f"site:{site}" for site in sites) + ")"
+    group = _group(sites)
     group_words = len(group.split())
     if len(group) > MAX_QUERY_CHARS or group_words > MAX_QUERY_WORDS:
         return None

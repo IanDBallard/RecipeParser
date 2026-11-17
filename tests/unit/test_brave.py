@@ -11,6 +11,7 @@ from recipeparser.adapters.brave import (
     BraveError,
     BraveResult,
     BraveSearch,
+    fit_sites,
     links_query,
 )
 
@@ -77,9 +78,7 @@ def test_search_sends_key_and_query():
         assert request.headers["Accept"] == "application/json"
         assert request.url.params["q"] == "x"
         assert request.url.params["count"] == "10"
-        return httpx.Response(
-            200, json={"web": {"results": [{"url": "https://a.com/r", "title": "R"}]}}
-        )
+        return httpx.Response(200, json={"web": {"results": [{"url": "https://a.com/r", "title": "R"}]}})
 
     assert _client(handler).search("x") == [BraveResult("https://a.com/r", "R")]
 
@@ -98,9 +97,7 @@ def test_search_skips_results_missing_fields():
             ]
         }
     }
-    assert _client(lambda r: httpx.Response(200, json=body)).search("x") == [
-        BraveResult("https://a.com/2", "Two")
-    ]
+    assert _client(lambda r: httpx.Response(200, json=body)).search("x") == [BraveResult("https://a.com/2", "Two")]
 
 
 def test_search_raises_on_429_timeout_and_bad_json():
@@ -114,3 +111,29 @@ def test_search_raises_on_429_timeout_and_bad_json():
     ):
         with pytest.raises(BraveError):
             _client(handler).search("x")
+
+
+def test_links_query_exact_boundary_is_unchanged():
+    group = "(site:a.com)"
+    question = "x" * (MAX_QUERY_CHARS - len(group) - 1)
+    q = links_query(question, ["a.com"])
+    assert q == f"{question} {group}" and len(q) == MAX_QUERY_CHARS
+    assert len(links_query(question + "y", ["a.com"])) <= MAX_QUERY_CHARS  # one over is trimmed
+
+
+def test_fit_sites_keeps_all_when_they_fit():
+    assert fit_sites("pad thai", ELEVEN) == ELEVEN
+
+
+def test_fit_sites_caps_twenty_sites_to_leave_the_question_room():
+    sites = [f"refused-site-{i:02d}.com" for i in range(20)]
+    question = " ".join(["vegetarian"] * 30)
+    kept = fit_sites(question, sites)
+    assert 0 < len(kept) < 20 and kept == sites[: len(kept)]
+    q = links_query(question, kept)
+    assert q is not None and len(q) <= MAX_QUERY_CHARS and len(q.split()) <= MAX_QUERY_WORDS
+    assert len(q) - len("(" + " OR ".join(f"site:{s}" for s in kept) + ")") - 1 >= 150
+
+
+def test_fit_sites_none_fit():
+    assert fit_sites("pie " * 100, ["x" * 300 + ".com"]) == []

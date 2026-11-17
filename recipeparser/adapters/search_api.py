@@ -71,7 +71,7 @@ from recipeparser.adapters.ai_search.look_prompt import (
 )
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
 from recipeparser.adapters.ai_search.tools import ToolBox
-from recipeparser.adapters.brave import BraveError, BraveResult, BraveSearch, links_query
+from recipeparser.adapters.brave import BraveError, BraveResult, BraveSearch, fit_sites, links_query
 
 logger = logging.getLogger(__name__)
 
@@ -157,9 +157,7 @@ def _work(
                     ),
                     catalogue,
                 )
-                toolbox.admit_answers(
-                    (t.answer for t in body.history), (a for t in body.history for a in t.added)
-                )
+                toolbox.admit_answers((t.answer for t in body.history), (a for t in body.history for a in t.added))
                 raw = run_agent(
                     client=client,
                     model=model,
@@ -381,17 +379,21 @@ class _Links:
     submitted: float = 0.0
 
 
-def _start_links(
-    brave: BraveSearch | None, body: LookRequest, db: AiReaderDb, claims: dict[str, Any]
-) -> _Links:
+def _start_links(brave: BraveSearch | None, body: LookRequest, db: AiReaderDb, claims: dict[str, Any]) -> _Links:
     """Send the lane's one Brave request on a worker thread, so it runs alongside the agent.
 
     The web look asks about the whole refused set; the sites look about the cook's own sites in it.
     Nothing in scope (or no client) sends no request."""
     if brave is None:
         return _Links(sites=[])
-    cook = [] if body.scope == "web" else cook_sites(db, claims)
+    cook = cook_sites(db, claims)
     sites = links_sites(body.scope, [host for host, _ in cook])
+    fitted = fit_sites(body.question, sites)
+    if len(fitted) < len(sites):
+        logger.warning(
+            "search look: the links lane asked about %d of %d sites to fit Brave's limits", len(fitted), len(sites)
+        )
+    sites = fitted
     names = {host: name for host, name in cook if host in sites}
     query = links_query(body.question, sites) if sites else None
     if query is None:

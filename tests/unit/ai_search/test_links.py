@@ -29,6 +29,18 @@ def test_web_scope_asks_the_whole_refused_set():
     assert "seriouseats.com" in sites
 
 
+def test_web_scope_lists_known_sites_first_then_learned():
+    UNSEARCHABLE.add(["aaa-learned.com"])
+    sites = links_sites("web", [])
+    assert sites[-1] == "aaa-learned.com"
+    assert sites[:-1] == sorted(sites[:-1])
+
+
+def test_titles_are_unescaped():
+    got = to_links([_r("https://seriouseats.com/a", "Mac &amp; Cheese&#x27;s <strong>best</strong>")], **_kw())
+    assert got[0].title == "Mac & Cheese's best"
+
+
 def test_sites_scope_asks_only_the_cooks_refused_sites():
     got = links_sites("sites", ["food52.com", "seriouseats.com", "epicurious.com"])
     assert got == ["seriouseats.com", "epicurious.com"]
