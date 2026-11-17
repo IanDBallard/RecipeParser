@@ -108,6 +108,17 @@ def test_record_claude_adds_a_row_per_server_tool_kind() -> None:
     assert all(r["output_tokens"] is None for r in rows if r["step"] != "look")
 
 
+def test_record_tool_adds_one_call_without_tokens() -> None:
+    with usage.attributed("u1", "search", get_client=lambda: None) as ctx:
+        usage.record_tool("look_links", "brave-web-search")
+        rows = ctx.snapshot()
+    assert rows == [{
+        "user_id": "u1", "action": "search", "step": "look_links", "job_id": None, "recipe_id": None,
+        "model": "brave-web-search", "calls": 1, "prompt_tokens": None, "output_tokens": None, "thought_tokens": None,
+    }]
+    usage.record_tool("look_links", "brave-web-search")  # outside a context: nothing kept, nothing raised
+
+
 def test_snapshot_is_a_copy() -> None:
     with usage.attributed("u1", "search", get_client=lambda: None) as ctx:
         usage.record_claude("agent", "m", _claude())

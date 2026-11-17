@@ -215,6 +215,7 @@ stops advancing is a stuck worker. Cayenne's deploy requires `"auth_mode":"verif
 | `ANTHROPIC_API_KEY` | unset | The Anthropic key behind `POST /search/ask`. Without it (or without `AI_READER_DATABASE_URL`) the endpoint answers 503. |
 | `AI_READER_DATABASE_URL` | unset | A Supavisor pooler DSN that logs in as Cayenne's `ai_reader` role, with its password: where the search agent's SQL runs. |
 | `AI_SEARCH_MODEL` | `claude-opus-5-5` | The model behind `POST /search/ask`. |
+| `BRAVE_SEARCH_API_KEY` | unset | Brave Search key for a look's plain links. Without it a look shows none. |
 | `REGEN_WORKER_ENABLED` | `0` | Set to `1` to run the regen and bulk-recategorise workers inside the API process. Requires `SUPABASE_SERVICE_ROLE_KEY` and Cayenne migration 014 (`regen_rpcs`) on top of the mandatory 013 above — without 014 the `claim_stale_recipes` / `regen_failed` RPCs do not exist and every poll raises. This flag gates only the workers; migration 013 is required regardless of its value. |
 | `PAGE_FETCH_PROXY` | unset | HTTP proxy for recipe-page fetches only (`UrlReader`'s direct fetch and the page-meta GET), e.g. `http://100.70.123.60:8888`, the owner's Pi on the tailnet. Jina, Gemini and Supabase never use it; an unreachable proxy is skipped. See CHANGELOG 9.35.0. |
 
@@ -269,6 +270,7 @@ which is the source of truth; `recipeparser/adapters/api.py` implements it. Ever
 | `DELETE /recipes/{recipe_id}/image` | Remove the recipe's picture. |
 | `POST /embed` | `{ text }` → `{ embedding }`, a 1536-float vector from `gemini-embedding-001`, for Cayenne's search. |
 | `POST /search/ask` | A deeper Library search: `{ text, today, measuring, history }` (`history`: 0–5 earlier turns of the conversation, oldest first, each `{ question, answer, chosen }`; `previous` and `filters` are still accepted for now and a later release removes them) → an NDJSON stream of `progress` lines, then one `answer` or `error` line. Rate-limited to 10 an hour and 30 a day per user; 503 until `ANTHROPIC_API_KEY` and `AI_READER_DATABASE_URL` are both set. See ARCHITECTURE.md §15. |
+| `POST /search/look` | A look for an answer's gaps: `{ question, answer, chosen, measuring, exclude, scope }` (`scope` `"sites"`, the cook's own sites, the default, or `"web"`) → an NDJSON stream of `progress` lines, then one `candidates` line (the agent's checked finds, with up to 3 plain links (empty note) after the finds) or one `error` line. Spends one search slot; 503 as `POST /search/ask`. |
 | `GET /health` | Liveness and boot state (above). |
 
 Ingestion is never synchronous: there is no `POST /ingest` (removed; recipes are written by the job

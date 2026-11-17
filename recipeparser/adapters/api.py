@@ -61,7 +61,13 @@ from recipeparser.adapters.shares_api import build_router as _build_share_router
 from recipeparser.adapters.shopping_api import build_router as _build_shopping_router
 from recipeparser.adapters.search_api import build_router as _build_search_router
 from recipeparser.adapters.household_api import build_router as _build_household_router
-from recipeparser.config import AI_SEARCH_MODEL, MAX_PICTURE_BYTES, MAX_UPLOAD_BYTES, ai_search_secrets
+from recipeparser.config import (
+    AI_SEARCH_MODEL,
+    MAX_PICTURE_BYTES,
+    MAX_UPLOAD_BYTES,
+    ai_search_secrets,
+    brave_secret,
+)
 from recipeparser.adapters import refusing_hosts
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
 from recipeparser.core.citation import host_of, web_citation
@@ -2209,8 +2215,11 @@ app.include_router(_build_shopping_router(_verify_supabase_jwt, lambda: _get_cli
 # per process, on the first request that finds both secrets set (config.ai_search_secrets); until
 # then the endpoint answers 503 before the gate spends a slot. A test run never builds either: the
 # live-write guard covers a real project's database here too. The pool closes in _lifespan.
+# The Brave client behind a look's plain links (§11) is built the same way, once, under the same lock,
+# from BRAVE_SEARCH_API_KEY; without the key a look runs without plain links (one warning per process).
 _search_clients: dict[str, Any] = {}
 _search_clients_lock = threading.Lock()
+_brave_key_warned = False
 
 
 def _build_ai_reader_db(dsn: str) -> Any:
@@ -2232,7 +2241,7 @@ def _search_client(name: str) -> Any:
         logger.warning("Test run: refusing to build the search clients against a real project.")
         return None
     with _search_clients_lock:
-        if not _search_clients:
+        if "db" not in _search_clients:
             key, dsn = secrets
             anthropic_client = _build_anthropic(key)
             _search_clients["db"] = _build_ai_reader_db(dsn)
@@ -2246,6 +2255,29 @@ def _search_db() -> Any:
 
 def _search_anthropic() -> Any:
     return _search_client("anthropic")
+
+
+def _build_brave(api_key: str) -> Any:
+    from recipeparser.adapters.brave import BraveSearch  # noqa: PLC0415
+    return BraveSearch(api_key)
+
+
+def _search_brave() -> Any:
+    """The built Brave Search client, or None without BRAVE_SEARCH_API_KEY or in a test run."""
+    global _brave_key_warned
+    key = brave_secret()
+    if key is None:
+        with _search_clients_lock:
+            warn, _brave_key_warned = not _brave_key_warned, True
+        if warn:
+            logger.warning("BRAVE_SEARCH_API_KEY is not set; looks will show no plain links.")
+        return None
+    if _live_writes_blocked():
+        return None
+    with _search_clients_lock:
+        if "brave" not in _search_clients:
+            _search_clients["brave"] = _build_brave(key)
+        return _search_clients["brave"]
 
 
 def _close_search_clients() -> None:
@@ -2267,6 +2299,7 @@ app.include_router(_build_search_router(
     lambda: _get_client(),
     lambda: _get_supabase_service_client(),
     AI_SEARCH_MODEL,
+    get_brave=lambda: _search_brave(),
 ))
 
 # ---------------------------------------------------------------------------
