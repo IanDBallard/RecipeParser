@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.37.0] — 2026-11-17
+
+### ✨ Added
+- Looks also show up to 3 plain links from Brave Search on the sites Anthropic's tools refuse; nothing on those pages is read (Cayenne §11, the owner's rulings of 2026-11-16/17). The web look asks Brave about the whole refused set, the sites look about the cook's own sites in it; one request per look, sent alongside the agent and cut at 5 s, and none when no refused site is in scope. The links follow the agent's finds in the one `candidates` line, with an empty note, through the same `yours`/`blocked` classification. Brave failing, timing out or finding nothing adds no links and no error; when the agent fails, its error line stands alone. `no_sites` is sent only when neither the agent nor the links lane has a site. Each request is recorded in `ai_usage` as step `look_links`, model `brave-web-search`. New environment variable `BRAVE_SEARCH_API_KEY`: without it a look shows no plain links (one warning per process) and is otherwise unchanged.
+
+---
+
 ## [9.36.5] — 2026-11-17
 
 A failure no longer takes a chunk's other recipes with it. RecipeParser #149: a run of The Curry Guy Bible produced 176 recipes where the run before produced 217, while the log said "23/23 chunks succeeded". Four chunks, about forty recipes, were lost whole: two to EXTRACT still getting Gemini's free-tier 503 "high demand" after its retries, one to a single recipe whose REFINE failed after a 503, one to a single recipe whose Fat Token said `ing_1` for `ing_01`.

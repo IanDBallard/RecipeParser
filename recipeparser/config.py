@@ -169,6 +169,16 @@ def ai_search_secrets() -> Optional[tuple[str, str]]:
     return (key, dsn) if key and dsn else None
 
 
+# The Brave Search key behind a look's plain links (Cayenne AI search §11), read when first used.
+# Without it a look shows no plain links and otherwise runs as before; it never 503s. Never logged.
+BRAVE_SEARCH_API_KEY: str = "BRAVE_SEARCH_API_KEY"
+
+
+def brave_secret() -> Optional[str]:
+    """The Brave Search key from the environment, stripped, or None when unset or blank."""
+    return os.environ.get(BRAVE_SEARCH_API_KEY, "").strip() or None
+
+
 # ---------------------------------------------------------------------------
 # Pipeline concurrency
 # ---------------------------------------------------------------------------

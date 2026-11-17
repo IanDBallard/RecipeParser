@@ -18,12 +18,13 @@ This module never imports ``api.py``: every collaborator arrives through ``build
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from typing import Annotated, Any, Literal
 
@@ -48,12 +49,14 @@ from recipeparser.adapters.ai_search.answer import (
     finalize,
     raw_ids,
 )
+from recipeparser.adapters.ai_search.links import links_sites, to_links
 from recipeparser.adapters.ai_search.look import (
     KNOWN_UNSEARCHABLE,
     MAX_URL_CHARS,
     UNSEARCHABLE,
     WEB_BLOCK_REFUSED,
     LookLimits,
+    RawCandidate,
     UnsearchableSites,
     check_candidates,
     classify,
@@ -68,6 +71,7 @@ from recipeparser.adapters.ai_search.look_prompt import (
 )
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
 from recipeparser.adapters.ai_search.tools import ToolBox
+from recipeparser.adapters.brave import BraveError, BraveResult, BraveSearch, links_query
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +86,12 @@ NO_SEARCHABLE_SITES_DETAIL = "None of the sites you use can be searched."
 MAX_EXCLUDE = 100
 # Requests a look may make while Anthropic keeps refusing sites; each refusal is an unbilled 400.
 MAX_SITE_ATTEMPTS = 4
+# The links lane's one Brave request: how long the look waits for it, measured from its submission,
+# and the model name its ai_usage row carries.
+LINKS_TIMEOUT_S = 5.0
+LINKS_MODEL = "brave-web-search"
+LINKS_STEP = "look_links"
+LINKS_WORKER_NAME = "search-look-links"
 
 _ANSWER: TypeAdapter[Answer] = TypeAdapter(Answer)
 
@@ -356,6 +366,66 @@ def _look_sites(
     return NO_SEARCHABLE_SITES_DETAIL
 
 
+@dataclass
+class _Links:
+    """The links lane of one look: the sites Brave is asked about, and its request while it runs.
+
+    ``future`` is None when no request was sent (no client, or no site in scope)."""
+
+    sites: list[str]
+    future: concurrent.futures.Future[list[BraveResult]] | None = None
+    executor: concurrent.futures.ThreadPoolExecutor | None = None
+    submitted: float = 0.0
+
+
+def _start_links(
+    brave: BraveSearch | None, body: LookRequest, db: AiReaderDb, claims: dict[str, Any]
+) -> _Links:
+    """Send the lane's one Brave request on a worker thread, so it runs alongside the agent.
+
+    The web look asks about the whole refused set; the sites look about the cook's own sites in it.
+    Nothing in scope (or no client) sends no request."""
+    if brave is None:
+        return _Links(sites=[])
+    cook = [] if body.scope == "web" else [host for host, _ in cook_sites(db, claims)]
+    sites = links_sites(body.scope, cook)
+    if not sites:
+        return _Links(sites=sites)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix=LINKS_WORKER_NAME)
+    submitted = time.monotonic()
+    future = executor.submit(brave.search, links_query(body.question, sites))
+    return _Links(sites=sites, future=future, executor=executor, submitted=submitted)
+
+
+def _links_results(lane: _Links) -> list[BraveResult]:
+    """Brave's results, waiting no longer than ``LINKS_TIMEOUT_S`` from submission; [] on any failure."""
+    if lane.future is None:
+        return []
+    remaining = max(0.0, LINKS_TIMEOUT_S - (time.monotonic() - lane.submitted))
+    try:
+        return lane.future.result(timeout=remaining)
+    except concurrent.futures.TimeoutError:
+        logger.warning("search look: the links lane timed out after %.1f s", LINKS_TIMEOUT_S)
+    except BraveError as exc:  # its message never carries the key
+        logger.warning("search look: the links lane failed: %s", exc)
+    except Exception as exc:  # noqa: BLE001 - the lane never fails a look
+        logger.warning("search look: the links lane failed: %s", type(exc).__name__)
+    return []
+
+
+def _close_links(lane: _Links) -> None:
+    """Abandon the lane without waiting, and record its request in the look's usage if it was sent.
+
+    Called on the look's own thread, inside ``usage.attributed``: the worker thread does not inherit
+    the usage context."""
+    if lane.future is None or lane.executor is None:
+        return
+    lane.future.cancel()  # only stops a request that has not started
+    if not lane.future.cancelled():
+        usage.record_tool(LINKS_STEP, LINKS_MODEL)
+    lane.executor.shutdown(wait=False, cancel_futures=True)
+
+
 def _look_work(
     *,
     body: LookRequest,
@@ -365,15 +435,21 @@ def _look_work(
     get_service_client: Callable[[], Any],
     model: str,
     limits: LookLimits,
+    brave: BraveSearch | None,
     cancel: threading.Event,
     emit: Callable[[dict[str, Any] | None], None],
 ) -> None:
-    """Run the look and emit its lines; always ends with ``emit(None)``."""
+    """Run the look and emit its lines; always ends with ``emit(None)``.
+
+    With ``brave``, the links lane runs alongside the agent and its plain links follow the agent's
+    finds in the one ``candidates`` line. The lane never adds an error: when the agent fails, its
+    error line stands alone."""
     sub = str(claims.get("sub", ""))
     started = time.monotonic()
     kind = "failed"
-    calls = tokens = found = 0
+    calls = tokens = found = link_count = 0
     gaps = body.gaps()
+    lane = _Links(sites=[])
 
     def run_web(blocked: list[str]) -> Any:
         return run_look(
@@ -411,6 +487,10 @@ def _look_work(
     try:
         with usage.attributed(sub, "search", get_client=get_service_client) as ctx:
             try:
+                # The lane's sites are worked out once, from the refused set as it stands before the
+                # agent starts. Sites the sites look learns are refused mid-request (UnsearchableSites,
+                # then a retry) are not added: the lane's one request has already gone.
+                lane = _start_links(brave, body, db, claims)
                 if body.scope == "web":
                     blocked_list, cook = _web_blocked(db, claims, get_service_client)
                     try:
@@ -434,14 +514,27 @@ def _look_work(
                 else:
                     outcome = _look_sites(db, claims, run)
                     hosts = None if isinstance(outcome, str) else set(outcome[0])
-                if isinstance(outcome, str):
-                    kind = "no_sites"
+                if isinstance(outcome, str) and lane.future is None:
+                    kind = "no_sites"  # neither the agent nor the links lane has a site
                     emit(_error("no_sites", outcome))
                 else:
-                    sites, (raw, fetched) = outcome
-                    checked = check_candidates(
-                        raw, hosts=hosts, fetched=fetched, exclude=set(body.exclude), gap_count=len(gaps)
+                    sites: dict[str, str] = {}
+                    checked: list[RawCandidate] = []
+                    if not isinstance(outcome, str):
+                        sites, (raw, fetched) = outcome
+                        checked = check_candidates(
+                            raw, hosts=hosts, fetched=fetched, exclude=set(body.exclude), gap_count=len(gaps)
+                        )
+                    plain = to_links(
+                        _links_results(lane),
+                        sites=lane.sites,
+                        exclude=body.exclude,
+                        offered=[c.url for c in checked],
                     )
+                    if lane.future is not None and cancel.is_set():
+                        raise AgentCancelled  # the cook left while the lane was awaited
+                    link_count = len(plain)
+                    checked += plain
                     own = own_source_urls(db, claims, [c.url for c in checked]) if checked else {}
                     blocked = _blocked(get_service_client, {url_host(c.url) for c in checked})
                     candidates = classify(checked, sites=sites, own=own, blocked=blocked)
@@ -456,16 +549,18 @@ def _look_work(
                 logger.error("search look failed for user %s", sub, exc_info=True)
                 emit(_error("failed", FAILED_DETAIL))
             finally:
+                _close_links(lane)  # never waits; records the request on this thread
                 records = ctx.snapshot()
                 calls = sum(1 for r in records if r["step"] == "look")
                 tokens = sum((r["prompt_tokens"] or 0) + (r["output_tokens"] or 0) for r in records)
     finally:
         logger.info(
-            "search look user=%s calls=%d kind=%s found=%d duration_ms=%.0f tokens=%d",
+            "search look user=%s calls=%d kind=%s found=%d links=%d duration_ms=%.0f tokens=%d",
             sub,
             calls,
             kind,
             found,
+            link_count,
             (time.monotonic() - started) * 1000,
             tokens,
         )
@@ -482,8 +577,10 @@ async def look_stream(
     model: str,
     limits: LookLimits = LookLimits(),
     cancel: threading.Event | None = None,
+    brave: BraveSearch | None = None,
 ) -> AsyncIterator[bytes]:
-    """The NDJSON lines of one look. Leaving early (the cook went away) sets ``cancel``."""
+    """The NDJSON lines of one look. Leaving early (the cook went away) sets ``cancel``. Without
+    ``brave`` the look shows no plain links."""
     async for line in _stream(
         _look_work,
         LOOK_WORKER_NAME,
@@ -495,6 +592,7 @@ async def look_stream(
         get_service_client=get_service_client,
         model=model,
         limits=limits,
+        brave=brave,
     ):
         yield line
 
@@ -507,6 +605,7 @@ def build_router(
     get_gemini: Callable[[], Any],
     get_service_client: Callable[[], Any],
     model: str,
+    get_brave: Callable[[], BraveSearch | None],
 ) -> APIRouter:
     router = APIRouter()
 
@@ -546,6 +645,7 @@ def build_router(
                 client=client,
                 get_service_client=get_service_client,
                 model=model,
+                brave=get_brave(),  # None (no key) only turns the plain links off; never a 503
             ),
             media_type=MEDIA_TYPE,
         )

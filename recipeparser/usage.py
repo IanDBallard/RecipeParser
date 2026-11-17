@@ -113,6 +113,27 @@ def record_claude(step: str, model: str, usage: object | None) -> None:
         ctx.records.extend(rows)
 
 
+def record_tool(step: str, model: str) -> None:
+    """Add one call to a service billed per request (no token counts) to the current context's buffer."""
+    ctx = ai_context.get()
+    if ctx is None:
+        return
+    row = {
+        "user_id": ctx.user_id,
+        "action": ctx.action,
+        "step": step,
+        "job_id": ctx.job_id,
+        "recipe_id": None,
+        "model": model,
+        "calls": 1,
+        "prompt_tokens": None,
+        "output_tokens": None,
+        "thought_tokens": None,
+    }
+    with ctx._lock:
+        ctx.records.append(row)
+
+
 def flush(ctx: UsageContext, get_client: Callable[[], Any]) -> None:
     """Write the buffer to ai_usage in one insert, never raising."""
     with ctx._lock:

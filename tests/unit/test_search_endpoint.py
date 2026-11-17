@@ -171,6 +171,7 @@ def _app(
             lambda: embed_client or MagicMock(),
             lambda: None,
             MODEL,
+            lambda: None,
         )
     )
     return TestClient(app, raise_server_exceptions=False), state
@@ -490,6 +491,43 @@ def test_real_app_builds_once_when_configured(monkeypatch: pytest.MonkeyPatch) -
     second = (api._search_db(), api._search_anthropic())
     assert first == second and sorted(built) == ["anthropic", "postgresql://ai_reader:x@example.invalid/db"]
 
+
+
+def test_brave_without_the_key_is_none_with_one_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
+    monkeypatch.setattr(api, "_brave_key_warned", False)
+    monkeypatch.setattr(api, "_search_clients", {})
+    with caplog.at_level("WARNING"):
+        assert api._search_brave() is None and api._search_brave() is None
+    assert caplog.text.count("BRAVE_SEARCH_API_KEY is not set; looks will show no plain links.") == 1
+
+
+def test_brave_is_not_built_in_a_test_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "brave-test-not-real")
+    monkeypatch.delenv("ALLOW_LIVE_WRITES_IN_TESTS", raising=False)
+    monkeypatch.setattr(api, "_search_clients", {})
+    built: list[str] = []
+    monkeypatch.setattr(api, "_build_brave", lambda key: built.append(key))
+    assert api._search_brave() is None and built == []
+
+
+def test_brave_is_built_once_and_alongside_the_search_clients(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", " brave-test-not-real ")
+    monkeypatch.setenv("AI_READER_DATABASE_URL", "postgresql://ai_reader:x@example.invalid/db")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+    monkeypatch.setattr(api, "_search_clients", {})
+    built: list[str] = []
+    monkeypatch.setattr(api, "_build_brave", lambda key: built.append(key) or object())
+    monkeypatch.setattr(api, "_build_ai_reader_db", lambda dsn: built.append("db") or FakeDb())
+    monkeypatch.setattr(api, "_build_anthropic", lambda key: built.append("anthropic") or object())
+    first = api._search_brave()
+    assert first is not None and api._search_brave() is first
+    # Brave built first does not stop the search clients being built.
+    assert api._search_db() is not None and api._search_anthropic() is not None
+    assert built == ["brave-test-not-real", "anthropic", "db"]
 
 def test_agent_model_is_configured() -> None:
     from recipeparser import config
