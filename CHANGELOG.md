@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.39.0] — 2026-11-17
+
+### ✨ Added
+- `POST /shopping/aisles`: sorts typed shopping-list foods into the twelve aisles with the Gemini Decisions API (`gemini-decision-1`) for Cayenne's "typed items get a section". Request `{"foods": [...]}` (1–200 unique, non-blank strings of at most 200 characters; 400 otherwise); response `{"items": [{"food", "aisle"}]}`, one per food in request order. One Decisions request per call, one `choice` question per food over the twelve aisles described by Cayenne's labels; a winner under `AISLE_MIN_CONFIDENCE` (0.5) is answered `other`. Same auth, AI gate and error mapping as `/shopping/classify` (missing key, Gemini refusal → 503; 429 → 503 busy; timeout → 504; an unreadable reply → 502). Recorded in `ai_usage` as action `classify`, step `aisles` (the table's action check admits no new action). New environment overrides `GEMINI_DECISION_MODEL`, `GEMINI_DECISIONS_URL`, `AISLE_MIN_CONFIDENCE`. The endpoint is called over httpx, not google-genai's `client.decisions` (google-genai ≥ 3.2 needs pydantic ≥ 2.12.5 and moves onto httpx2).
+
+---
+
 ## [9.38.0] — 2026-11-17
 
 ### ✨ Added

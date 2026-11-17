@@ -29,6 +29,7 @@ def _refuse(code, detail):
         ("post", "/jobs/recategorize", {"category_ids": ["c1"]}),
         ("post", "/recipes/r1/image/generate", {"title": "Cake"}),
         ("post", "/shopping/classify", {"ingredients": [{"key": "k", "text": "1 egg"}], "known_foods": []}),
+        ("post", "/shopping/aisles", {"foods": ["butter"]}),
     ],
 )
 def test_paused_refuses_every_ai_endpoint_with_503(client, monkeypatch, method, path, body) -> None:
@@ -96,6 +97,7 @@ def test_each_endpoint_uses_its_own_gate_variant(client, monkeypatch) -> None:
         "/jobs/recategorize": (False, False),
         "/recipes/r1/image/generate": (False, False),
         "/shopping/classify": (False, False),
+        "/shopping/aisles": (False, False),
     }
     for path, flags in expected.items():
         calls.clear()

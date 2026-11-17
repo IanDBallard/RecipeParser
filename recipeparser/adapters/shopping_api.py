@@ -1,6 +1,7 @@
 """
 recipeparser/adapters/shopping_api.py — the shopping classify endpoint
-(Cayenne's shopping list design, Part 3 §2).
+(Cayenne's shopping list design, Part 3 §2) and the typed-item aisles endpoint
+(Cayenne "typed items get a section", recipeparser/shopping_aisles.py).
 
 One synchronous call at Generate: the device sends the scaled ingredients and
 the foods it already knows, the model labels them, the device merges. No table
@@ -27,6 +28,12 @@ from recipeparser.shopping import (
     ClassifiedItem,
     ClassifyIngredient,
     classify_ingredients,
+)
+from recipeparser.shopping_aisles import (
+    AisleItem,
+    AislesCheckError,
+    DecisionsAPIError,
+    decide_aisles,
 )
 
 log = logging.getLogger(__name__)
@@ -56,11 +63,34 @@ class ClassifyResponse(BaseModel):
     items: List[ClassifiedItem]
 
 
+MAX_AISLE_FOODS = 200
+MAX_FOOD_CHARS = 200
+
+NO_FOODS = "No foods to sort."
+TOO_MANY_FOODS = "Too many foods to sort at once."
+BAD_FOOD = "A food is blank or too long."
+DUPLICATE_FOODS = "The same food is listed twice."
+
+AISLES_NOT_CONFIGURED = "The aisle sorter is not configured on this server."
+AISLES_TIMEOUT = "The aisle sorter took too long. Try again."
+AISLES_BUSY = "The aisle sorter is busy. Try again in a minute."
+AISLES_UNAVAILABLE = "The aisle sorter is unavailable. Try again."
+
+
+class AislesRequest(BaseModel):
+    foods: List[str]
+
+
+class AislesResponse(BaseModel):
+    items: List[AisleItem]
+
+
 def build_router(
     verify_jwt: Callable,
     get_client: Callable[[], Any],
     require_ai: Callable,
     get_service_client: Callable[[], Any],
+    get_decisions_client: Callable[[], Any],
 ) -> APIRouter:
     router = APIRouter()
 
@@ -107,5 +137,49 @@ def build_router(
             log.warning("Shopping classify failed unexpectedly: %s", exc)
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=CLASSIFY_UNAVAILABLE) from exc
         return ClassifyResponse(items=items)
+
+    # POST /shopping/aisles - a typed item's aisle, asked in the background after a
+    # typed Add (Cayenne "typed items get a section"). One Decisions request per call.
+    @router.post("/shopping/aisles", response_model=AislesResponse, status_code=200)
+    def aisles(
+        body: AislesRequest,
+        user: dict = Depends(verify_jwt),
+        _gate: None = Depends(require_ai),
+    ) -> AislesResponse:
+        if not body.foods:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=NO_FOODS)
+        if len(body.foods) > MAX_AISLE_FOODS:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=TOO_MANY_FOODS)
+        if any(not f.strip() or len(f) > MAX_FOOD_CHARS for f in body.foods):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=BAD_FOOD)
+        if len(set(body.foods)) != len(body.foods):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=DUPLICATE_FOODS)
+        try:
+            client = get_decisions_client()
+        except RuntimeError as exc:
+            log.warning("Shopping aisles: no client (missing key?): %s", exc)
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=AISLES_NOT_CONFIGURED) from exc
+        try:
+            # Attributed as action "classify", step "aisles": ai_usage's action check
+            # (Cayenne migration 20261110120000) admits no "aisles", and a refused
+            # insert is swallowed by usage.flush, so a new action would lose the rows.
+            with usage.attributed(user.get("sub", ""), "classify", get_client=get_service_client):
+                items = decide_aisles(client, body.foods)
+        except AislesCheckError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        except httpx.TimeoutException as exc:
+            log.warning("Shopping aisles timed out: %s", exc)
+            raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, detail=AISLES_TIMEOUT) from exc
+        except DecisionsAPIError as exc:
+            busy = exc.code == 429
+            log.warning("Gemini refused a shopping aisles call (status=%s): %s", exc.code, exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=AISLES_BUSY if busy else AISLES_UNAVAILABLE,
+            ) from exc
+        except Exception as exc:
+            log.warning("Shopping aisles failed unexpectedly: %s", exc)
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=AISLES_UNAVAILABLE) from exc
+        return AislesResponse(items=items)
 
     return router

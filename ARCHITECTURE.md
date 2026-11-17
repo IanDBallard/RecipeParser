@@ -75,7 +75,7 @@ recipeparser/
 │   ├── recat_worker.py            # The bulk recategorise worker
 │   ├── share_worker.py            # The recipe-sharing copy job and its sweep
 │   ├── shares_api.py              # The recipe-sharing endpoints
-│   ├── shopping_api.py            # The shopping classify endpoint
+│   ├── shopping_api.py            # The shopping classify and aisles endpoints
 │   ├── ai_gate.py                 # The AI gate: kill switch, recipe cap, embed and search rate limits
 │   ├── search_api.py              # POST /search/ask: the search agent, streamed as NDJSON
 │   ├── ai_search/                 # The search agent: sql_gate, ai_db, tools, prompt, answer, agent
@@ -87,6 +87,7 @@ recipeparser/
 ├── categories.yaml                # The default taxonomy for local use
 ├── toc.py                         # Table-of-contents extraction and TOC-driven chunking
 ├── shopping.py                    # The shopping classify call
+├── shopping_aisles.py             # The typed-item aisles call (Gemini Decisions API)
 ├── recategorize.py                # Re-categorise an existing .paprikarecipes archive (CLI)
 ├── paprika_db.py                  # Locates and reads the live Paprika 3 SQLite database, read-only
 ├── models.py                      # Pydantic models for structured Gemini output and the API
