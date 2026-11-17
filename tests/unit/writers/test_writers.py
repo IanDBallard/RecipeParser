@@ -823,3 +823,71 @@ def test_the_cayenne_writer_dumps_the_tins_as_dicts(tmp_path: Path):
     assert isinstance(meta["pans"], list) and isinstance(meta["pans"][0], dict)
     assert meta["pans"][0]["id"] == "pan_01" and meta["pans"][0]["raw"] == "20cm round tin"
     assert meta["bake_type"] == "sponge" and meta["bake_step"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Paprika 4 refuses a photo not named like Paprika's own (RecipeParser #149)
+# ---------------------------------------------------------------------------
+
+_UUID_JPG = r"^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\.jpg$"
+_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 64 + b"\xff\xd9"
+
+
+def _with_photo(title: str, data: bytes = _JPEG, filename: str = "p264.jpg", content_type: str = "image/jpeg"):
+    from recipeparser.models import Photo
+    recipe = _make_recipe(title)
+    recipe.attach_photo(Photo(data=data, content_type=content_type, filename=filename))
+    return recipe
+
+
+def test_a_photo_is_named_like_paprikas_own_not_after_the_book(tmp_path: Path):
+    """Paprika 4.0.10 for Windows refuses "p264.jpg" ("Refusing Paprika file with an
+    invalid photo p264.jpg") and imports the same entry once the photo is <UUID>.jpg.
+    Measured on 2026-11-17: only the two test entries with a UUID name imported."""
+    import re
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_with_photo("Shawarma Kebabs")])
+
+    entry = _read_one_entry(out)
+
+    assert re.match(_UUID_JPG, entry["photo"]), entry["photo"]
+    import base64
+    assert base64.b64decode(entry["photo_data"]) == _JPEG
+
+
+def test_the_photo_hash_is_the_sha256_of_the_photo_as_paprika_writes_it(tmp_path: Path):
+    import hashlib
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_with_photo("Shawarma Kebabs")])
+
+    assert _read_one_entry(out)["photo_hash"] == hashlib.sha256(_JPEG).hexdigest().upper()
+
+
+def test_each_photo_gets_its_own_name_even_the_same_picture_twice(tmp_path: Path):
+    """Two recipes sharing one book image, or a book exported twice, must not bring
+    Paprika a name it already has: on 2026-11-16 Paprika 3 crashed importing a photo
+    whose name and bytes were both already in its library."""
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_with_photo("Pakoras"), _with_photo("Onion Bhajis")])
+    with zipfile.ZipFile(out) as zf:
+        names = [json.loads(gzip.decompress(zf.read(n)))["photo"] for n in zf.namelist()]
+
+    assert len(set(names)) == 2
+
+
+def test_a_png_photo_keeps_its_extension(tmp_path: Path):
+    import re
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_with_photo("Dal", data=b"\x89PNG\r\n\x1a\n" + b"\x00" * 32, filename="p9.png", content_type="image/png")])
+
+    assert re.match(_UUID_JPG.replace(r"\.jpg", r"\.png"), _read_one_entry(out)["photo"])
+
+
+def test_a_recipe_without_a_photo_still_has_no_photo_keys(tmp_path: Path):
+    """An empty photo key crashes Paprika for Windows: absent, not blank."""
+    out = tmp_path / "export.paprikarecipes"
+    PaprikaWriter(out).write([_make_recipe("Plain Rice")])
+
+    entry = _read_one_entry(out)
+    assert "photo" not in entry and "photo_data" not in entry
+    assert entry["photo_hash"] == ""

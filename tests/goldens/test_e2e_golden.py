@@ -56,14 +56,17 @@ def _read(fixture: str):
 def _normalise(value):
     """Replace everything that legitimately differs per run.
 
-    uid, hash and created are generated at write time; photo_data and the
-    embedding are large and are compared by digest.
+    uid, hash and created are generated at write time, and so is a photo's
+    name (a fresh <UUID>.<ext>, RecipeParser #149), which is kept only as its
+    extension; photo_data and the embedding are large and are compared by digest.
     """
     if isinstance(value, dict):
         out = {}
         for key, inner in value.items():
             if key in ("uid", "hash", "created"):
                 out[key] = PLACEHOLDER
+            elif key == "photo" and isinstance(inner, str) and inner:
+                out[key] = PLACEHOLDER + "." + inner.rsplit(".", 1)[-1]
             elif key == "photo_data" and inner:
                 out[key] = "sha256:" + hashlib.sha256(str(inner).encode("utf-8")).hexdigest()
             elif key == "embedding" and inner:
