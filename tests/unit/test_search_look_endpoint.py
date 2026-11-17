@@ -10,6 +10,7 @@ import asyncio
 import json
 import threading
 import time
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -626,8 +627,6 @@ def test_usage_attributed_to_search_as_step_look(monkeypatch: pytest.MonkeyPatch
     captured: list[tuple[str, str, list[str]]] = []
     real = search_api.usage.attributed
 
-    from contextlib import contextmanager
-
     @contextmanager
     def spy(user_id: str, action: Any, job_id: Any = None, *, get_client: Any) -> Any:
         with real(user_id, action, job_id, get_client=get_client) as ctx:
@@ -682,14 +681,18 @@ class FakeBrave:
         *,
         error: Exception | None = None,
         hold: threading.Event | None = None,
+        on_search: Any = None,
     ) -> None:
         self.results = list(results or [])
         self.error = error
         self.hold = hold
+        self.on_search = on_search
         self.queries: list[str] = []
 
     def search(self, query: str, *, count: int = 10) -> list[BraveResult]:
         self.queries.append(query)
+        if self.on_search is not None:
+            self.on_search()
         if self.hold is not None:
             self.hold.wait(7)  # a slow Brave; the test releases it so no thread outlives the run
         if self.error is not None:
@@ -844,8 +847,6 @@ def test_brave_request_is_recorded_in_usage(monkeypatch: pytest.MonkeyPatch) -> 
     captured: list[list[dict[str, Any]]] = []
     real = search_api.usage.attributed
 
-    from contextlib import contextmanager
-
     @contextmanager
     def spy(user_id: str, action: Any, job_id: Any = None, *, get_client: Any) -> Any:
         with real(user_id, action, job_id, get_client=get_client) as ctx:
@@ -876,3 +877,43 @@ def test_without_brave_the_look_is_unchanged(monkeypatch: pytest.MonkeyPatch) ->
     assert _lines(_post(tc)) == [
         {"type": "error", "code": "no_sites", "detail": "None of the sites you use can be searched."}
     ]
+
+
+def test_link_on_a_cook_site_carries_the_cooks_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    _refuse(monkeypatch, "seriouseats.com")
+    brave = FakeBrave([BraveResult(SE_GRAVY, "Vegan Gravy")])
+    db = FakeDb(sites=[("food52.com", 12, "Food52"), ("seriouseats.com", 9, "Serious Eats")])
+    tc, _ = _app(db=db, brave=brave)
+    found = _lines(_post(tc))[-1]["candidates"]
+    assert [(c["url"], c["site"]) for c in found] == [(GRAVY, "Food52"), (MINE, "Food52"), (SE_GRAVY, "Serious Eats")]
+
+
+def test_cook_leaving_while_the_lane_is_awaited_emits_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search_api, "LINKS_TIMEOUT_S", 0.2)
+    _refuse(monkeypatch, "seriouseats.com")
+    cancel = threading.Event()
+    hold = threading.Event()
+    client = FakeAnthropic([])
+    brave = FakeBrave([BraveResult(SE_GRAVY, "Vegan Gravy")], hold=hold, on_search=cancel.set)
+
+    async def drive() -> list[bytes]:
+        return [
+            line
+            async for line in search_api.look_stream(
+                body=search_api.LookRequest.model_validate(BODY),
+                claims=dict(PAYLOAD),
+                db=FakeDb(sites=[("seriouseats.com", 3, None)]),  # type: ignore[arg-type]
+                client=client,  # type: ignore[arg-type]
+                get_service_client=lambda: None,
+                model=MODEL,
+                cancel=cancel,
+                brave=brave,  # type: ignore[arg-type]
+            )
+        ]
+
+    try:
+        lines = asyncio.run(drive())
+    finally:
+        hold.set()
+    assert lines == []  # no candidates line after the cook left
+    assert client.calls == [] and len(brave.queries) == 1

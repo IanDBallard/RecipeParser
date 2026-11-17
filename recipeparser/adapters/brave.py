@@ -26,10 +26,28 @@ class BraveResult:
     title: str
 
 
-def links_query(question: str, sites: Sequence[str]) -> str:
-    """The question restricted to the given sites with ``site:`` operators."""
-    scope = " OR ".join(f"site:{site}" for site in sites)
-    return f"{question} ({scope})"
+# Brave's ``q`` accepts at most this many characters and words.
+MAX_QUERY_CHARS = 400
+MAX_QUERY_WORDS = 50
+
+
+def links_query(question: str, sites: Sequence[str]) -> str | None:
+    """The question restricted to the given sites with ``site:`` operators, within Brave's limits.
+
+    The operator group is kept whole; the question loses whole words from its end until the query
+    fits ``MAX_QUERY_CHARS`` and ``MAX_QUERY_WORDS``. None when the operator group alone does not fit.
+    """
+    group = "(" + " OR ".join(f"site:{site}" for site in sites) + ")"
+    group_words = len(group.split())
+    if len(group) > MAX_QUERY_CHARS or group_words > MAX_QUERY_WORDS:
+        return None
+    words = question.split()
+    if len(question) + 1 + len(group) <= MAX_QUERY_CHARS and len(words) + group_words <= MAX_QUERY_WORDS:
+        return f"{question} {group}"  # fits as asked
+    words = words[: MAX_QUERY_WORDS - group_words]
+    while words and len(" ".join(words)) + 1 + len(group) > MAX_QUERY_CHARS:
+        words.pop()
+    return f"{' '.join(words)} {group}" if words else group
 
 
 class BraveSearch:

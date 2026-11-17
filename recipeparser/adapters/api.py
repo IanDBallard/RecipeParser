@@ -2267,8 +2267,9 @@ def _search_brave() -> Any:
     global _brave_key_warned
     key = brave_secret()
     if key is None:
-        if not _brave_key_warned:
-            _brave_key_warned = True
+        with _search_clients_lock:
+            warn, _brave_key_warned = not _brave_key_warned, True
+        if warn:
             logger.warning("BRAVE_SEARCH_API_KEY is not set; looks will show no plain links.")
         return None
     if _live_writes_blocked():

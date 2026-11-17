@@ -24,7 +24,7 @@ import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
 from typing import Annotated, Any, Literal
 
@@ -370,9 +370,12 @@ def _look_sites(
 class _Links:
     """The links lane of one look: the sites Brave is asked about, and its request while it runs.
 
-    ``future`` is None when no request was sent (no client, or no site in scope)."""
+    ``names`` maps each of the lane's sites that is one of the cook's to the cook's name for it, so a
+    link on it shows the same site name as a find there. ``future`` is None when no request was sent
+    (no client, no site in scope, or no query within Brave's limits)."""
 
     sites: list[str]
+    names: dict[str, str] = field(default_factory=dict)
     future: concurrent.futures.Future[list[BraveResult]] | None = None
     executor: concurrent.futures.ThreadPoolExecutor | None = None
     submitted: float = 0.0
@@ -387,14 +390,16 @@ def _start_links(
     Nothing in scope (or no client) sends no request."""
     if brave is None:
         return _Links(sites=[])
-    cook = [] if body.scope == "web" else [host for host, _ in cook_sites(db, claims)]
-    sites = links_sites(body.scope, cook)
-    if not sites:
-        return _Links(sites=sites)
+    cook = [] if body.scope == "web" else cook_sites(db, claims)
+    sites = links_sites(body.scope, [host for host, _ in cook])
+    names = {host: name for host, name in cook if host in sites}
+    query = links_query(body.question, sites) if sites else None
+    if query is None:
+        return _Links(sites=sites, names=names)
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix=LINKS_WORKER_NAME)
     submitted = time.monotonic()
-    future = executor.submit(brave.search, links_query(body.question, sites))
-    return _Links(sites=sites, future=future, executor=executor, submitted=submitted)
+    future = executor.submit(brave.search, query)
+    return _Links(sites=sites, names=names, future=future, executor=executor, submitted=submitted)
 
 
 def _links_results(lane: _Links) -> list[BraveResult]:
@@ -537,7 +542,9 @@ def _look_work(
                     checked += plain
                     own = own_source_urls(db, claims, [c.url for c in checked]) if checked else {}
                     blocked = _blocked(get_service_client, {url_host(c.url) for c in checked})
-                    candidates = classify(checked, sites=sites, own=own, blocked=blocked)
+                    # The cook's names for the lane's sites too: the cook never sees which search found a page.
+                    named = {**lane.names, **sites}
+                    candidates = classify(checked, sites=named, own=own, blocked=blocked)
                     kind, found = "candidates", len(candidates)
                     emit({"type": "candidates", "candidates": candidates})
             except AgentCancelled:

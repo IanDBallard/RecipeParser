@@ -5,7 +5,14 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from recipeparser.adapters.brave import BraveError, BraveResult, BraveSearch, links_query
+from recipeparser.adapters.brave import (
+    MAX_QUERY_CHARS,
+    MAX_QUERY_WORDS,
+    BraveError,
+    BraveResult,
+    BraveSearch,
+    links_query,
+)
 
 
 def _client(handler) -> BraveSearch:
@@ -17,6 +24,49 @@ def test_links_query_joins_sites_with_or():
         links_query("pad thai", ["seriouseats.com", "food52.com"])
         == "pad thai (site:seriouseats.com OR site:food52.com)"
     )
+
+
+ELEVEN = [
+    "bbc.co.uk",
+    "bbcgoodfood.com",
+    "bonappetit.com",
+    "epicurious.com",
+    "nytimes.com",
+    "seriouseats.com",
+    "simplyrecipes.com",
+    "theguardian.com",
+    "thespruceeats.com",
+    "example-one.com",
+    "example-two.com",
+]
+
+
+def test_links_query_trims_a_long_question_to_brave_limits():
+    group = "(" + " OR ".join(f"site:{s}" for s in ELEVEN) + ")"
+    question = " ".join(["vegetarian"] * 100)[:1000]
+    assert len(question) == 1000
+    q = links_query(question, ELEVEN)
+    assert q is not None
+    assert len(q) <= MAX_QUERY_CHARS and len(q.split()) <= MAX_QUERY_WORDS
+    assert q.endswith(" " + group)
+    kept = q[: -len(group) - 1].split()
+    assert kept and all(w == "vegetarian" for w in kept)  # whole words, from the front
+
+
+def test_links_query_word_limit_trims_many_short_words():
+    q = links_query(" ".join(f"w{i}" for i in range(80)), ["a.com", "b.com"])
+    assert q is not None and len(q.split()) == MAX_QUERY_WORDS
+    assert q.startswith("w0 w1 ") and q.endswith(" (site:a.com OR site:b.com)")
+
+
+def test_links_query_short_question_is_unchanged():
+    assert links_query("pad  thai", ["a.com"]) == "pad  thai (site:a.com)"
+
+
+def test_links_query_operator_group_too_long_is_none():
+    sites = [f"site{i}-{'x' * 30}.com" for i in range(12)]
+    assert links_query("pie", sites) is None
+    assert links_query("pie", [f"s{i}.com" for i in range(26)]) is None  # 26 + 25 ORs = 51 words
 
 
 def test_search_sends_key_and_query():

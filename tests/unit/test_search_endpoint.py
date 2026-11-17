@@ -492,7 +492,6 @@ def test_real_app_builds_once_when_configured(monkeypatch: pytest.MonkeyPatch) -
     assert first == second and sorted(built) == ["anthropic", "postgresql://ai_reader:x@example.invalid/db"]
 
 
-
 def test_brave_without_the_key_is_none_with_one_warning(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -528,6 +527,7 @@ def test_brave_is_built_once_and_alongside_the_search_clients(monkeypatch: pytes
     # Brave built first does not stop the search clients being built.
     assert api._search_db() is not None and api._search_anthropic() is not None
     assert built == ["brave-test-not-real", "anthropic", "db"]
+
 
 def test_agent_model_is_configured() -> None:
     from recipeparser import config
