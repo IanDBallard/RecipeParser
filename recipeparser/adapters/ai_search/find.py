@@ -68,11 +68,11 @@ def row_note(result: BraveResult) -> str:
 
 
 def site_names(results: Iterable[BraveResult]) -> dict[str, str]:
-    """Host -> Brave's name for the site, the first result on each host winning."""
+    """Host -> Brave's name for the site, cleaned like a title; the first non-blank name on each host wins."""
     names: dict[str, str] = {}
     for result in results:
-        if result.profile_name:
-            names.setdefault(url_host(result.url), result.profile_name)
+        if name := _clean(result.profile_name).strip():
+            names.setdefault(url_host(result.url), name)
     return names
 
 

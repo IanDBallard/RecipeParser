@@ -159,3 +159,12 @@ def test_site_names_from_profile():
         _r("https://b.com/1"),
     ]
     assert site_names(results) == {"a.com": "First"}
+
+
+def test_site_names_are_cleaned_and_blank_names_skipped():
+    results = [
+        _r("https://a.com/1", profile_name="  <b>  </b> "),
+        _r("https://a.com/2", profile_name=" Ben &amp; <i>Jerry</i>'s "),
+        _r("https://b.com/1", profile_name="&nbsp;"),
+    ]
+    assert site_names(results) == {"a.com": "Ben & Jerry's"}

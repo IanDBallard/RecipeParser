@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.38.0] — 2026-11-17
+
+### ✨ Added
+- `POST /search/find`: Add Recipe's search turn asks Brave Search directly, on the cook's sites and on the web at once, with no model; its own cap of 30 an hour and 100 a day (Cayenne's Brave search turn design, 2026-11-17)
+
+---
+
 ## [9.37.0] — 2026-11-17
 
 ### ✨ Added
