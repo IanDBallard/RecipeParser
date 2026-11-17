@@ -232,6 +232,8 @@ class RecipePipeline:
 
         total = len(chunks)
         completed = 0
+        failed = 0   # chunks given up on, after any second pass
+        retried = 0  # chunks given a second pass
         all_results: List[IngestResponse] = []
 
         # Pre-load taxonomy axes once for the whole batch (avoids N round-trips).
@@ -315,86 +317,112 @@ class RecipePipeline:
                 log.exception("RecipePipeline: on_skip callback failed — continuing.")
 
         with ThreadPoolExecutor(max_workers=self._cap) as executor:
-            # Capture each chunk's submission position here — completion order
-            # (via as_completed below) is not submission order, and that
-            # position is the only identification a labelless (EPUB/PDF)
-            # chunk has.
-            future_to_chunk = {
-                # Each worker runs in a copy of the caller's context, so its Gemini calls are
-                # attributed to the job (usage.py, AI caps D8). One copy per submit: a Context
-                # cannot be entered by two threads at once.
-                executor.submit(contextvars.copy_context().run, _worker, chunk): (chunk, index)
-                for index, chunk in enumerate(chunks)
-            }
+            # Every chunk once; then, once, those lost to a transient Gemini failure (#149).
+            pending: List[Tuple[Chunk, int]] = [(chunk, index) for index, chunk in enumerate(chunks)]
+            final_pass = False
+            stopped = False
+            while pending and not stopped:
+                if final_pass:
+                    retried = len(pending)
+                    log.info("RecipePipeline: trying %d chunk(s) again that Gemini was too busy for.", retried)
+                # Capture each chunk's submission position here — completion order
+                # (via as_completed below) is not submission order, and that
+                # position is the only identification a labelless (EPUB/PDF)
+                # chunk has.
+                future_to_chunk = {
+                    # Each worker runs in a copy of the caller's context, so its Gemini calls are
+                    # attributed to the job (usage.py, AI caps D8). One copy per submit: a Context
+                    # cannot be entered by two threads at once.
+                    executor.submit(contextvars.copy_context().run, _worker, chunk): (chunk, index)
+                    for chunk, index in pending
+                }
+                pending = []
 
-            for future in as_completed(future_to_chunk):
-                chunk, index = future_to_chunk[future]
+                for future in as_completed(future_to_chunk):
+                    chunk, index = future_to_chunk[future]
 
-                # Cooperative pause/cancel check between chunk completions. The job's
-                # signal is the cancel an endpoint can always reach, even before the
-                # controller left IDLE (Cayenne F-426).
-                signal = job_signal.current()
-                if (signal is not None and signal.cancelled) or not self._controller.check_pause_point():
-                    log.info("RecipePipeline: cancelled — stopping after %d/%d chunks.", completed, total)
-                    # Cancel remaining futures (best-effort).
-                    for f in future_to_chunk:
-                        f.cancel()
-                    break
+                    # Cooperative pause/cancel check between chunk completions. The job's
+                    # signal is the cancel an endpoint can always reach, even before the
+                    # controller left IDLE (Cayenne F-426).
+                    signal = job_signal.current()
+                    if (signal is not None and signal.cancelled) or not self._controller.check_pause_point():
+                        log.info("RecipePipeline: cancelled — stopping after %d/%d chunks.", completed, total)
+                        # Cancel remaining futures (best-effort).
+                        for f in future_to_chunk:
+                            f.cancel()
+                        stopped = True
+                        break
 
-                try:
-                    # No timeout here on purpose. as_completed() only yields
-                    # futures that have already finished, so result() never
-                    # blocks and a timeout= would be unreachable — it read as a
-                    # per-chunk bound this loop does not enforce. A thread
-                    # cannot be cancelled anyway: the executor's __exit__ waits
-                    # on shutdown regardless. The real bound is per call, in
-                    # gemini._call_with_retry's HTTP timeout.
-                    outcome = future.result()
-                    all_results.extend(outcome.results)
-                    # A Cayenne restore carries its own categories and never passes REFINE.
-                    needs_tags = "REFINE" in self._get_stages(chunk)
-                    for position, result in enumerate(outcome.results):
-                        if on_result is not None:
-                            try:
-                                if on_result(result, needs_tags) is False:
-                                    continue  # refused (the beta cap): not written, so nothing to tag
-                            except Exception:
-                                # Deliberately NOT re-raised, unlike on_progress below. That
-                                # callback guards a stale stage label, which is indistinguishable
-                                # from a zombie job. This one is a single recipe's write, and
-                                # aborting an 827-recipe import because one row failed is worse
-                                # than losing that row and saying so — which _report_skip does.
-                                log.exception("RecipePipeline: on_result callback failed for one recipe.")
-                                _report_skip(chunk, "result callback failed", index)
-                                continue  # not written, so nothing to tag
-                        if needs_tags:
-                            tag_queue.append((index, position, result))
-                    if len(tag_queue) >= TAG_BATCH_SIZE:
-                        _flush_tags()
-                    for reason in outcome.skipped:
-                        _report_skip(chunk, reason, index)
-                except Exception as exc:
-                    if isinstance(exc, JobCancelledError) or (
-                        isinstance(exc, _ChunkFailed) and isinstance(exc.cause, JobCancelledError)
-                    ):
-                        # Stopped by the cook, not failed: not a skip. The loop's own
-                        # check stops the run at the next completion.
-                        log.info("RecipePipeline: a chunk stopped for the cancel.")
-                        continue
-                    if isinstance(exc, _ChunkFailed):
-                        for reason in exc.skipped:
+                    counted = True
+
+                    try:
+                        # No timeout here on purpose. as_completed() only yields
+                        # futures that have already finished, so result() never
+                        # blocks and a timeout= would be unreachable — it read as a
+                        # per-chunk bound this loop does not enforce. A thread
+                        # cannot be cancelled anyway: the executor's __exit__ waits
+                        # on shutdown regardless. The real bound is per call, in
+                        # gemini._call_with_retry's HTTP timeout.
+                        outcome = future.result()
+                        all_results.extend(outcome.results)
+                        # A Cayenne restore carries its own categories and never passes REFINE.
+                        needs_tags = "REFINE" in self._get_stages(chunk)
+                        for position, result in enumerate(outcome.results):
+                            if on_result is not None:
+                                try:
+                                    if on_result(result, needs_tags) is False:
+                                        continue  # refused (the beta cap): not written, so nothing to tag
+                                except Exception:
+                                    # Deliberately NOT re-raised, unlike on_progress below. That
+                                    # callback guards a stale stage label, which is indistinguishable
+                                    # from a zombie job. This one is a single recipe's write, and
+                                    # aborting an 827-recipe import because one row failed is worse
+                                    # than losing that row and saying so — which _report_skip does.
+                                    log.exception("RecipePipeline: on_result callback failed for one recipe.")
+                                    _report_skip(chunk, "result callback failed", index)
+                                    continue  # not written, so nothing to tag
+                            if needs_tags:
+                                tag_queue.append((index, position, result))
+                        if len(tag_queue) >= TAG_BATCH_SIZE:
+                            _flush_tags()
+                        for reason in outcome.skipped:
                             _report_skip(chunk, reason, index)
-                        exc = exc.cause
-                    log.error("RecipePipeline: chunk worker raised unexpectedly — skipping. Error: %s", exc)
-                    _report_skip(chunk, f"{type(exc).__name__}: {exc}", index)
-                finally:
-                    completed += 1
-                    if on_progress is not None:
-                        try:
-                            on_progress("PROCESSING", completed, total)
-                        except Exception:
-                            log.exception("RecipePipeline: on_progress callback failed — re-raising (§11.4).")
-                            raise
+                    except Exception as exc:
+                        if isinstance(exc, JobCancelledError) or (
+                            isinstance(exc, _ChunkFailed) and isinstance(exc.cause, JobCancelledError)
+                        ):
+                            # Stopped by the cook, not failed: not a skip. The loop's own
+                            # check stops the run at the next completion.
+                            log.info("RecipePipeline: a chunk stopped for the cancel.")
+                            continue
+                        if not final_pass and _worth_a_second_pass(exc):
+                            # Gemini was busy or rate-limited past its retries: try the chunk once more
+                            # after the others, when the spike may have passed (#149). Counted, and
+                            # its skips reported, only when it is done for good.
+                            log.warning(
+                                "RecipePipeline: chunk %d failed (%s) — it will be tried again after the others.",
+                                index, _cause(exc),
+                            )
+                            pending.append((chunk, index))
+                            counted = False
+                            continue
+                        failed += 1
+                        if isinstance(exc, _ChunkFailed):
+                            for reason in exc.skipped:
+                                _report_skip(chunk, reason, index)
+                            exc = exc.cause
+                        log.error("RecipePipeline: chunk worker raised unexpectedly — skipping. Error: %s", exc)
+                        _report_skip(chunk, f"{type(exc).__name__}: {exc}", index)
+                    finally:
+                        if counted:
+                            completed += 1
+                            if on_progress is not None:
+                                try:
+                                    on_progress("PROCESSING", completed, total)
+                                except Exception:
+                                    log.exception("RecipePipeline: on_progress callback failed — re-raising (§11.4).")
+                                    raise
+                final_pass = True
 
         # What is left in the queue, after the last chunk or a cancel (design D1).
         _flush_tags()
@@ -403,8 +431,8 @@ class RecipePipeline:
         self._controller.transition("done")
 
         log.info(
-            "RecipePipeline.run(): finished. %d/%d chunks succeeded → %d recipe(s).",
-            completed, total, len(all_results),
+            "RecipePipeline.run(): finished. %d/%d chunks succeeded, %d failed (%d given a second try) → %d recipe(s).",
+            completed - failed, total, failed, retried, len(all_results),
         )
         return all_results
 
@@ -601,68 +629,100 @@ class RecipePipeline:
             log.info("_process_chunk: no recipes kept from chunk — skipping.")
             return ChunkResult([], skipped)
 
+        def _one(raw: Any) -> IngestResponse:
+            """REFINE, EMBED and ASSEMBLE one extracted recipe."""
+            # REFINE
+            self._enter_stage("REFINING")
+            self._limiter.wait_then_record_start()
+            refined = refine(
+                raw=raw,
+                client=self._client,
+                source_host=host_of(chunk.source_url) if chunk.source_url else None,
+                limiter=self._limiter,  # for the retries inside gemini.py (F-109)
+            )
+
+            # Tags come later, from the TAG stage over every TAG_BATCH_SIZE finished recipes (F-246).
+
+            # EMBED
+            self._enter_stage("EMBEDDING")
+            self._limiter.wait_then_record_start()
+            embedding = embed(recipe=refined, client=self._client)
+
+            # The photo the model picked from the book's markers, stored per
+            # recipe (one chunk can hold several); else the chunk's own.
+            photo = self._food_book_photo(
+                chunk,
+                _book_photo(chunk, getattr(raw, "photo_filename", None)),
+                alone=len(extraction.recipes) == 1,
+                label=getattr(raw, "name", None),
+            )
+            image_url = chunk.image_url
+            if photo is not None and self._image_store is not None:
+                image_url = (
+                    self._image_store.put(photo.data, str(uuid.uuid4()), photo.content_type) or chunk.image_url
+                )
+            elif photo is None:
+                photo = _chunk_photo(chunk)
+
+            # ASSEMBLE (no separate DB stage — stays at EMBEDDING per §7.2)
+            result = assemble(
+                recipe=refined,
+                embedding=embedding,
+                source_url=chunk.source_url,
+                image_url=image_url,
+                grid_categories={},
+                prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
+                cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
+                meta=chunk.meta,
+                ingredient_lines=list(raw.ingredients),
+                direction_steps=list(raw.directions),
+                servings_text=getattr(raw, "servings", None),
+                citation=resolve_citation(
+                    chunk.citation,
+                    getattr(raw, "stated_source", None),
+                    getattr(raw, "byline", None),
+                ),
+                total_time=getattr(raw, "total_time", None),
+                description=getattr(raw, "description", None),
+                nutritional_info=getattr(raw, "nutritional_info", None),
+                notes=getattr(raw, "notes", None),
+                restore=chunk.restore,
+            )
+            result.attach_photo(photo)
+            return result
+
+        # One recipe failing costs that recipe, not its chunk (RecipeParser #149: a run lost four
+        # chunks, about forty recipes, to one failure each). A failed recipe is tried once more after
+        # its neighbours, which gives a 503 spike a moment to pass and the model a second chance at a
+        # slip; failing again, it is reported by name. A cancel still stops the chunk.
         # A later stage failing the chunk must not swallow the drops EXTRACT named (D2).
         try:
-            for raw in extraction.recipes:
-                # REFINE
-                self._enter_stage("REFINING")
-                self._limiter.wait_then_record_start()
-                refined = refine(
-                    raw=raw,
-                    client=self._client,
-                    source_host=host_of(chunk.source_url) if chunk.source_url else None,
-                    limiter=self._limiter,  # for the retries inside gemini.py (F-109)
-                )
-
-                # Tags come later, from the TAG stage over every TAG_BATCH_SIZE finished recipes (F-246).
-
-                # EMBED
-                self._enter_stage("EMBEDDING")
-                self._limiter.wait_then_record_start()
-                embedding = embed(recipe=refined, client=self._client)
-
-                # The photo the model picked from the book's markers, stored per
-                # recipe (one chunk can hold several); else the chunk's own.
-                photo = self._food_book_photo(
-                    chunk,
-                    _book_photo(chunk, getattr(raw, "photo_filename", None)),
-                    alone=len(extraction.recipes) == 1,
-                    label=getattr(raw, "name", None),
-                )
-                image_url = chunk.image_url
-                if photo is not None and self._image_store is not None:
-                    image_url = (
-                        self._image_store.put(photo.data, str(uuid.uuid4()), photo.content_type) or chunk.image_url
+            done: List[Tuple[int, IngestResponse]] = []
+            failed: List[Tuple[int, Any]] = []
+            for position, raw in enumerate(extraction.recipes):
+                try:
+                    done.append((position, _one(raw)))
+                except JobCancelledError:
+                    raise
+                except Exception as exc:
+                    job_signal.checkpoint()  # refine() reads a cancel as a failure; stop for it here
+                    log.warning(
+                        "_process_chunk: %r failed (%s: %s) — trying it again after the others.",
+                        getattr(raw, "name", "?"), type(exc).__name__, exc,
                     )
-                elif photo is None:
-                    photo = _chunk_photo(chunk)
-
-                # ASSEMBLE (no separate DB stage — stays at EMBEDDING per §7.2)
-                result = assemble(
-                    recipe=refined,
-                    embedding=embedding,
-                    source_url=chunk.source_url,
-                    image_url=image_url,
-                    grid_categories={},
-                    prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
-                    cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
-                    meta=chunk.meta,
-                    ingredient_lines=list(raw.ingredients),
-                    direction_steps=list(raw.directions),
-                    servings_text=getattr(raw, "servings", None),
-                    citation=resolve_citation(
-                        chunk.citation,
-                        getattr(raw, "stated_source", None),
-                        getattr(raw, "byline", None),
-                    ),
-                    total_time=getattr(raw, "total_time", None),
-                    description=getattr(raw, "description", None),
-                    nutritional_info=getattr(raw, "nutritional_info", None),
-                    notes=getattr(raw, "notes", None),
-                    restore=chunk.restore,
-                )
-                result.attach_photo(photo)
-                results.append(result)
+                    failed.append((position, raw))
+            for position, raw in failed:
+                job_signal.checkpoint()
+                try:
+                    done.append((position, _one(raw)))
+                except JobCancelledError:
+                    raise
+                except Exception as exc:
+                    job_signal.checkpoint()
+                    name = getattr(raw, "name", None) or "a recipe"
+                    log.error("_process_chunk: %r failed twice — skipping it: %s: %s", name, type(exc).__name__, exc)
+                    skipped.append(f"{name}: {type(exc).__name__}: {exc}")
+            results.extend(result for _position, result in sorted(done, key=lambda d: d[0]))
         except Exception as exc:
             if not skipped:
                 raise
@@ -674,6 +734,23 @@ class RecipePipeline:
 # ──────────────────────────────────────────────────────────────────────────────
 # Private helpers
 # ──────────────────────────────────────────────────────────────────────────────
+
+def _cause(exc: Exception) -> Exception:
+    """The failure inside a ``_ChunkFailed``, or the exception itself."""
+    return exc.cause if isinstance(exc, _ChunkFailed) else exc
+
+
+def _worth_a_second_pass(exc: Exception) -> bool:
+    """A chunk lost to Gemini being busy or rate-limited (503, 500, 504, 429) is worth one more try.
+
+    Any other failure would fail the same way again (a bad key, a broken reader), so it is not
+    retried: a second pass must not double the time a run takes to fail.
+    """
+    from recipeparser.gemini import _is_rate_limit_error, _is_transient_server_error
+
+    cause = _cause(exc)
+    return _is_transient_server_error(cause) or _is_rate_limit_error(cause)
+
 
 def _book_photo(chunk: Chunk, photo_filename: Optional[str]) -> Optional[Photo]:
     """The photo the model named, if the chunk really carries it.
