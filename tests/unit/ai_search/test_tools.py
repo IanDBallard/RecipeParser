@@ -479,3 +479,8 @@ def test_embed_timeout_becomes_a_tool_error() -> None:
     out = _box(db, timed_out, clock=Clock()).run("semantic_search", {"text": "x", "limit": 5}, remaining=20.0)
     assert out.is_error
     assert db.calls == []
+
+
+def test_run_sql_description_names_the_category_view() -> None:
+    run_sql = next(t for t in TOOL_DEFINITIONS if t["name"] == "run_sql")
+    assert "ai.recipe_filed_under" in run_sql["description"]

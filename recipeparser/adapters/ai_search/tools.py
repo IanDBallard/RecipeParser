@@ -51,6 +51,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Run one read-only SQL SELECT over the cook's own recipe views (the ai schema) and get back the rows. "
             "Use it to filter, count, sort and compare: by category, rating, time, source, ingredient and so on. "
+            "Filter by category with ai.recipe_filed_under, which includes everything filed below a category. "
             "Write one statement only. To search by words inside SQL call ai.keyword_search(text, limit) with "
             "positional arguments; to find recipes by meaning use the semantic_search tool instead, never "
             "ai.semantic_search in SQL. At most 200 rows come back and long text is cut short."
