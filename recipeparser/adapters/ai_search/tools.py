@@ -69,7 +69,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Find the cook's recipes by meaning: describe what is wanted in a few words (a mood, a dish, a "
             "season) and get the closest recipes with their ids, titles, a closeness score and the categories each "
-            "is filed under. Use this for "
+            "is filed under directly. Use this for "
             "fuzzy ideas where exact words may not appear in the recipe."
         ),
         "strict": True,
@@ -87,7 +87,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "keyword_search",
         "description": (
             "Find the cook's recipes whose text contains the given words: returns ids, titles, a rank and the "
-            "categories each is filed under. "
+            "categories each is filed under directly. "
             "Use this when a specific word, name or ingredient matters more than the general idea."
         ),
         "strict": True,

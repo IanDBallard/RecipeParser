@@ -9,7 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 Searching more deeply now starts from the cook's own categories. Every deeper-search request carries the cook's category tree, the search tools show which categories each recipe is filed under, and the agent is told to treat a category as everything inside it and to lead a count with the Library's own filter count.
 
-**Deploy precondition:** Cayenne PR #536 (migration `20261118120000_ai_recipe_filed_under.sql`, the view `ai.recipe_filed_under`) must be live in production before this deploys, or `get_recipe` fails.
+**Deploy precondition:** Cayenne PR #536 (migration `20261118120000_ai_recipe_filed_under.sql`, the view `ai.recipe_filed_under`) must be live in production before this deploys. The deeper search reads that view before the agent starts, so without it every `/search/ask` request fails. If the migration is applied after this version is already running, restart the API: it reads the list of views the agent may query once at start, and until then it refuses `run_sql` on `ai.recipe_filed_under`.
 
 ### ✨ Added
 - `POST /search/ask`: the request now includes the cook's category tree (names quoted and escaped; long trees cut to the top two levels), built by `cook_categories` and `categories_block`.

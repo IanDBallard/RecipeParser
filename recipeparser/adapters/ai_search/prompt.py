@@ -182,7 +182,7 @@ _ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
 def _escape_char(ch: str) -> str:
     if ch in _ESCAPES:
         return _ESCAPES[ch]
-    if unicodedata.category(ch) == "Cc" or ch in "  ":
+    if unicodedata.category(ch) == "Cc" or ch in "\u2028\u2029":
         return f"\\u{ord(ch):04x}"
     return ch
 
@@ -227,15 +227,30 @@ def categories_block(categories: CookCategories) -> list[str]:
     """The cook's category tree as request lines: a header, then one line per top-level category.
 
     Names are quoted and escaped, so a name is always data. Past ``MAX_CATEGORIES_CHARS`` the block is
-    rebuilt with the top two levels only, and says where the rest is.
+    rebuilt with the top two levels, then the top level only, then as many whole top-level lines as fit,
+    and says where the rest is. The whole block, that last line included, never passes the limit.
     """
     if not categories.rows:
         return []
     header = _CATEGORIES_HEADER.format(recipes=categories.recipes)
     lines = [header, *_categories_lines(categories, max_depth=None)]
-    if len("\n".join(lines)) > MAX_CATEGORIES_CHARS:
-        lines = [header, *_categories_lines(categories, max_depth=1), _CATEGORIES_MORE]
-    return lines
+    if _fits(lines):
+        return lines
+    for depth in (1, 0):
+        trimmed = [header, *_categories_lines(categories, max_depth=depth), _CATEGORIES_MORE]
+        if _fits(trimmed):
+            return trimmed
+    # Even the top-level lines are too long: keep whole lines from the top while the limit holds.
+    kept = [header]
+    for line in _categories_lines(categories, max_depth=0):
+        if not _fits([*kept, line, _CATEGORIES_MORE]):
+            break
+        kept.append(line)
+    return [*kept, _CATEGORIES_MORE]
+
+
+def _fits(lines: list[str]) -> bool:
+    return len("\n".join(lines)) <= MAX_CATEGORIES_CHARS
 
 
 def request_text(
