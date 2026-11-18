@@ -67,7 +67,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "semantic_search",
         "description": (
             "Find the cook's recipes by meaning: describe what is wanted in a few words (a mood, a dish, a "
-            "season) and get the closest recipes with their ids, titles and a closeness score. Use this for "
+            "season) and get the closest recipes with their ids, titles, a closeness score and the categories each "
+            "is filed under. Use this for "
             "fuzzy ideas where exact words may not appear in the recipe."
         ),
         "strict": True,
@@ -84,7 +85,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "keyword_search",
         "description": (
-            "Find the cook's recipes whose text contains the given words: returns ids, titles and a rank. "
+            "Find the cook's recipes whose text contains the given words: returns ids, titles, a rank and the "
+            "categories each is filed under. "
             "Use this when a specific word, name or ingredient matters more than the general idea."
         ),
         "strict": True,
@@ -101,8 +103,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "get_recipe",
         "description": (
-            "Read one of the cook's recipes in full: its details, its ingredients in order and its directions "
-            "in order. Use it to check a recipe before recommending it."
+            "Read one of the cook's recipes in full: its details, its ingredients in order, its directions "
+            "in order and the categories it is filed under, by axis. Use it to check a recipe before recommending it."
         ),
         "strict": True,
         "input_schema": {
@@ -118,6 +120,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 _RECIPE_SQL = "select * from ai.recipes where id = %s"
 _INGREDIENTS_SQL = "select * from ai.recipe_ingredients where recipe_id = %s order by position"
 _STEPS_SQL = "select * from ai.recipe_steps where recipe_id = %s order by position"
+_FILED_UNDER_SQL = (
+    "select axis, category from ai.recipe_filed_under where recipe_id = %s and direct order by is_list, axis, category"
+)
 
 
 @dataclass
@@ -328,14 +333,22 @@ class ToolBox:
         limit = _require_limit(tool_input)
         vector = _vector_text(self._embed(text, self._embed_timeout()))
         return self._search(
-            "select id, title, score from ai.semantic_search(%s, %s)", [vector, limit], "semantic_search", text
+            "select s.id, s.title, s.score, r.categories from ai.semantic_search(%s, %s) s "
+            "join ai.recipes r on r.id = s.id order by s.score desc, s.title",
+            [vector, limit],
+            "semantic_search",
+            text,
         )
 
     def _keyword_search(self, tool_input: Mapping[str, Any]) -> ToolOutcome:
         text = _require_text(tool_input, "text")
         limit = _require_limit(tool_input)
         return self._search(
-            "select id, title, rank from ai.keyword_search(%s, %s)", [text, limit], "keyword_search", text
+            "select s.id, s.title, s.rank, r.categories from ai.keyword_search(%s, %s) s "
+            "join ai.recipes r on r.id = s.id order by s.rank desc, s.title",
+            [text, limit],
+            "keyword_search",
+            text,
         )
 
     def _get_recipe(self, tool_input: Mapping[str, Any]) -> ToolOutcome:
@@ -350,6 +363,9 @@ class ToolBox:
             self._claims, _INGREDIENTS_SQL, [recipe_id], max_rows=MAX_ROWS, timeout_ms=self._timeout_ms()
         )
         steps = self._db.run(self._claims, _STEPS_SQL, [recipe_id], max_rows=MAX_ROWS, timeout_ms=self._timeout_ms())
+        filed_under = self._db.run(
+            self._claims, _FILED_UNDER_SQL, [recipe_id], max_rows=MAX_ROWS, timeout_ms=self._timeout_ms()
+        )
         logger.info(
             "tool=get_recipe user=%s duration_ms=%.0f ingredients=%d steps=%d",
             self._user(),
@@ -361,6 +377,7 @@ class ToolBox:
         recipe = _rows(head, scratch)[0]
         recipe["ingredients"] = _rows(ingredients, scratch)
         recipe["steps"] = _rows(steps, scratch)
+        recipe["filed_under"] = _rows(filed_under, scratch)
         self.seen_ids.add(recipe_id)
         raw_title = head.rows[0][head.columns.index("title")] if "title" in head.columns else None
         title = _short(raw_title) if isinstance(raw_title, str) else ""
