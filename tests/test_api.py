@@ -563,13 +563,13 @@ class TestPostJobsFile:
             resp = self._upload(client, "Recipes.melarecipes", body, "application/octet-stream")
         assert resp.status_code == 202
 
-    def test_a_single_mela_recipe_over_the_ceiling_is_accepted_and_bounded_by_the_reader(self, client: TestClient) -> None:
-        with _patch_pipeline_and_writer()[0], \
-             patch("recipeparser.adapters.api._MelaReader") as mock_reader_cls, \
+    def test_a_single_mela_recipe_over_the_ceiling_is_a_413(self, client: TestClient) -> None:
+        """One shared recipe is a single item, so it keeps the ceiling (owner ruling 2026-11-18)."""
+        with patch("recipeparser.adapters.api._MelaReader") as mock_reader_cls, \
              patch("recipeparser.adapters.api.MAX_UPLOAD_BYTES", 16):
-            mock_reader_cls.return_value.read.return_value = [MagicMock(text="Pie")]
             resp = self._upload(client, "Pie.melarecipe", b"{" + b" " * 40 + b"}", "application/json")
-        assert resp.status_code == 202
+        assert resp.status_code == 413
+        mock_reader_cls.return_value.read.assert_not_called()
 
     def test_a_mela_export_is_not_deferred_past_the_ai_gate(self) -> None:
         """Every Mela recipe needs AI, so the import check runs at upload, not after the read."""

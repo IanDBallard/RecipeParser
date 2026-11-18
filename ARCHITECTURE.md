@@ -464,7 +464,7 @@ class SourceReader(ABC):
 | `url.py` | `UrlReader` | URL string | Fetches via `https://r.jina.ai/{url}`; when Jina fails, fetches the page directly and reads its schema.org Recipe JSON-LD, else its article text; no images |
 | `text.py` | `TextReader` | Raw string | Passthrough; no images |
 | `paprika.py` | `PaprikaReader` | File path | Handles both Paprika and Cayenne `.paprikarecipes` formats |
-| `mela.py` | `MelaReader` | File path | Reads a Mela `.melarecipes` library (ZIP) or one `.melarecipe` (JSON); the API routes both by extension and exempts them from the upload ceiling |
+| `mela.py` | `MelaReader` | File path | Reads a Mela `.melarecipes` library (ZIP) or one `.melarecipe` (JSON); the API routes both by extension; the library is exempt from the upload ceiling, the single recipe keeps it |
 
 ### Paprika Reader — Format Detection
 

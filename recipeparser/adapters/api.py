@@ -1603,9 +1603,11 @@ async def submit_file_job(
             size = tmp.tell()
 
         # The ceiling (config.MAX_UPLOAD_BYTES), after the type check so a small .docx is still a 422.
-        # A Paprika or Mela export is exempt: it is a whole library with its photos, not a single item,
-        # and its reader takes one entry at a time, bounding each.
-        if reader_tag not in ("paprika", "mela") and size > MAX_UPLOAD_BYTES:
+        # A Paprika or Mela library export is exempt: it is a whole library with its photos, not a
+        # single item, and its reader takes one entry at a time, bounding each. One shared Mela
+        # recipe (.melarecipe) is a single item and keeps the ceiling (owner ruling 2026-11-18).
+        library = reader_tag == "paprika" or (reader_tag == "mela" and suffix.lower() == ".melarecipes")
+        if not library and size > MAX_UPLOAD_BYTES:
             os.unlink(tmp_path)
             raise HTTPException(
                 status_code=status.HTTP_413_CONTENT_TOO_LARGE,

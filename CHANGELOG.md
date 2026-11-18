@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.40.1] — 2026-11-18
+
+One shared Mela recipe keeps the upload ceiling (owner ruling on 9.33.0's open question). Before, a single `.melarecipe` was exempt from the ceiling at upload, then refused by the reader past 50 MB with "is not a Mela recipe: larger than 50 MB."; the cook uploaded the whole file only to be told no. Merge and deploy before the Cayenne client PR, which refuses the same file before upload.
+
+### 🔧 Changed
+- `POST /jobs/file`: only a library export (`.paprikarecipes`, `.melarecipes`) is exempt from `MAX_UPLOAD_BYTES`; a `.melarecipe` over it is the usual 413, "Cayenne takes files up to 100 MB."
+- `MelaReader` holds a single `.melarecipe` to `MAX_UPLOAD_BYTES` (`_MAX_SINGLE_BYTES`) rather than the 50 MB per-entry cap, which still bounds each member of a library; its refusal names the ceiling ("is not a Mela recipe: larger than 100 MB.").
+
 ## [9.40.0] — 2026-11-18
 
 A used-up daily Gemini quota no longer loses a run's work (#161). Gemini's free tier allows 500 requests a day per model; on The Food Lab (280 chunks) the quota ran out at chunk 81, Gemini answered 429 RESOURCE_EXHAUSTED with a retry delay of 4 h 44 min, RecipeParser retried after 2, 4, 8 and 16 seconds, and stopping it lost all 81 chunks because nothing is written until the end. 9.36.5's second pass for rate-limited chunks would have made it worse: every remaining chunk would have spent its retries twice before the run gave up.

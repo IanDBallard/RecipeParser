@@ -20,6 +20,7 @@ import zipfile
 from pathlib import Path
 from typing import Iterator, List, Optional, Tuple
 
+from recipeparser.config import MAX_UPLOAD_BYTES
 from recipeparser.core.models import Chunk, InputType, RestoreFields, SourceMeta
 from recipeparser.exceptions import MelaExtractionError
 from recipeparser.io.readers import RecipeReader
@@ -30,6 +31,10 @@ log = logging.getLogger(__name__)
 # The most one entry may be: its JSON with its base64 pictures. A library has no
 # ceiling (it is a whole collection), so each entry is bounded instead.
 _MAX_ENTRY_BYTES = 50_000_000
+
+# One shared recipe (.melarecipe) is a single item: the upload ceiling applies to it at
+# POST /jobs/file, and the reader holds it to the same number for any other caller.
+_MAX_SINGLE_BYTES = MAX_UPLOAD_BYTES
 
 # A picture is a nicety, so it is bounded twice: each decoded picture, and all the
 # pictures one read keeps (a hostile archive deflates ~1000:1, so a small file can
@@ -203,7 +208,8 @@ class MelaReader(RecipeReader):
             if entry is None:
                 reason = _TOO_LARGE if data is None else _UNREADABLE
                 if single:
-                    detail = _TOO_LARGE if data is None else "not readable JSON"
+                    too_large = f"larger than {_MAX_SINGLE_BYTES // 1_000_000} MB"
+                    detail = too_large if data is None else "not readable JSON"
                     raise MelaExtractionError(f"is not a Mela recipe: {detail}.")
                 log.warning("MelaReader: skipping %r — %s.", name, reason)
                 chunks.append(_skipped(name, reason))
@@ -219,8 +225,8 @@ class MelaReader(RecipeReader):
         """(name, bytes) per entry, the name without its extension; bytes is None past the cap."""
         if single:
             with path.open("rb") as fh:
-                data = fh.read(_MAX_ENTRY_BYTES + 1)
-            yield path.stem, (None if len(data) > _MAX_ENTRY_BYTES else data)
+                data = fh.read(_MAX_SINGLE_BYTES + 1)
+            yield path.stem, (None if len(data) > _MAX_SINGLE_BYTES else data)
             return
 
         if not zipfile.is_zipfile(path):
