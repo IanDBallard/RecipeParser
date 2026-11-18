@@ -15,10 +15,10 @@ ID_A = "11111111-1111-4111-8111-111111111111"
 ID_B = "22222222-2222-4222-8222-222222222222"
 
 
-def test_yaml_has_thirty_entries_and_enough_out_of_scope():
+def test_yaml_has_thirty_five_entries_and_enough_out_of_scope():
     entries = goldens.load_goldens(_ROOT / "scripts" / "ask_goldens.yaml")
-    assert len(entries) == 30
-    assert len({e.id for e in entries}) == 30
+    assert len(entries) == 35
+    assert len({e.id for e in entries}) == 35
     assert sum(1 for e in entries if e.expect_kind == "out_of_scope") >= 5
     assert any(e.question == "How long do I boil an egg?" for e in entries)
     assert {e.expect_kind for e in entries if e.expect_kind} <= {"recipes", "text", "none", "out_of_scope"}
@@ -205,6 +205,16 @@ def test_yaml_expects_gaps_on_eight_entries_and_none_on_four():
     entries = goldens.load_goldens(_ROOT / "scripts" / "ask_goldens.yaml")
     assert sum(1 for e in entries if e.expect_gap is True) == 8
     assert sum(1 for e in entries if e.expect_gap is False) == 4
+
+
+def test_yaml_has_the_category_questions():
+    entries = goldens.load_goldens(_ROOT / "scripts" / "ask_goldens.yaml")
+    by_id = {e.id: e for e in entries}
+    for id_ in ("cat-parent-count", "cat-two-axes", "cat-list", "cat-cuisine-meal", "mood-no-category"):
+        assert id_ in by_id
+    assert [e.id for e in entries if e.expect_categories is False] == ["mood-no-category"]
+    assert by_id["fact-count-soups"].expect_categories is True
+    assert by_id["cat-parent-count"].expect_categories is True
 
 
 def test_load_rejects_a_non_boolean_expect_gap(tmp_path):

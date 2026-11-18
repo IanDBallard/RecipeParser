@@ -4,7 +4,10 @@
 # library covers it and no gap should be reported; leave out where it does not matter), filters (plain text
 # lines, as the Library writes them), today (YYYY-MM-DD), previous (id of the entry just
 # before this one in its conversation: the question continues it, and the script feeds the whole
-# chain of earlier entries as history).
+# chain of earlier entries as history), expect_categories (true: the answer should use the cook's
+# categories; false: it should not; leave out where it does not matter).
+# The Categories questions name the owner's own categories and lists, and mean nothing on another
+# library.
 
 # Menus with parts
 - id: menu-sunday-roast
@@ -73,6 +76,7 @@
 - id: fact-count-soups
   question: How many soup recipes do I have?
   expect_kind: text
+  expect_categories: true
 - id: fact-longest
   question: Which recipe takes the longest to cook?
   expect_kind: text
@@ -124,3 +128,25 @@
 - id: scope-knife
   question: How do I keep my kitchen knives sharp?
   expect_kind: out_of_scope
+
+# Categories
+- id: cat-parent-count
+  question: How many vegetarian recipes do I have?
+  expect_kind: text
+  expect_categories: true
+- id: cat-two-axes
+  question: Which of my desserts are vegan?
+  expect_kind: recipes
+  expect_categories: true
+- id: cat-list
+  question: What is on my To try list?
+  expect_kind: recipes
+  expect_categories: true
+- id: cat-cuisine-meal
+  question: Indian dinners I could cook this week.
+  expect_kind: recipes
+  expect_categories: true
+- id: mood-no-category
+  question: Something comforting for when I have a cold.
+  expect_kind: recipes
+  expect_categories: false
