@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.41.0] — 2026-11-18
+
+Searching more deeply now starts from the cook's own categories. Every deeper-search request carries the cook's category tree, the search tools show which categories each recipe is filed under, and the agent is told to treat a category as everything inside it and to lead a count with the Library's own filter count.
+
+**Deploy precondition:** Cayenne PR #536 (migration `20261118120000_ai_recipe_filed_under.sql`, the view `ai.recipe_filed_under`) must be live in production before this deploys, or `get_recipe` fails.
+
+### ✨ Added
+- `POST /search/ask`: the request now includes the cook's category tree (names quoted and escaped; long trees cut to the top two levels), built by `cook_categories` and `categories_block`.
+- `semantic_search` and `keyword_search` rows carry each recipe's `categories`; `get_recipe` adds `filed_under` (axis and category, direct filings) read from `ai.recipe_filed_under`.
+- The agent's instructions gain a "The cook's categories" section: categories first, a category includes everything below it, and counts lead with the Library filter's count and reconcile the rest. `run_sql` names the new view.
+
+### 🔧 Changed
+- `scripts/ask_goldens.py` sends the same category block.
+
+---
+
 ## [9.40.2] — 2026-11-18
 
 The golden-question report now shows whether each answer used the cook's categories, and the golden set has new category questions. Nothing the app does changes; only the script the owner runs against the library.
