@@ -43,7 +43,7 @@ from pydantic import TypeAdapter
 
 from recipeparser import usage as usage_module
 from recipeparser.adapters.ai_search.agent import run_agent
-from recipeparser.adapters.ai_search.ai_db import AiReaderDb
+from recipeparser.adapters.ai_search.ai_db import AiReaderDb, cook_categories
 from recipeparser.adapters.ai_search.answer import Answer, Turn, finalize, raw_ids
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
 from recipeparser.adapters.ai_search.tools import ToolBox, ToolOutcome
@@ -327,6 +327,7 @@ def run_golden(
     error: str | None = None
     toolbox = RecordingToolBox(db, claims, embed, catalogue)
     try:
+        categories = cook_categories(db, claims)
         toolbox.admit_answers((t.answer for t in history), (a for t in history for a in t.added))
         raw = run_agent(
             client=client,
@@ -338,6 +339,7 @@ def run_golden(
                 filters=list(entry.filters),
                 question=entry.question,
                 history=history,
+                categories=categories,
             ),
             toolbox=toolbox,
             on_progress=lambda text: print(f"    {text}", file=sys.stderr),

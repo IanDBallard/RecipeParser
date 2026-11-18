@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from recipeparser.adapters.ai_search.ai_db import Catalogue
+from recipeparser.adapters.ai_search.ai_db import Catalogue, CookCategories, CookCategory
 from recipeparser.adapters.ai_search.answer import MAX_HISTORY, RecipesAnswer, Turn
 
 SYSTEM_PROMPT = """You answer questions about one cook's personal recipe library inside Cayenne,
@@ -144,6 +144,61 @@ def _added_ids(turn: Turn) -> list[str]:
     return list(dict.fromkeys(str(i) for a in turn.added for i in a.recipe_ids))
 
 
+MAX_CATEGORIES_CHARS = 4000
+_CATEGORIES_HEADER = "The cook's categories (recipes filed, of {recipes}):"
+_CATEGORIES_MORE = "More categories are in ai.categories."
+
+
+def _quoted(name: str) -> str:
+    return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _by_name(rows: list[CookCategory]) -> list[CookCategory]:
+    return sorted(rows, key=lambda r: (r.name.casefold(), r.name, r.id))
+
+
+def _categories_lines(categories: CookCategories, *, max_depth: int | None) -> list[str]:
+    rows = [r for r in categories.rows if max_depth is None or r.depth <= max_depth]
+    children: dict[str, list[CookCategory]] = {}
+    for r in rows:
+        if r.parent_id is not None:
+            children.setdefault(r.parent_id, []).append(r)
+
+    def nested(row: CookCategory) -> str:
+        # Below the third level the tree goes in brackets after its parent: "a" ("b", "c").
+        text = _quoted(row.name)
+        kids = _by_name(children.get(row.id, []))
+        return f"{text} ({', '.join(nested(k) for k in kids)})" if kids else text
+
+    def child(row: CookCategory) -> str:
+        text = _quoted(row.name)
+        kids = _by_name(children.get(row.id, []))
+        return f"{text} > {', '.join(nested(k) for k in kids)}" if kids else text
+
+    roots = [r for r in rows if r.parent_id is None]
+    lines: list[str] = []
+    for root in _by_name([r for r in roots if not r.is_list]) + _by_name([r for r in roots if r.is_list]):
+        text = _quoted(root.name) if root.is_list else f"{_quoted(root.name)} ({root.filed})"
+        kids = _by_name(children.get(root.id, []))
+        lines.append(f"{text}: {'; '.join(child(k) for k in kids)}" if kids else text)
+    return lines
+
+
+def categories_block(categories: CookCategories) -> list[str]:
+    """The cook's category tree as request lines: a header, then one line per top-level category.
+
+    Names are quoted and escaped, so a name is always data. Past ``MAX_CATEGORIES_CHARS`` the block is
+    rebuilt with the top two levels only, and says where the rest is.
+    """
+    if not categories.rows:
+        return []
+    header = _CATEGORIES_HEADER.format(recipes=categories.recipes)
+    lines = [header, *_categories_lines(categories, max_depth=None)]
+    if len("\n".join(lines)) > MAX_CATEGORIES_CHARS:
+        lines = [header, *_categories_lines(categories, max_depth=1), _CATEGORIES_MORE]
+    return lines
+
+
 def request_text(
     *,
     today: date,
@@ -151,14 +206,16 @@ def request_text(
     filters: list[str],
     question: str,
     history: list[Turn],
+    categories: CookCategories,
 ) -> str:
-    """The part of the request that changes every time: date, settings, the conversation, the question.
+    """The part of the request that changes every time: date, settings, categories, the conversation, the question.
 
     ``filters`` is only ever non-empty for the previous release's app; the current one sends none.
     """
     lines = [
         f"Today: {today:%A} {today.day} {today:%B %Y}",
         f"Measuring system: {measuring}",
+        *categories_block(categories),
     ]
     if filters:
         lines.append("Active filters:")

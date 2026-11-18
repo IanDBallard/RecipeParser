@@ -22,6 +22,8 @@ from recipeparser.adapters.ai_search.ai_db import (
     AiReaderDb,
     Catalogue,
     ColumnInfo,
+    CookCategories,
+    CookCategory,
     NotAiReader,
     QueryFailed,
     ViewInfo,
@@ -393,3 +395,32 @@ class _Raiser(Exception):
     def __init__(self, callback: Any) -> None:
         super().__init__("callback")
         self.callback = callback
+
+
+# -- the cook's categories (request text) -----------------------------------------------------------
+
+
+def test_cook_categories_runs_one_statement_without_parameters_and_maps_rows(db: AiReaderDb) -> None:
+    _pool().conn.script = {
+        "from ai.categories": (
+            ["id", "name", "parent_id", "depth", "is_list", "filed", "recipes"],
+            [("a", "Axis", None, 0, False, 5, 9), ("b", "Child", "a", 1, True, 0, 9)],
+        )
+    }
+    result = ai_db.cook_categories(db, CLAIMS)
+    assert result == CookCategories(
+        recipes=9,
+        rows=[CookCategory("a", "Axis", None, 0, False, 5), CookCategory("b", "Child", "a", 1, True, 0)],
+    )
+    executed = _pool().conn.executed
+    statements = [s for s, _ in executed if "ai.categories" in s]
+    assert len(statements) == 1
+    assert [p for s, p in executed if "ai.categories" in s] == [None]
+    assert "ai.recipe_filed_under" in statements[0]
+    assert statements[0].lower().count("select") == 3  # the CTE, the main select, the one recipe count
+    assert _pool().conn.fetch_sizes == [2001]
+
+
+def test_cook_categories_with_no_rows_is_empty(db: AiReaderDb) -> None:
+    _pool().conn.script = {"from ai.categories": (["id"], [])}
+    assert ai_db.cook_categories(db, CLAIMS) == CookCategories(recipes=0, rows=[])
