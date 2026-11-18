@@ -241,3 +241,88 @@ def test_report_shows_gaps_and_their_score():
     miss = goldens.render_report([_result(expect_gap=True)])
     assert "gap: none reported (expected a gap) ✗" in miss
     assert "gap:" not in goldens.render_report([_result()])
+
+
+def test_uses_categories_reads_any_category_relation_or_column():
+    assert goldens.uses_categories(["select count(*) from ai.recipe_filed_under where category = 'Soups'"])
+    assert goldens.uses_categories(["SELECT id FROM recipe_categories WHERE axis = 'Diet'"])
+    assert goldens.uses_categories(["select id from ai.recipes where 'Vegan' = any(categories)"])
+    assert not goldens.uses_categories(["select id, title from ai.recipes where rating = 5"])
+    assert not goldens.uses_categories([])
+
+
+def test_category_names_finds_quoted_names_only():
+    known = ["Soups", "Vegan", "Braises, Stews & Curries", "Mum's", "Dinner"]
+    statements = [
+        "select 1 from ai.recipe_filed_under where category in ('Soups', 'braises, stews & curries')",
+        "select 1 from ai.recipe_filed_under where category = 'Mum''s' and title ilike '%dinner%'",
+    ]
+    assert goldens.category_names(statements, known) == ["Braises, Stews & Curries", "Mum's", "Soups"]
+
+
+def test_score_categories():
+    used = ["select 1 from ai.recipe_filed_under"]
+    assert goldens.score_categories(None, used) is None
+    assert goldens.score_categories(True, used) == "✓"
+    assert goldens.score_categories(True, []) == "✗"
+    assert goldens.score_categories(False, []) == "✓"
+    assert goldens.score_categories(False, used) == "✗"
+
+
+def test_report_shows_category_use():
+    result = goldens.Result(
+        id="q",
+        question="How many soups?",
+        expect_kind="text",
+        kind="text",
+        answer={"kind": "text", "text": "93", "recipe_ids": []},
+        expect_categories=True,
+        statements=["select count(*) from ai.recipe_filed_under where category = 'Soups'"],
+        category_names=["Soups"],
+    )
+    report = goldens.render_report([result])
+    assert "- categories: used (expected used) ✓" in report
+    assert "  - filtered on: Soups" in report
+    assert report.endswith("Category use: 1 of 1 questions\n")
+
+
+def test_report_shows_unscored_category_use_without_an_expectation():
+    used = _result(statements=["select 1 from ai.recipe_categories"])
+    unused = _result(id="e2", statements=["select 1 from ai.recipes"])
+    report = goldens.render_report([used, unused])
+    assert "- categories: used\n" in report
+    assert "- categories: not used\n" in report
+    assert "filtered on" not in report
+    assert "Category use: 1 of 2 questions" in report
+
+
+def test_load_reads_expect_categories(tmp_path):
+    p = tmp_path / "g.yaml"
+    p.write_text(
+        "- {id: a, question: q, expect_categories: true}\n"
+        "- {id: b, question: r, expect_categories: false}\n"
+        "- {id: c, question: s}\n",
+        encoding="utf-8",
+    )
+    assert [e.expect_categories for e in goldens.load_goldens(p)] == [True, False, None]
+
+
+def test_load_rejects_a_non_boolean_expect_categories(tmp_path):
+    p = tmp_path / "g.yaml"
+    p.write_text("- {id: a, question: q, expect_categories: maybe}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="a: expect_categories"):
+        goldens.load_goldens(p)
+
+
+def test_recording_toolbox_keeps_run_sql_text_and_calls_the_parent(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        goldens.ToolBox, "run", lambda self, name, tool_input, remaining=None: seen.append(name) or "out"
+    )
+    box = goldens.RecordingToolBox.__new__(goldens.RecordingToolBox)
+    box.statements = []
+    assert box.run("run_sql", {"query": "select 1"}) == "out"
+    box.run("run_sql", {"query": 5})
+    box.run("search", {"query": "soup"})
+    assert box.statements == ["select 1"]
+    assert seen == ["run_sql", "run_sql", "search"]
