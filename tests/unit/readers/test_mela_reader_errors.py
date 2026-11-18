@@ -73,10 +73,22 @@ def test_a_single_recipe_that_is_not_json_is_refused(tmp_path):
         MelaReader().read(make_single(tmp_path, b"\x00\x01binary"))
 
 
-def test_a_single_recipe_over_the_cap_is_refused(tmp_path, monkeypatch):
+def test_a_single_recipe_over_the_upload_ceiling_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(mela, "_MAX_SINGLE_BYTES", 3_000_000)
+    with pytest.raises(MelaExtractionError, match=r"^is not a Mela recipe: larger than 3 MB\.$"):
+        MelaReader().read(make_single(tmp_path, entry(notes="x" * 3_000_100)))
+
+
+def test_a_single_recipe_over_the_entry_cap_but_under_the_ceiling_is_read(tmp_path, monkeypatch):
+    """The 50 MB entry cap is for members of a library; one shared recipe answers to the ceiling."""
     monkeypatch.setattr(mela, "_MAX_ENTRY_BYTES", 200)
-    with pytest.raises(MelaExtractionError, match=r"^is not a Mela recipe: larger than 50 MB\.$"):
-        MelaReader().read(make_single(tmp_path, entry(notes="x" * 500)))
+    chunks = MelaReader().read(make_single(tmp_path, entry(notes="x" * 500)))
+    assert [c.skip_reason for c in chunks] == [None]
+
+
+def test_the_single_recipe_cap_is_the_upload_ceiling():
+    from recipeparser.config import MAX_UPLOAD_BYTES
+    assert mela._MAX_SINGLE_BYTES == MAX_UPLOAD_BYTES
 
 
 def test_a_single_recipe_with_no_text_is_refused_as_no_recipes(tmp_path):
