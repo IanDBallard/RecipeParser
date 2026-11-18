@@ -9,6 +9,7 @@ settings go in the request part, never here, so they never break the prompt cach
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import date
 from typing import Any
 
@@ -149,8 +150,20 @@ _CATEGORIES_HEADER = "The cook's categories (recipes filed, of {recipes}):"
 _CATEGORIES_MORE = "More categories are in ai.categories."
 
 
+_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+
+def _escape_char(ch: str) -> str:
+    if ch in _ESCAPES:
+        return _ESCAPES[ch]
+    if unicodedata.category(ch) == "Cc" or ch in "  ":
+        return f"\\u{ord(ch):04x}"
+    return ch
+
+
 def _quoted(name: str) -> str:
-    return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """A name as one quoted token on one line: nothing in it can end the quote or the line."""
+    return '"' + "".join(_escape_char(ch) for ch in name) + '"'
 
 
 def _by_name(rows: list[CookCategory]) -> list[CookCategory]:
