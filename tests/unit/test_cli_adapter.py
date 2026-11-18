@@ -153,3 +153,116 @@ class TestRunCliPipelineHappyPath:
             run_call_kwargs = MockPipeline.return_value.run.call_args.kwargs
             assert "on_progress" in run_call_kwargs
             assert callable(run_call_kwargs["on_progress"])
+
+
+# ---------------------------------------------------------------------------
+# A stopped run keeps what it made (#161): the daily quota, an error, Ctrl-C
+# or `docker stop` (SIGTERM) writes <book>-partial.paprikarecipes from the
+# recipes finished so far, which before were all lost.
+# ---------------------------------------------------------------------------
+
+def _partial_run(tmp_path, run_side_effect, **kwargs):
+    from recipeparser.adapters.cli import run_cli_pipeline
+    book = tmp_path / "Food Lab.epub"
+    book.write_bytes(b"PK")
+    with patch("recipeparser.adapters.cli.EpubReader") as MockReader, \
+         patch("recipeparser.adapters.cli.RecipePipeline") as MockPipeline, \
+         patch("recipeparser.adapters.cli.PaprikaWriter") as MockWriter, \
+         patch("recipeparser.adapters.cli.YamlCategorySource"):
+        MockReader.return_value.read.return_value = [MagicMock()]
+        MockPipeline.return_value.run.side_effect = run_side_effect
+        try:
+            out = run_cli_pipeline(str(book), str(tmp_path), client=MagicMock(), **kwargs)
+            return out, MockWriter, None
+        except BaseException as exc:  # noqa: BLE001 - the test inspects what escaped
+            return None, MockWriter, exc
+
+
+def _written(MockWriter):
+    """(archive name, recipe titles) for each PaprikaWriter the run built and wrote with."""
+    return [
+        (Path(c.kwargs["output_path"]).name, [r.title for r in w.write.call_args[0][0]])
+        for c, w in zip(MockWriter.call_args_list, [MockWriter.return_value] * len(MockWriter.call_args_list))
+    ]
+
+
+def test_the_daily_quota_stop_saves_the_recipes_made_so_far(tmp_path):
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+
+    def run(chunks, on_progress=None, on_result=None, **_):
+        on_result(_make_fake_result("Roast Chicken"), True)
+        on_result(_make_fake_result("Pan Sauce"), True)
+        raise DailyQuotaExhaustedError(gave_up_after_secs=86400)
+
+    _out, MockWriter, exc = _partial_run(tmp_path, run)
+
+    assert isinstance(exc, DailyQuotaExhaustedError), "the CLI still reports why it stopped"
+    assert _written(MockWriter) == [("Food Lab-partial.paprikarecipes", ["Roast Chicken", "Pan Sauce"])]
+
+
+def test_any_other_failure_saves_them_too(tmp_path):
+    def run(chunks, on_progress=None, on_result=None, **_):
+        on_result(_make_fake_result("Roast Chicken"), True)
+        raise RuntimeError("boom")
+
+    _out, MockWriter, exc = _partial_run(tmp_path, run)
+
+    assert isinstance(exc, RuntimeError)
+    assert _written(MockWriter) == [("Food Lab-partial.paprikarecipes", ["Roast Chicken"])]
+
+
+def test_a_failure_before_any_recipe_writes_no_partial_archive(tmp_path):
+    def run(chunks, **_):
+        raise RuntimeError("boom")
+
+    _out, MockWriter, exc = _partial_run(tmp_path, run)
+
+    assert isinstance(exc, RuntimeError)
+    assert MockWriter.call_count == 0
+
+
+def test_ctrl_c_saves_the_recipes_made_so_far_and_exits_130(tmp_path):
+    """The pipeline runs off the main thread so Ctrl-C (and SIGTERM) is heard at once."""
+    import _thread
+    import threading
+
+    release = threading.Event()
+
+    def run(chunks, on_progress=None, on_result=None, **_):
+        on_result(_make_fake_result("Roast Chicken"), True)
+        _thread.interrupt_main()  # the cook presses Ctrl-C while the run waits out the quota
+        release.wait(10)
+        return []
+
+    exits = []
+
+    def fake_exit(code):
+        exits.append(code)
+        raise SystemExit(code)
+
+    try:
+        with patch("recipeparser.adapters.cli.os._exit", side_effect=fake_exit):
+            _out, MockWriter, exc = _partial_run(tmp_path, run)
+    finally:
+        release.set()
+
+    assert exits == [130]
+    assert _written(MockWriter) == [("Food Lab-partial.paprikarecipes", ["Roast Chicken"])]
+
+
+def test_the_quota_wait_is_on_during_a_cli_run_and_off_after(tmp_path):
+    from recipeparser.core import quota_wait
+
+    seen = []
+
+    def run(chunks, on_progress=None, on_result=None, **_):
+        seen.append(quota_wait.current())
+        on_result(_make_fake_result("Roast Chicken"), True)
+        return [_make_fake_result("Roast Chicken")]
+
+    out, MockWriter, exc = _partial_run(tmp_path, run)
+
+    assert exc is None
+    assert seen[0] is not None, "the CLI waits out a used-up daily quota"
+    assert quota_wait.current() is None, "and leaves nothing behind for the next caller"
+    assert _written(MockWriter) == [("Food Lab.paprikarecipes", ["Roast Chicken"])]

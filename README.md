@@ -133,6 +133,14 @@ options:
                         start in any 60s window. Omit for no RPM cap.
 ```
 
+**A free-tier key runs out of requests for the day.** Gemini's free tier allows a fixed number
+of requests per model per day (500 at the time of writing), and a large cookbook needs more.
+When the day's quota is used up, the CLI waits until Gemini says it resets (or tries every
+30 minutes if Gemini gives no time) and carries on by itself, giving up after 24 hours of
+waiting. If a run stops early — you press Ctrl-C, `docker stop` it, it gives up, or it
+fails — the recipes finished so far are saved to `<book>-partial.paprikarecipes` beside
+the normal output.
+
 **Examples:**
 
 ```bash

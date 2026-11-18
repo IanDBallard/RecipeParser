@@ -33,11 +33,16 @@ from recipeparser.config import (
     VISION_TIMEOUT_SECS,
 )
 from recipeparser import usage
-from recipeparser.core import job_signal
+from recipeparser.core import job_signal, quota_wait
 from recipeparser.core.pans import BAKE_TYPES, HINT_KEYS, PAN_FAMILIES, PAN_SHAPES
 from recipeparser.core.picture_check import FoodVerdict
 from recipeparser.core.yields import PASTRY_TYPES, SIDES, THICKNESSES, TOPS, YIELD_KINDS
-from recipeparser.exceptions import AIServiceTimeoutError, ExtractionParseError, JobCancelledError
+from recipeparser.exceptions import (
+    AIServiceTimeoutError,
+    DailyQuotaExhaustedError,
+    ExtractionParseError,
+    JobCancelledError,
+)
 from recipeparser.models import (
     CayenneRefinement,
     DirectionMention,
@@ -284,6 +289,58 @@ def _call_with_retry(
     return _with_backoff(_once, limiter=limiter, max_retries=max_retries)
 
 
+# A 429 is the daily quota (not the per-minute one) when its QuotaFailure names a per-day
+# quota, or when Gemini asks for longer than this before a retry (#161).
+_DAILY_RETRY_SECS = 15 * 60.0
+# "Please retry in 17081.5s" or, as Gemini writes it for hours, "Please retry in 4h44m41.229156774s".
+_RETRY_IN = re.compile(
+    r"retry in (?:(?P<h>[0-9]+)h)?(?:(?P<m>[0-9]+)m)?(?:(?P<s>[0-9]+(?:\.[0-9]+)?)s)?",
+    re.IGNORECASE,
+)
+
+
+def _retry_delay_secs(error: Dict[str, Any], message: str) -> Optional[float]:
+    """Gemini's suggested delay: RetryInfo's ``retryDelay`` ("17040s"), else "Please retry in 17040.5s"."""
+    for detail in error.get("details") or []:
+        if isinstance(detail, dict) and str(detail.get("@type", "")).endswith("RetryInfo"):
+            delay = str(detail.get("retryDelay", "")).strip()
+            if delay.endswith("s"):
+                try:
+                    return float(delay[:-1])
+                except ValueError:
+                    pass
+    found = _RETRY_IN.search(message or "")
+    if not found or not any(found.group(g) for g in ("h", "m", "s")):
+        return None
+    return int(found.group("h") or 0) * 3600 + int(found.group("m") or 0) * 60 + float(found.group("s") or 0)
+
+
+def daily_quota_retry_after(exc: BaseException) -> Optional[float]:
+    """Seconds until a used-up daily quota resets; 0.0 when daily but Gemini gave no delay; None otherwise.
+
+    Daily means a 429 RESOURCE_EXHAUSTED whose QuotaFailure names a per-day quota
+    ("GenerateRequestsPerDayPerProjectPerModel-FreeTier"), or whose retry delay is
+    longer than any per-minute limit would ask for. Read only from the typed error's
+    body, as ``_is_transient_server_error`` does, never from free text alone.
+    """
+    if not isinstance(exc, genai_errors.APIError) or getattr(exc, "code", None) != 429:
+        return None
+    body = getattr(exc, "details", None)
+    body = body if isinstance(body, dict) else {}
+    error = body.get("error") if isinstance(body.get("error"), dict) else body
+    delay = _retry_delay_secs(error, str(error.get("message") or getattr(exc, "message", "") or ""))
+    per_day = any(
+        "perday" in str(violation.get("quotaId", "")).lower()
+        for detail in error.get("details") or []
+        if isinstance(detail, dict)
+        for violation in detail.get("violations") or []
+        if isinstance(violation, dict)
+    )
+    if per_day or (delay is not None and delay > _DAILY_RETRY_SECS):
+        return delay or 0.0
+    return None
+
+
 def _with_backoff(
     call: Callable[[], T],
     *,
@@ -295,17 +352,33 @@ def _with_backoff(
     The one back-off ladder, for ``generate_content`` (``_call_with_retry``) and
     ``embed_content`` (``get_embeddings``, F-132) alike. Anything else raises at once.
     ``limiter`` is as for ``_call_with_retry``: every attempt after the first takes a slot.
+
+    A used-up daily quota is not climbed (#161): with a ``quota_wait`` policy installed
+    (the CLI) the call waits until the quota resets and tries again, spending no attempt;
+    without one (the server) it raises ``DailyQuotaExhaustedError`` at once.
     """
     delay = BACKOFF_BASE_SECS
     started = _clock()
-    for attempt in range(1, max_retries + 2):
+    attempt = 0
+    waited = False
+    while True:
+        attempt += 1
         # A cancelled job stops here, before spending another call (Cayenne F-426).
         job_signal.checkpoint()
-        if attempt > 1 and limiter is not None:
+        if (attempt > 1 or waited) and limiter is not None:
             limiter.wait_then_record_start()
         try:
-            return call()
+            result = call()
         except Exception as exc:
+            retry_after = daily_quota_retry_after(exc)
+            if retry_after is not None:
+                policy = quota_wait.current()
+                if policy is None:
+                    raise DailyQuotaExhaustedError(retry_after or None) from exc
+                policy.wait(retry_after)  # raises DailyQuotaExhaustedError after 24 hours
+                attempt -= 1
+                waited = True
+                continue
             rate_limited = _is_rate_limit_error(exc)
             retryable = rate_limited or _is_transient_server_error(exc)
             if retryable and attempt <= max_retries:
@@ -333,7 +406,12 @@ def _with_backoff(
                 delay = min(delay * 2, BACKOFF_MAX_SECS)
             else:
                 raise
-    raise AssertionError("unreachable: the last attempt returns or raises")
+        else:
+            if waited:
+                policy = quota_wait.current()
+                if policy is not None:
+                    policy.succeeded()
+            return result
 
 
 def _finish_reason(response: object) -> str:
@@ -519,6 +597,8 @@ def normalise_baker_table(text_chunk: str, client, *, limiter: Optional["GlobalR
             return normalised
         log.warning("  -> Table normalisation returned empty response; using original text.")
         return text_chunk
+    except (JobCancelledError, DailyQuotaExhaustedError):
+        raise
     except Exception as e:
         log.warning("  -> Table normalisation failed (%s); using original text.", e)
         return text_chunk
@@ -820,7 +900,7 @@ def extract_text_from_images(
                 log.info("Vision OCR page %d/%d: extracted %d chars.", page_num, count, len(page_text))
             else:
                 log.warning("Vision OCR page %d/%d: empty response.", page_num, count)
-        except JobCancelledError:
+        except (JobCancelledError, DailyQuotaExhaustedError):
             raise
         except Exception as exc:
             if _is_deadline_error(exc):
@@ -1236,6 +1316,8 @@ def refine_recipe_for_cayenne(
         result = schema.model_validate(raw_data).model_copy(update={"grid_categories": {}})
 
         return result
+    except (JobCancelledError, DailyQuotaExhaustedError):
+        raise  # stops the job or the run, not just this recipe (#161; half of Cayenne F-647)
     except Exception as e:
         log.error("Cayenne refinement failed: %s", e)
         return None
@@ -1563,6 +1645,8 @@ def estimate_servings(
         if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 200:
             return None
         return n
+    except (JobCancelledError, DailyQuotaExhaustedError):
+        raise
     except Exception:  # noqa: BLE001
         return None
 

@@ -12,6 +12,7 @@ import logging
 from typing import Any, List, Sequence
 
 from recipeparser.core.fat_tokens import strip_fat_tokens
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
 from recipeparser.gemini import get_embeddings
 from recipeparser.models import CayenneRefinement
 
@@ -76,6 +77,8 @@ def embed(
 
     try:
         vector = get_embeddings(embedding_input, client)
+    except (JobCancelledError, DailyQuotaExhaustedError):
+        raise  # stops the run, not just this recipe (#161)
     except Exception as exc:
         raise RuntimeError(
             f"embed(): Gemini embedding call failed for '{recipe.title}': {exc}"

@@ -20,6 +20,7 @@ import contextvars
 import logging
 import mimetypes
 import os
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple
@@ -39,7 +40,7 @@ from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.core.stages.tag import TAG_BATCH_SIZE, TagFailure, tag_batch
 from recipeparser.core.yields import YIELD_KINDS
-from recipeparser.exceptions import JobCancelledError
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
 from recipeparser.gemini import categorize_batch
 from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse, Photo
 
@@ -54,6 +55,10 @@ class ChunkResult(NamedTuple):
 
     results: List[IngestResponse]
     skipped: List[str]
+
+
+class _QuotaStopped(Exception):
+    """A chunk that never started because the daily quota had already stopped the run (#161)."""
 
 
 class _ChunkFailed(Exception):
@@ -233,6 +238,7 @@ class RecipePipeline:
         total = len(chunks)
         completed = 0
         failed = 0   # chunks given up on, after any second pass
+        quota_error: Optional[DailyQuotaExhaustedError] = None  # set when the daily quota stops the run
         retried = 0  # chunks given a second pass
         all_results: List[IngestResponse] = []
 
@@ -253,10 +259,24 @@ class RecipePipeline:
         # Transition FSM to RUNNING.
         self._controller.transition("start")
 
+        quota_hit = threading.Event()  # set by the worker whose chunk met the used-up daily quota
+
         def _worker(chunk: Chunk) -> ChunkResult:
             """Process a single chunk inside a thread-pool worker."""
             # A chunk still queued when the job was cancelled never starts (Cayenne F-426).
             job_signal.checkpoint()
+            # Nor one queued after the daily quota ran out (#161): set by the failing worker
+            # itself, so the next chunk on its thread cannot start before the main loop sees it.
+            if quota_hit.is_set():
+                raise _QuotaStopped()
+            try:
+                return _run_chunk(chunk)
+            except Exception as exc:
+                if isinstance(_cause(exc), DailyQuotaExhaustedError):
+                    quota_hit.set()
+                raise
+
+        def _run_chunk(chunk: Chunk) -> ChunkResult:
             # A reader may have pulled a photograph out of the archive; store it
             # before ASSEMBLE so the assembled recipe carries a URL rather than
             # raw bytes. A picture that is not food is dropped first (F-209); a
@@ -395,6 +415,22 @@ class RecipePipeline:
                             # check stops the run at the next completion.
                             log.info("RecipePipeline: a chunk stopped for the cancel.")
                             continue
+                        if isinstance(exc, _QuotaStopped):
+                            continue  # never started: the run is stopping for the daily quota
+                        if isinstance(_cause(exc), DailyQuotaExhaustedError):
+                            # Gemini's daily quota is used up (#161): every later call would fail the
+                            # same way, so the run stops here. The CLI has already waited (QuotaWait)
+                            # before this reaches it; the server never waits. The recipes handed to
+                            # on_result so far stay; the caller reports the stop.
+                            if isinstance(exc, _ChunkFailed):
+                                for reason in exc.skipped:
+                                    _report_skip(chunk, reason, index)
+                            quota_error = _cause(exc)
+                            log.error("RecipePipeline: stopping at chunk %d: %s", index, quota_error)
+                            for f in future_to_chunk:
+                                f.cancel()
+                            stopped = True
+                            break
                         if not final_pass and _worth_a_second_pass(exc):
                             # Gemini was busy or rate-limited past its retries: try the chunk once more
                             # after the others, when the spike may have passed (#149). Counted, and
@@ -426,6 +462,13 @@ class RecipePipeline:
 
         # What is left in the queue, after the last chunk or a cancel (design D1).
         _flush_tags()
+
+        if quota_error is not None:
+            log.info(
+                "RecipePipeline.run(): stopped by Gemini's daily quota after %d/%d chunks → %d recipe(s).",
+                completed, total, len(all_results),
+            )
+            raise quota_error
 
         # Transition FSM back to IDLE on normal completion.
         self._controller.transition("done")
@@ -702,7 +745,7 @@ class RecipePipeline:
             for position, raw in enumerate(extraction.recipes):
                 try:
                     done.append((position, _one(raw)))
-                except JobCancelledError:
+                except (JobCancelledError, DailyQuotaExhaustedError):
                     raise
                 except Exception as exc:
                     job_signal.checkpoint()  # refine() reads a cancel as a failure; stop for it here
@@ -715,7 +758,7 @@ class RecipePipeline:
                 job_signal.checkpoint()
                 try:
                     done.append((position, _one(raw)))
-                except JobCancelledError:
+                except (JobCancelledError, DailyQuotaExhaustedError):
                     raise
                 except Exception as exc:
                     job_signal.checkpoint()
@@ -749,6 +792,8 @@ def _worth_a_second_pass(exc: Exception) -> bool:
     from recipeparser.gemini import _is_rate_limit_error, _is_transient_server_error
 
     cause = _cause(exc)
+    if isinstance(cause, DailyQuotaExhaustedError):
+        return False  # resets in hours, not minutes (#161)
     return _is_transient_server_error(cause) or _is_rate_limit_error(cause)
 
 

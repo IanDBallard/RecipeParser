@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.40.0] — 2026-11-18
+
+A used-up daily Gemini quota no longer loses a run's work (#161). Gemini's free tier allows 500 requests a day per model; on The Food Lab (280 chunks) the quota ran out at chunk 81, Gemini answered 429 RESOURCE_EXHAUSTED with a retry delay of 4 h 44 min, RecipeParser retried after 2, 4, 8 and 16 seconds, and stopping it lost all 81 chunks because nothing is written until the end. 9.36.5's second pass for rate-limited chunks would have made it worse: every remaining chunk would have spent its retries twice before the run gave up.
+
+### ✨ Added
+- `core/quota_wait.py`: `QuotaWait`, the CLI's answer to a used-up daily quota. The call waits until Gemini says the quota resets, plus a minute (or 30 minutes when it gives no time, or the quota is still used up after a wait), and tries again, spending no retry attempt. One pause is shared by every worker that meets the quota, and logs once ("Waiting until 20:31 (4 h 45 min)… Press Ctrl-C to stop and save the recipes made so far"). After 24 hours of waiting without a success it gives up; a success starts the next day's 24 hours afresh, so a book needing several days' quota still finishes.
+- The CLI saves what it made when a run stops early: the daily quota's give-up, any error, Ctrl-C, or SIGTERM (`docker stop`, which kills ten seconds later) write `<book>-partial.paprikarecipes` from the recipes finished so far. The pipeline runs off the main thread so a signal is heard at once, even mid-wait; a stop by signal exits 130 (Ctrl-C) or 143 (SIGTERM). In the GUI, which runs the pipeline on its own thread, the error path saves too, but no signal handler is installed.
+- `DailyQuotaExhaustedError`, with the reset time in its sentence ("Gemini's daily request quota is used up. It resets in about 4 h 44 min.").
+
+### 🐛 Fixed
+- `gemini._with_backoff`: a 429 whose QuotaFailure names a per-day quota, or whose retry delay is over 15 minutes, is the daily quota (`daily_quota_retry_after`, read from the typed error's body: `RetryInfo.retryDelay`, else the message's "Please retry in 4h44m41.2s"). Checked against the reporter's own 429, which is a test fixture. It is never climbed on the 2-to-32-second ladder. With no `QuotaWait` installed — the server, where a job asleep for hours looks hung to the liveness check (Cayenne F-426) — it raises `DailyQuotaExhaustedError` at once, and the job ends with that sentence as its error message, keeping the recipes it already wrote. A per-minute 429 is handled as before.
+- The pipeline stops the whole run on `DailyQuotaExhaustedError`: no per-recipe retry, no second pass, and a chunk queued behind it never starts. The recipes handed to `on_result` before it stay.
+- `refine_recipe_for_cayenne`, table normalisation, vision OCR, the servings guess, EMBED and EXTRACT's retry no longer swallow `DailyQuotaExhaustedError` (refine, normalisation and the servings guess no longer swallow a cancel either, which is half of Cayenne F-647).
+
+---
+
 ## [9.39.0] — 2026-11-17
 
 ### ✨ Added

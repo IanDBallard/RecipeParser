@@ -80,7 +80,13 @@ from recipeparser.core.picture_check import MAX_PICTURE_CANDIDATES, AskFood, che
 from recipeparser.core.picture_gen import NoPictureError, build_picture_prompt, generate_picture, to_jpeg
 from recipeparser.core.pipeline import RecipePipeline, chunk_calls_ai, chunk_needs_ai
 from recipeparser.core.taxonomy import descendants_of, root_of
-from recipeparser.exceptions import AIServiceTimeoutError, JobCancelledError, SiteRefusedError, UnreadableInputError
+from recipeparser.exceptions import (
+    AIServiceTimeoutError,
+    DailyQuotaExhaustedError,
+    JobCancelledError,
+    SiteRefusedError,
+    UnreadableInputError,
+)
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
@@ -858,8 +864,8 @@ def _job_error_message(name: Optional[str], exc: BaseException) -> str:
     so the two join as a sentence. Anything else keeps the "<name>: <error>"
     shape. A pasted-text job has no name and reports the error alone.
     """
-    if isinstance(exc, (_AiRefusal, AIServiceTimeoutError)):
-        # A sentence of its own, as the endpoint (or the vision OCR) worded it for the cook.
+    if isinstance(exc, (_AiRefusal, AIServiceTimeoutError, DailyQuotaExhaustedError)):
+        # A sentence of its own, as the endpoint (or the vision OCR, or the quota stop) worded it for the cook.
         return str(exc)
     if not name:
         return str(exc)

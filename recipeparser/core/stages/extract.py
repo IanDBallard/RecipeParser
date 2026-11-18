@@ -15,6 +15,7 @@ from typing import Any, List, NamedTuple, Optional
 
 from recipeparser.core.numbers import unmatched_numbers
 from recipeparser.core.rate_limiter import GlobalRateLimiter
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
 from recipeparser.gemini import (
     extract_recipe_from_text,
     extract_recipes,
@@ -111,6 +112,8 @@ def extract(
     # its failed ones named, never lost to the retry's error (final review I2).
     try:
         retry = _run(chunk_text, client, plain_text_mode, limiter)
+    except (JobCancelledError, DailyQuotaExhaustedError):
+        raise  # stops the run (#161), never "recovered nothing"
     except Exception as exc:  # noqa: BLE001 — any retry failure degrades to "recovered nothing"
         log.warning("extract(): the retry failed (%s: %s) — keeping the first attempt's clean recipes.",
                     type(exc).__name__, exc)
