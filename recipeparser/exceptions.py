@@ -4,6 +4,7 @@ Custom exceptions for the recipeparser package.
 Library consumers can catch these programmatically; the CLI catches them and
 prints a friendly message without a traceback.
 """
+from typing import Optional
 
 
 class RecipeParserError(Exception):
@@ -117,6 +118,41 @@ class JobCancelledError(RecipeParserError):
     the way out must let it through rather than recording it as a skip or an
     unreadable file.
     """
+
+
+def _duration(secs: float) -> str:
+    """'4 h 44 min', '25 min', 'under a minute'."""
+    minutes = int(round(secs / 60))
+    if minutes < 1:
+        return "under a minute"
+    hours, minutes = divmod(minutes, 60)
+    if not hours:
+        return f"{minutes} min"
+    return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+
+
+class DailyQuotaExhaustedError(RecipeParserError):
+    """Gemini's daily request quota is used up (429 RESOURCE_EXHAUSTED on a per-day quota, #161).
+
+    Raised at once where nothing may wait for hours (the server), and by the CLI's
+    ``core.quota_wait.QuotaWait`` when it has waited 24 hours. It stops the whole run,
+    never just a recipe or a chunk: every later call would fail the same way. Every
+    ``except Exception`` that reads a failure as a skip must let it through.
+    """
+
+    def __init__(self, retry_after_secs: Optional[float] = None, *, gave_up_after_secs: Optional[float] = None) -> None:
+        self.retry_after_secs = retry_after_secs
+        self.gave_up_after_secs = gave_up_after_secs
+        if gave_up_after_secs is not None:
+            text = (
+                f"Gemini's daily request quota was still used up after waiting {_duration(gave_up_after_secs)}. "
+                "Try again later."
+            )
+        elif retry_after_secs:
+            text = f"Gemini's daily request quota is used up. It resets in about {_duration(retry_after_secs)}."
+        else:
+            text = "Gemini's daily request quota is used up. Try again later."
+        super().__init__(text)
 
 
 class AIServiceTimeoutError(RuntimeError):

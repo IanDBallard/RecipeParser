@@ -1445,3 +1445,61 @@ def test_the_summary_counts_the_chunks_that_failed(caplog):
     summary = [r.getMessage() for r in caplog.records if "finished" in r.getMessage()][-1]
     assert "1/2 chunks succeeded" in summary
     assert "1 failed" in summary
+
+
+# ---------------------------------------------------------------------------
+# A used-up daily quota stops the run (#161): no recipe retry, no second pass,
+# and what was finished before it is kept.
+# ---------------------------------------------------------------------------
+
+def _one_at_a_time() -> RecipePipeline:
+    GlobalRateLimiter().reset()
+    return RecipePipeline(
+        client=MagicMock(), controller=PipelineController(), category_source=_FakeCategorySource(),
+        concurrency=1, rpm=9999,
+        categorize_fn=lambda rows, axes, client, parents=None, limiter=None: {},
+    )
+
+
+def test_a_used_up_daily_quota_stops_the_run_and_keeps_what_was_done():
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+
+    chunks = [Chunk(text=t, input_type=InputType.EPUB) for t in ("first", "quota", "third")]
+    seen: List[str] = []
+    extracted: List[str] = []
+
+    def extract(chunk_text, **_):
+        extracted.append(chunk_text)
+        if chunk_text == "quota":
+            raise DailyQuotaExhaustedError(17040.0)
+        return Extraction([_named(chunk_text.title(), None)], [])
+
+    pipeline = _one_at_a_time()
+    with patch(_PATCH_EXTRACT, side_effect=extract), \
+         patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING), \
+         pytest.raises(DailyQuotaExhaustedError):
+        pipeline.run(chunks, on_result=lambda r, _ai: seen.append(r.title))
+
+    assert seen == ["First"], "the recipe finished before the quota ran out reached on_result"
+    assert extracted.count("quota") == 1, "no second pass for a quota that resets in hours"
+    assert "third" not in extracted, "the run stops: every later call would fail the same way"
+
+
+def test_a_daily_quota_inside_refine_is_not_retried_as_a_recipe_failure():
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+
+    refine_calls: List[str] = []
+
+    def refine(raw, **_):
+        refine_calls.append(raw.name)
+        raise DailyQuotaExhaustedError(600.0)
+
+    pipeline = _one_at_a_time()
+    with patch(_PATCH_EXTRACT, return_value=_three_recipes()), \
+         patch(_PATCH_REFINE, side_effect=refine), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING), \
+         pytest.raises(DailyQuotaExhaustedError):
+        pipeline.run([_book_chunk()])
+
+    assert refine_calls == ["Pakoras"]

@@ -667,3 +667,14 @@ def test_the_api_view_hands_liveness_each_jobs_signal(api_client):
     api._active_jobs["j2"] = (OWNER, paused)
     api._job_signals["j2"] = JobSignal()
     assert api._liveness_view() == {"j1": signal, "j2": None}
+
+
+def test_a_used_up_daily_quota_is_its_own_sentence_on_the_job_row():
+    """The server never waits for the quota (#161): the job ends, and says why, without the file name."""
+    import recipeparser.adapters.api as api
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+
+    exc = DailyQuotaExhaustedError(17040.0)
+    assert api._job_error_message("The Food Lab.epub", exc) == (
+        "Gemini's daily request quota is used up. It resets in about 4 h 44 min."
+    )

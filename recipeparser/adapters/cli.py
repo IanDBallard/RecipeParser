@@ -18,19 +18,86 @@ Design constraints (§12 — Zero Technical Debt):
 from __future__ import annotations
 
 import logging
+import os
+import signal
+import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, List, Optional, TypeVar
 
 from recipeparser.config import MAX_CONCURRENT_API_CALLS
+from recipeparser.core import quota_wait
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.pipeline import RecipePipeline
 from recipeparser.io.category_sources.yaml_source import YamlCategorySource
 from recipeparser.io.readers.epub import EpubReader
 from recipeparser.io.readers.pdf import PdfReader
 from recipeparser.io.writers.paprika_zip import PaprikaWriter
+from recipeparser.models import IngestResponse
 from recipeparser.paths import get_categories_file, get_default_output_dir
 
 log = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+#: Exit statuses after a stop by signal, as a shell reports them (128 + the signal's number).
+_EXIT_STATUS = {signal.SIGINT: 130, getattr(signal, "SIGTERM", 15): 143}
+
+
+class _Stopped(BaseException):
+    """Ctrl-C or SIGTERM, raised in the main thread by our handler (#161)."""
+
+    def __init__(self, signum: int) -> None:
+        super().__init__(signum)
+        self.signum = signum
+
+
+def _run_stoppably(work: Callable[[], T], on_stop: Callable[[int], None]) -> T:
+    """Run ``work``, and on Ctrl-C or SIGTERM call ``on_stop`` and exit at once.
+
+    The work runs on a daemon thread while the main thread waits in short joins, so a
+    signal is heard within a fraction of a second even while the pipeline sleeps out a
+    used-up daily quota for hours (#161). ``docker stop`` sends SIGTERM and kills the
+    process ten seconds later, so the stop does no more than ``on_stop`` (save what was
+    made) and ``os._exit``: a normal exit would wait on the pipeline's sleeping workers.
+
+    Off the main thread (the GUI runs the CLI pipeline in a worker) no handler can be
+    installed, so ``work`` runs as it is.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return work()
+
+    outcome: dict = {}
+
+    def target() -> None:
+        try:
+            outcome["result"] = work()
+        except BaseException as exc:  # noqa: BLE001 - handed back to the main thread
+            outcome["error"] = exc
+
+    def handler(signum: int, _frame: Any) -> None:
+        raise _Stopped(signum)
+
+    signals = [s for s in (signal.SIGINT, getattr(signal, "SIGTERM", None)) if s is not None]
+    previous = {s: signal.getsignal(s) for s in signals}
+    for s in signals:
+        signal.signal(s, handler)
+    try:
+        worker = threading.Thread(target=target, name="recipeparser-pipeline", daemon=True)
+        worker.start()
+        while worker.is_alive():
+            worker.join(0.25)
+    except (_Stopped, KeyboardInterrupt) as stop:
+        signum = stop.signum if isinstance(stop, _Stopped) else signal.SIGINT
+        try:
+            on_stop(signum)
+        finally:
+            os._exit(_EXIT_STATUS.get(signum, 1))
+    finally:
+        for s, h in previous.items():
+            signal.signal(s, h)
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["result"]
 
 
 def run_cli_pipeline(
@@ -132,8 +199,53 @@ def run_cli_pipeline(
             print(f"  [{completed}/{total}] {stage}", flush=True)
 
     # ── 5. Run pipeline ───────────────────────────────────────────────────────
+    # Every finished recipe is kept as it arrives, so a run that stops early (the daily
+    # quota after 24 hours of waiting, an error, Ctrl-C, `docker stop`) saves what it made
+    # to <book>-partial.paprikarecipes rather than losing it all (#161).
+    made: List[IngestResponse] = []
+    made_lock = threading.Lock()
+    partial_path = out_dir / f"{book.stem}-partial.paprikarecipes"
+
+    def _on_result(result: IngestResponse, _ai_processed: bool) -> None:
+        with made_lock:
+            made.append(result)
+
+    def _save_partial(why: str) -> None:
+        with made_lock:
+            recipes = list(made)
+        if not recipes:
+            print(f"{why} No recipes were finished, so nothing was saved.", flush=True)
+            return
+        try:
+            PaprikaWriter(output_path=partial_path).write(recipes)
+        except Exception:  # noqa: BLE001 - the stop must still be reported
+            log.exception("Could not save the partial archive %s.", partial_path)
+            return
+        print(f"{why} Saved {len(recipes)} recipe(s) to {partial_path}", flush=True)
+
+    def _on_quota_pause(delay: float) -> None:
+        with made_lock:
+            count = len(made)
+        print(f"  Waiting for Gemini's daily quota to reset. Ctrl-C stops and saves the {count} recipe(s) so far.",
+              flush=True)
+
+    def _on_stop(signum: int) -> None:
+        name = "Ctrl-C" if signum == signal.SIGINT else "Stop signal"
+        _save_partial(f"{name}: stopped.")
+
     log.info("Running pipeline on %d chunk(s) …", len(chunks))
-    results = pipeline.run(chunks, on_progress=_on_progress)
+    # The CLI waits out a used-up daily quota (and gives up after 24 hours); the server never does.
+    quota_wait.install(quota_wait.QuotaWait(on_pause=_on_quota_pause))
+    try:
+        results = _run_stoppably(
+            lambda: pipeline.run(chunks, on_progress=_on_progress, on_result=_on_result),
+            _on_stop,
+        )
+    except Exception as exc:
+        _save_partial(f"Stopped: {exc}")
+        raise
+    finally:
+        quota_wait.install(None)
 
     if not results:
         raise RuntimeError(
