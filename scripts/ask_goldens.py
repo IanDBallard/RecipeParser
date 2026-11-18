@@ -22,13 +22,16 @@ database role is ai_reader and the cook is the --user uuid (claims sub + role au
 A refinement entry (`previous: <id>`) is fed the whole chain of earlier entries it refines (each one's
 question and finalized answer) as the conversation history.
 """
+
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import threading
 import time
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -43,7 +46,7 @@ from recipeparser.adapters.ai_search.agent import run_agent
 from recipeparser.adapters.ai_search.ai_db import AiReaderDb
 from recipeparser.adapters.ai_search.answer import Answer, Turn, finalize, raw_ids
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
-from recipeparser.adapters.ai_search.tools import ToolBox
+from recipeparser.adapters.ai_search.tools import ToolBox, ToolOutcome
 from recipeparser.config import AI_SEARCH_MODEL
 
 MODEL = AI_SEARCH_MODEL
@@ -56,6 +59,9 @@ CACHE_READ_RATE = 0.20
 CACHE_WRITE_RATE = INPUT_RATE * 1.25
 _TITLES_SQL = "select id::text, title from ai.recipes where id = any(%s::uuid[])"
 _ANSWER: TypeAdapter[Answer] = TypeAdapter(Answer)
+_CATEGORY_NAMES_SQL = "select name from ai.categories"
+_CATEGORY_WORDS = re.compile(r"\b(recipe_filed_under|recipe_categories|categories)\b", re.IGNORECASE)
+_LITERAL = re.compile(r"'((?:[^']|'')*)'")
 
 
 @dataclass(frozen=True)
@@ -67,6 +73,7 @@ class Golden:
     today: date | None = None
     previous: str | None = None
     expect_gap: bool | None = None
+    expect_categories: bool | None = None
 
 
 @dataclass
@@ -94,6 +101,9 @@ class Result:
     kind: str | None
     answer: dict[str, Any] | None
     expect_gap: bool | None = None
+    expect_categories: bool | None = None
+    statements: list[str] = field(default_factory=list)
+    category_names: list[str] = field(default_factory=list)
     titles: dict[str, str] = field(default_factory=dict)
     seconds: float = 0.0
     usage: Usage = field(default_factory=Usage)
@@ -130,6 +140,44 @@ def score_gap(expect_gap: bool | None, answer: dict[str, Any] | None) -> str | N
     return "✓" if has_gap(answer) == expect_gap else "✗"
 
 
+class RecordingToolBox(ToolBox):
+    """The agent's tool box, keeping the SQL the agent ran so the report can show what it filtered on."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.statements: list[str] = []
+
+    def run(self, name: str, tool_input: Mapping[str, Any], remaining: float | None = None) -> ToolOutcome:
+        query = tool_input.get("query")
+        if name == "run_sql" and isinstance(query, str):
+            self.statements.append(query)
+        return super().run(name, tool_input, remaining)
+
+
+def uses_categories(statements: list[str]) -> bool:
+    """Whether any statement reads the cook's categories (the relations or the recipe column)."""
+    return any(_CATEGORY_WORDS.search(s) for s in statements)
+
+
+def category_names(statements: list[str], known: Iterable[str]) -> list[str]:
+    """The known category names that appear as a whole quoted SQL literal, in the cook's spelling, sorted."""
+    by_lower = {k.lower(): k for k in known}
+    found = {
+        by_lower[text]
+        for s in statements
+        for m in _LITERAL.finditer(s)
+        if (text := m.group(1).replace("''", "'").lower()) in by_lower
+    }
+    return sorted(found)
+
+
+def score_categories(expect: bool | None, statements: list[str]) -> str | None:
+    """``expect_categories`` scored against the statements: None when unset, else a check mark or a cross."""
+    if expect is None:
+        return None
+    return "✓" if uses_categories(statements) == expect else "✗"
+
+
 def load_goldens(path: Path) -> list[Golden]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     entries: list[Golden] = []
@@ -144,6 +192,9 @@ def load_goldens(path: Path) -> list[Golden]:
         expect_gap = item.get("expect_gap")
         if expect_gap is not None and not isinstance(expect_gap, bool):
             raise ValueError(f"{item['id']}: expect_gap must be true or false")
+        expect_categories = item.get("expect_categories")
+        if expect_categories is not None and not isinstance(expect_categories, bool):
+            raise ValueError(f"{item['id']}: expect_categories must be true or false")
         today = item.get("today")
         entries.append(
             Golden(
@@ -154,6 +205,7 @@ def load_goldens(path: Path) -> list[Golden]:
                 today=date.fromisoformat(str(today)) if today else None,
                 previous=previous,
                 expect_gap=expect_gap,
+                expect_categories=expect_categories,
             )
         )
         seen.add(item["id"])
@@ -196,6 +248,14 @@ def render_report(results: list[Result]) -> str:
             found = "reported" if has_gap(r.answer) else "none reported"
             wanted = "a gap" if r.expect_gap else "no gap"
             out.append(f"- gap: {found} (expected {wanted}) {gap_mark}")
+        if r.expect_categories is not None or r.statements:
+            line = f"- categories: {'used' if uses_categories(r.statements) else 'not used'}"
+            cat_mark = score_categories(r.expect_categories, r.statements)
+            if cat_mark is not None:
+                line += f" (expected {'used' if r.expect_categories else 'not used'}) {cat_mark}"
+            out.append(line)
+            if r.category_names:
+                out.append(f"  - filtered on: {', '.join(r.category_names)}")
         if r.note:
             out.append(f"- note: {r.note}")
         if r.error:
@@ -221,6 +281,7 @@ def render_report(results: list[Result]) -> str:
     cost = total_cost(results)
     calls = sum(r.usage.calls for r in results)
     out.append(f"Total: {len(results)} questions, {calls} model calls, estimated cost ${cost:.2f}")
+    out.append(f"Category use: {sum(uses_categories(r.statements) for r in results)} of {len(results)} questions")
     return "\n".join(out) + "\n"
 
 
@@ -251,6 +312,7 @@ def run_golden(
     catalogue: Any,
     measuring: str,
     history: list[Turn],
+    known_categories: Iterable[str] = (),
 ) -> tuple[Result, Answer | None]:
     """The /search/ask flow for one question (see search_api._work), timed and with usage tallied."""
     use = Usage()
@@ -263,8 +325,8 @@ def run_golden(
     started = time.monotonic()
     answer: Answer | None = None
     error: str | None = None
+    toolbox = RecordingToolBox(db, claims, embed, catalogue)
     try:
-        toolbox = ToolBox(db, claims, embed, catalogue)
         toolbox.admit_answers((t.answer for t in history), (a for t in history for a in t.added))
         raw = run_agent(
             client=client,
@@ -294,6 +356,9 @@ def run_golden(
         question=entry.question,
         expect_kind=entry.expect_kind,
         expect_gap=entry.expect_gap,
+        expect_categories=entry.expect_categories,
+        statements=toolbox.statements,
+        category_names=category_names(toolbox.statements, known_categories),
         kind=answer.kind if answer is not None else None,
         answer=dumped,
         titles=titles,
@@ -419,6 +484,7 @@ def main(argv: list[str] | None = None) -> int:
     finished: dict[str, tuple[str, Answer]] = {}
     try:
         catalogue = db.catalogue()
+        known_categories = [str(row[0]) for row in db.run(claims, _CATEGORY_NAMES_SQL, [], max_rows=10_000).rows]
         for entry in selected:
             print(f"{entry.id}: {entry.question}", file=sys.stderr)
             history = build_history(entry, entries, finished)
@@ -433,6 +499,7 @@ def main(argv: list[str] | None = None) -> int:
                 catalogue=catalogue,
                 measuring=args.measuring,
                 history=history,
+                known_categories=known_categories,
             )
             if entry.previous and not history:
                 result.note = "ran fresh: previous turn missing"

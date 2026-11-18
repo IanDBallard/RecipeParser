@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.40.2] — 2026-11-18
+
+The golden-question report now shows whether each answer used the cook's categories, and the golden set has new category questions. Nothing the app does changes; only the script the owner runs against the library.
+
+### 🔧 Changed
+- `scripts/ask_goldens.yaml`: new optional field `expect_categories`, and a Categories group of five questions (a parent count, two axes, a list, a cuisine and meal type, and a mood question that should not use categories); the soup count now expects categories too.
+- `scripts/ask_goldens.py`: the report marks each answer's category use against its expectation and totals it as `Category use: N of M`.
+
 ## [9.40.1] — 2026-11-18
 
 One shared Mela recipe keeps the upload ceiling (owner ruling on 9.33.0's open question). Before, a single `.melarecipe` was exempt from the ceiling at upload, then refused by the reader past 50 MB with "is not a Mela recipe: larger than 50 MB."; the cook uploaded the whole file only to be told no. Merge and deploy before the Cayenne client PR, which refuses the same file before upload.
