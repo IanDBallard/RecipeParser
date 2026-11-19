@@ -79,3 +79,35 @@ The mobile app lives in the sibling repository Cayenne, which consumes this API 
 shares the recipe models. A spec that cites it uses the prefix `cy:` for paths in that
 repository and quotes the rule it relies on, so the spec stays complete on its own.
 Cayenne's specs cite this repository with the prefix `rp:`.
+
+## Post-merge
+
+Host values read by the arch-compliance plugin's `post-merge-housekeeping`. The default
+branch is `master`.
+
+- **Shared-checkout branch lock:** none. Feature work runs in worktrees. The main
+  checkout may hold someone's uncommitted work, so never check it out or pull it without
+  asking.
+- **Worktree daemon probe:** a local API server is started by `start_server.py`, which
+  runs uvicorn on `recipeparser.adapters.api` and binds port 8000 by default. Match its
+  processes on a command line containing `start_server.py` or `recipeparser.adapters.api`
+  together with the worktree path. The readiness endpoint is `GET http://127.0.0.1:<port>/health`.
+  `kill_server.py <pid>` stops one on Windows.
+- **Post-merge CI and deploy verification:** a push to `master` runs two workflows:
+  - `Build Windows Installer` runs the unit tests on Python 3.11 and 3.12. It builds and
+    publishes the installer only for a `v*` tag.
+  - `Deploy` builds the API image, pushes it to ghcr, and deploys it to the Cayenne VM
+    over Tailscale. The VM's `deploy.sh` verifies the API through `/health`.
+
+  Both must be green for the merge commit. A green `Deploy` is not proof of a deploy:
+  read its run summary. It reports "Deploy skipped" when `CAYENNE_VM_HOST` is unset, and
+  "auto-deploy is OFF on the VM" when the VM's switch skipped the run. Say which happened.
+  A Cayenne change that depends on this merge is not live until this deploy is.
+- **Durable tracking target:** Cayenne's `SpecificationDocumentation/FIX_ROADMAP.md` (`cy:`)
+  holds deferred defects and debt for both repositories. Each item reads
+  `F-### · RecipeParser · severity · size — title`. Stage work goes to Cayenne's
+  `SpecificationDocumentation/ROADMAP.md`. The next free `F-###` is the highest one on
+  Cayenne's `main` and in every open Cayenne pull request. A release also gets its entry
+  in this repository's `CHANGELOG.md`, and `pyproject.toml` and `installer.iss` carry the
+  same version.
+- **Other tracking files:** none.
