@@ -11,7 +11,7 @@ RecipeParser is an AI-powered recipe extraction engine that converts any recipe 
 - **Pluggable AI providers** — LLM and embedding backends are swappable via a Protocol interface. Adding a new provider requires only a new file.
 - **Wrapper-owned concerns** — file I/O, category sourcing, output format, and status reporting are the responsibility of the adapter (CLI, GUI, or API), not the engine.
 - **Externalized FSM** — pipeline state is a first-class object, observable by any adapter and (via Supabase + PowerSync) by the mobile app in real time.
-- **Unified image storage** — all recipe images are stored in Supabase Storage regardless of ingestion path. ZIP outputs reference URLs; Paprika-compat ZIPs also embed bytes.
+- **Image storage** — the API stores recipe images in Supabase Storage. The local CLI and GUI have no Supabase dependency and upload nothing; their `.paprikarecipes` output embeds a recovered photo's bytes instead.
 
 ## 2. Module Map
 
@@ -579,52 +579,35 @@ The same prompts score 96/96 on `gemini-3.8-flash` and 89/96 on `gemini-3.5-flas
 
 ## 9. Output Writers
 
-Writers consume an `ExtractionResult` and produce a file on disk. They are the adapter's responsibility to invoke after the engine completes.
+Writers take the pipeline's finished recipes (`List[IngestResponse]` from `RecipePipeline.run()`) and write a file to disk. The adapter invokes them after the pipeline completes.
 
 ### RecipeWriter ABC
 
 ```python
-# io/writers/base.py
-from abc import ABC, abstractmethod
-from pathlib import Path
-from recipeparser.core.engine import ExtractionResult
-
+# io/writers/__init__.py
 class RecipeWriter(ABC):
     @abstractmethod
-    def write(self, result: ExtractionResult, output_dir: Path) -> Path:
-        """Write recipes to output_dir. Returns the path of the created file."""
+    def write(self, recipes: List[IngestResponse], **kwargs: object) -> None:
         ...
 ```
 
-### Cayenne ZIP Writer (`cayenne_zip.py`)
+All configuration, including the output file path, goes to the concrete writer's `__init__`. `write()` returns nothing and raises `RuntimeError` if the archive cannot be written.
 
-Output: `<title>_<timestamp>.cayennerecipes` — a ZIP archive containing:
+Both file writers produce the same container: a ZIP of `<title>.paprikarecipe` entries, each one gzip-compressed Paprika 3 JSON. In both, Fat Tokens are stripped to their fallback text in the plain `ingredients` and `directions` fields, so stock Paprika 3 can open the archive.
 
-```
-<recipe_uid>.json      # CayenneRecipe JSON (one file per recipe)
-manifest.json          # {"format": "cayenne", "version": 1, "recipe_count": N}
-```
+### Paprika Writer (`paprika_zip.py`)
 
-Each recipe JSON includes `image_url` (Supabase Storage URL). Images are NOT embedded in the ZIP — they live in Supabase Storage.
+`PaprikaWriter` writes a plain Paprika 3 archive. It embeds **no** `_cayenne_meta`, so importing its output into Cayenne goes through the full AI pipeline again. When a recipe has a recovered photo, the entry embeds its bytes as base64 (`photo`, `photo_data`). `image_url` is written when the recipe has one.
 
-### Paprika ZIP Writer (`paprika_zip.py`)
+### Cayenne Writer (`cayenne_zip.py`)
 
-Output: `<title>_<timestamp>.paprikarecipes` — a ZIP archive containing:
+`CayenneZipWriter` writes the same kind of `.paprikarecipes` archive (there is no separate `.cayennerecipes` format). It adds a `_cayenne_meta` key to every entry, holding the full `CayenneRecipe` (Fat Tokens preserved) plus the 1536-dim embedding. `PaprikaReader` sees that key and restores the recipe without any Gemini call (Flow B; see the restore notes under Format detection). It writes `image_url` but embeds no photo bytes.
 
-```
-<recipe_uid>.paprikarecipe    # gzip-compressed JSON per Paprika 3 format
-```
-
-Each entry embeds the image bytes (base64) for Paprika compatibility. The entry also includes a `_cayenne_meta` key containing the full `CayenneRecipe` JSON, enabling lossless round-trip import back into Cayenne (Flow B — bypass Gemini; see the restore notes under Format detection).
+No adapter uses `CayenneZipWriter` today. Only the tests (`tests/unit/writers/test_writers.py`, `tests/goldens/`) call it.
 
 ### Writer Selection (CLI/GUI)
 
-```bash
-recipeparser cookbook.epub --format cayenne   # default
-recipeparser cookbook.epub --format paprika
-```
-
-The GUI exposes a radio button: `○ Cayenne  ○ Paprika (legacy)`
+There is no format choice. The CLI (`__main__.py`) and the Windows GUI (`adapters/gui.py`) both call `run_cli_pipeline` in `adapters/cli.py`, which always uses `PaprikaWriter` and writes `<book stem>.paprikarecipes` into the output folder. The CLI has no `--format` flag, and the GUI asks only for an output folder, with no format radio button.
 
 ## 10. Adapter Contracts
 
@@ -637,8 +620,8 @@ Each adapter is responsible for exactly these concerns — no more, no less:
 | Instantiate providers via factory | ✅ | ✅ | ✅ |
 | Register FSM observer | ✅ log | ✅ progress bar | ✅ Supabase job row |
 | Call `engine.extract()` | ✅ | ✅ | ✅ (background task) |
-| Upload images to Supabase Storage | ✅ | ✅ | ✅ |
-| Invoke writer (format selection) | ✅ `--format` flag | ✅ radio button | ❌ (API returns JSON) |
+| Upload images to Supabase Storage | ❌ (photo bytes embedded in the archive) | ❌ (same, via the CLI path) | ✅ |
+| Invoke writer | ✅ `PaprikaWriter` only | ✅ `PaprikaWriter` only (via `run_cli_pipeline`) | ❌ (API returns JSON) |
 | Return HTTP response | ❌ | ❌ | ✅ 202 + job_id |
 | Write to Supabase `recipes` table | ❌ out of scope | ❌ out of scope | ✅ |
 
@@ -677,14 +660,14 @@ Path:   {user_id}/{recipe_id}/{original_filename}
 
 ### Upload (Adapter Responsibility)
 
-After `engine.extract()` returns, the adapter uploads each `ImageAsset` from `result.images` to Supabase Storage and stores the resulting public URL in the recipe's `image_url` field before writing to the output format.
+Only the API uploads. It passes a `SupabaseImageStore` to the pipeline (`io/writers/image_store.py`), which stores the picture and puts the resulting URL in the recipe's `image_url`. The CLI and GUI pass no image store, so nothing is uploaded and `PaprikaWriter` embeds the recovered photo's bytes in the archive instead.
 
 ### Output Format Behavior
 
 | Format | Image in output | Image in Supabase |
 |--------|----------------|-------------------|
-| `.cayennerecipes` ZIP | `image_url` string only | ✅ Uploaded |
-| `.paprikarecipes` ZIP | Bytes embedded (Paprika compat) + `image_url` in `_cayenne_meta` | ✅ Uploaded |
+| `.paprikarecipes` from `PaprikaWriter` (CLI/GUI) | Recovered photo's bytes embedded (`photo_data`) | ❌ Not uploaded |
+| `.paprikarecipes` from `CayenneZipWriter` (tests only) | `image_url` string only, also in `_cayenne_meta` | — (no adapter calls it) |
 | API → Supabase INSERT | `image_url` in `recipes` row | ✅ Uploaded |
 
 ### RLS Policy

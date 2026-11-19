@@ -20,8 +20,9 @@ class RecipeWriter(ABC):
     Port for writing completed recipes to a destination.
 
     Concrete implementations live in ``recipeparser/io/writers/``:
-      - ``PaprikaWriter``    — writes to a ``.paprikarecipes`` ZIP archive
-      - ``CayenneZipWriter`` — writes to a ``.cayenne`` ZIP with ``_cayenne_meta``
+      - ``PaprikaWriter``    — writes a plain ``.paprikarecipes`` ZIP archive
+      - ``CayenneZipWriter`` — writes a ``.paprikarecipes`` ZIP whose entries
+        also carry ``_cayenne_meta``
 
     The ``write()`` method is the sole public API. All configuration
     (output path, user_id, category_ids, etc.) is passed to ``__init__``.
