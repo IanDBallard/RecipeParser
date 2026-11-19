@@ -1,8 +1,8 @@
 """The shopping classify call (Cayenne's shopping list design, Part 3 §2).
 
 One synchronous Gemini call that labels a Generate's ingredients — ``food``,
-``aisle``, ``pantry``, ``count``, ``count_unit`` — and nothing else. The device
-merges, sums and writes; this module reads and writes no table. Quantities on
+``aisle``, ``pantry``, ``count``, ``count_unit``, ``made`` — and nothing else.
+The device merges, sums and writes; this module reads and writes no table. Quantities on
 the list are computed in code (D5), so the model never sums.
 
 The structural checks live here, with one retry: a reply that fails them is
@@ -53,6 +53,7 @@ class ClassifiedItem(BaseModel):
     pantry: bool
     count: Optional[float] = None
     count_unit: Optional[str] = None
+    made: bool
 
 
 class ClassifyReply(BaseModel):
@@ -69,8 +70,10 @@ shopper buys for it.
 
 Rules:
 - "food" names what a shopper buys, singular and lower case ("egg", not "Eggs").
-- Reuse a food from KNOWN FOODS when the ingredient is the same thing, spelled \
-exactly as the known food is.
+- Reuse a food from KNOWN FOODS only when the ingredient is exactly that \
+product, spelled exactly as the known food is; never answer a generic known \
+food ("cheese", "flour", "chicken") for a specific ingredient ("cheddar", \
+"bread flour", "turkey").
 - Keep a variety only when it changes what is bought: "red onion" stays \
 "red onion"; "diced onion" is "onion"; "free-range eggs" is "egg".
 - Never equate functionally distinct products, even when a KNOWN FOOD is \
@@ -79,6 +82,10 @@ evaporated milk, table salt is not flaky finishing salt.
 - "aisle" is the store aisle the food is found in, one of: {aisles}.
 - "pantry" is true for what a typical home kitchen keeps in stock (salt, oil, \
 flour, dried spices).
+- "made" is true for an ingredient the cook makes rather than buys: a \
+leftover from another dish, or a component prepared in the recipe itself \
+("leftover roast turkey", "chocolate ganache", "homemade pastry"). A made \
+ingredient still gets a "food" and an "aisle".
 - "count" is how many whole units a shopper buys for this ingredient (2.2 \
 onion, 0.3 head garlic, 1 tin). When "count" is set, "count_unit" names what \
 is counted: the food itself, singular ("onion", "egg"), or how it is bought \

@@ -4,14 +4,13 @@
   "model": "gemini-3.1-flash-lite",
   "config": {
     "response_mime_type": "application/json",
-    "temperature": 0.1,
     "http_options": {
       "timeout": 60000
     },
     "thinking_config": {
-      "thinking_budget": 0
+      "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "14937abfc7bac6787f9bc9ec21dd018d5671aaa105ffd1fd0e9122755e74da1a",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"spring onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 3,\n      \"count_unit\": \"spring onion\"\n    }\n  ]\n}"
+  "prompt_sha256": "f3cca734731bf721ab4e544dc864f4d3414d4081f93dc282fefcb9742d6b7945",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"spring onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 3.0,\n      \"count_unit\": \"spring onion\",\n      \"made\": false\n    }\n  ]\n}"
 }

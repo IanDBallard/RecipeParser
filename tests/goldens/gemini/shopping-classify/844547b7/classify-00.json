@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "3db1ff3e4127383543834864926bd1b58dd64d43145f18b5f98c4cac0806dfde",
+  "response_text": "{\"items\": [{\"key\": \"a\", \"food\": \"turkey\", \"aisle\": \"meat_fish\", \"pantry\": false, \"count\": null, \"count_unit\": null, \"made\": true}, {\"key\": \"b\", \"food\": \"chocolate ganache\", \"aisle\": \"dairy_eggs\", \"pantry\": false, \"count\": null, \"count_unit\": null, \"made\": true}, {\"key\": \"c\", \"food\": \"butter\", \"aisle\": \"dairy_eggs\", \"pantry\": true, \"count\": null, \"count_unit\": null, \"made\": false}]}"
+}

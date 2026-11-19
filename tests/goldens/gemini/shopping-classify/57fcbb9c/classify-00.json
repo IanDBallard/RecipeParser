@@ -4,14 +4,13 @@
   "model": "gemini-3.1-flash-lite",
   "config": {
     "response_mime_type": "application/json",
-    "temperature": 0.1,
     "http_options": {
       "timeout": 60000
     },
     "thinking_config": {
-      "thinking_budget": 0
+      "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "75dcd15dc385a0f23fc0a95a37d88cd21a8b20d28a4627b452cc416ce7eb67ab",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"chopped tomatoes\",\n      \"aisle\": \"tins_jars\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"tin\"\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"plain flour\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"crème fraîche\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null\n    }\n  ]\n}"
+  "prompt_sha256": "4a0d3d9acf7234290d2b0f5fd419cf8e35bc7a44e56040aa6ee4318012e63d3c",
+  "response_text": "{\"items\": [{\"key\": \"a\", \"food\": \"chopped tomatoes\", \"aisle\": \"tins_jars\", \"pantry\": false, \"count\": 1, \"count_unit\": \"tin\", \"made\": false}, {\"key\": \"b\", \"food\": \"plain flour\", \"aisle\": \"dry_goods\", \"pantry\": true, \"count\": null, \"count_unit\": null, \"made\": false}, {\"key\": \"c\", \"food\": \"crème fraîche\", \"aisle\": \"dairy_eggs\", \"pantry\": false, \"count\": null, \"count_unit\": null, \"made\": false}]}"
 }

@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "bde60dc3cf4135c3e57e081bfb6e0c28e00726d29f674895ee5b462e652ecf8e",
+  "response_text": "{\"items\": [{\"key\": \"a\", \"food\": \"cheddar\", \"aisle\": \"dairy_eggs\", \"pantry\": false, \"count\": null, \"count_unit\": null, \"made\": false}, {\"key\": \"b\", \"food\": \"bread flour\", \"aisle\": \"dry_goods\", \"pantry\": true, \"count\": null, \"count_unit\": null, \"made\": false}]}"
+}
