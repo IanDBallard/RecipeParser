@@ -4,14 +4,13 @@
   "model": "gemini-3.1-flash-lite",
   "config": {
     "response_mime_type": "application/json",
-    "temperature": 0.1,
     "http_options": {
       "timeout": 60000
     },
     "thinking_config": {
-      "thinking_budget": 0
+      "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "1825141051409eb1661118d288adf18bda0fce7e311cad5f8fc48496b61261d7",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"red onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"red onion\"\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\"\n    }\n  ]\n}"
+  "prompt_sha256": "4dd42001c86ff26f2e076b66928b62ad69a85203e3d66bd40288ff187c57ded5",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"red onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"red onion\",\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\",\n      \"made\": false\n    }\n  ]\n}"
 }

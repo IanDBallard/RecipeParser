@@ -10,8 +10,11 @@ from typing import List, Optional
 
 import pytest
 
+from pydantic import ValidationError
+
 from recipeparser.shopping import (
     AISLES,
+    ClassifiedItem,
     ClassifyCheckError,
     ClassifyIngredient,
     build_classify_prompt,
@@ -25,9 +28,10 @@ ING = [
 
 
 def item(key: str, food: str = "flour", aisle: str = "dry_goods", pantry: bool = True,
-         count: Optional[float] = None, count_unit: Optional[str] = None) -> dict:
+         count: Optional[float] = None, count_unit: Optional[str] = None,
+         made: bool = False) -> dict:
     return {"key": key, "food": food, "aisle": aisle, "pantry": pantry,
-            "count": count, "count_unit": count_unit}
+            "count": count, "count_unit": count_unit, "made": made}
 
 
 def reply(items: List[dict]) -> str:
@@ -155,3 +159,33 @@ class TestFinalizeTimeout:
 
         assert _finalize_config({"http_options": {"timeout": 0}})["http_options"]["timeout"] == _HTTP_TIMEOUT_MS
         assert _finalize_config({"http_options": {"timeout": None}})["http_options"]["timeout"] == _HTTP_TIMEOUT_MS
+
+
+def test_made_is_a_required_field():
+    bare = {"key": "k", "food": "egg", "aisle": "dairy_eggs", "pantry": False,
+            "count": None, "count_unit": None}
+    with pytest.raises(ValidationError):
+        ClassifiedItem.model_validate(bare)
+    assert ClassifiedItem.model_validate({**bare, "made": True}).made is True
+
+
+def test_the_prompt_defines_made():
+    prompt = build_classify_prompt(ING, [])
+    assert '"made" is true' in prompt
+    for example in ("leftover roast turkey", "chocolate ganache", "homemade pastry"):
+        assert example in prompt
+
+
+def test_the_known_foods_rule_never_answers_a_generic_for_a_specific():
+    prompt = build_classify_prompt(ING, [])
+    assert "never answer a generic known food" in prompt
+    for pair in ("cheddar", "bread flour", "turkey"):
+        assert pair in prompt
+
+
+def test_the_made_rule_counters_a_bought_food_in_a_prepared_state():
+    prompt = build_classify_prompt(ING, [])
+    assert "is bought and then cooked or prepared" in prompt
+    for example in ("cooked rice", "melted butter", "toasted almonds"):
+        assert example in prompt
+    assert 'when unsure, "made" is false' in prompt

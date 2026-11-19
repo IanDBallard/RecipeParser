@@ -26,6 +26,7 @@ from recipeparser.config import GEMINI_DECISION_MODEL
 from recipeparser.shopping import AISLES
 from recipeparser.shopping_aisles import (
     AISLE_CRITERIA,
+    AISLES_SPLIT_BUDGET,
     DecisionsAPIError,
     DecisionsClient,
 )
@@ -244,12 +245,91 @@ def test_a_429_is_503_busy(client, monkeypatch):
     assert response.json()["detail"] == AISLES_BUSY
 
 
-@pytest.mark.parametrize("code", [400, 403, 500, 503])
+@pytest.mark.parametrize("code", [403, 500, 503])
 def test_any_other_refusal_is_503_unavailable(client, monkeypatch, code):
     _use(monkeypatch, ScriptedDecisions(exc_factory=lambda: DecisionsAPIError(code, "no")))
     response = _post(_as(client), ["butter"])
     assert response.status_code == 503
     assert response.json()["detail"] == AISLES_UNAVAILABLE
+
+
+class RefusingDecisions:
+    """Answers each food its aisle, but refuses (400) any request whose questions
+    include a food in *bad*; *always* refuses every request."""
+
+    def __init__(self, bad=(), always=False):
+        self.bad = set(bad)
+        self.always = always
+        self.calls: list[list[str]] = []
+
+    def create(self, **kwargs):
+        questions = kwargs["questions"]
+        foods = [
+            json.loads(q["instructions"].split(": ", 1)[1].rsplit("?", 1)[0])
+            for q in questions.values()
+        ]
+        self.calls.append(foods)
+        if self.always or self.bad & set(foods):
+            raise DecisionsAPIError(400, "safety block")
+        aisle = {"onion": "produce", "milk": "dairy_eggs", "rice": "dry_goods"}
+        return _reply(*[_answer(aisle.get(f, "frozen")) for f in foods])
+
+
+def test_one_refused_food_is_other_and_the_rest_sort(client, monkeypatch):
+    scripted = RefusingDecisions(bad={"bad"})
+    _use(monkeypatch, scripted)
+    response = _post(_as(client), ["onion", "bad", "milk", "rice"])
+    assert response.status_code == 200
+    assert response.json() == {"items": [
+        {"food": "onion", "aisle": "produce"},
+        {"food": "bad", "aisle": "other"},
+        {"food": "milk", "aisle": "dairy_eggs"},
+        {"food": "rice", "aisle": "dry_goods"},
+    ]}
+
+
+def test_two_refused_foods_both_answer_other(client, monkeypatch):
+    foods = ["a", "bad1", "c", "d", "e", "f", "bad2", "h"]
+    _use(monkeypatch, RefusingDecisions(bad={"bad1", "bad2"}))
+    response = _post(_as(client), foods)
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [i["food"] for i in items] == foods
+    assert {i["food"] for i in items if i["aisle"] == "other"} == {"bad1", "bad2"}
+
+
+def test_the_split_stops_at_its_budget(client, monkeypatch):
+    scripted = RefusingDecisions(always=True)
+    _use(monkeypatch, scripted)
+    response = _post(_as(client), [f"food {n}" for n in range(64)])
+    assert response.status_code == 503
+    assert response.json()["detail"] == AISLES_UNAVAILABLE
+    assert len(scripted.calls) == 1 + AISLES_SPLIT_BUDGET
+
+
+@pytest.mark.parametrize("foods", [["butter"], ["a", "b", "c", "d"]], ids=["one", "four"])
+def test_a_batch_refused_in_full_is_503_not_all_other(client, monkeypatch, foods):
+    scripted = RefusingDecisions(always=True)
+    _use(monkeypatch, scripted)
+    response = _post(_as(client), foods)
+    assert response.status_code == 503
+    assert response.json()["detail"] == AISLES_UNAVAILABLE
+
+
+def test_a_refusal_logs_the_apis_text(client, monkeypatch, caplog):
+    _use(monkeypatch, ScriptedDecisions(exc_factory=lambda: DecisionsAPIError(400, "API key not valid")))
+    with caplog.at_level("WARNING"):
+        _post(_as(client), ["butter", "lemon"])
+    assert "API key not valid" in caplog.text
+
+
+@pytest.mark.parametrize("code", [429, 500])
+def test_only_a_400_splits(client, monkeypatch, code):
+    scripted = ScriptedDecisions(exc_factory=lambda: DecisionsAPIError(code, "no"))
+    _use(monkeypatch, scripted)
+    response = _post(_as(client), ["butter", "lemon", "milk"])
+    assert response.status_code == 503
+    assert len(scripted.calls) == 1
 
 
 def test_an_unrecognized_exception_is_503_unavailable(client, monkeypatch):

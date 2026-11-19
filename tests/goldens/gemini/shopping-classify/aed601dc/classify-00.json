@@ -4,14 +4,13 @@
   "model": "gemini-3.1-flash-lite",
   "config": {
     "response_mime_type": "application/json",
-    "temperature": 0.1,
     "http_options": {
       "timeout": 60000
     },
     "thinking_config": {
-      "thinking_budget": 0
+      "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "9902cf0b277d614985a5e9061eb0a3d5050dd7ad323475b8376aa95080dfc629",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null\n    }\n  ]\n}"
+  "prompt_sha256": "196549ff30010dda3834a778623f04e18bf7e7eed447b461f913cb906d339adb",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    }\n  ]\n}"
 }

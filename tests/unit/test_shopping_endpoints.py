@@ -36,9 +36,9 @@ ING = [
 
 GOOD = json.dumps({"items": [
     {"key": "r1:i1", "food": "flour", "aisle": "dry_goods", "pantry": True,
-     "count": None, "count_unit": None},
+     "count": None, "count_unit": None, "made": False},
     {"key": "r1:i2", "food": "crème fraîche", "aisle": "dairy_eggs", "pantry": False,
-     "count": None, "count_unit": None},
+     "count": None, "count_unit": None, "made": False},
 ]})
 
 BAD = json.dumps({"items": []})
@@ -125,6 +125,21 @@ def test_a_good_call_answers_the_items(client, monkeypatch):
     assert [i["key"] for i in items] == ["r1:i1", "r1:i2"]
     assert items[1]["food"] == "crème fraîche"
     assert scripted.call_count == 1
+
+
+def test_classify_passes_made_through(client, monkeypatch):
+    made = json.dumps({"items": [
+        {"key": "r1:i1", "food": "turkey", "aisle": "meat_fish", "pantry": False,
+         "count": None, "count_unit": None, "made": True},
+        {"key": "r1:i2", "food": "crème fraîche", "aisle": "dairy_eggs", "pantry": False,
+         "count": None, "count_unit": None, "made": False},
+    ]})
+    monkeypatch.setattr(api, "_get_client", lambda: ScriptedClient([made]))
+    response = _post(_as(client))
+    assert response.status_code == 200
+    by_key = {i["key"]: i for i in response.json()["items"]}
+    assert by_key["r1:i1"]["made"] is True
+    assert by_key["r1:i2"]["made"] is False
 
 
 def test_too_many_ingredients_is_400_without_a_call(client, monkeypatch):

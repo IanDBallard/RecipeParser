@@ -116,3 +116,35 @@ def test_a_tin_and_the_aisles(golden_client):
     assert items["b"].aisle == "dry_goods" and items["b"].count is None
     assert items["c"].aisle == "dairy_eggs"
     assert items["c"].food == "crème fraîche"
+
+
+def test_a_leftover_and_a_component_are_made(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "2 cups leftover roast turkey, shredded", "leftover roast turkey", 2.0, "cup"),
+        ing("b", "1 cup chocolate ganache", "chocolate ganache", 1.0, "cup"),
+        ing("c", "200g butter", "butter", 200.0, "g"),
+    ], []))
+    assert items["a"].made is True
+    assert items["b"].made is True
+    assert items["c"].made is False
+    assert items["a"].food and items["a"].aisle
+
+
+def test_a_generic_known_food_is_not_answered_for_a_specific_one(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "150g cheddar, grated", "cheddar", 150.0, "g"),
+        ing("b", "500g bread flour", "bread flour", 500.0, "g"),
+    ], ["cheese", "flour"]))
+    assert items["a"].food == "cheddar"
+    assert items["b"].food == "bread flour"
+
+
+def test_a_bought_food_cooked_or_prepared_is_not_made(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "2 cups cooked rice", "cooked rice", 2.0, "cup"),
+        ing("b", "500 ml chicken stock (homemade or shop-bought)", "chicken stock", 500.0, "ml"),
+        ing("c", "50 g melted butter", "melted butter", 50.0, "g"),
+    ], []))
+    assert items["a"].made is False
+    assert items["b"].made is False
+    assert items["c"].made is False
