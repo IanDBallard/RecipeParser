@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "309f507b64bcb793fc7d655da1aad6a754df8f336bddb576c9acdb3f5cd96e2e",
-  "response_text": "{\"items\":[{\"key\":\"a\",\"food\":\"baking powder\",\"aisle\":\"dry_goods\",\"pantry\":true,\"count\":null,\"count_unit\":null,\"made\":false},{\"key\":\"b\",\"food\":\"evaporated milk\",\"aisle\":\"tins_jars\",\"pantry\":false,\"count\":null,\"count_unit\":null,\"made\":false},{\"key\":\"c\",\"food\":\"flaky sea salt\",\"aisle\":\"spices\",\"pantry\":false,\"count\":null,\"count_unit\":null,\"made\":false}]}"
+  "prompt_sha256": "9fa8d37ebe05835262f9516b9d21aac42931d1bb73dd6e0750e5f1bde1cac5f4",
+  "response_text": "{\"items\": [{\"key\": \"a\", \"food\": \"baking powder\", \"aisle\": \"dry_goods\", \"pantry\": true, \"count\": null, \"count_unit\": null, \"made\": false}, {\"key\": \"b\", \"food\": \"evaporated milk\", \"aisle\": \"tins_jars\", \"pantry\": false, \"count\": null, \"count_unit\": null, \"made\": false}, {\"key\": \"c\", \"food\": \"flaky sea salt\", \"aisle\": \"spices\", \"pantry\": true, \"count\": null, \"count_unit\": null, \"made\": false}]}"
 }

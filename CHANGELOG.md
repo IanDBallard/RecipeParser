@@ -12,7 +12,7 @@ Shopping labels now tell a made ingredient from a bought one, and a known food i
 **Deploy order:** merge and deploy this before Cayenne's batch-59 PR, which refuses labels that come back without `made`.
 
 ### 🔧 Changed
-- `POST /shopping/classify`: every item now carries a required `made` flag (an ingredient the cook makes, not buys). A made ingredient still gets its food and aisle.
+- `POST /shopping/classify`: every item now carries a required `made` flag (an ingredient the cook makes, not buys). A made ingredient still gets its food and aisle. A bought food that is cooked or prepared ("cooked rice", "melted butter", "toasted almonds") or may be shop-bought is not made, and when unsure `made` is false.
 - The KNOWN FOODS rule in the classify prompt reuses a known food only when the ingredient is exactly that product, and never answers a generic known food ("cheese", "flour", "chicken") for a specific ingredient ("cheddar", "bread flour", "turkey") (F-272, F-663).
 - `POST /shopping/aisles`: a batch the Decisions API refuses (HTTP 400) is split in half and retried, up to `AISLES_SPLIT_BUDGET = 20` extra calls. A lone refused food answers `other` when others in the batch sorted. A batch refused in full, or past the budget, still returns 503, now with the API's text logged (F-665).
 

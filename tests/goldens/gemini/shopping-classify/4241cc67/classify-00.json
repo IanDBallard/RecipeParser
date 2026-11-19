@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "75336cf54d0199ef0e0cd482c97547b03ccd0ded8525c5264986c3820d8fe267",
+  "prompt_sha256": "1bfbaf88d7907fb0cc0c80f2fb871858f8a718b150ba1280e92678b82ad9e785",
   "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"egg\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": 2,\n      \"count_unit\": \"egg\",\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"egg\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"egg\",\n      \"made\": false\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"egg\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": 2,\n      \"count_unit\": \"egg\",\n      \"made\": false\n    }\n  ]\n}"
 }

@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "bde60dc3cf4135c3e57e081bfb6e0c28e00726d29f674895ee5b462e652ecf8e",
-  "response_text": "{\"items\": [{\"key\": \"a\", \"food\": \"cheddar\", \"aisle\": \"dairy_eggs\", \"pantry\": false, \"count\": null, \"count_unit\": null, \"made\": false}, {\"key\": \"b\", \"food\": \"bread flour\", \"aisle\": \"dry_goods\", \"pantry\": true, \"count\": null, \"count_unit\": null, \"made\": false}]}"
+  "prompt_sha256": "e4f66ed9ef9794f4850a29decb2123ff7f5109e6b2e58175e0d130271ede317f",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"cheddar\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"bread flour\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    }\n  ]\n}"
 }

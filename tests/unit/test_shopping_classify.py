@@ -181,3 +181,11 @@ def test_the_known_foods_rule_never_answers_a_generic_for_a_specific():
     assert "never answer a generic known food" in prompt
     for pair in ("cheddar", "bread flour", "turkey"):
         assert pair in prompt
+
+
+def test_the_made_rule_counters_a_bought_food_in_a_prepared_state():
+    prompt = build_classify_prompt(ING, [])
+    assert "is bought and then cooked or prepared" in prompt
+    for example in ("cooked rice", "melted butter", "toasted almonds"):
+        assert example in prompt
+    assert 'when unsure, "made" is false' in prompt

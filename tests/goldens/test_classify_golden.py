@@ -137,3 +137,14 @@ def test_a_generic_known_food_is_not_answered_for_a_specific_one(golden_client):
     ], ["cheese", "flour"]))
     assert items["a"].food == "cheddar"
     assert items["b"].food == "bread flour"
+
+
+def test_a_bought_food_cooked_or_prepared_is_not_made(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "2 cups cooked rice", "cooked rice", 2.0, "cup"),
+        ing("b", "500 ml chicken stock (homemade or shop-bought)", "chicken stock", 500.0, "ml"),
+        ing("c", "50 g melted butter", "melted butter", 50.0, "g"),
+    ], []))
+    assert items["a"].made is False
+    assert items["b"].made is False
+    assert items["c"].made is False

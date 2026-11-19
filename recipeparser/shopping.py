@@ -85,7 +85,10 @@ flour, dried spices).
 - "made" is true for an ingredient the cook makes rather than buys: a \
 leftover from another dish, or a component prepared in the recipe itself \
 ("leftover roast turkey", "chocolate ganache", "homemade pastry"). A made \
-ingredient still gets a "food" and an "aisle".
+ingredient still gets a "food" and an "aisle". An ingredient that is bought \
+and then cooked or prepared ("cooked rice", "melted butter", "toasted \
+almonds") is not made, and neither is one that may be shop-bought; when \
+unsure, "made" is false.
 - "count" is how many whole units a shopper buys for this ingredient (2.2 \
 onion, 0.3 head garlic, 1 tin). When "count" is set, "count_unit" names what \
 is counted: the food itself, singular ("onion", "egg"), or how it is bought \

@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "a8f47c6eddbdc56d1ef29a597cf393534f5ba3637297fa74c2cdd446b19f8da8",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"rice\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"chicken stock\",\n      \"aisle\": \"tins_jars\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    }\n  ]\n}"
+}
