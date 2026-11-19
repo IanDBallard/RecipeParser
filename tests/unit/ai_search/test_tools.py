@@ -127,7 +127,7 @@ def test_run_sql_logs_never_rows(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def test_semantic_search_clamps_limit_and_formats_vector() -> None:
-    db = FakeDb([_result(["id", "title", "score"], [(uuid.UUID(A), "Miso soup", 0.9)])])
+    db = FakeDb([_result(["id", "title", "score", "categories"], [(uuid.UUID(A), "Miso soup", 0.9, [])])])
     box = _box(db)
     out = box.run("semantic_search", {"text": "cosy autumn soup", "limit": 500})
     sql, params = db.calls[0]
@@ -146,8 +146,8 @@ def test_semantic_search_clamps_low() -> None:
 
 
 def test_keyword_search_records_ids() -> None:
-    rows = [(uuid.UUID(A), "Miso", 0.1), (uuid.UUID(B), "Dal", 0.05)]
-    db = FakeDb([_result(["id", "title", "rank"], rows)])
+    rows = [(uuid.UUID(A), "Miso", 0.1, []), (uuid.UUID(B), "Dal", 0.05, [])]
+    db = FakeDb([_result(["id", "title", "rank", "categories"], rows)])
     box = _box(db)
     box.run("keyword_search", {"text": "miso", "limit": 10})
     sql, params = db.calls[0]
@@ -170,6 +170,7 @@ def test_get_recipe_found_assembles_one_object() -> None:
             _result(["id", "title"], [(uuid.UUID(A), "Miso soup")]),
             _result(["position", "name"], [(1, "miso")]),
             _result(["position", "text"], [(1, "Simmer.")]),
+            _result(["axis", "category"], []),
         ]
     )
     box = _box(db)
@@ -178,10 +179,50 @@ def test_get_recipe_found_assembles_one_object() -> None:
     assert data["title"] == "Miso soup"
     assert data["ingredients"] == [{"position": 1, "name": "miso"}]
     assert data["steps"] == [{"position": 1, "text": "Simmer."}]
-    assert len(db.calls) == 3
+    assert len(db.calls) == 4
     assert all("order by" in s for s, _ in db.calls[1:])
     assert box.seen_ids == {A}
     assert out.progress == "Checking Miso soup"
+
+
+def test_semantic_search_returns_categories() -> None:
+    db = FakeDb([_result(["id", "title", "score", "categories"], [(uuid.UUID(A), "Dal", 0.8, ["Indian", "Vegan"])])])
+    out = _box(db).run("semantic_search", {"text": "lentils", "limit": 5})
+    assert json.loads(out.content)["rows"] == [
+        {"id": A, "title": "Dal", "score": 0.8, "categories": ["Indian", "Vegan"]}
+    ]
+    sql = db.calls[0][0]
+    assert "ai.semantic_search(%s, %s)" in sql and "join ai.recipes" in sql and "categories" in sql
+
+
+def test_keyword_search_returns_categories() -> None:
+    db = FakeDb([_result(["id", "title", "rank", "categories"], [(uuid.UUID(A), "Dal", 0.1, ["Indian", "Vegan"])])])
+    box = _box(db)
+    out = box.run("keyword_search", {"text": "lentils", "limit": 5})
+    assert json.loads(out.content)["rows"] == [
+        {"id": A, "title": "Dal", "rank": 0.1, "categories": ["Indian", "Vegan"]}
+    ]
+    sql = db.calls[0][0]
+    assert "ai.keyword_search(%s, %s)" in sql and "join ai.recipes" in sql and "categories" in sql
+    assert box.seen_ids == {A}
+
+
+def test_get_recipe_lists_filed_under_by_axis() -> None:
+    db = FakeDb(
+        [
+            _result(["id", "title"], [(uuid.UUID(A), "Dal")]),
+            _result(["recipe_id", "position", "line"], []),
+            _result(["recipe_id", "position", "text"], []),
+            _result(["axis", "category"], [("Cuisine", "Indian"), ("Lists", "To try")]),
+        ]
+    )
+    recipe = json.loads(_box(db).run("get_recipe", {"id": A}).content)
+    assert recipe["filed_under"] == [
+        {"axis": "Cuisine", "category": "Indian"},
+        {"axis": "Lists", "category": "To try"},
+    ]
+    assert "ai.recipe_filed_under" in db.calls[3][0] and "direct" in db.calls[3][0]
+    assert db.calls[3][1] == [A]
 
 
 def test_get_recipe_not_found() -> None:
@@ -287,6 +328,7 @@ def test_get_recipe_logs_counts(caplog: pytest.LogCaptureFixture) -> None:
             _result(["id", "title"], [(uuid.UUID(A), "Miso")]),
             _result(["position"], [(1,), (2,)]),
             _result(["position"], [(1,)]),
+            _result(["axis", "category"], []),
         ]
     )
     with caplog.at_level(logging.INFO):
@@ -348,6 +390,7 @@ def test_progress_collapses_whitespace_and_cuts_title() -> None:
             _result(["id", "title"], [(uuid.UUID(A), "Miso\n  soup " + "z" * 80)]),
             _result([], []),
             _result([], []),
+            _result([], []),
         ]
     )
     box = _box(db)
@@ -393,6 +436,7 @@ def test_get_recipe_statements_each_get_the_time_still_left() -> None:
         _result(["id", "title"], [(uuid.UUID(A), "Miso soup")]),
         _result(["position", "name"], []),
         _result(["position", "text"], []),
+        _result(["axis", "category"], []),
     ]
 
     class Slow(FakeDb):
@@ -403,7 +447,7 @@ def test_get_recipe_statements_each_get_the_time_still_left() -> None:
 
     db = Slow(results)
     _box(db, clock=clock).run("get_recipe", {"id": A}, remaining=10.0)
-    assert db.timeouts == [10000, 8000, 6000]
+    assert db.timeouts == [10000, 8000, 6000, 4000]
 
 
 def test_run_sql_statement_timeout_is_the_time_left() -> None:
@@ -435,3 +479,8 @@ def test_embed_timeout_becomes_a_tool_error() -> None:
     out = _box(db, timed_out, clock=Clock()).run("semantic_search", {"text": "x", "limit": 5}, remaining=20.0)
     assert out.is_error
     assert db.calls == []
+
+
+def test_run_sql_description_names_the_category_view() -> None:
+    run_sql = next(t for t in TOOL_DEFINITIONS if t["name"] == "run_sql")
+    assert "ai.recipe_filed_under" in run_sql["description"]

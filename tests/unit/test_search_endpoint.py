@@ -49,6 +49,12 @@ class FakeDb:
         self.owned = owned if owned is not None else {OWNED, OWNED_2}
         self.claims_seen: list[dict[str, Any]] = []
         self.timeouts: list[int | None] = []
+        self.category_reads = 0
+        # (id, name, parent_id, depth, is_list, filed, recipes)
+        self.category_rows: list[tuple[Any, ...]] = [
+            ("c1", "Axis one", None, 0, False, 7, 12),
+            ("c2", "Child one", "c1", 1, False, 3, 12),
+        ]
 
     def catalogue(self) -> Catalogue:
         return Catalogue(views={"recipes": ViewInfo("", [ColumnInfo("id", "uuid", "")])}, functions={})
@@ -58,6 +64,9 @@ class FakeDb:
     ) -> QueryResult:
         self.claims_seen.append(dict(claims))
         self.timeouts.append(timeout_ms)
+        if "ai.categories" in sql:
+            self.category_reads += 1
+            return QueryResult([], list(self.category_rows), False, 1.0)
         return QueryResult(["id", "title", "rank"], [(OWNED, "Leek soup", 1.0)], False, 1.0)
 
     def own_recipe_ids(self, claims: Any, ids: Any) -> set[str]:
@@ -109,11 +118,13 @@ class FakeAnthropic:
         self.script = list(script)
         self.calls = 0
         self.on_call = on_call
+        self.requests: list[dict[str, Any]] = []
 
     def with_options(self, **_: Any) -> Any:
         return SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=self._create)))
 
-    def _create(self, **_: Any) -> Any:
+    def _create(self, **kwargs: Any) -> Any:
+        self.requests.append(kwargs)
         self.calls += 1
         if self.on_call:
             self.on_call(self.calls)
@@ -282,6 +293,36 @@ def test_streams_progress_then_answer() -> None:
     assert [line["type"] for line in lines].count("answer") == 1
 
 
+def test_the_cooks_categories_are_in_the_request_text() -> None:
+    client = FakeAnthropic([_tool_round(), _final(_recipes(OWNED))])
+    db = FakeDb()
+    tc, _ = _app(db=db, client=client)
+    assert _lines(tc.post("/search/ask", json=BODY, headers=AUTH))[-1]["type"] == "answer"
+    first = client.requests[0]["messages"][0]
+    assert first["role"] == "user"
+    lines = first["content"].split("\n")
+    assert lines[2:4] == ["The cook's categories (recipes filed, of 12):", '"Axis one" (7): "Child one"']
+    assert db.category_reads == 1
+    # The cached system block is the same for every cook: nothing of theirs in it.
+    assert "Axis one" not in json.dumps(client.requests[0]["system"])
+
+
+def test_a_failed_category_read_ends_the_stream_and_never_calls_the_agent() -> None:
+    from recipeparser.adapters.ai_search.ai_db import QueryFailed
+
+    class NoCategories(FakeDb):
+        def run(self, claims: Any, sql: str, *args: Any, **kwargs: Any) -> QueryResult:
+            if "ai.categories" in sql:
+                raise QueryFailed("relation ai.recipe_filed_under does not exist")
+            return super().run(claims, sql, *args, **kwargs)
+
+    client = FakeAnthropic([_final(_recipes(OWNED))])
+    tc, _ = _app(db=NoCategories(), client=client)
+    lines = _lines(tc.post("/search/ask", json=BODY, headers=AUTH))
+    assert lines == [{"type": "error", "code": "failed", "detail": "Couldn't answer that just now. Try again."}]
+    assert client.calls == 0
+
+
 def test_answer_ids_limited_to_tool_results() -> None:
     # OWNED_2 is the cook's but no tool returned it; INVENTED is nobody's.
     client = FakeAnthropic([_tool_round(), _final(_recipes(OWNED, OWNED_2, INVENTED))])
@@ -410,8 +451,9 @@ def test_disconnect_sets_cancel() -> None:
         def run(
             self, claims: Any, sql: str, params: Any = None, *, max_rows: int = 200, timeout_ms: int | None = None
         ) -> QueryResult:
-            started.set()
-            release.wait(5)
+            if "ai.categories" not in sql:  # block in the agent's tool call, not the category read
+                started.set()
+                release.wait(5)
             return super().run(claims, sql, params, max_rows=max_rows, timeout_ms=timeout_ms)
 
     gate = AiGate(lambda: _supabase())
@@ -558,4 +600,5 @@ def test_embed_is_bounded_and_not_retried(monkeypatch: pytest.MonkeyPatch) -> No
     assert seen[0]["max_retries"] == 0
     assert 0 < seen[0]["timeout_secs"] <= 8.0
     # The search statement's timeout is the request's time left, which ai_db caps at 5 s.
-    assert state["db"].timeouts[0] is not None and 0 < state["db"].timeouts[0] <= 30_000
+    # (timeouts[0] is the category read, which carries none.)
+    assert state["db"].timeouts[-1] is not None and 0 < state["db"].timeouts[-1] <= 30_000

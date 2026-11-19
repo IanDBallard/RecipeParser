@@ -39,7 +39,7 @@ from recipeparser import usage
 from recipeparser.adapters import refusing_hosts
 from recipeparser.adapters.ai_gate import AiGate
 from recipeparser.adapters.ai_search.agent import AgentCancelled, AgentTimeout, run_agent
-from recipeparser.adapters.ai_search.ai_db import AiReaderDb, cook_sites, own_source_urls
+from recipeparser.adapters.ai_search.ai_db import AiReaderDb, cook_categories, cook_sites, own_source_urls
 from recipeparser.adapters.ai_search.answer import (
     MAX_ALTERNATIVES,
     MAX_HISTORY,
@@ -159,6 +159,7 @@ def _work(
         with usage.attributed(sub, "search", get_client=get_service_client) as ctx:
             try:
                 catalogue = db.catalogue()
+                categories = cook_categories(db, claims)
                 toolbox = ToolBox(
                     db,
                     claims,
@@ -180,6 +181,7 @@ def _work(
                         filters=list(body.filters),
                         question=body.text,
                         history=body.history,
+                        categories=categories,
                     ),
                     toolbox=toolbox,
                     on_progress=lambda text: emit({"type": "progress", "text": text}),

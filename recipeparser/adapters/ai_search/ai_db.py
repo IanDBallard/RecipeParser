@@ -375,3 +375,50 @@ def own_source_urls(db: AiReaderDb, claims: Mapping[str, Any], urls: Iterable[st
         if key in wanted and key not in found:
             found[key] = str(recipe_id)
     return found
+
+
+# -- the cook's categories (the request text) -------------------------------------------------------
+
+_MAX_CATEGORY_ROWS = 2000
+# Every category with the number of the cook's recipes filed under it (a recipe counts for a category
+# it is filed under or sits below). ai.recipe_filed_under is aggregated once and joined; the recipe
+# count is one uncorrelated scalar, not a sub-select per category.
+_COOK_CATEGORIES = """
+with filed as (
+    select category_id, count(distinct recipe_id)::int as filed
+      from ai.recipe_filed_under
+     group by category_id
+)
+select c.id::text, c.name, c.parent_id::text, c.depth::int, c.is_list, coalesce(f.filed, 0)::int as filed,
+       (select count(*) from ai.recipes)::int as recipes
+  from ai.categories c
+  left join filed f on f.category_id = c.id
+ order by c.depth, c.name, c.id
+"""
+
+
+@dataclass(frozen=True)
+class CookCategory:
+    id: str
+    name: str
+    parent_id: str | None
+    depth: int
+    is_list: bool
+    filed: int
+
+
+@dataclass(frozen=True)
+class CookCategories:
+    recipes: int
+    rows: list[CookCategory]
+
+
+def cook_categories(db: AiReaderDb, claims: Mapping[str, Any]) -> CookCategories:
+    """The cook's whole category tree with how many recipes sit under each, and their recipe total."""
+    result = db.run(claims, _COOK_CATEGORIES, max_rows=_MAX_CATEGORY_ROWS)
+    rows = [
+        CookCategory(str(i), str(name), None if parent is None else str(parent), int(depth), bool(is_list), int(filed))
+        for i, name, parent, depth, is_list, filed, _recipes in result.rows
+    ]
+    recipes = int(result.rows[0][6]) if result.rows else 0
+    return CookCategories(recipes=recipes, rows=rows)
