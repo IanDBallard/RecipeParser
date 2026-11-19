@@ -304,7 +304,23 @@ def test_the_split_stops_at_its_budget(client, monkeypatch):
     response = _post(_as(client), [f"food {n}" for n in range(64)])
     assert response.status_code == 503
     assert response.json()["detail"] == AISLES_UNAVAILABLE
-    assert 1 < len(scripted.calls) <= 1 + AISLES_SPLIT_BUDGET
+    assert len(scripted.calls) == 1 + AISLES_SPLIT_BUDGET
+
+
+@pytest.mark.parametrize("foods", [["butter"], ["a", "b", "c", "d"]], ids=["one", "four"])
+def test_a_batch_refused_in_full_is_503_not_all_other(client, monkeypatch, foods):
+    scripted = RefusingDecisions(always=True)
+    _use(monkeypatch, scripted)
+    response = _post(_as(client), foods)
+    assert response.status_code == 503
+    assert response.json()["detail"] == AISLES_UNAVAILABLE
+
+
+def test_a_refusal_logs_the_apis_text(client, monkeypatch, caplog):
+    _use(monkeypatch, ScriptedDecisions(exc_factory=lambda: DecisionsAPIError(400, "API key not valid")))
+    with caplog.at_level("WARNING"):
+        _post(_as(client), ["butter", "lemon"])
+    assert "API key not valid" in caplog.text
 
 
 @pytest.mark.parametrize("code", [429, 500])

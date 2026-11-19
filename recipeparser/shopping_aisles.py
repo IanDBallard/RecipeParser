@@ -189,28 +189,42 @@ def decide_aisles_splitting(
 ) -> List[AisleItem]:
     """``decide_aisles``, but a 400 (a safety block names no food) bisects the batch.
 
-    A refused single food answers ``other``; the rest of the batch still sorts. At most
+    A refused single food answers ``other`` when at least one other food sorted (if none did, the
+    first refusal is re-raised); the rest of the batch still sorts. At most
     ``budget`` calls are made beyond the first; when it is spent the refusal that hit
     the limit is re-raised. Any other error propagates unchanged. The answer is in the
     order of *foods*.
     """
     remaining = [budget]
+    first_refusal: List[DecisionsAPIError] = []
 
-    def solve(batch: Sequence[str], refusal: Optional[DecisionsAPIError]) -> List[AisleItem]:
+    def solve(
+        batch: Sequence[str], refusal: Optional[DecisionsAPIError]
+    ) -> List[Optional[AisleItem]]:
         # *refusal* is the 400 that made us split; it is re-raised if no budget is left.
+        # A refused single food is None; the caller decides what that means.
         if refusal is not None:
             if remaining[0] <= 0:
                 raise refusal
             remaining[0] -= 1
         try:
-            return decide_aisles(client, batch)
+            return list(decide_aisles(client, batch))
         except DecisionsAPIError as exc:
             if exc.code != 400:
                 raise
-            log.warning("Aisles request of %d food(s) refused (400)", len(batch))
+            # The text is the API's, never a food; it is what tells a safety block
+            # from a bad key or payload.
+            log.warning("Aisles request of %d food(s) refused (400): %.300s", len(batch), exc)
+            if not first_refusal:
+                first_refusal.append(exc)
             if len(batch) == 1:
-                return [AisleItem(food=batch[0], aisle="other")]
+                return [None]
             mid = len(batch) // 2
             return solve(batch[:mid], exc) + solve(batch[mid:], exc)
 
-    return solve(list(foods), None)
+    results = solve(list(foods), None)
+    if first_refusal and all(r is None for r in results):
+        # Nothing sorted: a systemic 400 (bad key, model or payload), not a safety
+        # block on particular foods. Fail loudly as before.
+        raise first_refusal[0]
+    return [r if r is not None else AisleItem(food=f, aisle="other") for f, r in zip(foods, results)]
