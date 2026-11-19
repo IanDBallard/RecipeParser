@@ -1,0 +1,18 @@
+# Host declaration for /arch-compliance:architecture-review (arch-compliance 0.3.2).
+# Read by acf.review.host.load_review_config; every field is required.
+report_dir: docs/reviews/architecture
+baseline_path: config/architecture/review_baseline.json
+baseline_max_age_days: 30
+baseline_max_commits: 200
+packs: [python]
+subsystems:
+  - recipeparser/core/
+  - recipeparser/io/
+  - recipeparser/adapters/
+  - recipeparser/
+  - scripts/
+# Tests are excluded by the review's built-in exclusions (use --include-tests).
+exclude:
+  - docs/**
+  - dist/
+  - build/
