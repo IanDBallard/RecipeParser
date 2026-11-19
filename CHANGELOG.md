@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.42.0] — 2026-11-19
+
+Shopping labels now tell a made ingredient from a bought one, and a known food is reused only when the ingredient really is that product. A cook's leftover roast turkey, a ganache made in the recipe or homemade pastry is something they make rather than buy, but it still gets a food and an aisle. And "cheese", "flour" or "chicken" no longer take the food of a specific "cheddar", "bread flour" or "turkey" the cook already has. One refused food no longer sinks a whole aisle batch.
+
+**Deploy order:** merge and deploy this before Cayenne's batch-59 PR, which refuses labels that come back without `made`.
+
+### 🔧 Changed
+- `POST /shopping/classify`: every item now carries a required `made` flag (an ingredient the cook makes, not buys). A made ingredient still gets its food and aisle.
+- The KNOWN FOODS rule in the classify prompt reuses a known food only when the ingredient is exactly that product, and never answers a generic known food ("cheese", "flour", "chicken") for a specific ingredient ("cheddar", "bread flour", "turkey") (F-272, F-663).
+- `POST /shopping/aisles`: a batch the Decisions API refuses (HTTP 400) is split in half and retried, up to `AISLES_SPLIT_BUDGET = 20` extra calls. A lone refused food answers `other` when others in the batch sorted. A batch refused in full, or past the budget, still returns 503, now with the API's text logged (F-665).
+
+### ✨ Added
+- `tests/goldens/test_classify_golden.py` recordings re-recorded: the old replies lacked `made`, and the recordings' config blocks were refreshed too because master's Gemini config had moved. The onion whole-and-chopped sample was kept after about a dozen re-records, because "1 cup chopped onion" sometimes answers count null.
+
+---
+
 ## [9.41.0] — 2026-11-18
 
 Searching more deeply now starts from the cook's own categories. Every deeper-search request carries the cook's category tree, the search tools show which categories each recipe is filed under, and the agent is told to treat a category as everything inside it and to lead a count with the Library's own filter count.
