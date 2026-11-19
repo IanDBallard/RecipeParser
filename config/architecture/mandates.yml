@@ -1,0 +1,119 @@
+# RecipeParser mandate registry (arch-compliance 0.3.2).
+# Detector rows are the python-service profile's enforced rows; they check added
+# lines only, so existing code is not flagged until it is edited. Reviewed rows
+# (auditor set, call_sites [audit]) run only under /architecture-review and gate
+# nothing. Each arch_anchor is a heading in config/architecture/ARCHITECTURE.md.
+
+- id: fail-loud.bare-except
+  title: Bare except and broad Exception handlers
+  severity: BLOCK
+  detection: ast
+  detector: fail_loud_bare_except
+  languages: python
+  call_sites: [ci, precommit, hook]
+  exemption_tokens: [fail-loud.bare-except-ok]
+  status: enforced
+  arch_anchor: "## Fail loud"
+
+- id: no-shims.hasattr
+  title: No hasattr shims for optional attributes
+  severity: WARN
+  detection: ast
+  detector: no_shims_hasattr
+  languages: python
+  call_sites: [ci, precommit]
+  exemption_tokens: [no-shims.hasattr-ok]
+  status: enforced
+  arch_anchor: "## No shims"
+
+- id: posix-paths.str-serialization
+  title: No str(path) into YAML/JSON serialization
+  severity: BLOCK
+  detection: ast
+  detector: posix_paths_str_serialization
+  languages: python
+  call_sites: [ci, precommit, hook]
+  exemption_tokens: [posix-paths.str-serialization-ok]
+  status: enforced
+  arch_anchor: "## POSIX paths"
+
+- id: ops.no-build-artifacts
+  title: No staged/committed build-output paths
+  severity: BLOCK
+  detection: guard
+  detector: no_build_artifacts
+  languages: both
+  call_sites: [ci, precommit, hook]
+  exemption_tokens: [ops.no-build-artifacts-ok]
+  status: enforced
+  arch_anchor: "## Build artifacts"
+  params:
+    path_prefixes: [dist/, build/]
+
+- id: soft.fail-loud
+  title: Failures raise from the RecipeParserError hierarchy; only providers return None on transient API failures
+  severity: WARN
+  detection: manual
+  detector: config/architecture/ARCHITECTURE.md
+  languages: python
+  call_sites: [audit]
+  exemption_tokens: [soft.fail-loud-ok]
+  status: partial
+  arch_anchor: "## Fail loud"
+  auditor: fail-loud
+
+- id: soft.no-shims
+  title: No compatibility re-exports, legacy fallbacks or optional-attribute probes
+  severity: WARN
+  detection: manual
+  detector: config/architecture/ARCHITECTURE.md
+  languages: python
+  call_sites: [audit]
+  exemption_tokens: [soft.no-shims-ok]
+  status: partial
+  arch_anchor: "## No shims"
+  auditor: no-shims
+
+- id: soft.layer-imports
+  title: recipeparser/core imports neither recipeparser/io nor recipeparser/adapters
+  severity: WARN
+  detection: manual
+  detector: GEMINI.md
+  languages: python
+  call_sites: [audit]
+  exemption_tokens: [soft.layer-imports-ok]
+  status: partial
+  arch_anchor: "## Layer imports"
+  # A host-prompt row gets no settings in acf 0.3.2, so the prompt names its scope.
+  auditor: config/architecture/auditors/layer-imports.md
+
+- id: soft.state-machines
+  title: Pipeline status changes only through PipelineController.transition()
+  severity: WARN
+  detection: manual
+  detector: config/architecture/ARCHITECTURE.md
+  languages: python
+  call_sites: [audit]
+  exemption_tokens: [soft.state-machines-ok]
+  status: partial
+  arch_anchor: "## State machines"
+  auditor: state-machine-discipline
+  params:
+    surface: ["recipeparser/**"]
+    state_field: status
+    validator_name: transition
+    docs: ["recipeparser/core/fsm.py"]
+
+- id: soft.class-cohesion
+  title: Each class holds one responsibility
+  severity: WARN
+  detection: manual
+  detector: config/architecture/ARCHITECTURE.md
+  languages: python
+  call_sites: [audit]
+  exemption_tokens: [soft.class-cohesion-ok]
+  status: partial
+  arch_anchor: "## Class cohesion"
+  auditor: class-cohesion
+  params:
+    surface: ["recipeparser/**"]
