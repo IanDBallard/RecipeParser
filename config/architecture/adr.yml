@@ -1,0 +1,2 @@
+runs_dir: docs/reviews/adr_runs
+ledger_path: docs/reviews/adversarial_design_ledger.jsonl
