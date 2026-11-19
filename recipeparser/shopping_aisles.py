@@ -35,6 +35,9 @@ from recipeparser.shopping import AISLES, Aisle
 
 log = logging.getLogger(__name__)
 
+#: Extra Decisions calls, beyond the first, spent bisecting a batch the API refused.
+AISLES_SPLIT_BUDGET = 20
+
 #: The options every question chooses between: the twelve aisle keys, each described
 #: by the label Cayenne shows (domain/aisles.ts) and a few examples. The API sorts
 #: option keys itself, so this order is for readers only.
@@ -179,3 +182,35 @@ def decide_aisles(client: Any, foods: Sequence[str]) -> List[AisleItem]:
         aisle = choice if confidence >= AISLE_MIN_CONFIDENCE else "other"
         items.append(AisleItem(food=food, aisle=aisle))
     return items
+
+
+def decide_aisles_splitting(
+    client: Any, foods: Sequence[str], budget: int = AISLES_SPLIT_BUDGET
+) -> List[AisleItem]:
+    """``decide_aisles``, but a 400 (a safety block names no food) bisects the batch.
+
+    A refused single food answers ``other``; the rest of the batch still sorts. At most
+    ``budget`` calls are made beyond the first; when it is spent the refusal that hit
+    the limit is re-raised. Any other error propagates unchanged. The answer is in the
+    order of *foods*.
+    """
+    remaining = [budget]
+
+    def solve(batch: Sequence[str], refusal: Optional[DecisionsAPIError]) -> List[AisleItem]:
+        # *refusal* is the 400 that made us split; it is re-raised if no budget is left.
+        if refusal is not None:
+            if remaining[0] <= 0:
+                raise refusal
+            remaining[0] -= 1
+        try:
+            return decide_aisles(client, batch)
+        except DecisionsAPIError as exc:
+            if exc.code != 400:
+                raise
+            log.warning("Aisles request of %d food(s) refused (400)", len(batch))
+            if len(batch) == 1:
+                return [AisleItem(food=batch[0], aisle="other")]
+            mid = len(batch) // 2
+            return solve(batch[:mid], exc) + solve(batch[mid:], exc)
+
+    return solve(list(foods), None)

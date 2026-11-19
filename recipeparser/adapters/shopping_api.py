@@ -33,7 +33,7 @@ from recipeparser.shopping_aisles import (
     AisleItem,
     AislesCheckError,
     DecisionsAPIError,
-    decide_aisles,
+    decide_aisles_splitting,
 )
 
 log = logging.getLogger(__name__)
@@ -164,7 +164,7 @@ def build_router(
             # (Cayenne migration 20261110120000) admits no "aisles", and a refused
             # insert is swallowed by usage.flush, so a new action would lose the rows.
             with usage.attributed(user.get("sub", ""), "classify", get_client=get_service_client):
-                items = decide_aisles(client, body.foods)
+                items = decide_aisles_splitting(client, body.foods)
         except AislesCheckError as exc:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
         except httpx.TimeoutException as exc:
