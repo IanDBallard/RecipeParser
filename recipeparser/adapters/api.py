@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional, Tuple
 
 import httpx
+import requests
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -93,7 +94,7 @@ from recipeparser.io.readers.image import ImageReader as _ImageReader
 from recipeparser.io.readers.mela import MelaReader as _MelaReader
 from recipeparser.io.readers.paprika import PaprikaReader as _PaprikaReader
 from recipeparser.io.readers.pdf import PdfReader as _PdfReader
-from recipeparser.io.readers.url import PAGE_USER_AGENT as _PAGE_USER_AGENT
+from recipeparser.io.readers.url import PAGE_HEADERS as _PAGE_HEADERS
 from recipeparser.io.readers.url import PageMeta, UrlReader, looks_like_badge, page_meta_from_html
 from recipeparser.io.readers.url import is_unsafe_fetch_target as _is_unsafe_fetch_target
 from recipeparser.io.readers.url import page_fetch_proxy as _page_fetch_proxy
@@ -629,6 +630,11 @@ async def _fetch_page_meta(url: str) -> PageMeta:
     (``is_unsafe_fetch_target``) is refused before the GET, with no DNS
     resolution performed. With ``PAGE_FETCH_PROXY`` set the GET goes through that
     proxy, and is made without it when the proxy cannot be reached.
+
+    The GET is made with ``requests``, the client UrlReader's page fetch uses, and with its headers
+    (Cayenne Fix Roadmap F-687). Through the page proxy, Dotdash Meredith's sites answered this GET
+    403 when httpx made it and 200 when requests did (2026-11-20, from the production container): the
+    import read the page, found no picture to try, and stored the recipe without one.
     """
     try:
         # Inside the try: urlparse raises on a malformed address ("http://[::1"), and a malformed
@@ -640,7 +646,7 @@ async def _fetch_page_meta(url: str) -> PageMeta:
             # Through the page proxy, as UrlReader's direct fetch goes; a proxy that fails is skipped.
             try:
                 return await _get_page_meta(url, proxy)
-            except (httpx.ProxyError, httpx.ConnectTimeout, httpx.ConnectError) as exc:
+            except (requests.exceptions.ProxyError, requests.exceptions.ConnectTimeout) as exc:
                 logger.warning("Page proxy %s failed for %s (%r) — fetching its meta without it.", proxy, url, exc)
         return await _get_page_meta(url, None)
     except Exception as exc:
@@ -650,19 +656,18 @@ async def _fetch_page_meta(url: str) -> PageMeta:
 
 async def _get_page_meta(url: str, proxy: Optional[str]) -> PageMeta:
     """_fetch_page_meta's GET, through ``proxy`` when one is given; raises on any failure."""
-    async with httpx.AsyncClient(
-        timeout=15,
-        follow_redirects=True,
-        proxy=proxy,
-        headers={"User-Agent": _PAGE_USER_AGENT, "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
-    ) as http:
-        resp = await http.get(url)
-        resp.raise_for_status()
-        ctype = resp.headers.get("content-type", "")
-        if ctype and "html" not in ctype.lower():
-            return PageMeta(None, None)
-        # The head is at the top; a megabyte is more than any head needs.
-        return page_meta_from_html(resp.text[:1_000_000])
+    return await asyncio.to_thread(_get_page_meta_sync, url, proxy)
+
+
+def _get_page_meta_sync(url: str, proxy: Optional[str]) -> PageMeta:
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    resp = requests.get(url, headers=_PAGE_HEADERS, timeout=15, proxies=proxies, allow_redirects=True)
+    resp.raise_for_status()
+    ctype = resp.headers.get("content-type", "")
+    if ctype and "html" not in ctype.lower():
+        return PageMeta(None, None)
+    # The head is at the top; a megabyte is more than any head needs.
+    return page_meta_from_html(resp.text[:1_000_000])
 
 
 # ---------------------------------------------------------------------------
