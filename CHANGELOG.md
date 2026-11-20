@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.42.1] — 2026-11-20
+
+A URL import from a Dotdash Meredith site (Serious Eats, Allrecipes…) gets its picture again.
+
+### 🐛 Fixed
+- The URL import's page-meta GET (`_fetch_page_meta`, which finds the page's og:image) is now made with `requests` and the page fetch's headers, as UrlReader's own fetch is. It still goes through `PAGE_FETCH_PROXY`, and without it when the proxy can't be reached. Through the proxy, Dotdash Meredith answered the httpx GET 403 and the requests GET 200 (checked from the production container on 2026-11-20). The import read the recipe through UrlReader but found no picture candidate, so the recipe was stored with no picture and no error: Roasted Brussels Sprouts and Best Chocolate Chip Cookies, both imported on 2026-11-15. The picture's own fetch was never the problem: both pictures answer 200 without the proxy (F-687).
+
 ## [9.42.0] — 2026-11-19
 
 Shopping labels now tell a made ingredient from a bought one, and a known food is reused only when the ingredient really is that product. A cook's leftover roast turkey, a ganache made in the recipe or homemade pastry is something they make rather than buy, but it still gets a food and an aisle. And "cheese", "flour" or "chicken" no longer take the food of a specific "cheddar", "bread flour" or "turkey" the cook already has. One refused food no longer sinks a whole aisle batch.

@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+import requests
 from fastapi.testclient import TestClient
 
 # ---------------------------------------------------------------------------
@@ -43,7 +44,7 @@ from recipeparser.adapters.api import (  # noqa: E402
     app,
 )
 from recipeparser.core.fsm import PipelineController, PipelineStatus  # noqa: E402
-from recipeparser.io.readers.url import PageMeta  # noqa: E402
+from recipeparser.io.readers.url import PAGE_HEADERS, PageMeta  # noqa: E402
 from recipeparser.io.writers.image_store import SupabaseImageStore  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -881,244 +882,111 @@ class TestExtractImageUrl:
 
 
 class TestFetchPageMeta:
-    """_fetch_page_meta's three behaviours, offline: patch httpx.AsyncClient
-    directly and drive the coroutine with asyncio.run — no endpoint, no job."""
+    """_fetch_page_meta's behaviours, offline: patch the ``requests.get`` it calls and drive the
+    coroutine with asyncio.run — no endpoint, no job.
+
+    Cayenne Fix Roadmap F-687: the GET is made with ``requests``, as UrlReader's page fetch is. Through
+    the page proxy, Dotdash Meredith answered httpx 403 and requests 200 (checked from the production
+    container, 2026-11-20), so a URL import from those sites had no page meta, no picture candidate,
+    and no picture.
+    """
+
+    class _Resp:
+        def __init__(self, text: str = "", content_type: Optional[str] = "text/html", status: int = 200) -> None:
+            self.text = text
+            self.headers = {} if content_type is None else {"content-type": content_type}
+            self.status_code = status
+
+        def raise_for_status(self) -> None:
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code}")
+
+    def _get(self, calls: list, resp: Any = None, fail_with_proxy: bool = False, error: Any = None) -> Any:
+        """A ``requests.get`` stand-in that records (url, proxies, headers) and serves ``resp``."""
+
+        def get(url: str, **kw: Any) -> Any:
+            proxies = kw.get("proxies")
+            calls.append((url, (proxies or {}).get("https"), kw.get("headers")))
+            if error is not None:
+                raise error
+            if fail_with_proxy and proxies:
+                raise requests.exceptions.ProxyError("proxy down")
+            return resp
+
+        return get
+
+    _HERO = '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
+
+    def _run(self, url: str, get: Any) -> PageMeta:
+        with patch("recipeparser.adapters.api.requests.get", get):
+            return asyncio.run(_fetch_page_meta(url))
 
     def test_an_html_response_is_parsed(self) -> None:
-        html = (
-            '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
-            '<meta name="description" content="A weeknight noodle dish.">'
-        )
-
-        class _Resp:
-            text = html
-            headers = {"content-type": "text/html; charset=utf-8"}
-
-            def raise_for_status(self) -> None:
-                return None
-
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                pass
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> _Resp:
-                return _Resp()
-
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
-            result = asyncio.run(_fetch_page_meta("https://example.com/recipe"))
-
+        html = self._HERO + '<meta name="description" content="A weeknight noodle dish.">'
+        calls: list = []
+        result = self._run("https://example.com/recipe", self._get(calls, self._Resp(html, "text/html; charset=utf-8")))
         assert result == PageMeta("https://static01.nyt.com/hero.jpg", "A weeknight noodle dish.")
 
+    def test_the_get_carries_the_page_fetchs_browser_headers(self) -> None:
+        calls: list = []
+        self._run("https://example.com/recipe", self._get(calls, self._Resp(self._HERO)))
+        assert calls[0][2] == PAGE_HEADERS
+
     def test_a_non_html_content_type_is_no_meta(self) -> None:
-        class _Resp:
-            text = "binary data, not read"
-            headers = {"content-type": "image/jpeg"}
+        result = self._run("https://example.com/photo.jpg", self._get([], self._Resp("binary", "image/jpeg")))
+        assert result == PageMeta(None, None)
 
-            def raise_for_status(self) -> None:
-                return None
-
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                pass
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> _Resp:
-                return _Resp()
-
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
-            result = asyncio.run(_fetch_page_meta("https://example.com/photo.jpg"))
-
+    def test_a_refusal_is_no_meta(self) -> None:
+        result = self._run("https://www.allrecipes.com/recipe/1/x/", self._get([], self._Resp("", status=403)))
         assert result == PageMeta(None, None)
 
     def test_a_network_failure_is_no_meta_and_nothing_propagates(self) -> None:
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                pass
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> Any:
-                raise RuntimeError("boom")
-
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
-            result = asyncio.run(_fetch_page_meta("https://example.com/recipe"))
-
+        result = self._run("https://example.com/recipe", self._get([], error=RuntimeError("boom")))
         assert result == PageMeta(None, None)
 
     def test_no_content_type_header_at_all_is_still_parsed(self) -> None:
-        html = '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
-
-        class _Resp:
-            text = html
-            headers: dict = {}
-
-            def raise_for_status(self) -> None:
-                return None
-
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                pass
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> _Resp:
-                return _Resp()
-
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
-            result = asyncio.run(_fetch_page_meta("https://example.com/recipe"))
-
+        result = self._run("https://example.com/recipe", self._get([], self._Resp(self._HERO, None)))
         assert result == PageMeta("https://static01.nyt.com/hero.jpg", None)
-
-    def _recording_http(self, clients: list, fail_with_proxy: bool = False) -> type:
-        """An AsyncClient stand-in that records each client's ``proxy`` and serves a page with an og:image."""
-
-        class _Resp:
-            text = '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
-            headers = {"content-type": "text/html"}
-
-            def raise_for_status(self) -> None:
-                return None
-
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                self.proxy = kw.get("proxy")
-                clients.append(self.proxy)
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> Any:
-                if fail_with_proxy and self.proxy:
-                    raise httpx.ProxyError("proxy down")
-                return _Resp()
-
-        return _Http
 
     def test_with_no_proxy_set_the_page_is_fetched_without_one(self, monkeypatch: Any) -> None:
         monkeypatch.delenv("PAGE_FETCH_PROXY", raising=False)
-        clients: list = []
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._recording_http(clients)):
-            result = asyncio.run(_fetch_page_meta("https://www.allrecipes.com/recipe/1/x/"))
-        assert clients == [None]
+        calls: list = []
+        result = self._run("https://www.allrecipes.com/recipe/1/x/", self._get(calls, self._Resp(self._HERO)))
+        assert [c[1] for c in calls] == [None]
         assert result.image_url == "https://static01.nyt.com/hero.jpg"
 
     def test_the_page_is_fetched_through_the_page_proxy(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("PAGE_FETCH_PROXY", "http://100.70.123.60:8888")
-        clients: list = []
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._recording_http(clients)):
-            result = asyncio.run(_fetch_page_meta("https://www.allrecipes.com/recipe/1/x/"))
-        assert clients == ["http://100.70.123.60:8888"]
+        calls: list = []
+        result = self._run("https://www.allrecipes.com/recipe/1/x/", self._get(calls, self._Resp(self._HERO)))
+        assert [c[1] for c in calls] == ["http://100.70.123.60:8888"]
         assert result.image_url == "https://static01.nyt.com/hero.jpg"
 
     def test_a_proxy_that_fails_is_skipped_and_the_page_fetched_without_it(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("PAGE_FETCH_PROXY", "http://100.70.123.60:8888")
-        clients: list = []
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._recording_http(clients, fail_with_proxy=True)):
-            result = asyncio.run(_fetch_page_meta("https://www.allrecipes.com/recipe/1/x/"))
-        assert clients == ["http://100.70.123.60:8888", None]
+        calls: list = []
+        get = self._get(calls, self._Resp(self._HERO), fail_with_proxy=True)
+        result = self._run("https://www.allrecipes.com/recipe/1/x/", get)
+        assert [c[1] for c in calls] == ["http://100.70.123.60:8888", None]
         assert result.image_url == "https://static01.nyt.com/hero.jpg"
 
-    def _refusing_http(self, get_calls: list) -> type:
-        """An AsyncClient stand-in whose `get` records every call it did NOT refuse to make."""
-
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                pass
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> Any:
-                get_calls.append(url)
-                raise AssertionError("must not be reached for a refused target")
-
-        return _Http
-
-    def test_a_cloud_metadata_ip_is_refused_before_any_get(self) -> None:
+    @pytest.mark.parametrize("url", [
+        "http://169.254.169.254/latest/meta-data",
+        "file:///etc/passwd",
+        "http://localhost:8000/x",
+        "http://[::1",
+    ])
+    def test_an_unsafe_or_malformed_target_is_refused_before_any_get(self, url: str) -> None:
         calls: list = []
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
-            result = asyncio.run(_fetch_page_meta("http://169.254.169.254/latest/meta-data"))
-        assert result == PageMeta(None, None)
-        assert calls == []
-
-    def test_a_non_http_scheme_is_refused_before_any_get(self) -> None:
-        calls: list = []
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
-            result = asyncio.run(_fetch_page_meta("file:///etc/passwd"))
-        assert result == PageMeta(None, None)
-        assert calls == []
-
-    def test_localhost_is_refused_before_any_get(self) -> None:
-        calls: list = []
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
-            result = asyncio.run(_fetch_page_meta("http://localhost:8000/x"))
-        assert result == PageMeta(None, None)
-        assert calls == []
-
-    def test_a_malformed_url_is_no_meta_not_a_failed_job(self) -> None:
-        # urlparse raises ValueError on an unbalanced bracket; the docstring promises degradation.
-        calls: list = []
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", self._refusing_http(calls)):
-            result = asyncio.run(_fetch_page_meta("http://[::1"))
+        result = self._run(url, self._get(calls, error=AssertionError("must not be reached")))
         assert result == PageMeta(None, None)
         assert calls == []
 
     def test_a_public_url_is_still_fetched(self) -> None:
-        html = '<meta property="og:image" content="https://static01.nyt.com/hero.jpg">'
-
-        class _Resp:
-            text = html
-            headers = {"content-type": "text/html"}
-
-            def raise_for_status(self) -> None:
-                return None
-
         calls: list = []
-
-        class _Http:
-            def __init__(self, *a: Any, **kw: Any) -> None:
-                pass
-
-            async def __aenter__(self) -> "_Http":
-                return self
-
-            async def __aexit__(self, *a: Any) -> bool:
-                return False
-
-            async def get(self, url: str, **kw: Any) -> _Resp:
-                calls.append(url)
-                return _Resp()
-
-        with patch("recipeparser.adapters.api.httpx.AsyncClient", _Http):
-            result = asyncio.run(_fetch_page_meta("https://example.com/recipe"))
-
+        result = self._run("https://example.com/recipe", self._get(calls, self._Resp(self._HERO)))
         assert result == PageMeta("https://static01.nyt.com/hero.jpg", None)
-        assert calls == ["https://example.com/recipe"]
+        assert [c[0] for c in calls] == ["https://example.com/recipe"]
 
 
 # ===========================================================================

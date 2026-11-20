@@ -69,6 +69,8 @@ _PAGE_HEADERS = {
     "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
+#: The page fetch's headers, for the URL import's page-meta GET (adapters/api.py), which goes the same way.
+PAGE_HEADERS = _PAGE_HEADERS
 
 # An HTTP proxy the page fetches (never Jina's) leave through, e.g. "http://100.70.123.60:8888".
 # On the production VM it is the owner's Raspberry Pi on the tailnet, so a page is fetched
