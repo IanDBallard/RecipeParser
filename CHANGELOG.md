@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.43.0] — 2026-11-20
+
+Fixes for what the 2026-11-18 Christmas walkthrough's recipes lost on the way in (Cayenne Fix Roadmap batch 66). Each fix is in code: no prompt changed, so no golden was re-recorded.
+
+### 🐛 Fixed
+- REFINE drops an AI conversion on a count: "2 limes, juiced, to get 2 1/2 tbsp" no longer keeps ≈ 37.5 ml, which the app scaled and showed as "≈ 50 ml limes". A unit that is not a measure in Cayenne's registry is a count, the same as "3 eggs" in the prompt. The unit lists now carry every registry alias ("tbsps", "kilo", "gms", "fl. oz"…), so a measure spelt another way keeps its conversion. A writer's own size on a count ("1 (14-ounce) can") stays (F-684).
+- REFINE adds a line's extra amount: "60g coconut cream, plus 100g extra for the coriander cream" is 160 g, so the method's 60 g and 100 g parts add up and aren't taken back. This works only for a second figure in the line's own unit, or a bare number for a count ("2 lemons, plus 1 to serve"). "1 cup sugar plus 2 tablespoons" and "2 eggs, plus 1 yolk" are left as they are. An AI conversion grows with the amount (F-685).
+- REFINE keeps a bracketed size after a count: "1 (4- to 5-pound) brisket" gets 5 pound as its second measure (the larger end of a range, the figure written beside the unit), so the list no longer reads "Beef · 1". "2 (14-ounce) cans" and "1 (400g) tin" work the same way. A model's guess at the size gives way to the brackets (F-686).
+- The Paprika reader stores a time written as steps as its total. "2 minutes (fry baris) + 4 minutes (fry onions) + …" took the first figure (2 minutes). It is now rewritten "38 minutes (2 minutes (fry baris) + …)", which both duration parsers read as 38 minutes with the steps as the note. Steps can be joined by "+", ";", "," or "then", and ranges add up as ranges. An alternative ("2 hours or 30 minutes"), a qualifier ("10 mins, plus making the sauce"), a multiplier ("per batch") or a step with no figure is left as written. `core.durations.summed_duration_text` is not part of the shared `parse_duration` contract. The backfill of the 95 rows already stored is separate (F-688).
+- ASSEMBLE and the regeneration worker wrap a measure the method writes for an ingredient, so it scales: "Heat 2 tbsp {{oil|none}}" becomes "Heat {{oil|2 tbsp|2 tbsp}} {{oil|none}}". A mention holding its quantity and name, "{{water|800ml water|none}}", is split into "{{water|800ml|800 ml}} {{water|water|none}}". This applies only to a `none` mention of an ingredient measured in that same unit, and only where the parts, old and new, still add up to the line. A count, a range or a rate ("per serving") is left alone (F-689, RecipeParser half; F-499).
+- A yield in two cuts scales: "Cut into 4 strips, then cut each strip into six bars" (yield 24) wraps the 4 as a yield count, so the bars scale with the servings (F-499).
+
+### ✨ Added
+- `tests/fixtures/scaling_text_cases.json`: two cases, the curry's measured parts and the two-cut yield. Cayenne keeps an identical copy and should take them in its F-689 follow-up.
+
 ## [9.42.1] — 2026-11-20
 
 A URL import from a Dotdash Meredith site (Serious Eats, Allrecipes…) gets its picture again.

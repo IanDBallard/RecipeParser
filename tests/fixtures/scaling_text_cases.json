@@ -79,6 +79,30 @@
 			"yield": { "base": 16, "min": null, "max": null, "note": null },
 			"before": ["Followed by all {{ing_04|four|4}} of the {{ing_04|eggs|none}}. Cut into {{yield:16|16}} squares."],
 			"after": ["Followed by all {{ing_04|four|4}} of the {{ing_04|eggs|none}}. Cut into {{yield:16|16}} squares."]
+		},
+		{
+			"name": "Aubergine curry (F-499, F-689): measured parts before a mention, and a quantity inside one",
+			"ingredients": [
+				{ "id": "ing_01", "amount": 3, "unit": "tbsp", "name": "olive oil" },
+				{ "id": "ing_02", "amount": 160, "unit": "g", "name": "coconut cream" },
+				{ "id": "ing_03", "amount": 800, "unit": "ml", "name": "water" }
+			],
+			"yield": { "base": 4, "min": null, "max": null, "note": null },
+			"before": [
+				"Heat 2 tbsp {{ing_01|olive oil|none}} in a large pan.",
+				"Stir in 60g {{ing_02|coconut cream|none}} and {{ing_03|800ml water|none}}."
+			],
+			"after": [
+				"Heat {{ing_01|2 tbsp|2 tbsp}} {{ing_01|olive oil|none}} in a large pan.",
+				"Stir in {{ing_02|60g|60 g}} {{ing_02|coconut cream|none}} and {{ing_03|800ml|800 ml}} {{ing_03|water|none}}."
+			]
+		},
+		{
+			"name": "A yield in two cuts (F-499): the first count scales, the product is the yield",
+			"ingredients": [],
+			"yield": { "base": 24, "min": null, "max": null, "note": null },
+			"before": ["Cut into 4 strips, then cut each strip into six bars."],
+			"after": ["Cut into {{yield:4|4}} strips, then cut each strip into six bars."]
 		}
 	]
 }

@@ -11,6 +11,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Set
 
+from recipeparser.core.count_tokens import MEASURE_NUM, measure_value
 from recipeparser.core.fat_tokens import (
     TEMP_PREFIX,
     TOKEN_RE,
@@ -18,6 +19,7 @@ from recipeparser.core.fat_tokens import (
     is_special_id,
     is_temp_id,
     parse_temp_value,
+    unit_key,
 )
 from recipeparser.core.headings import heading_name
 from recipeparser.core.numbers import written_measures
@@ -213,6 +215,51 @@ def _validate_fat_tokens(refinement: CayenneRefinement) -> None:
                 )
 
 
+# "…, plus 100g extra for the coriander cream": a second figure the line adds to its first (F-685).
+_PLUS_EXTRA_RE = re.compile(
+    rf"\bplus\s+(?:an?\s+)?(?:extra\s+|additional\s+|another\s+|further\s+)?(?P<num>{MEASURE_NUM})"
+    r"(?:\s*(?P<unit>[a-zA-Z]+\.?))?",
+    re.IGNORECASE,
+)
+_COUNT_EXTRA_WORDS = {"to", "for", "more", "extra", "additional", "as", "if", "in", "on"}
+_LEADING_NUM_RE = re.compile(rf"^\s*(?P<num>{MEASURE_NUM})")
+
+
+def _sum_extra_amounts(refinement: CayenneRefinement) -> None:
+    """
+    F-685, in place. A line that adds a second amount to its first, "60g coconut cream, plus 100g
+    extra for the coriander cream", buys both: the amount is their sum, so the list reads 160 g and
+    the method's two parts (60 g and 100 g) add up rather than being taken back as too many. Only a
+    second figure in the line's own unit (a bare number for a count, "2 lemons, plus 1 to serve"),
+    and only when the line's first figure is the amount; "1 cup sugar plus 2 tablespoons" is left
+    as it is. An AI conversion grows with the amount; a writer's second measure no longer matches
+    the total, so it is re-marked as the AI's, scaled, and _check_conversions judges it as one.
+    """
+    for ing in refinement.structured_ingredients:
+        if ing.kind == "heading" or ing.amount is None or ing.amount <= 0:
+            continue
+        line = ing.fallback_string or ""
+        lead = _LEADING_NUM_RE.match(line)
+        if not lead or abs(measure_value(lead.group("num")) - ing.amount) > 1e-6:
+            continue
+        extra = _PLUS_EXTRA_RE.search(line, lead.end())
+        if not extra:
+            continue
+        written = extra.group("unit")
+        if ing.unit is None:
+            # A count's extra is a bare number: "plus 1 to serve", never "plus 1 yolk" of 2 eggs.
+            if written is not None and written.lower().rstrip(".") not in _COUNT_EXTRA_WORDS:
+                continue
+        elif written is None or unit_key(written) != unit_key(ing.unit):
+            continue
+        before = ing.amount
+        ing.amount = round(before + measure_value(extra.group("num")), 6)
+        if ing.converted_amount is not None:
+            ing.converted_amount = round(ing.converted_amount * ing.amount / before, 3)
+            ing.is_ai_converted = True
+        log.info("refine(): %s's amount %s -> %s: the line adds %r", ing.id, before, ing.amount, extra.group(0))
+
+
 def _check_mentions(refinement: CayenneRefinement) -> None:
     """
     Demote, in place, every direction mention whose use the arithmetic cannot support to ``none``
@@ -269,9 +316,15 @@ _QUOTES = "\"'“”‘’"
 
 
 # Which kind each unit word measures, so an AI conversion into the SAME kind can be refused (D3:
-# converted_* is the OTHER measure). The words are Cayenne's registry spellings; a unit not listed
-# ("pinch", "st") has no kind and its conversion is left alone.
+# converted_* is the OTHER measure). The words are Cayenne's registry spellings (units.ts ids and
+# aliases); a unit not listed ("pinch", "st", "limes") has no kind, so it is a count and an AI
+# conversion on it is dropped (F-684).
 _VOLUME_WORDS = {
+    "tsps", "tbsps", "floz", "fl. oz", "fl.oz", "pts", "qts", "gals", "mls",
+    "centiliter", "centiliters", "centilitre", "centilitres", "deciliter", "deciliters", "decilitre",
+    "decilitres", "fluid drachm", "fluid drachms", "fl drams", "fl dr", "fl. dr", "dessertspoonful",
+    "dessertspoonfuls", "dessert spoon", "dessert spoons", "dssp", "dstspn", "teacupfuls", "tea cup",
+    "tea cups", "breakfast cupful", "breakfastcup", "breakfastcupful", "breakfastcupfuls",
     "tsp", "teaspoon", "teaspoons", "tbsp", "tablespoon", "tablespoons", "tbs", "cup", "cups",
     "fl oz", "fluid ounce", "fluid ounces", "pint", "pints", "pt", "quart", "quarts", "qt",
     "gallon", "gallons", "gal", "ml", "millilitre", "millilitres", "milliliter", "milliliters",
@@ -280,6 +333,7 @@ _VOLUME_WORDS = {
     "fl dram", "fluid dram", "fluid drams",
 }
 _WEIGHT_WORDS = {
+    "gm", "gms", "kilo", "kilos", "kgs", "ozs", "dr",
     "g", "gram", "grams", "kg", "kilogram", "kilograms", "oz", "ounce", "ounces", "lb", "lbs",
     "pound", "pounds", "stone", "stones", "dram", "drams", "drachm", "drachms",
 }
@@ -325,7 +379,9 @@ def _check_conversions(refinement: CayenneRefinement) -> None:
     a model error costs a missing "≈", never a false claim that the writer gave a figure, and never
     an AI cup the source system would resize. An AI conversion into the same kind as the line's own
     unit ("1 lb" -> 454 g) is dropped too: it is not the other measure, and it would leave the Weight
-    and Volume pills with nothing to show.
+    and Volume pills with nothing to show. So is an AI conversion on a count ("2 limes, juiced, to
+    get 2 1/2 tbsp" -> 37.5 ml, F-684): the prompt asks for none on "3 eggs", and the app would
+    scale and show it as "≈ 50 ml limes". A writer's size on a count ("1 (14-ounce) can") stays.
     """
     for ing in refinement.structured_ingredients:
         if ing.converted_amount is None:
@@ -349,6 +405,53 @@ def _check_conversions(refinement: CayenneRefinement) -> None:
             ing.converted_amount = None
             ing.converted_unit = None
             ing.is_ai_converted = False
+        elif ing.is_ai_converted and _kind(ing.unit) is None:
+            log.warning("refine(): dropped %s's AI conversion %s %s — %r is a count, not a measure.",
+                        ing.id, ing.converted_amount, ing.converted_unit, ing.unit)
+            ing.converted_amount = None
+            ing.converted_unit = None
+            ing.is_ai_converted = False
+
+
+_SIZE_NUM = r"\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?"
+# A count with its size in brackets: "1 (4- to 5-pound) brisket", "2 (14-ounce) cans", "1 (400g) tin".
+_BRACKETED_SIZE_RE = re.compile(
+    rf"^\s*(?:{_SIZE_NUM})\s*\(\s*(?:about\s+)?(?:(?:{_SIZE_NUM})\s*-?\s*(?:to|-)\s*)?({_SIZE_NUM})\s*-?\s*"
+    r"([a-z][a-z. ]*?)\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _size_value(token: str) -> float:
+    total = 0.0
+    for part in token.split():
+        if "/" in part:
+            num, den = part.split("/", 1)
+            total += float(num) / float(den)
+        else:
+            total += float(part)
+    return total
+
+
+def _fill_bracketed_sizes(refinement: CayenneRefinement) -> None:
+    """
+    F-686, in place. A count with its size in brackets ("1 (4- to 5-pound) brisket") keeps the size
+    as the writer's second measure, so the list reads "Beef · 1 (5 pound)" rather than "Beef · 1".
+    Only when the line's unit is a count or none and nothing holds the second measure yet; for a
+    range the larger figure is taken (the one _check_conversions finds beside its unit). Runs after
+    _check_conversions, so an AI guess at a can's size has already given way.
+    """
+    for ing in refinement.structured_ingredients:
+        if ing.kind == "heading" or ing.amount is None or ing.converted_amount is not None:
+            continue
+        if _kind(ing.unit) is not None:
+            continue
+        m = _BRACKETED_SIZE_RE.match(ing.fallback_string or "")
+        if not m or _kind(m.group(2)) is None:
+            continue
+        ing.converted_amount = _size_value(m.group(1))
+        ing.converted_unit = m.group(2).strip()
+        ing.is_ai_converted = False
 
 
 def _plain(text: str) -> str:
@@ -596,10 +699,12 @@ def refine(
     for line in yield_warnings:
         log.warning("refine(): '%s': %s", result.title, line)
     _repair_token_ids(result)
+    _sum_extra_amounts(result)
     _validate_fat_tokens(result)
     _check_mentions(result)
     _normalise_line_index(result, raw)
     _check_conversions(result)
+    _fill_bracketed_sizes(result)
     _check_detection(result, raw, source_host)
     log.info(
         "refine(): '%s' → %d ingredients, %d steps.",
