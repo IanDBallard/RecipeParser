@@ -163,3 +163,83 @@ def duration_columns(
         "servings_min": s.min, "servings_max": s.max, "servings_note": s.note,
         "base_servings": s.min if s.min is not None else fallback_base_servings,
     }
+
+
+# ---------------------------------------------------------------------------
+# A time written as steps (Cayenne Fix Roadmap F-688)
+#
+# Paprika's prep and cook fields are free text, and some recipes list every step:
+# "2 minutes (fry baris) + 4 minutes (fry onions) + 30 minutes (simmer)". parse_duration
+# reads the first figure and calls the rest a qualifier, so that recipe cooks in 2 minutes.
+# This is not part of the shared parse_duration contract (Cayenne's duration.ts has no twin):
+# a reader rewrites such a field to "<total> (<as written>)" before it is stored, and both
+# parsers read that as the total with the writer's words as the note.
+# ---------------------------------------------------------------------------
+
+_PARENS_RE = re.compile(r"\([^()]*\)")
+_STEP_SPLIT_RE = re.compile(r"\s*[+;,]\s*")
+_STEP_PREFIX_RE = re.compile(
+    r"^(?:(?:and\s+)?then\s+)?(?:a\s+further\s+|further\s+|another\s+)?"
+    r"(?:about\s+|approx\.?\s+|approximately\s+|roughly\s+)?"
+)
+_STEP_RE = re.compile(
+    rf"^((?:{_NUM}\s*{_UNIT}?\s*(?:-|\bto\b)\s*)?{_NUM}\s*{_UNIT}\b(?:\s*{_NUM}\s*{_UNIT}\b)*)\s*(?P<label>.*)$"
+)
+# A label word that makes a step something other than time added to the total: an
+# alternative ("or"), a multiplier ("per batch", "each side"), a condition or an open end.
+_STEP_LABEL_STOP_RE = re.compile(r"\b(or|per|each|if|plus|until|for|optional)\b|\d")
+# The same, for a bracketed label: "(for stock)" names a step, "(or 20 minutes in a pressure
+# cooker)" and "(per batch)" do not.
+_PAREN_LABEL_STOP_RE = re.compile(r"\b(or|per|each|if|optional)\b|\d")
+
+
+def _step_minutes(step: str) -> Optional[Tuple[int, int]]:
+    step = _STEP_PREFIX_RE.sub("", step.strip())
+    m = _STEP_RE.match(step)
+    if not m or _STEP_LABEL_STOP_RE.search(m.group("label")):
+        return None
+    span = parse_duration(m.group(1))
+    if span.min is None or span.max is None or span.note is not None:
+        return None
+    return span.min, span.max
+
+
+def _minutes_text(minutes: int) -> str:
+    if minutes < 60:
+        return f"{minutes} minutes"
+    hours, rest = divmod(minutes, 60)
+    text = f"{hours} hour" + ("s" if hours != 1 else "")
+    return text + (f" {rest} minutes" if rest else "")
+
+
+def summed_duration_text(text: Optional[str]) -> Optional[str]:
+    """
+    A time written as two or more steps, rewritten as "<total> (<as written>)": "1 hour (simmer
+    pork); 30 minutes (simmer carrots)" -> "1 hour 30 minutes (1 hour (simmer pork); 30 minutes
+    (simmer carrots))". Steps are joined by "+", ";", "," or "then"; each is a figure or a range
+    with an optional label. None when the text is not such a sum: one figure, an alternative
+    ("2 hours or 30 minutes"), a qualifier ("10 mins, plus making the sauce"), a multiplier
+    ("per batch") or a step with no figure ("then until tender").
+    """
+    if text is None or not text.strip():
+        return None
+    original = re.sub(r"\s+", " ", text).strip()
+    norm = _normalise(original)
+    while _PARENS_RE.search(norm):
+        inner = [g[1:-1] for g in _PARENS_RE.findall(norm)]
+        if any(_PAREN_LABEL_STOP_RE.search(g) for g in inner):
+            return None
+        norm = _PARENS_RE.sub(" ", norm)
+    if "(" in norm or ")" in norm:
+        return None
+    steps = _STEP_SPLIT_RE.split(re.sub(r"\s+", " ", norm).strip())
+    if len(steps) < 2:
+        return None
+    lo = hi = 0
+    for step in steps:
+        minutes = _step_minutes(step)
+        if minutes is None:
+            return None
+        lo, hi = lo + minutes[0], hi + minutes[1]
+    total = _minutes_text(lo) if lo == hi else f"{_minutes_text(lo)} to {_minutes_text(hi)}"
+    return f"{total} ({original})"

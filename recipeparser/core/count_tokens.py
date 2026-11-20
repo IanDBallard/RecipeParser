@@ -26,9 +26,17 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from recipeparser.core.fat_tokens import TOKEN_RE, check_mentions, is_special_id, parse_use, yield_token
+from recipeparser.core.fat_tokens import (
+    PART_SLACK,
+    TOKEN_RE,
+    check_mentions,
+    is_special_id,
+    parse_use,
+    unit_key,
+    yield_token,
+)
 from recipeparser.models import StructuredIngredient, TokenizedDirection
 
 log = logging.getLogger(__name__)
@@ -140,6 +148,13 @@ _YIELD_RE = re.compile(
     re.IGNORECASE,
 )
 _EACH = re.compile(r"\b(?:each|every|per)\b", re.IGNORECASE)
+# A yield in two cuts, after the first: ", then cut each strip into six bars" (F-499). The first count
+# times this one is the yield, and only the first is wrapped: scaled, it makes the yield scale too.
+_SECOND_CUT = re.compile(
+    rf"^\s*[,;]?\s*(?:and\s+)?(?:then\s+)?(?:cut|slice|divide)\s+each(?:\s+[a-z-]+){{0,2}}?\s+into\s+"
+    rf"(?P<n>{_COUNT})\s+{_DIM}{_ADJ}(?:{_PIECES})\b",
+    re.IGNORECASE,
+)
 
 
 def _token_spans(text: str) -> List[Tuple[int, int]]:
@@ -182,7 +197,10 @@ def _tag_yields(text: str, yields: Set[int], counted_words: Set[str]) -> Tuple[s
         groups = [g for g in ("n1", "n2") if m.group(g)]
         values = [count_value(m.group(g)) for g in groups]
         if not any(v in yields for v in values):
-            continue
+            second = _SECOND_CUT.match(plain[m.end() :])
+            n2 = count_value(second.group("n")) if second and len(values) == 1 else None
+            if n2 is None or values[0] is None or values[0] * n2 not in yields:
+                continue
         for g, v in zip(groups, values):
             s, e = m.start(g), m.end(g)
             if v is None or v < 1 or any(tokened[s:e]):
@@ -276,6 +294,109 @@ def _tag_ingredient_counts(text: str, by_id: dict) -> Tuple[str, List[str]]:
     return _apply(text, wraps), lines
 
 
+# A measured quantity: "2 tbsp", "60g", "1 1/2 cups", "1½ tablespoons", "800ml".
+_FRACTION_GLYPHS = {
+    "¼": 0.25, "½": 0.5, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3, "⅛": 0.125, "⅜": 0.375, "⅝": 0.625, "⅞": 0.875,
+}
+MEASURE_NUM = r"(?:\d+\s+\d+/\d+|\d+/\d+|\d+[¼½¾⅓⅔⅛⅜⅝⅞]|\d+(?:\.\d+)?|[¼½¾⅓⅔⅛⅜⅝⅞])"
+_MEASURE = rf"(?P<num>{MEASURE_NUM})\s*(?P<unit>[a-zA-Z]+\.?(?:\s+oz\b\.?)?)"
+# The quantity written right before a mention: "Heat 2 tbsp ", "add 60g of the ".
+_MEASURE_BEFORE = re.compile(rf"(?<![\w/.,]){_MEASURE}(?P<gap>\s+(?:of\s+)?(?:(?:the|your)\s+)?)$")
+# A mention whose words open with the quantity: "800ml water".
+_MEASURE_LEADS = re.compile(rf"^{_MEASURE}(?P<gap>\s+)(?P<rest>[^\d¼½¾⅓⅔⅛⅜⅝⅞]*[a-zA-Z][^\d¼½¾⅓⅔⅛⅜⅝⅞]*)$")
+
+
+def measure_value(num: str) -> float:
+    total = 0.0
+    for part in num.split():
+        if part[-1] in _FRACTION_GLYPHS:
+            total += _FRACTION_GLYPHS[part[-1]] + (float(part[:-1]) if part[:-1] else 0.0)
+        elif "/" in part:
+            a, b = part.split("/", 1)
+            total += float(a) / float(b)
+        else:
+            total += float(part)
+    return total
+
+
+def _use_text(amount: float, unit: str) -> str:
+    return f"{round(amount, 3):g} {unit.strip()}"
+
+
+def _tag_measures(
+    directions: Sequence[TokenizedDirection], by_id: Dict[str, StructuredIngredient]
+) -> Tuple[List[TokenizedDirection], List[str]]:
+    """
+    A measured quantity the method writes for an ingredient, wrapped as an amount token so it scales
+    with the list (Cayenne Fix Roadmap F-499, F-689): "Heat 2 tbsp {{oil|none}}" becomes "Heat
+    {{oil|2 tbsp|2 tbsp}} {{oil|none}}", and a mention holding its quantity and its name, "{{water|800ml
+    water|none}}", becomes "{{water|800ml|800 ml}} {{water|water|none}}". Only for a ``none`` mention
+    of an ingredient measured in that same unit, never a count (``_tag_ingredient_counts`` has those),
+    a range, or a rate ("1 tbsp sugar per serving"). And only where the parts still add up: when an
+    ingredient's parts, the ones already there and these, come to more than its line, none of these
+    is wrapped, so the import's parts check never has to take back a part the model wrote.
+    """
+    candidates: List[Tuple[int, int, int, str, str, float]] = []  # step, start, end, id, replacement, amount
+    parts: Dict[str, float] = {}
+    for index, d in enumerate(directions):
+        text = d.text
+        spans = _token_spans(text)
+        for i, m in enumerate(TOKEN_RE.finditer(text)):
+            if is_special_id(m.group(1)):
+                continue
+            use = parse_use(m.group(3))
+            ing = by_id.get(m.group(1))
+            if ing is None or ing.amount is None or ing.amount <= 0 or _counted(ing):
+                continue
+            if use.kind == "part":
+                if unit_key(use.unit) == unit_key(ing.unit):
+                    parts[ing.id] = parts.get(ing.id, 0.0) + (use.amount or 0.0)
+                continue
+            if use.kind != "none" or _RATE_AFTER.match(text[m.end():]):
+                continue
+            words = m.group(2)
+            lead = _MEASURE_LEADS.match(words)
+            if lead and unit_key(lead.group("unit")) == unit_key(ing.unit):
+                amount = measure_value(lead.group("num"))
+                quantity = words[: lead.end("unit")]
+                replacement = (
+                    "{{" + ing.id + "|" + quantity + "|" + _use_text(amount, ing.unit or "") + "}}" + lead.group("gap")
+                    + "{{" + ing.id + "|" + lead.group("rest") + "|none}}"
+                )
+                candidates.append((index, m.start(), m.end(), ing.id, replacement, amount))
+                continue
+            region_start = spans[i - 1][1] if i > 0 else 0
+            before = text[region_start : m.start()]
+            q = _MEASURE_BEFORE.search(before)
+            if not q or unit_key(q.group("unit")) != unit_key(ing.unit) or _RANGE_BEFORE.search(before[: q.start()]):
+                continue
+            amount = measure_value(q.group("num"))
+            start, end = region_start + q.start("num"), region_start + q.end("unit")
+            replacement = "{{" + ing.id + "|" + text[start:end] + "|" + _use_text(amount, ing.unit or "") + "}}"
+            candidates.append((index, start, end, ing.id, replacement, amount))
+
+    added: Dict[str, float] = {}
+    for _, _, _, ing_id, _, amount in candidates:
+        added[ing_id] = added.get(ing_id, 0.0) + amount
+    fits = {
+        ing_id for ing_id, amount in added.items()
+        if amount > 0 and parts.get(ing_id, 0.0) + amount <= (by_id[ing_id].amount or 0) * PART_SLACK
+    }
+    lines: List[str] = []
+    out: List[TokenizedDirection] = []
+    for index, d in enumerate(directions):
+        wraps = [(s, e, r) for (i, s, e, ing_id, r, _) in candidates if i == index and ing_id in fits]
+        if not wraps:
+            out.append(d)
+            continue
+        lines += [f"step {d.step}: {ing_id} measure {a:g}: {d.text[s:e]!r}"
+                  for (i, s, e, ing_id, _, a) in candidates if i == index and ing_id in fits]
+        out.append(d.model_copy(update={"text": _apply(d.text, wraps)}))
+    for ing_id in set(added) - fits:
+        lines.append(f"{ing_id}: measured parts left as written, they add up to more than the line")
+    return out, lines
+
+
 def _apply(text: str, wraps: Iterable[Tuple[int, int, str]]) -> str:
     out = text
     for start, end, token in sorted(wraps, key=lambda w: w[0], reverse=True):
@@ -306,12 +427,13 @@ def tag_counts(
 ) -> Tuple[List[TokenizedDirection], List[str]]:
     """The directions with each scalable count wrapped, and one line per count wrapped."""
     by_id = {ing.id: ing for ing in ingredients if ing.kind == "ingredient"}
+    directions, measured = _tag_measures(directions, by_id)
+    lines: List[str] = list(measured)
     # The words of every ingredient counted by the piece ("tomato", "lemon"): cutting one is not the bake.
     counted_words = {
         _singular(w) for ing in by_id.values() if _counted(ing) for w in re.findall(r"[a-zA-Z]{3,}", ing.name)
     } - _NOT_FOOD
     out: List[TokenizedDirection] = []
-    lines: List[str] = []
     for d in directions:
         text, counted = _tag_ingredient_counts(d.text, by_id)
         text, yielded = _tag_yields(text, yields, counted_words)

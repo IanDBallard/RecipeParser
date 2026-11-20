@@ -35,6 +35,7 @@ import zlib
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
 
+from recipeparser.core.durations import summed_duration_text
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.exceptions import PaprikaExtractionError
 from recipeparser.io.readers import RecipeReader
@@ -70,6 +71,17 @@ def _read_capped(zf: zipfile.ZipFile, name: str) -> Optional[bytes]:
 
 
 _PHOTO_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+
+
+def _paprika_time(value: Any) -> Any:
+    """
+    A Paprika prep or cook time, with a time written as steps ("2 minutes (fry baris) + 4 minutes
+    (fry onions)") rewritten as its total with the steps kept as the note (Cayenne Fix Roadmap
+    F-688); parse_duration read only the first figure. Anything else is passed on as written.
+    """
+    if not isinstance(value, str):
+        return value
+    return summed_duration_text(value) or value
 
 
 def _decode_photo(entry: Dict[str, Any]) -> tuple[Optional[bytes], str]:
@@ -238,8 +250,8 @@ class PaprikaReader(RecipeReader):
                         image_content_type=photo_type,
                         label=name or None,
                         meta=SourceMeta(
-                            prep_time=entry.get("prep_time"),
-                            cook_time=entry.get("cook_time"),
+                            prep_time=_paprika_time(entry.get("prep_time")),
+                            cook_time=_paprika_time(entry.get("cook_time")),
                             source=entry.get("source"),
                             notes=entry.get("notes"),
                             rating=entry.get("rating"),

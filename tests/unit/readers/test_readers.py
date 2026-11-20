@@ -772,3 +772,23 @@ def test_url_reader_refuses_a_bot_protection_challenge_page() -> None:
         "is blocked by the site's bot-protection challenge page. "
         "Open it in your browser, copy the recipe and paste its text in place of the link."
     )
+
+
+class TestPaprikaTimesWrittenAsSteps:
+    """Cayenne Fix Roadmap F-688: a time listing every step is stored as its total."""
+
+    def test_a_cook_time_written_as_steps_carries_its_total_and_keeps_the_steps(self, tmp_path: Path):
+        steps = "2 minutes (fry baris) + 4 minutes (fry onions) + 30 minutes (simmer bari)"
+        entry = {"name": "Bari Curry", "ingredients": "1 cup baris", "directions": "Fry.",
+                 "prep_time": "10 mins", "cook_time": steps}
+        chunk = PaprikaReader().read(str(_write_paprika_archive(tmp_path, [entry])))[0]
+
+        assert chunk.meta.cook_time == f"36 minutes ({steps})"
+        assert chunk.meta.prep_time == "10 mins"
+
+    def test_a_time_that_is_not_a_sum_is_kept_as_written(self, tmp_path: Path):
+        written = "10 MINS, PLUS MAKING THE BASE CURRY SAUCE"
+        entry = {"name": "Curry", "ingredients": "1 onion", "directions": "Cook.", "prep_time": written}
+        chunk = PaprikaReader().read(str(_write_paprika_archive(tmp_path, [entry])))[0]
+
+        assert chunk.meta.prep_time == written

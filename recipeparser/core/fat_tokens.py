@@ -163,6 +163,11 @@ def _unit_key(unit: Optional[str]) -> Optional[str]:
     return _UNIT_ALIASES.get(key, key)
 
 
+#: The unit key and the slack the parts check uses, for core/count_tokens.py's measured parts.
+unit_key = _unit_key
+PART_SLACK = _PART_SLACK
+
+
 def _token(ingredient_id: str, words: str, use: str) -> str:
     return "{{" + ingredient_id + "|" + words + "|" + use + "}}"
 

@@ -1,6 +1,8 @@
 """REFINE: the writer's two measures, AI conversions in g or ml, and a verified source system (D3, D5)."""
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from recipeparser.core.stages.refine import refine
 from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
 
@@ -118,10 +120,12 @@ class TestAiConversions:
         result, _ = _refine(_refinement(cream, stone))
         assert [i.converted_unit for i in result.structured_ingredients] == ["g", "ml"]
 
-    def test_an_ai_conversion_is_kept_when_the_line_unit_is_not_a_known_measure(self):
+    # Fix Roadmap F-684: a unit with no kind is a count ("3 st ägg" is three pieces), and the prompt
+    # asks for no conversion on "3 eggs"; until then this test kept it.
+    def test_an_ai_conversion_is_dropped_when_the_line_unit_is_not_a_known_measure(self):
         eggs = _oil(amount=3.0, unit="st", name="ägg", converted_amount=150.0, converted_unit="g")
         result, _ = _refine(_refinement(eggs))
-        assert result.structured_ingredients[0].converted_unit == "g"
+        assert result.structured_ingredients[0].converted_unit is None
 
     def test_an_ai_conversion_in_cups_is_dropped(self):
         result, _ = _refine(_refinement(_oil(converted_amount=0.06, converted_unit="cups")))
@@ -360,3 +364,145 @@ class TestRegionalIngredientNames:
         for detected in ("UK", "US"):
             result, _ = _refine(_refinement(_oil(), detected=detected, evidence="1 bunch coriander"), raw=_NAMES_RAW)
             assert result.source_uom_system_detected is None, detected
+
+
+def _line(id_, line, amount, unit, name, line_index=0, **over) -> StructuredIngredient:
+    fields = dict(id=id_, amount=amount, unit=unit, name=name, fallback_string=line,
+                  converted_amount=None, converted_unit=None, is_ai_converted=False,
+                  line_index=line_index, kind="ingredient")
+    fields.update(over)
+    return StructuredIngredient(**fields)
+
+
+def _raw(*lines) -> RecipeExtraction:
+    return RecipeExtraction(name="Spaghetti Carbonara", ingredients=list(lines), directions=["Cook."])
+
+
+class TestAConversionOnACount:
+    """Fix Roadmap F-684: "2 limes, juiced, to get 2 1/2 tbsp" was kept as 2 limes ≈ 37.5 ml."""
+
+    def test_an_ai_conversion_on_a_count_unit_is_dropped(self):
+        line = "2 limes, juiced, to get 2 1/2 tbsp"
+        limes = _line("ing_01", line, 2.0, "limes", "limes", converted_amount=37.5, converted_unit="ml",
+                      is_ai_converted=True)
+        result, _ = _refine(_refinement(limes), raw=_raw(line))
+        ing = result.structured_ingredients[0]
+        assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (None, None, False)
+
+    def test_an_ai_conversion_on_a_line_with_no_unit_is_dropped(self):
+        line = "3 eggs"
+        eggs = _line("ing_01", line, 3.0, None, "eggs", converted_amount=150.0, converted_unit="g",
+                     is_ai_converted=True)
+        result, _ = _refine(_refinement(eggs), raw=_raw(line))
+        assert result.structured_ingredients[0].converted_amount is None
+
+    @pytest.mark.parametrize("unit", ["tbsps", "Tbsp.", "kilo", "gms", "fl. oz", "qts", "pound"])
+    def test_an_ai_conversion_on_a_measure_spelled_any_registry_way_is_kept(self, unit):
+        line = f"2 {unit} butter"
+        butter = _line("ing_01", line, 2.0, unit, "butter", converted_amount=28.0, converted_unit="ml",
+                       is_ai_converted=True)
+        kind_of_unit = "weight" if unit in ("kilo", "gms", "pound") else "volume"
+        if kind_of_unit == "volume":
+            butter.converted_unit = "g"
+        result, _ = _refine(_refinement(butter), raw=_raw(line))
+        assert result.structured_ingredients[0].converted_amount == 28.0
+
+    def test_a_writers_size_on_a_count_is_kept(self):
+        line = "1 (14-ounce) can coconut milk"
+        can = _line("ing_01", line, 1.0, "can", "coconut milk", converted_amount=14.0, converted_unit="ounce")
+        result, _ = _refine(_refinement(can), raw=_raw(line))
+        ing = result.structured_ingredients[0]
+        assert (ing.converted_amount, ing.converted_unit, ing.is_ai_converted) == (14.0, "ounce", False)
+
+
+class TestABracketedSizeAfterACount:
+    """Fix Roadmap F-686: "1 (4- to 5-pound) brisket" was stored as 1, no unit: "Beef · 1"."""
+
+    @pytest.mark.parametrize("line,amount,unit", [
+        ("1 (4- to 5-pound) brisket", 5.0, "pound"),
+        ("1 (4 to 5 lb) brisket", 5.0, "lb"),
+        ("2 (14-ounce) cans chickpeas, drained", 14.0, "ounce"),
+        ("1 (400g) tin chopped tomatoes", 400.0, "g"),
+        ("1 (2 1/2-pound) chicken", 2.5, "pound"),
+        ("1 (750 ml) bottle red wine", 750.0, "ml"),
+    ])
+    def test_the_bracketed_size_becomes_the_writers_second_measure(self, line, amount, unit):
+        ing = _line("ing_01", line, float(line.split()[0]), None, "thing")
+        result, _ = _refine(_refinement(ing), raw=_raw(line))
+        got = result.structured_ingredients[0]
+        assert (got.converted_amount, got.converted_unit, got.is_ai_converted) == (amount, unit, False)
+
+    def test_a_size_the_model_misspelt_is_replaced_by_the_lines_own(self):
+        # "oz" is not in the line, so the check re-marks it as the AI's and drops it (not g or ml);
+        # the bracket then gives the writer's own word.
+        line = "1 (14-ounce) can coconut milk"
+        can = _line("ing_01", line, 1.0, "can", "coconut milk", converted_amount=14.0, converted_unit="oz")
+        result, _ = _refine(_refinement(can), raw=_raw(line))
+        got = result.structured_ingredients[0]
+        assert (got.converted_amount, got.converted_unit, got.is_ai_converted) == (14.0, "ounce", False)
+
+    def test_an_ai_guess_at_the_size_gives_way_to_the_brackets(self):
+        line = "1 (14-ounce) can coconut milk"
+        can = _line("ing_01", line, 1.0, "can", "coconut milk", converted_amount=400.0, converted_unit="ml",
+                    is_ai_converted=True)
+        result, _ = _refine(_refinement(can), raw=_raw(line))
+        got = result.structured_ingredients[0]
+        assert (got.converted_amount, got.converted_unit, got.is_ai_converted) == (14.0, "ounce", False)
+
+    @pytest.mark.parametrize("line,unit", [
+        ("1 (optional) bay leaf", None),
+        ("2 cups (about 3 medium) onions", "cups"),
+        ("1 (2-inch) piece ginger", None),
+        ("3 (about) eggs", None),
+    ])
+    def test_a_bracket_that_is_not_a_size_after_a_count_is_ignored(self, line, unit):
+        ing = _line("ing_01", line, float(line.split()[0]), unit, "thing")
+        result, _ = _refine(_refinement(ing), raw=_raw(line))
+        assert result.structured_ingredients[0].converted_amount is None
+
+
+class TestAnExtraAmount:
+    """Fix Roadmap F-685: "60g coconut cream, plus 100g extra for the coriander cream" was stored as 60 g."""
+
+    def test_an_extra_amount_in_the_same_unit_is_added_to_the_line(self):
+        line = "60g coconut cream, plus 100g extra for the coriander cream"
+        cream = _line("ing_01", line, 60.0, "g", "coconut cream")
+        result, _ = _refine(_refinement(cream), raw=_raw(line))
+        assert result.structured_ingredients[0].amount == 160.0
+
+    def test_the_parts_in_the_method_then_add_up(self):
+        line = "60g coconut cream, plus 100g extra for the coriander cream"
+        cream = _line("ing_01", line, 60.0, "g", "coconut cream")
+        refinement = _refinement(cream)
+        refinement.tokenized_directions = [
+            TokenizedDirection(step=1, text="Stir in {{ing_01|60g|60 g}} coconut cream."),
+            TokenizedDirection(step=2, text="Whisk {{ing_01|100g|100 g}} coconut cream with the coriander."),
+        ]
+        result, _ = _refine(refinement, raw=_raw(line))
+        assert [d.text for d in result.tokenized_directions] == [d.text for d in refinement.tokenized_directions]
+
+    @pytest.mark.parametrize("line,amount,unit,expected", [
+        ("2 tbsp olive oil, plus 1 tbsp to serve", 2.0, "tbsp", 3.0),
+        ("1 cup sugar plus 2 tablespoons", 1.0, "cup", 1.0),
+        ("1 1/2 cups flour, plus extra for dusting", 1.5, "cups", 1.5),
+        ("100g butter, plus 25 grams more", 100.0, "g", 125.0),
+        ("2 lemons, plus 1 to serve", 2.0, None, 3.0),
+    ])
+    def test_only_a_figure_in_the_lines_own_unit_is_added(self, line, amount, unit, expected):
+        ing = _line("ing_01", line, amount, unit, "thing")
+        result, _ = _refine(_refinement(ing), raw=_raw(line))
+        assert result.structured_ingredients[0].amount == expected
+
+    def test_an_ai_conversion_grows_with_the_amount(self):
+        line = "2 tbsp olive oil, plus 1 tbsp to serve"
+        oil = _line("ing_01", line, 2.0, "tbsp", "olive oil", converted_amount=27.0, converted_unit="g",
+                    is_ai_converted=True)
+        result, _ = _refine(_refinement(oil), raw=_raw(line))
+        got = result.structured_ingredients[0]
+        assert (got.amount, got.converted_amount, got.converted_unit) == (3.0, 40.5, "g")
+
+    def test_a_count_plus_another_food_is_not_added(self):
+        line = "2 eggs, plus 1 yolk"
+        eggs = _line("ing_01", line, 2.0, None, "eggs")
+        result, _ = _refine(_refinement(eggs), raw=_raw(line))
+        assert result.structured_ingredients[0].amount == 2.0

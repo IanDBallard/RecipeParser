@@ -160,3 +160,91 @@ class TestNoAmountWhereTheSourceWroteNone:
     def test_an_ingredient_named_by_that_word_keeps_its_amount(self):
         text = "Stretch the {{ing_02|dough|all}} thin."
         assert check_mentions([self.DOUGH], _directions([text]))[0][0].text == text
+
+
+def _ing(id_, amount, unit, name):
+    return StructuredIngredient(id=id_, kind="ingredient", amount=amount, unit=unit, name=name, fallback_string=name)
+
+
+class TestAMeasuredPartBeforeAMention:
+    """Cayenne Fix Roadmap F-499 and F-689: a measure the method writes scales with the list."""
+
+    OIL = _ing("ing_01", 3, "tbsp", "olive oil")
+    CREAM = _ing("ing_02", 160, "g", "coconut cream")
+    WATER = _ing("ing_03", 800, "ml", "water")
+    SUGAR = _ing("ing_04", 2, "tablespoons", "sugar")
+
+    def _tag(self, texts, *ingredients):
+        out, lines = tag_counts(_directions(texts), list(ingredients), set())
+        return [d.text for d in out], lines
+
+    def test_a_measure_right_before_a_none_mention_is_wrapped(self):
+        out, lines = self._tag(["Heat 2 tbsp {{ing_01|olive oil|none}} in a pan."], self.OIL)
+        assert out == ["Heat {{ing_01|2 tbsp|2 tbsp}} {{ing_01|olive oil|none}} in a pan."]
+        assert lines
+
+    def test_a_mention_holding_its_quantity_and_name_is_split(self):
+        out, _ = self._tag(["Stir in 60g {{ing_02|coconut cream|none}} and {{ing_03|800ml water|none}}."],
+                           self.CREAM, self.WATER)
+        assert out == ["Stir in {{ing_02|60g|60 g}} {{ing_02|coconut cream|none}} and "
+                       "{{ing_03|800ml|800 ml}} {{ing_03|water|none}}."]
+
+    def test_the_unit_may_be_spelt_another_way(self):
+        out, _ = self._tag(["Sprinkle 1 tablespoon {{ing_04|sugar|none}} over the top."], self.SUGAR)
+        assert out == ["Sprinkle {{ing_04|1 tablespoon|1 tablespoons}} {{ing_04|sugar|none}} over the top."]
+
+    def test_fractions_and_of_the(self):
+        out, _ = self._tag(["Add 1½ tbsp of the {{ing_01|oil|none}}."], self.OIL)
+        assert out == ["Add {{ing_01|1½ tbsp|1.5 tbsp}} of the {{ing_01|oil|none}}."]
+
+    def test_parts_that_add_up_to_more_than_the_line_are_left_as_written(self):
+        texts = ["Heat 2 tbsp {{ing_01|oil|none}}.", "Add 2 tbsp {{ing_01|oil|none}}."]
+        out, lines = self._tag(texts, self.OIL)
+        assert out == texts
+        assert any("more than the line" in line for line in lines)
+
+    def test_a_part_the_model_wrote_counts_toward_the_line(self):
+        texts = ["Heat {{ing_01|2 tbsp|2 tbsp}} oil.", "Add 2 tbsp {{ing_01|oil|none}}."]
+        out, _ = self._tag(texts, self.OIL)
+        assert out == texts
+
+    def test_a_rate_a_range_another_unit_or_a_count_is_left_alone(self):
+        eggs = _ing("ing_05", 3, None, "eggs")
+        texts = [
+            "Sprinkle 1 tablespoon {{ing_04|sugar|none}} per serving.",
+            "Use 1 to 2 tbsp {{ing_01|oil|none}}.",
+            "Add 50 ml {{ing_02|coconut cream|none}}.",
+            "Beat 2 {{ing_05|eggs|none}} with a fork.",
+        ]
+        out, _ = self._tag(texts, self.SUGAR, self.OIL, self.CREAM, eggs)
+        assert out[:3] == texts[:3]
+
+    def test_only_a_none_mention_takes_a_measure(self):
+        texts = ["Heat 2 tbsp {{ing_01|olive oil|all}}."]
+        out, _ = self._tag(texts, self.OIL)
+        assert out[0].startswith("Heat 2 tbsp")
+
+    def test_the_words_are_kept_and_a_second_pass_changes_nothing(self):
+        texts = ["Heat 2 tbsp {{ing_01|olive oil|none}}.", "Stir in {{ing_03|800ml water|none}}."]
+        once, _ = self._tag(texts, self.OIL, self.WATER)
+        twice, _ = self._tag(once, self.OIL, self.WATER)
+        assert twice == once
+        assert [strip_fat_tokens(t) for t in once] == [strip_fat_tokens(t) for t in texts]
+
+    def test_the_import_checks_keep_the_new_parts(self):
+        out, _ = self._tag(["Heat 2 tbsp {{ing_01|olive oil|none}}."], self.OIL)
+        checked, demotions = check_mentions([self.OIL], _directions(out))
+        assert [d.text for d in checked] == out and demotions == []
+
+
+class TestAYieldInTwoCuts:
+    """F-499: "Cut into 4 strips, then cut each strip into six bars" makes 24; the 4 scales."""
+
+    def test_the_first_cut_is_wrapped_when_the_product_is_the_yield(self):
+        out, _ = tag_counts(_directions(["Cut into 4 strips, then cut each strip into six bars."]), [], {24})
+        assert out[0].text == "Cut into {{yield:4|4}} strips, then cut each strip into six bars."
+
+    def test_not_when_the_product_is_not_the_yield(self):
+        texts = ["Cut into 4 strips, then cut each strip into six bars."]
+        out, _ = tag_counts(_directions(texts), [], {16})
+        assert out[0].text == texts[0]
