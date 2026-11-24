@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.43.1] — 2026-11-24
+
+Released with Cayenne's shopping PR 3 (its migration 20261124120000_shopping_recipe_pins), which makes pins per-person: an owner's own pin no longer shares a recipe, and a member may copy one only while it is on the household's plans or shopping list, or they pinned it.
+
+### 🔧 Changed
+- `POST /household/copy`'s 404 now reads "This recipe is no longer shared in your household." (was "no longer pinned"), the same sentence as the app's `NOT_COPYABLE`. A recipe its owner still pins can now be refused, so "no longer pinned" would be false.
+
 ## [9.43.0] — 2026-11-20
 
 Fixes for what the 2026-11-18 Christmas walkthrough's recipes lost on the way in (Cayenne Fix Roadmap batch 66). Each fix is in code: no prompt changed, so no golden was re-recorded.

@@ -210,7 +210,7 @@ def test_copy_is_one_call_and_answers_the_job(client, fake):
 def test_copy_of_a_recipe_that_is_not_a_member_s_pin_is_404(client, fake):
     fake.rpcs["copy_household_recipe"] = lambda p: None
     r = _as(client, ME).post("/household/copy", json={"recipe_id": RECIPE})
-    assert (r.status_code, r.json()["detail"]) == (404, "This recipe is no longer pinned in your household.")
+    assert (r.status_code, r.json()["detail"]) == (404, "This recipe is no longer shared in your household.")
 
 
 def test_copy_with_no_email_claim_is_422(client, fake):

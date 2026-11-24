@@ -44,7 +44,7 @@ HOUSEHOLD_FULL = "A household has at most 8 people, counting invites."
 INVITE_NOT_OPEN = "This invite is no longer open."
 ONLY_ONE = "You're the only one in your household."
 NOT_A_MEMBER = "They're not in your household."
-NOT_COPYABLE = "This recipe is no longer pinned in your household."
+NOT_COPYABLE = "This recipe is no longer shared in your household."
 
 # (SQLSTATE, message) -> (HTTP status, sentence): Stage 3a's refusal contract (plan ruling 7).
 # A message of None matches any message with that code.
@@ -198,7 +198,7 @@ def build_router(
     @router.post("/household/copy", response_model=CopyResponse, status_code=status.HTTP_202_ACCEPTED)
     def copy(body: CopyRequest, user: Dict[str, Any] = Depends(verify),
              idempotency_key: Optional[str] = Header(default=None, alias=IDEMPOTENCY_HEADER)) -> CopyResponse:
-        """Copy a member's pinned recipe into the caller's library (D11): one call, one transaction,
+        """Copy a member's shared recipe into the caller's library (D11): one call, one transaction,
         a share accepted at once, so the copy runs as an unchanged share_accept job."""
         caller_email = _own_email(user)
         with idempotency.once(user["sub"], idempotency_key) as slot:
