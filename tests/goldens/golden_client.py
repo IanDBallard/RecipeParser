@@ -15,7 +15,7 @@ import threading
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 log = logging.getLogger(__name__)
 
@@ -31,8 +31,6 @@ class UnknownPromptError(RuntimeError):
 _STAGE_RULES: Tuple[Tuple[str, str], ...] = (
     ("refine", "culinary data refiner"),
     ("extract", "culinary data extractor"),
-    ("toc-parse", "table-of-contents or contents page"),
-    ("toc-classify", "table-of-contents entries from a cookbook"),
     ("vision", "ocr assistant"),
     ("connectivity", "reply with the single word ok"),
     # classify must precede table too: its prompt lists the "bakery" aisle,
@@ -44,15 +42,13 @@ _STAGE_RULES: Tuple[Tuple[str, str], ...] = (
 )
 
 #: Where each stage's body starts.  An empty tuple means "the whole prompt is
-#: the body" — vision, both TOC calls, and the connectivity ping.
+#: the body" — vision and the connectivity ping.
 _BODY_MARKERS = {
     "extract": ("Text chunk:", "Text:"),
     "table": ("Text:",),
     "refine": ("RAW RECIPE:",),
     "classify": ("KNOWN FOODS:",),
     "categorize": ("RECIPES:",),
-    "toc-parse": (),
-    "toc-classify": (),
     "vision": (),
     "connectivity": (),
 }
@@ -137,13 +133,9 @@ class GoldenResponse:
     """The slice of a genai response the production code actually reads.
 
     ``gemini.py`` reads ``.text`` and, on the unparseable path, ``.candidates``.
-    ``toc.py`` reads ``.parsed``; replaying TOC calls is out of scope here, so
-    ``parsed`` stays None and the TOC helpers fall through to their own
-    "AI parsing failed" branch rather than returning wrong data.
     """
 
     text: str
-    parsed: Optional[object] = None
     candidates: tuple = field(default_factory=tuple)
 
 

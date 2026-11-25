@@ -85,7 +85,6 @@ recipeparser/
 ├── gemini.py                      # The Gemini calls, with timeout, back-off and retry
 ├── categories.py                  # Taxonomy loading and categorisation via Gemini
 ├── categories.yaml                # The default taxonomy for local use
-├── toc.py                         # Table-of-contents extraction and TOC-driven chunking
 ├── shopping.py                    # The shopping classify call
 ├── shopping_aisles.py             # The typed-item aisles call (Gemini Decisions API)
 ├── recategorize.py                # Re-categorise an existing .paprikarecipes archive (CLI)
@@ -272,7 +271,7 @@ The engine calls `fsm.transition(...)` at each stage boundary. The adapter decid
 
 ## 5. LLM Provider Interface
 
-> **Status, 2026-10-01: a design that was never built.** There is no `LLMProvider` ABC, `base.py` or `factory.py`; `core/providers/` holds an empty `__init__.py`. The Gemini calls are made directly, from `recipeparser/gemini.py` (extraction, refinement, embeddings), `recipeparser/categories.py` and `recipeparser/toc.py`. The models are `GEMINI_MODEL` and `GEMINI_EMBEDDING_MODEL` in `recipeparser/config.py`. This section is kept as the design it was.
+> **Status, 2026-10-01: a design that was never built.** There is no `LLMProvider` ABC, `base.py` or `factory.py`; `core/providers/` holds an empty `__init__.py`. The Gemini calls are made directly, from `recipeparser/gemini.py` (extraction, refinement, embeddings) and `recipeparser/categories.py`. The models are `GEMINI_MODEL` and `GEMINI_EMBEDDING_MODEL` in `recipeparser/config.py`. This section is kept as the design it was.
 
 All LLM operations are accessed through the `LLMProvider` ABC defined in `core/providers/base.py`. The engine imports only this interface — never a concrete provider.
 

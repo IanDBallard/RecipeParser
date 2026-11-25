@@ -32,8 +32,8 @@ class _TolerantEpubReader(epub.EpubReader):  # type: ignore[misc]
     ``'NoneType' object has no attribute 'find'`` or an XMLSyntaxError. Its
     ``ignore_ncx`` option is no escape: the NCX is still read whenever the book has
     no EPUB3 nav document, which is every EPUB2. The chapters and metadata of such a
-    book are intact, and ``recipeparser.toc`` already falls back to the text when the
-    TOC is empty, so the TOC is the only thing worth losing.
+    book are intact, and no import reads the TOC (chunking works from the text), so
+    the TOC is the only thing worth losing.
     """
 
     def _parse_ncx(self, data: bytes) -> None:

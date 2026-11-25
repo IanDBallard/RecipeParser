@@ -2,6 +2,8 @@
 
 This document describes how RecipeParser loads cookbooks from different document formats and processes them through a unified pipeline. **EPUB** and **PDF** are supported; the design allows additional document types to be added later. Each loader produces the same output shape, so all downstream steps (TOC extraction, chunking, extraction, categorisation, export) are format-agnostic.
 
+> **Status, 2026-11-25:** `recipeparser/toc.py` (TOC extraction, `segment_by_toc`, `run_recon`) had no production caller and was deleted. The TOC sections below describe a design that no longer has code behind it.
+
 ---
 
 ## 1. Goals

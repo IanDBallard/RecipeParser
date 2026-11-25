@@ -27,8 +27,8 @@ Check these first:
   through `LLMProvider` / `EmbeddingProvider`) describes a design that was never built.
   The root `ARCHITECTURE.md` §5 says so ("a design that was never built"):
   `recipeparser/core/providers/` holds an empty `__init__.py`, and the Gemini calls are
-  made directly from `recipeparser/gemini.py`, `recipeparser/categories.py` and
-  `recipeparser/toc.py`. Do not cite that convention as a rule a spec must meet.
+  made directly from `recipeparser/gemini.py` and `recipeparser/categories.py`. Do not
+  cite that convention as a rule a spec must meet.
 - `ARCHITECTURE.md` §4 (Externalized FSM), §10 (Adapter Contracts) and §12 (Ingestion
   Job Status).
 

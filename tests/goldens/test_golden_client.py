@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from google.genai import errors as genai_errors
 
-from recipeparser import gemini, toc
+from recipeparser import gemini
 from recipeparser.models import RecipeExtraction
 from tests.goldens import golden_client as gc
 from tests.goldens.golden_client import GoldenClient, MissingRecordingError
@@ -62,19 +62,6 @@ class TestSniffStage:
             monkeypatch, lambda c: gemini.normalise_baker_table("Flour 500g 100%", c)
         )
         assert gc.sniff_stage(contents) == "table"
-
-    def test_toc_parse_prompt_sniffs_as_toc_parse(self, monkeypatch):
-        contents = _sent_prompt(
-            monkeypatch, lambda c: toc._parse_toc_from_text_fallback(["Contents", "Soups 3"], c)
-        )
-        assert gc.sniff_stage(contents) == "toc-parse"
-
-    def test_toc_classify_prompt_sniffs_as_toc_classify(self, monkeypatch):
-        contents = _sent_prompt(
-            monkeypatch,
-            lambda c: toc._classify_toc_recipe_indices([("Baker's % Bread", 3)], c),
-        )
-        assert gc.sniff_stage(contents) == "toc-classify"
 
     def test_connectivity_prompt_sniffs_as_connectivity(self, monkeypatch):
         contents = _sent_prompt(monkeypatch, lambda c: gemini.verify_connectivity(c))
