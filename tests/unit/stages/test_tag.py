@@ -95,3 +95,18 @@ def test_an_axis_with_no_tags_is_not_asked():
     answers = _Answers({})
     tag_batch([_Recipe("a")], {"Empty": [], "Cuisine": ["Italian"]}, None, answers)
     assert [x for x, _ in answers.calls] == ["Cuisine"]
+
+
+def test_a_used_up_daily_quota_stops_tagging_rather_than_failing_one_axis():
+    # exceptions.py: a quota error stops the run; read as a TagFailure, every later
+    # axis would make the same doomed call twice.
+    import pytest
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+    calls = []
+
+    def spent(rows, axes):
+        calls.append(axes)
+        raise DailyQuotaExhaustedError(3600)
+    with pytest.raises(DailyQuotaExhaustedError):
+        tag_batch([_Recipe("a")], AXES, None, spent)
+    assert len(calls) == 1

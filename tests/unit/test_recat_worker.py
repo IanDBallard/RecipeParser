@@ -712,3 +712,31 @@ def test_recat_worker_mixed_job_proceeds_on_the_rest():
     offered = cat.call_args[0][1]
     assert "To try" not in [t for tags in offered.values() for t in tags]
     assert _ops(fake, "ingestion_jobs")[-1][0][1][0]["status"] == "done"
+
+
+def test_a_used_up_daily_quota_ends_the_job_without_skipping_the_batch():
+    # exceptions.py: a quota error stops the run; it is not a failed batch. Before
+    # the fix it was retried, recorded as skipped, and every later batch failed too.
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+    fake = _fake_with_job(["running"] * 5, _recipes(25), count=25)
+    cat = MagicMock(side_effect=[{_rid(0): ["Thai"]}, DailyQuotaExhaustedError(3600)])
+    worker = _worker(fake, cat)
+    _run_to_end(worker, fake)
+    assert cat.call_count == 2, "a quota error is not retried and no later batch is tried"
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "error"
+    assert "daily request quota" in final["error_message"]
+    assert final["skipped_count"] == 0 and final["skipped"] == []
+    assert final["recipe_count"] == 1
+    assert worker._held is None
+
+
+def test_a_cancel_raised_inside_a_batch_finishes_the_job_as_cancelled():
+    from recipeparser.exceptions import JobCancelledError
+    fake = _fake_with_job(["running"] * 5, _recipes(5), count=5)
+    cat = MagicMock(side_effect=JobCancelledError("stopped"))
+    _run_to_end(_worker(fake, cat), fake)
+    assert cat.call_count == 1
+    final = _ops(fake, "ingestion_jobs")[-1][0][1][0]
+    assert final["status"] == "cancelled"
+    assert final["skipped_count"] == 0

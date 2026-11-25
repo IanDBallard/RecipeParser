@@ -818,6 +818,17 @@ def _is_deadline_error(exc: BaseException) -> bool:
     return "timeout" in type(exc).__name__.lower()
 
 
+def _is_transient_vision_failure(exc: BaseException) -> bool:
+    """A page failure the service might not repeat: a timeout, a 5xx, a 429, a dropped connection."""
+    if _is_deadline_error(exc) or isinstance(exc, httpx.TransportError):
+        return True
+    if not isinstance(exc, Exception):
+        return False
+    if _is_transient_server_error(exc):
+        return True
+    return isinstance(exc, genai_errors.APIError) and getattr(exc, "code", None) == 429
+
+
 def render_page_for_vision(page: Any) -> VisionImage:
     """Render one PyMuPDF page for the vision OCR, its long edge capped at VISION_MAX_EDGE_PX.
 
@@ -852,8 +863,10 @@ def extract_text_via_vision(doc, client, *, what: str = "document") -> str:
     Returns:
         A non-empty string of extracted text. Raises ``AIServiceTimeoutError`` if
         every page failed and at least one timed out, ``RuntimeError`` if Gemini
-        returned nothing useful for every page, and ``JobCancelledError`` at once
-        if the job was cancelled.
+        returned nothing useful for every page or a page failed for a reason that
+        is not transient (naming the page), and ``JobCancelledError`` at once if
+        the job was cancelled. A page lost to a transient failure (timeout, 5xx,
+        429, dropped connection) after the retries is logged and left out.
     """
     pages = (render_page_for_vision(doc[page_num]) for page_num in range(doc.page_count))
     return extract_text_from_images(pages, client, count=doc.page_count, what=what)
@@ -877,6 +890,7 @@ def extract_text_from_images(
 
     page_texts: List[str] = []
     timed_out = 0
+    dropped: List[int] = []  # pages lost to a transient failure that outlived the retries
     for page_num, image in enumerate(images, start=1):
         job_signal.checkpoint()
         log.info(
@@ -902,11 +916,24 @@ def extract_text_from_images(
                 log.warning("Vision OCR page %d/%d: empty response.", page_num, count)
         except (JobCancelledError, DailyQuotaExhaustedError):
             raise
-        except Exception as exc:
+        except Exception as exc:  # fail-loud.bare-except-ok: a non-transient failure re-raises; a transient one is logged and listed
+            if not _is_transient_vision_failure(exc):
+                # A failure that would fail the same way again (a 4xx, a code bug) must
+                # not leave a transcript silently missing this page.
+                raise RuntimeError(
+                    f"Gemini Vision could not read page {page_num} of {count} "
+                    f"({type(exc).__name__}: {exc})."
+                ) from exc
             if _is_deadline_error(exc):
                 timed_out += 1
+            dropped.append(page_num)
             log.warning("Vision OCR page %d/%d failed: %s", page_num, count, exc)
 
+    if dropped and page_texts:
+        log.warning(
+            "Vision OCR: the transcript is missing page(s) %s of %d (the AI service was busy).",
+            ", ".join(map(str, dropped)), count,
+        )
     if not page_texts:
         if timed_out:
             raise AIServiceTimeoutError(ai_timeout_sentence(what))
@@ -1290,37 +1317,46 @@ def refine_recipe_for_cayenne(
                            only evidence outside the recipe text.
         limiter:           Takes a slot for each retry (F-109; see _call_with_retry). The
                            caller takes the first request's.
+
+    Returns:
+        The refinement, or None when Gemini's reply is empty.
+
+    Raises:
+        Whatever ``_call_with_retry`` raises once its retries are spent (the API's
+        own error types, AIServiceTimeoutError, DailyQuotaExhaustedError,
+        JobCancelledError), unchanged: the pipeline's second pass
+        (``_worth_a_second_pass``) reads the type to decide whether a busy chunk is
+        worth another try, and a None in its place would hide it.
+        ValueError: the reply is not JSON or does not match the schema; the
+        message names the recipe and the parse error is its cause.
     """
     schema = CayenneRefinement
     prompt = build_refine_prompt(raw_recipe, source_host)
+    json_schema = refine_json_schema()
+    response = _call_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": json_schema,
+        },
+        what="Cayenne refinement",
+        limiter=limiter,
+    )
+    # response_json_schema does not auto-parse; we get raw JSON text.
+    if not response.text or not response.text.strip():
+        log.error("Cayenne refinement failed: Gemini returned empty response")
+        return None
     try:
-        json_schema = refine_json_schema()
-        response = _call_with_retry(
-            client,
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": json_schema,
-            },
-            what="Cayenne refinement",
-            limiter=limiter,
-        )
-        # response_json_schema does not auto-parse; we get raw JSON text.
-        if not response.text or not response.text.strip():
-            log.error("Cayenne refinement failed: Gemini returned empty response")
-            return None
         raw_data = json.loads(response.text)
         # REFINE asks for no tags (F-246); a reply that carries some anyway, or a
         # recording made before the change, must not leak them past the TAG stage.
-        result = schema.model_validate(raw_data).model_copy(update={"grid_categories": {}})
-
-        return result
-    except (JobCancelledError, DailyQuotaExhaustedError):
-        raise  # stops the job or the run, not just this recipe (#161; half of Cayenne F-647)
-    except Exception as e:
-        log.error("Cayenne refinement failed: %s", e)
-        return None
+        return schema.model_validate(raw_data).model_copy(update={"grid_categories": {}})
+    except ValueError as e:  # json.JSONDecodeError and pydantic's ValidationError
+        name = getattr(raw_recipe, "name", None) or "a recipe"
+        log.error("Cayenne refinement reply for '%s' could not be parsed: %s", name, e)
+        raise ValueError(f"Cayenne refinement reply for '{name}' could not be parsed: {e}") from e
 
 
 def build_mentions_prompt(ingredients: List[StructuredIngredient], steps: List[str]) -> str:
@@ -1623,7 +1659,14 @@ def estimate_servings(
     *,
     limiter: Optional["GlobalRateLimiter"] = None,
 ) -> Optional[int]:
-    """The model's estimate of a recipe's servings, or None on any failure. Never raises."""
+    """The model's estimate of a recipe's servings, or None.
+
+    None, logged at WARNING, when the API call fails past its retries (an
+    ``APIError`` or ``AIServiceTimeoutError``) or the reply is not a servings
+    count from 1 to 200. Anything else — a code bug, a transport failure the
+    retry does not know, a used-up daily quota, a cancel — propagates, so a
+    permanently broken estimate is not mistaken for "no estimate".
+    """
     try:
         response: Any = _call_with_retry(
             client,
@@ -1641,14 +1684,18 @@ def estimate_servings(
             what="Servings",
             limiter=limiter,
         )
-        n = json.loads(response.text)["servings"]
-        if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 200:
-            return None
-        return n
-    except (JobCancelledError, DailyQuotaExhaustedError):
-        raise
-    except Exception:  # noqa: BLE001
+    except (genai_errors.APIError, AIServiceTimeoutError) as exc:
+        log.warning("Servings estimate for '%s' failed: %s", title, exc)
         return None
+    try:
+        n = json.loads(response.text)["servings"]
+    except (ValueError, KeyError, TypeError) as exc:  # not JSON, no "servings", not an object
+        log.warning("Servings reply for '%s' could not be parsed: %s", title, exc)
+        return None
+    if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 200:
+        log.warning("Servings reply for '%s' was not a count from 1 to 200: %r", title, n)
+        return None
+    return n
 
 
 class _RecipeTags(BaseModel):

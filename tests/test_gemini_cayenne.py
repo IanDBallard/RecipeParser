@@ -68,12 +68,33 @@ def test_refine_recipe_for_cayenne_success():
     assert "additionalProperties" not in str(kwargs["config"]["response_json_schema"])
     assert "Raw Recipe Text" in kwargs["contents"]
 
-def test_refine_recipe_for_cayenne_failure_returns_none():
-    mock_client = MagicMock()
-    mock_client.models.generate_content.side_effect = Exception("Refinement failed")
+def test_refine_recipe_for_cayenne_api_failure_propagates_with_its_type():
+    # The pipeline's second pass reads the error's type (a 503 is worth another
+    # try); a None in its place became a generic ValueError in refine().
+    class _ApiDown(Exception):
+        pass
 
-    result = refine_recipe_for_cayenne("raw text", mock_client)
-    assert result is None
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = _ApiDown("Refinement failed")
+    with pytest.raises(_ApiDown, match="Refinement failed"):
+        refine_recipe_for_cayenne("raw text", mock_client)
+
+
+def test_refine_recipe_for_cayenne_empty_reply_returns_none():
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text="  ")
+    assert refine_recipe_for_cayenne("raw text", mock_client) is None
+
+
+def test_refine_recipe_for_cayenne_unparseable_reply_names_the_recipe():
+    from recipeparser.models import RecipeExtraction as _Raw
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = MagicMock(text="{not json")
+    raw = _Raw(name="Scones", ingredients=["flour"], directions=["Bake."])
+    with pytest.raises(ValueError, match="'Scones' could not be parsed") as excinfo:
+        refine_recipe_for_cayenne(raw, mock_client)
+    assert excinfo.value.__cause__ is not None
 
 
 from recipeparser.gemini import build_refine_prompt

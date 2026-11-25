@@ -23,6 +23,7 @@ from recipeparser.core.count_tokens import yield_numbers
 from recipeparser.core.regen import build_extraction, build_update
 from recipeparser.core.stages.embed import embed
 from recipeparser.core.stages.refine import refine
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +132,12 @@ class RegenWorker:
                     self._release_claim(rid, claimed_at)
                 else:
                     log.info("regen: %s regenerated at rev %d.", rid, read_rev)
+            except (DailyQuotaExhaustedError, JobCancelledError):
+                # Not this row's failure: a used-up quota fails every row the same way,
+                # and regen_failed would spend the row's attempts on an outage. Release
+                # the claim and end the poll (run_workers logs the raise and sleeps).
+                self._release_claim(rid, claimed_at)
+                raise
             except Exception as exc:  # noqa: BLE001 — every failure is recorded, never fatal
                 log.warning("regen: %s failed at rev %d: %s", rid, read_rev, exc, exc_info=True)
                 self._record_failure(rid, exc)

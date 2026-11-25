@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.44.0] — 2026-11-25
+
+A used-up daily Gemini quota or a cancel now stops the work instead of being recorded as one more failure. `recipeparser/exceptions.py` has always said every `except Exception` must let `JobCancelledError` and `DailyQuotaExhaustedError` through; about a dozen handlers did not (architecture review 2026-11-25, `soft.fail-loud`).
+
+### 🐛 Fixed
+- The recategorise worker ends the job as an error with the quota message instead of skipping every remaining batch; a cancel inside a batch ends it as cancelled.
+- The regen and embed workers release the claim and stop the poll on a used-up quota, so no row loses an attempt (embed stops offering a row after three) to a quota outage.
+- A photographed recipe whose import hits the quota is no longer reported as a photo that could not be opened.
+- TAG stops on a used-up quota instead of failing one axis at a time.
+- A malformed `categories.yaml` raises `ConfigurationError` instead of silently becoming no categories; a missing file still loads empty. A failed categorise call is no longer turned into the "EPUB Imports" fallback; only an unusable reply is.
+- `--recategorize` copies an entry it cannot parse through unchanged instead of leaving it out, and prints how many recipes were recategorised, kept as they were and copied unparsed. Quota and cancel stop it with nothing written.
+- `refine_recipe_for_cayenne` keeps the error's own type instead of returning None for every failure; None now means only an empty reply.
+- `estimate_servings` returns None (with a warning) only for an API failure past the retries or an unusable reply; anything else raises.
+- Vision OCR: a page that fails for a lasting reason fails the read ("Gemini Vision could not read page N of M"); a page lost to a transient failure is still left out, and a warning names the missing pages.
+
+### 🔧 Changed
+- `recategorize()` returns `RecategorizeResult(path, recategorized, kept_original, copied_unparsed)` instead of a path.
+
 ## [9.43.1] — 2026-11-24
 
 Released with Cayenne's shopping PR 3 (its migration 20261124120000_shopping_recipe_pins), which makes pins per-person: an owner's own pin no longer shares a recipe, and a member may copy one only while it is on the household's plans or shopping list, or they pinned it.

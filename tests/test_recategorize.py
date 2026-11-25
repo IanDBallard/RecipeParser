@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from recipeparser.recategorize import recategorize, _split_lines
-from recipeparser.exceptions import RecategorizationError
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError, RecategorizationError
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ class TestRecategorizeHappyPath:
         )
         client = MagicMock()
         with patch("recipeparser.recategorize.categorise_recipe", return_value=["Italian"]):
-            out = recategorize(archive, client)
+            out = recategorize(archive, client).path
         assert out.name == "cookbook_recategorized.paprikarecipes"
         assert out.exists()
 
@@ -124,7 +124,7 @@ class TestRecategorizeHappyPath:
         out_dir = tmp_path / "exports"
         client = MagicMock()
         with patch("recipeparser.recategorize.categorise_recipe", return_value=["Italian"]):
-            out = recategorize(archive, client, output_dir=out_dir)
+            out = recategorize(archive, client, output_dir=out_dir).path
         assert out.parent == out_dir
         assert out_dir.is_dir()
 
@@ -135,7 +135,7 @@ class TestRecategorizeHappyPath:
         )
         client = MagicMock()
         with patch("recipeparser.recategorize.categorise_recipe", return_value=["Italian"]):
-            out = recategorize(archive, client)
+            out = recategorize(archive, client).path
         assert zipfile.is_zipfile(out)
 
     def test_categories_updated_in_output(self, tmp_path):
@@ -146,7 +146,7 @@ class TestRecategorizeHappyPath:
         )
         client = MagicMock()
         with patch("recipeparser.recategorize.categorise_recipe", return_value=["Italian"]):
-            out = recategorize(archive, client)
+            out = recategorize(archive, client).path
 
         # Read back and verify
         with zipfile.ZipFile(out, "r") as zf:
@@ -167,7 +167,7 @@ class TestRecategorizeHappyPath:
         )
         client = MagicMock()
         with patch("recipeparser.recategorize.categorise_recipe", return_value=["Misc"]):
-            out = recategorize(archive, client)
+            out = recategorize(archive, client).path
 
         with zipfile.ZipFile(out, "r") as zf:
             assert len(zf.namelist()) == 3
@@ -181,7 +181,7 @@ class TestRecategorizeHappyPath:
         )
         client = MagicMock()
         with patch("recipeparser.recategorize.categorise_recipe", return_value=["Italian"]):
-            out = recategorize(archive, client)
+            out = recategorize(archive, client).path
 
         with zipfile.ZipFile(out, "r") as zf:
             raw = zf.read(zf.namelist()[0])
@@ -189,8 +189,8 @@ class TestRecategorizeHappyPath:
         assert data["notes"] == "Grandma's recipe"
         assert data["source_url"] == "http://example.com"
 
-    def test_unparseable_entry_skipped_gracefully(self, tmp_path):
-        """A corrupt entry is skipped; valid entries are still processed."""
+    def test_unparseable_entry_copied_through_and_counted(self, tmp_path):
+        """A corrupt entry is copied through unchanged, not dropped; the run says how many."""
         good = {"name": "Pasta", "ingredients": "flour", "directions": "mix"}
         archive = tmp_path / "cookbook.paprikarecipes"
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -204,14 +204,27 @@ class TestRecategorizeHappyPath:
 
         client = MagicMock()
         with patch("recipeparser.recategorize.categorise_recipe", return_value=["Italian"]):
-            out = recategorize(archive, client)
+            result = recategorize(archive, client)
 
-        with zipfile.ZipFile(out, "r") as zf:
-            # Only the good entry should appear in the output
-            assert len(zf.namelist()) == 1
+        with zipfile.ZipFile(result.path, "r") as zf:
+            assert sorted(zf.namelist()) == ["Bad.paprikarecipe", "Pasta.paprikarecipe"]
+            assert zf.read("Bad.paprikarecipe") == b"NOT GZIP"
+        assert (result.recategorized, result.kept_original, result.copied_unparsed) == (1, 0, 1)
+
+    def test_a_json_member_that_is_not_a_recipe_object_is_copied_through(self, tmp_path):
+        archive = tmp_path / "cookbook.paprikarecipes"
+        listy = gzip.compress(b'["not", "a", "recipe"]')
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("Pasta.paprikarecipe", gzip.compress(b'{"name": "Pasta"}'))
+            zf.writestr("List.paprikarecipe", listy)
+        with patch("recipeparser.recategorize.categorise_recipe", return_value=["Italian"]):
+            result = recategorize(archive, MagicMock())
+        with zipfile.ZipFile(result.path, "r") as zf:
+            assert zf.read("List.paprikarecipe") == listy
+        assert result.copied_unparsed == 1
 
     def test_categorisation_failure_keeps_original_categories(self, tmp_path):
-        """When categorise_recipe raises, the original categories are preserved."""
+        """When categorise_recipe raises, the original categories are preserved and counted."""
         archive = _make_paprika_archive(
             tmp_path / "cookbook.paprikarecipes",
             [{"name": "Pasta", "categories": ["Original"],
@@ -222,12 +235,26 @@ class TestRecategorizeHappyPath:
             "recipeparser.recategorize.categorise_recipe",
             side_effect=RuntimeError("API down"),
         ):
-            out = recategorize(archive, client)
+            result = recategorize(archive, client)
 
-        with zipfile.ZipFile(out, "r") as zf:
+        with zipfile.ZipFile(result.path, "r") as zf:
             raw = zf.read(zf.namelist()[0])
             data = json.loads(gzip.decompress(raw).decode("utf-8"))
         assert data["categories"] == ["Original"]
+        assert (result.recategorized, result.kept_original) == (0, 1)
+
+    @pytest.mark.parametrize("exc", [DailyQuotaExhaustedError(3600), JobCancelledError("stopped")])
+    def test_quota_and_cancel_stop_the_run_and_write_nothing(self, tmp_path, exc):
+        archive = _make_paprika_archive(
+            tmp_path / "cookbook.paprikarecipes",
+            [{"name": "Pasta", "categories": ["Original"]}, {"name": "Soup"}],
+        )
+        cat = MagicMock(side_effect=exc)
+        with patch("recipeparser.recategorize.categorise_recipe", cat):
+            with pytest.raises(type(exc)):
+                recategorize(archive, MagicMock())
+        assert cat.call_count == 1
+        assert not (tmp_path / "cookbook_recategorized.paprikarecipes").exists()
 
     def test_default_output_dir_is_same_as_source(self, tmp_path):
         archive = _make_paprika_archive(
@@ -236,7 +263,7 @@ class TestRecategorizeHappyPath:
         )
         client = MagicMock()
         with patch("recipeparser.recategorize.categorise_recipe", return_value=["Italian"]):
-            out = recategorize(archive, client)
+            out = recategorize(archive, client).path
         assert out.parent == tmp_path
 
     def test_output_dir_created_if_missing(self, tmp_path):

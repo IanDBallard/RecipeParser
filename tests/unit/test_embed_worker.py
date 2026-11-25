@@ -148,3 +148,17 @@ def test_empty_queue():
     fn = MagicMock()
     assert _worker(fake, embed_text_fn=fn).run_once() == 0
     fn.assert_not_called()
+
+
+def test_a_used_up_daily_quota_releases_the_claim_and_is_not_recorded():
+    # embed_failed counts against the row and the database stops offering it after
+    # three; a quota outage must not strand the row's embedding.
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+    fake = FakeSupabase(rows=[_row()])
+    fn = MagicMock(side_effect=DailyQuotaExhaustedError(3600))
+    with pytest.raises(DailyQuotaExhaustedError):
+        _worker(fake, embed_text_fn=fn).run_once()
+    assert not any(n == "embed_failed" for n, _ in fake.rpcs)
+    ups = _updates(fake)
+    assert len(ups) == 1 and ups[0][0][1][0] == {"embed_claimed_at": None}
+    assert ("eq", ("id", "r1"), {}) in ups[0]
