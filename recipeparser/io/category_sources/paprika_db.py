@@ -16,8 +16,9 @@ maps each **top-level** Paprika category to its own axis, with its
 sub-categories as the tags.  Top-level categories with no children are
 treated as a single-tag axis (axis name == tag name).
 
-If the database file is missing, unreadable, or has no categories, load_axes()
-returns {} (no categorization — Zero-Tag Mandate).
+If the database file is missing, has no ZCATEGORY table or has no categories,
+load_axes() returns {} (no categorization — Zero-Tag Mandate). A database that
+is there but cannot be read raises CategoryLoadError.
 """
 from __future__ import annotations
 
@@ -26,7 +27,8 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from recipeparser.io.category_sources.base import CategorySource
+from recipeparser.core.ports import CategorySource
+from recipeparser.exceptions import CategoryLoadError
 
 log = logging.getLogger(__name__)
 
@@ -111,8 +113,9 @@ class PaprikaCategorySource(CategorySource):
         """
         Query the Paprika SQLite DB for all category rows.
 
-        Returns a list of (Z_PK, ZNAME, ZPARENTCATEGORY) tuples, or []
-        on any error.
+        Returns a list of (Z_PK, ZNAME, ZPARENTCATEGORY) tuples; [] when no
+        path is configured, the file is missing or it has no ZCATEGORY table.
+        Raises CategoryLoadError when the database cannot be read.
         """
         if self._path is None:
             log.debug("PaprikaCategorySource: no db_path configured — returning empty axes.")
@@ -135,20 +138,23 @@ class PaprikaCategorySource(CategorySource):
             finally:
                 con.close()
         except sqlite3.OperationalError as exc:
-            # Table may not exist (not a Paprika DB, or different schema)
+            if "no such table" not in str(exc).lower():
+                # Locked (Paprika is open), unreadable, ...: not "no categories".
+                raise CategoryLoadError(
+                    f"The Paprika database {self._path} could not be read: {exc}"
+                ) from exc
+            # No ZCATEGORY table: not a Paprika DB, or a different schema — nothing to offer.
             log.warning(
-                "PaprikaCategorySource: could not query ZCATEGORY in %s: %s",
+                "PaprikaCategorySource: no ZCATEGORY table in %s: %s",
                 self._path,
                 exc,
             )
             return []
-        except Exception as exc:
-            log.error(
-                "PaprikaCategorySource: unexpected error reading %s: %s",
-                self._path,
-                exc,
-            )
-            return []
+        except sqlite3.Error as exc:
+            # Not a database at all, or a corrupt one.
+            raise CategoryLoadError(
+                f"The Paprika database {self._path} could not be read: {exc}"
+            ) from exc
 
         # Filter out rows with null/empty names
         valid = [(pk, name, parent) for pk, name, parent in rows if name and name.strip()]

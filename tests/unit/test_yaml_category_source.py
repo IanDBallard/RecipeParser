@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from recipeparser.exceptions import CategoryLoadError
 from recipeparser.io.category_sources.yaml_source import (
     CATEGORIES_AXIS,
     YamlCategorySource,
@@ -90,3 +91,18 @@ class TestUnusableFiles:
         src = YamlCategorySource(tmp_path / "nope.yaml")
         assert src.load_axes() == {}
         assert src.load_parents() == {}
+
+
+class TestUnreadableFiles:
+    """A file that cannot be parsed or read fails the run rather than tagging nothing."""
+
+    def test_malformed_yaml_raises(self, tmp_path):
+        src = _source(tmp_path, "axes:\n  Cuisine: [Italian\n")
+        with pytest.raises(CategoryLoadError, match="categories.yaml"):
+            src.load_axes()
+
+    def test_unreadable_file_raises(self, tmp_path):
+        path = tmp_path / "categories.yaml"
+        path.mkdir()  # a directory where the file should be: opening it fails
+        with pytest.raises(CategoryLoadError):
+            YamlCategorySource(path).load_axes()

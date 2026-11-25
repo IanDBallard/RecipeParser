@@ -39,7 +39,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml  # type: ignore[import-untyped]
 
-from recipeparser.io.category_sources.base import CategorySource
+from recipeparser.core.ports import CategorySource
+from recipeparser.exceptions import CategoryLoadError
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +67,8 @@ class YamlCategorySource(CategorySource):
         Load axes from the YAML file. ``user_id`` is ignored (file-based source).
 
         Returns {} if no path was provided, the file doesn't exist, or the
-        file is malformed.
+        file holds no usable ``axes:`` or ``categories:`` shape. Raises
+        CategoryLoadError when the file exists but cannot be read or parsed.
         """
         axes, _ = self._read()
         log.info("YamlCategorySource: loaded %d axes from %s.", len(axes), self._path)
@@ -91,9 +93,12 @@ class YamlCategorySource(CategorySource):
         try:
             with self._path.open("r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-        except Exception as exc:
-            log.error("YamlCategorySource: failed to parse %s: %s", self._path, exc)
-            return {}, {}
+        except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+            # A file that is there but cannot be read is not "no categories": tagging
+            # nothing and finishing as a success would hide it (fail loud).
+            raise CategoryLoadError(
+                f"The category file {self._path} could not be read: {exc}"
+            ) from exc
 
         if isinstance(data, dict) and "axes" in data:
             return _axes_format(data["axes"]), {}

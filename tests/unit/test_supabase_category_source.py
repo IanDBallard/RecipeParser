@@ -1,6 +1,10 @@
 """Lists never reach the tagging prompt; restores can still resolve them."""
 from __future__ import annotations
 
+import httpx
+import pytest
+
+from recipeparser.exceptions import CategoryLoadError
 from recipeparser.io.category_sources import supabase_source
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from tests.unit.test_taxonomy import WITH_LISTS
@@ -47,3 +51,49 @@ def test_fetch_selects_is_lists_root(monkeypatch):
     source = SupabaseCategorySource(supabase_url="http://x", service_key="k")
     assert source._fetch_categories("u1") == WITH_LISTS
     assert seen["select"] == "id,name,parent_id,is_lists_root"
+
+
+# ── A failed fetch fails the import; only missing credentials are empty ──────
+
+
+def _get_answering(monkeypatch, status=None, body=None, raises=None):
+    request = httpx.Request("GET", "http://x/rest/v1/categories")
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        if raises is not None:
+            raise raises
+        return httpx.Response(status, json=body, request=request)
+
+    monkeypatch.setattr(supabase_source.httpx, "get", fake_get)
+    return SupabaseCategorySource(supabase_url="http://x", service_key="k")
+
+
+@pytest.mark.parametrize("method", ["load_axes", "load_category_ids", "load_parents"])
+def test_an_http_error_raises_rather_than_returning_no_categories(monkeypatch, method):
+    source = _get_answering(monkeypatch, status=500, body={"message": "boom"})
+    with pytest.raises(CategoryLoadError):
+        getattr(source, method)("u1")
+
+
+def test_a_network_error_raises(monkeypatch):
+    source = _get_answering(monkeypatch, raises=httpx.ConnectTimeout("timed out"))
+    with pytest.raises(CategoryLoadError):
+        source.load_axes("u1")
+
+
+def test_an_unexpected_response_shape_raises(monkeypatch):
+    source = _get_answering(monkeypatch, status=200, body={"not": "a list"})
+    with pytest.raises(CategoryLoadError):
+        source.load_axes("u1")
+
+
+def test_a_user_with_no_categories_is_still_empty(monkeypatch):
+    source = _get_answering(monkeypatch, status=200, body=[])
+    assert source.load_axes("u1") == {}
+    assert source.load_category_ids("u1") == {}
+
+
+def test_missing_credentials_are_still_empty(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+    assert SupabaseCategorySource().load_axes("u1") == {}

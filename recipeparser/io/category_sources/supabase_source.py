@@ -37,10 +37,14 @@ from typing import Any, Dict, List, Optional, Set
 
 import httpx
 
-from recipeparser.io.category_sources.base import CategorySource
+from recipeparser.core.ports import CategorySource
 from recipeparser.core.taxonomy import axes_from_rows, parents_from_rows, without_lists
+from recipeparser.exceptions import CategoryLoadError
 
 log = logging.getLogger(__name__)
+
+# The sentence the job row shows the cook; the cause is in the log.
+_LOAD_FAILED = "Your categories could not be loaded, so nothing was imported. Try again in a moment."
 
 
 class SupabaseCategorySource(CategorySource):
@@ -73,9 +77,12 @@ class SupabaseCategorySource(CategorySource):
         multipolar axis dict.
 
         Returns {} if:
-        - Supabase credentials are not configured
+        - Supabase credentials are not configured (local or test mode)
         - The user has no categories defined
-        - The network request fails (non-fatal — Zero-Tag Mandate)
+
+        Raises CategoryLoadError when the request fails or answers with
+        something other than a list of rows: an import that cannot know the
+        user's categories must not write every recipe untagged as a success.
         """
         rows = self._fetch_categories(user_id)
         if not rows:
@@ -92,8 +99,8 @@ class SupabaseCategorySource(CategorySource):
     def load_parents(self, user_id: str = "") -> Dict[str, str]:
         """
         ``{tag name: parent tag name}`` for the user's nested tags
-        (``core.taxonomy.parents_from_rows``).  ``{}`` when the fetch fails,
-        which costs only the pruning of a parent picked beside its child.
+        (``core.taxonomy.parents_from_rows``).  Raises CategoryLoadError when
+        the fetch fails, as ``load_axes`` does.
         """
         return parents_from_rows(without_lists(self._fetch_categories(user_id)))
 
@@ -103,7 +110,8 @@ class SupabaseCategorySource(CategorySource):
         categories.  Used by the Supabase writer to populate the
         ``recipe_categories`` junction table.
 
-        Returns {} if credentials are missing or the request fails.
+        Returns {} if credentials are missing or the user has no categories;
+        raises CategoryLoadError when the request fails.
         """
         rows = self._fetch_categories(user_id)
         if not rows:
@@ -144,7 +152,9 @@ class SupabaseCategorySource(CategorySource):
         """
         Query Supabase for all category rows belonging to ``user_id``.
 
-        Returns a list of row dicts, or [] on any error.
+        Returns a list of row dicts; [] when credentials are not configured
+        (local or test mode) or the user has none. Raises CategoryLoadError
+        when the request fails or its answer is not a list of rows.
         """
         if not self._url or not self._key:
             log.warning(
@@ -167,29 +177,31 @@ class SupabaseCategorySource(CategorySource):
         try:
             resp = httpx.get(endpoint, headers=headers, params=params, timeout=10.0)
             resp.raise_for_status()
+            rows: Any = resp.json()
         except httpx.HTTPStatusError as exc:
-            log.warning(
+            log.error(
                 "SupabaseCategorySource: HTTP %s fetching categories for user %s: %s",
                 exc.response.status_code,
                 user_id,
                 exc.response.text[:200],
             )
-            return []
-        except Exception as exc:
-            log.warning(
-                "SupabaseCategorySource: network error fetching categories for user %s: %s",
+            raise CategoryLoadError(_LOAD_FAILED) from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            # A transport failure (timeout, refused connection) or a body that is not JSON.
+            log.error(
+                "SupabaseCategorySource: could not fetch categories for user %s: %s",
                 user_id,
                 exc,
             )
-            return []
+            raise CategoryLoadError(_LOAD_FAILED) from exc
 
-        rows: List[Dict[str, Any]] = resp.json()
         if not isinstance(rows, list):
-            log.warning(
-                "SupabaseCategorySource: unexpected response shape for user %s.",
+            log.error(
+                "SupabaseCategorySource: unexpected response shape for user %s: %r",
                 user_id,
+                str(rows)[:200],
             )
-            return []
+            raise CategoryLoadError(_LOAD_FAILED)
 
         log.debug(
             "SupabaseCategorySource: fetched %d category rows for user %s.",

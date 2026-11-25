@@ -28,8 +28,16 @@ class CategorySource(ABC):
       - ``SupabaseCategorySource`` — loads from the Supabase ``categories`` table
 
     Returns a dict mapping axis name → list of valid tag strings.
-    An empty dict means "no categories defined" — the engine will skip
-    categorization entirely (Zero-Tag Mandate: no Uncategorized fallback).
+    An empty dict means "no categories defined" (or a source that is
+    documented as not configured, such as no file path or no credentials in
+    local/test mode) — the engine will skip categorization entirely
+    (Zero-Tag Mandate: no Uncategorized fallback).
+
+    A source that cannot load the categories — a failed request, an
+    unreadable or malformed file, a database error — raises
+    ``recipeparser.exceptions.CategoryLoadError``. It never returns empty for
+    that: an import that runs untagged and finishes as a success hides the
+    failure from the cook.
 
     Example return value::
 
