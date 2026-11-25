@@ -148,8 +148,14 @@ def _cmd_recategorize(paprika_path: str, output_dir: str) -> None:
     try:
         from google import genai
         client = genai.Client(api_key=api_key)
-        out = recategorize(_Path(paprika_path), client, _Path(output_dir))
-        print(f"Recategorized export written to: {out}")
+        result = recategorize(_Path(paprika_path), client, _Path(output_dir))
+        print(f"Recategorized export written to: {result.path}")
+        if result.kept_original:
+            print(f"  {result.kept_original} recipe(s) kept their original categories: "
+                  "the categorisation call failed (see the log).")
+        if result.copied_unparsed:
+            print(f"  {result.copied_unparsed} archive member(s) could not be read as a recipe "
+                  "and were copied through unchanged.")
     except RecipeParserError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
