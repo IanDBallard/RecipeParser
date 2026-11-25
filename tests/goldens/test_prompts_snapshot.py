@@ -11,7 +11,7 @@ import json
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from recipeparser import gemini, shopping, toc
+from recipeparser import gemini, shopping
 from recipeparser.models import (
     CayenneRefinement,
     DirectionMentions,
@@ -98,20 +98,6 @@ class TestBuildersMatchTheCallSites:
         sent = _sent_contents(monkeypatch, lambda c: gemini.categorize_batch(rows, {"Cuisine": ["Italian"]}, c))
         assert sent == gemini.build_categorize_batch_prompt(rows, {"Cuisine": ["Italian"]})
 
-    def test_toc_parse(self, monkeypatch):
-        chunks = ["Contents", "Soups .... 3", "Puddings .... 41"]
-        sent = _sent_contents(
-            monkeypatch, lambda c: toc._parse_toc_from_text_fallback(chunks, c)
-        )
-        assert sent == toc.build_toc_parse_prompt(chunks)
-
-    def test_toc_classify(self, monkeypatch):
-        entries = [("Soups", 3), ("Boiled Custard", 41)]
-        sent = _sent_contents(
-            monkeypatch, lambda c: toc._classify_toc_recipe_indices(entries, c)
-        )
-        assert sent == toc.build_toc_classify_prompt([e[0] for e in entries])
-
     def test_classify(self, monkeypatch):
         sent = _sent_contents(
             monkeypatch,
@@ -125,10 +111,6 @@ class TestBuildersMatchTheCallSites:
             monkeypatch, lambda c: gemini.tag_direction_mentions(PLACEHOLDER_STRUCTURED, steps, c)
         )
         assert sent == gemini.build_mentions_prompt(PLACEHOLDER_STRUCTURED, steps)
-
-    def test_toc_parse_truncates_a_long_body(self):
-        rendered = toc.build_toc_parse_prompt(["x" * 30_000])
-        assert "[... truncated ...]" in rendered
 
 
 class TestPromptSnapshots:
@@ -160,12 +142,6 @@ class TestPromptSnapshots:
 
     def test_temperatures_prompt(self, snapshot: SnapshotAssertion):
         assert gemini.build_temperatures_prompt(["Bake in a moderate oven.", "Serve."], "UK") == snapshot
-
-    def test_toc_parse_prompt(self, snapshot: SnapshotAssertion):
-        assert toc.build_toc_parse_prompt(["Contents", "Soups .... 3"]) == snapshot
-
-    def test_toc_classify_prompt(self, snapshot: SnapshotAssertion):
-        assert toc.build_toc_classify_prompt(["Soups", "Boiled Custard"]) == snapshot
 
     def test_classify_prompt(self, snapshot: SnapshotAssertion):
         assert shopping.build_classify_prompt(PLACEHOLDER_INGREDIENTS, ["flour"]) == snapshot

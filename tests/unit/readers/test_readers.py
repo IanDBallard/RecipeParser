@@ -447,10 +447,11 @@ def test_line_wrapped_photo_data_is_still_decoded(tmp_path):
     assert chunks[0].image_content_type == "image/jpeg"
 
 
-def test_unreadable_photo_data_is_dropped_not_raised(tmp_path):
+@pytest.mark.parametrize("photo_data", ["!!!not base64!!!", "café", 12345, ["a"]])
+def test_unreadable_photo_data_is_dropped_not_raised(tmp_path, photo_data):
     archive = _write_paprika_archive(
         tmp_path,
-        [{"name": "Bad Photo", "ingredients": "x", "directions": "y", "photo_data": "!!!not base64!!!"}],
+        [{"name": "Bad Photo", "ingredients": "x", "directions": "y", "photo_data": photo_data}],
     )
 
     chunks = PaprikaReader().read(str(archive))
@@ -469,6 +470,30 @@ def test_read_entries_skips_a_member_whose_bytes_are_not_gzip_or_utf8_json(tmp_p
     entries = PaprikaReader().read_entries(str(archive))
 
     assert [e["name"] for e in entries] == ["Kept"]
+
+
+@pytest.mark.parametrize(
+    "member_bytes",
+    [
+        pytest.param(b"\xff\xfe\x00not json", id="not-json"),
+        pytest.param(b"\x1f\x8bnot really gzip", id="broken-gzip"),
+        pytest.param(b"[1, 2, 3]", id="json-not-an-object"),
+    ],
+)
+def test_read_reports_an_unreadable_entry_as_missed_and_keeps_its_neighbours(tmp_path, member_bytes):
+    """An entry read() cannot decode reaches the import as a skipped line naming it, so it is
+    listed under "What was missed" rather than vanishing from the count."""
+    archive = tmp_path / "e.paprikarecipes"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("a.paprikarecipe", gzip.compress(json.dumps(
+            {"name": "Kept", "ingredients": "x", "directions": "y"}).encode("utf-8")))
+        zf.writestr("Lost Cake.paprikarecipe", member_bytes)
+
+    chunks = PaprikaReader().read(str(archive))
+
+    assert [c.label for c in chunks] == ["Kept", "Lost Cake"]
+    assert chunks[0].skip_reason is None
+    assert chunks[1].skip_reason == "Lost Cake: could not be read"
 
 
 class TestPaprikaLegacyMetadata:
@@ -615,6 +640,28 @@ class TestReaderCitations:
         doc.metadata = {}
         assert _get_book_citation(doc).key == "unknown-book"
 
+    def test_pdf_image_that_cannot_be_extracted_is_logged_with_page_and_xref(self, tmp_path, caplog):
+        import logging
+
+        from recipeparser.io.readers.pdf import _extract_page_images
+
+        good = b"x" * 50_000
+        doc = MagicMock()
+        doc.extract_image.side_effect = lambda xref: (
+            (_ for _ in ()).throw(ValueError("bad xref")) if xref == 7 else {"image": good, "ext": "jpeg"}
+        )
+        page = MagicMock()
+        page.get_images.return_value = [(7,), (8,)]
+
+        with caplog.at_level(logging.WARNING, logger="recipeparser.io.readers.pdf"), \
+                patch("recipeparser.io.readers.pdf.keep_as_photo", return_value=True):
+            names = _extract_page_images(doc, page, 2, str(tmp_path))
+
+        assert names == ["page3_img2.jpeg"]
+        warned = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warned) == 1
+        assert "page 3" in warned[0].getMessage() and "xref 7" in warned[0].getMessage()
+
     def test_url_reader_chunk_carries_the_host(self):
         response = MagicMock()
         response.text = "Tomato soup\n1 tin tomatoes\nHeat."
@@ -678,7 +725,10 @@ def test_an_entry_over_the_cap_is_skipped_and_its_neighbours_kept() -> None:
             chunks = PaprikaReader().read(path)
     finally:
         os.unlink(path)
-    assert [c.label for c in chunks] == ["Toast", "Jam"]
+    assert [c.label for c in chunks] == ["Toast", "recipe_1", "Jam"]
+    assert chunks[0].skip_reason is None and chunks[2].skip_reason is None
+    assert chunks[1].skip_reason is not None
+    assert chunks[1].skip_reason.startswith("recipe_1: larger than")
 
 
 def test_an_uncompressed_entry_over_the_cap_is_skipped(tmp_path: Path) -> None:
@@ -688,7 +738,7 @@ def test_an_uncompressed_entry_over_the_cap_is_skipped(tmp_path: Path) -> None:
         zf.writestr("ok.paprikarecipe", json.dumps({"name": "Ok", "ingredients": "a", "directions": "b"}))
     with patch("recipeparser.io.readers.paprika._MAX_ENTRY_BYTES", 1000):
         chunks = PaprikaReader().read(str(path))
-    assert [c.label for c in chunks] == ["Ok"]
+    assert [(c.label, c.skip_reason is None) for c in chunks] == [("big", False), ("Ok", True)]
 
 
 def test_read_takes_one_entry_at_a_time_rather_than_listing_them_all() -> None:

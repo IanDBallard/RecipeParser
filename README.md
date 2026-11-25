@@ -384,7 +384,6 @@ recipeparser/
 ├── models.py          Pydantic schema for structured Gemini output
 ├── epub.py            EPUB parsing, image extraction, chunking, candidate filtering
 ├── pdf.py             PDF loading, pre-flight, page-based extraction
-├── toc.py             TOC extraction (EPUB/PDF) and recon
 ├── gemini.py          All Gemini API calls — extraction, normalisation, retry logic
 ├── categories.py      YAML taxonomy loader and LLM categorisation
 ├── paths.py           User-writable paths (app data, categories, output)

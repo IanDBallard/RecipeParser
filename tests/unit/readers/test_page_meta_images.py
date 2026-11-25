@@ -51,3 +51,19 @@ def test_the_og_image_and_the_json_ld_images_are_both_read():
     head = '<meta property="og:image" content="https://x.test/og.jpg">'
     meta = page_meta_from_html(_page({"@type": "Recipe", "image": "https://x.test/dish.jpg"}, head))
     assert (meta.image_url, meta.images) == ("https://x.test/og.jpg", ("https://x.test/dish.jpg",))
+
+
+def test_json_ld_that_breaks_the_parser_declares_no_images_and_is_logged(caplog):
+    """A page's own markup never fails the job, but the failure is not silent either."""
+    import logging
+    from unittest.mock import patch
+
+    page = _page({"@type": "Recipe", "image": "https://x.test/dish.jpg"})
+    with caplog.at_level(logging.WARNING, logger="recipeparser.io.readers.url"), patch(
+        "recipeparser.io.readers.url.find_json_ld_recipe", side_effect=RecursionError("too deep")
+    ):
+        assert page_meta_from_html(page).images == ()
+
+    warned = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warned) == 1
+    assert warned[0].exc_info is not None and isinstance(warned[0].exc_info[1], RecursionError)

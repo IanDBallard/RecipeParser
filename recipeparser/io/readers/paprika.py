@@ -26,12 +26,12 @@ Usage::
 from __future__ import annotations
 
 import base64
-import gzip
 import json
 import logging
 import math
 import zipfile
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
 
@@ -99,13 +99,15 @@ def _decode_photo(entry: Dict[str, Any]) -> tuple[Optional[bytes], str]:
     content_type = _PHOTO_TYPES.get(ext, "image/jpeg")
     if isinstance(raw, bytes):
         return raw, content_type
-    try:
-        # Some exporters wrap base64 at 76 columns (MIME-style); strip the
-        # whitespace before validating so a wrapped photo is not dropped.
-        return base64.b64decode("".join(raw.split()), validate=True), content_type
-    except Exception:
-        log.warning("PaprikaReader: could not decode photo_data for %r — continuing without it.", entry.get("name"))
-        return None, content_type
+    if isinstance(raw, str):
+        try:
+            # Some exporters wrap base64 at 76 columns (MIME-style); strip the
+            # whitespace before validating so a wrapped photo is not dropped.
+            return base64.b64decode("".join(raw.split()), validate=True), content_type
+        except ValueError:  # binascii.Error, or a non-ASCII string
+            pass
+    log.warning("PaprikaReader: could not decode photo_data for %r — continuing without it.", entry.get("name"))
+    return None, content_type
 
 
 def _valid_embedding(value: Any) -> bool:
@@ -127,6 +129,29 @@ def _unreadable_cayenne_chunk(entry: Dict[str, Any]) -> Chunk:
         skip_reason=f"{name or 'Untitled recipe'}: the Cayenne data in this entry could not be read",
         label=name or None,
     )
+
+
+_UNREADABLE = "could not be read"
+
+
+@dataclass(frozen=True)
+class _UnreadableEntry:
+    """An archive member that could not be decoded into a recipe entry, and why."""
+
+    member: str
+    reason: str
+
+    def chunk(self) -> Chunk:
+        """The skipped line ("What was missed") for this member, named after its file (D6)."""
+        label = self.member.rsplit("/", 1)[-1]
+        if label.lower().endswith(".paprikarecipe"):
+            label = label[: -len(".paprikarecipe")]
+        return Chunk(
+            text="",
+            input_type=InputType.PAPRIKA_LEGACY,
+            skip_reason=f"{label}: {self.reason}",
+            label=label or None,
+        )
 
 
 class PaprikaReader(RecipeReader):
@@ -156,6 +181,9 @@ class PaprikaReader(RecipeReader):
         - Entries WITHOUT ``_cayenne_meta`` → ``InputType.PAPRIKA_LEGACY``
           - ``text`` is built from name + ingredients + directions
           - Full pipeline (EXTRACT → REFINE → CATEGORIZE → EMBED → ASSEMBLE)
+        - Entries that cannot be read at all (corrupt, oversize, not a JSON
+          object) → a skipped line named after the entry's file, so the import
+          lists it under "What was missed" (D6).
 
         Args:
             source: File-system path to the .paprikarecipes ZIP archive.
@@ -167,7 +195,10 @@ class PaprikaReader(RecipeReader):
 
         # One entry at a time: each entry's JSON (and its base64 photo) is released once its
         # chunk is built, so a library of any size is never decoded all at once.
-        for entry in self.iter_entries(source):
+        for entry in self._archive_entries(source):
+            if isinstance(entry, _UnreadableEntry):
+                chunks.append(entry.chunk())
+                continue
             meta = entry.get("_cayenne_meta")
             pre_parsed = None
             embedding: Optional[List[float]] = None
@@ -188,7 +219,7 @@ class PaprikaReader(RecipeReader):
                     meta_copy = dict(meta)
                     embedding = meta_copy.pop("embedding", None)
                     pre_parsed = CayenneRecipe(**meta_copy)
-                except Exception as exc:  # noqa: BLE001
+                except (ValueError, TypeError) as exc:  # pydantic ValidationError is a ValueError
                     log.warning(
                         "PaprikaReader: could not deserialize _cayenne_meta for %r: %s — "
                         "skipping the entry.",
@@ -278,21 +309,21 @@ class PaprikaReader(RecipeReader):
 
     def iter_entries(self, path: Union[str, Path]) -> Iterator[Dict[str, Any]]:
         """
-        Parse a .paprikarecipes archive and yield its recipe entries one at a time.
+        Parse a .paprikarecipes archive and yield its readable recipe entries one at a time.
 
-        Args:
-            path: File-system path to the .paprikarecipes ZIP archive.
-
-        Returns:
-            A list of dicts, one per recipe. Each dict is the decoded JSON
-            from the corresponding .paprikarecipe entry in the archive.
+        Each yielded dict is the decoded JSON of one .paprikarecipe entry. An entry that
+        cannot be read is logged and left out; ``read()`` reports it as a skipped line
+        instead (``_archive_entries``).
 
         Raises:
-            ValueError: If the file is not a valid ZIP archive.
-            RuntimeError: If a specific entry cannot be decoded (logged as
-                          warning; the entry is skipped rather than aborting
-                          the entire batch).
+            PaprikaExtractionError: If the file is not a valid ZIP archive.
         """
+        for item in self._archive_entries(path):
+            if isinstance(item, dict):
+                yield item
+
+    def _archive_entries(self, path: Union[str, Path]) -> Iterator[Union[Dict[str, Any], _UnreadableEntry]]:
+        """Each .paprikarecipe entry of the archive: its decoded dict, or why it could not be read."""
         path = Path(path)
         if not zipfile.is_zipfile(path):
             raise PaprikaExtractionError("is not a Paprika export: not a ZIP archive.")
@@ -305,18 +336,27 @@ class PaprikaReader(RecipeReader):
 
                 try:
                     raw_json = _read_capped(zf, name)
-                    if raw_json is None:
-                        log.warning(
-                            "Skipping entry %r — larger than %d MB decompressed.",
-                            name, _MAX_ENTRY_BYTES // 1_000_000,
-                        )
-                        continue
-                    entry: Dict[str, Any] = json.loads(raw_json)
+                except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError) as exc:
+                    # corrupt (bad CRC, zlib.error), truncated, unsupported compression, encrypted
+                    log.warning("Skipping entry %r — could not be opened: %s", name, exc)
+                    yield _UnreadableEntry(name, _UNREADABLE)
+                    continue
+                if raw_json is None:
+                    log.warning(
+                        "Skipping entry %r — larger than %d MB decompressed.",
+                        name, _MAX_ENTRY_BYTES // 1_000_000,
+                    )
+                    yield _UnreadableEntry(name, f"larger than {_MAX_ENTRY_BYTES // 1_000_000} MB decompressed")
+                    continue
+                try:
+                    entry = json.loads(raw_json)
                 except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                     log.warning("Skipping entry %r — JSON decode error: %s", name, exc)
+                    yield _UnreadableEntry(name, _UNREADABLE)
                     continue
-                except Exception as exc:
-                    log.warning("Skipping entry %r — unexpected error: %s", name, exc)
+                if not isinstance(entry, dict):
+                    log.warning("Skipping entry %r — its JSON is a %s, not a recipe object", name, type(entry).__name__)
+                    yield _UnreadableEntry(name, _UNREADABLE)
                     continue
 
                 # If _cayenne_meta is a JSON string, decode it to a dict now
@@ -341,61 +381,3 @@ class PaprikaReader(RecipeReader):
                     "_cayenne_meta" in entry,
                 )
                 yield entry
-
-    def read_entries_with_images(self, path: Union[str, Path]) -> List[Dict[str, Any]]:
-        """
-        Enhanced version of read_entries that also returns binary image data.
-        Returns a list of dicts, where each dict has:
-          - 'recipe': The recipe JSON dict
-          - 'image_bytes': Optional[bytes]
-          - 'image_name': Optional[str]
-        """
-        path = Path(path)
-        if not zipfile.is_zipfile(path):
-            raise PaprikaExtractionError("is not a Paprika export: not a ZIP archive.")
-
-        results: List[Dict[str, Any]] = []
-
-        with zipfile.ZipFile(path, "r") as zf:
-            # Map of photo_hash -> binary data for fast lookup
-            image_map = {}
-            for name in zf.namelist():
-                # Paprika stores images in the root or a subdirectory, usually matching the photo_hash
-                if name.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                    image_map[name] = zf.read(name)
-
-            for name in zf.namelist():
-                if not name.lower().endswith(".paprikarecipe"):
-                    continue
-
-                try:
-                    compressed = zf.read(name)
-                    raw_json = gzip.decompress(compressed)
-                    entry = json.loads(raw_json)
-                except Exception:
-                    try:
-                        entry = json.loads(compressed)
-                    except Exception:
-                        continue
-
-                # Handle _cayenne_meta
-                meta = entry.get("_cayenne_meta")
-                if isinstance(meta, str):
-                    try:
-                        entry["_cayenne_meta"] = json.loads(meta)
-                    except Exception:
-                        pass
-
-                # Extract image if present
-                photo_name = entry.get('photo')
-                image_bytes = None
-                if photo_name and photo_name in image_map:
-                    image_bytes = image_map[photo_name]
-                
-                results.append({
-                    'recipe': entry,
-                    'image_bytes': image_bytes,
-                    'image_name': photo_name
-                })
-
-        return results

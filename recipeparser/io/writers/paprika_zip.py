@@ -18,6 +18,8 @@ import re
 import unicodedata
 import uuid
 import zipfile
+import zlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
@@ -29,6 +31,12 @@ from recipeparser.utils import title_case
 # Regex that matches a single Fat Token: {{ing_01|fallback text}}
 
 log = logging.getLogger(__name__)
+
+
+def _leading_minutes(text: str) -> int:
+    """The first number in a time string ("20 min" → 20), or 0 when it has none."""
+    m = re.search(r"(\d+)", text)
+    return int(m.group(1)) if m else 0
 
 
 def create_paprika_export(
@@ -80,17 +88,10 @@ def create_paprika_export(
             cook = recipe.cook_time or ""
 
             total = ""
-            try:
-                if prep and cook:
-                    def _mins(s: str) -> int:
-                        m = re.search(r"(\d+)", s)
-                        return int(m.group(1)) if m else 0
-
-                    t = _mins(prep) + _mins(cook)
-                    if t:
-                        total = f"{t} mins"
-            except Exception:
-                pass
+            if prep and cook:
+                t = _leading_minutes(prep) + _leading_minutes(cook)
+                if t:
+                    total = f"{t} mins"
 
             paprika_dict = {
                 "uid": recipe_uid,
@@ -140,6 +141,21 @@ def create_paprika_export(
 # Phase 3a — Multi-file merge
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class MergeResult:
+    """What ``merge_exports`` wrote, and what it left out.
+
+    ``unreadable`` names each entry that could not be parsed ("<entry> in <archive>") and
+    each input that was not a ZIP archive ("<archive> (not a ZIP archive)"), so the caller
+    can tell the user rather than report a clean merge.
+    """
+
+    path: Path
+    written: int
+    duplicates: int
+    unreadable: Tuple[str, ...]
+
+
 def _normalise_recipe_name(name: str) -> str:
     """
     Normalise a recipe name for deduplication:
@@ -153,7 +169,7 @@ def _normalise_recipe_name(name: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip().lower()
 
 
-def merge_exports(paths: List[Path], output_dir: Path) -> Path:
+def merge_exports(paths: List[Path], output_dir: Path) -> MergeResult:
     """
     Merge multiple .paprikarecipes archives into a single combined archive.
 
@@ -166,7 +182,9 @@ def merge_exports(paths: List[Path], output_dir: Path) -> Path:
         output_dir: Directory where the merged archive will be written.
 
     Returns:
-        Path to the merged ``merged_<timestamp>.paprikarecipes`` file.
+        A ``MergeResult``: the merged ``merged_<timestamp>.paprikarecipes`` path, how many
+        recipes it holds, how many duplicates were dropped, and every entry or archive
+        that could not be read.
 
     Raises:
         ValueError:  If ``paths`` is empty.
@@ -182,35 +200,51 @@ def merge_exports(paths: List[Path], output_dir: Path) -> Path:
 
     seen_keys: Set[str] = set()
     entries: List[Tuple[str, bytes]] = []  # list of (internal_filename, raw_bytes) tuples
+    unreadable: List[str] = []
+    duplicates = 0
 
     for archive_path in paths:
         archive_path = Path(archive_path)
         log.info("merge_exports: reading %s", archive_path.name)
         try:
-            with zipfile.ZipFile(archive_path, "r") as zf:
-                for member in zf.namelist():
-                    raw = zf.read(member)
-                    try:
-                        data = json.loads(gzip.decompress(raw).decode("utf-8"))
-                        name = data.get("name", "")
-                    except Exception:
-                        log.warning(
-                            "merge_exports: could not parse entry '%s' in '%s' — skipping.",
-                            member, archive_path.name,
-                        )
-                        continue
-
-                    key = _normalise_recipe_name(name)
-                    if key in seen_keys:
-                        log.info(
-                            "merge_exports: duplicate '%s' (key='%s') — skipping.", name, key
-                        )
-                        continue
-
-                    seen_keys.add(key)
-                    entries.append((member, raw))
+            zf = zipfile.ZipFile(archive_path, "r")
         except zipfile.BadZipFile as exc:
             log.warning("merge_exports: '%s' is not a valid ZIP — skipping. (%s)", archive_path.name, exc)
+            unreadable.append(f"{archive_path.name} (not a ZIP archive)")
+            continue
+        with zf:
+            for member in zf.namelist():
+                try:
+                    raw = zf.read(member)
+                    data = json.loads(gzip.decompress(raw).decode("utf-8"))
+                except (zipfile.BadZipFile, zlib.error, OSError, EOFError, ValueError) as exc:
+                    # bad CRC / corrupt member, not gzip (BadGzipFile is an OSError), truncated,
+                    # not UTF-8 or not JSON (UnicodeDecodeError and JSONDecodeError are ValueErrors)
+                    log.warning(
+                        "merge_exports: could not parse entry '%s' in '%s' — skipping. (%s)",
+                        member, archive_path.name, exc,
+                    )
+                    unreadable.append(f"{member} in {archive_path.name}")
+                    continue
+                if not isinstance(data, dict):
+                    log.warning(
+                        "merge_exports: entry '%s' in '%s' is not a recipe object — skipping.",
+                        member, archive_path.name,
+                    )
+                    unreadable.append(f"{member} in {archive_path.name}")
+                    continue
+                name = str(data.get("name") or "")
+
+                key = _normalise_recipe_name(name)
+                if key in seen_keys:
+                    log.info(
+                        "merge_exports: duplicate '%s' (key='%s') — skipping.", name, key
+                    )
+                    duplicates += 1
+                    continue
+
+                seen_keys.add(key)
+                entries.append((member, raw))
 
     if not entries:
         raise ExportError("merge_exports: no recipes found after deduplication.")
@@ -224,9 +258,10 @@ def merge_exports(paths: List[Path], output_dir: Path) -> Path:
             zf_out.writestr(internal_name, raw_bytes)
 
     log.info(
-        "merge_exports: wrote %d recipe(s) → %s", len(entries), out_path
+        "merge_exports: wrote %d recipe(s) → %s (%d duplicate(s), %d unreadable)",
+        len(entries), out_path, duplicates, len(unreadable),
     )
-    return out_path
+    return MergeResult(out_path, len(entries), duplicates, tuple(unreadable))
 
 
 # ---------------------------------------------------------------------------

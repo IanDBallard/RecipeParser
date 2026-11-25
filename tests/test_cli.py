@@ -294,8 +294,10 @@ class TestMergeCommand:
         b = _make_minimal_paprika(tmp_path / "b.paprikarecipes")
 
         with patch("recipeparser.export.merge_exports") as mock_merge_fn:
+            from recipeparser.io.writers.paprika_zip import MergeResult
+
             expected_out = tmp_path / "merged_20260101_120000.paprikarecipes"
-            mock_merge_fn.return_value = expected_out
+            mock_merge_fn.return_value = MergeResult(expected_out, 2, 0, ())
             with patch("sys.argv", ["recipeparser", "--merge", str(a), str(b),
                                     "--output", str(tmp_path)]):
                 from recipeparser.__main__ import main

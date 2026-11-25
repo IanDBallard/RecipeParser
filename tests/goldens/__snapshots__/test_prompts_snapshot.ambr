@@ -798,37 +798,6 @@
   
   '''
 # ---
-# name: TestPromptSnapshots.test_toc_classify_prompt
-  '''
-  Given this list of table-of-contents entries from a cookbook, identify which ones are
-  specific recipe or dish names (e.g. "Chocolate Chip Cookies", "Beef Stew", "Roast Chicken")
-  vs section/chapter headers (e.g. "Soups", "Desserts", "Introduction", "Breakfast").
-  
-  Return JSON: {"recipe_indices": [0, 1, 3, 5, ...]} — the 0-based indices of entries that are recipe titles.
-  Section headers like "Soups", "Desserts" should NOT be included. Only include entries that look like
-  specific dish/recipe names.
-  
-  Entries (one per line):
-  0. Soups
-  1. Boiled Custard
-  
-  '''
-# ---
-# name: TestPromptSnapshots.test_toc_parse_prompt
-  '''
-  This text is from the table-of-contents or contents page of a recipe book.
-  Extract the list of recipe/section titles in order. Include page numbers if they appear.
-  
-  Output JSON: {"entries": [{"title": "...", "page": <int or null>}, ...]}
-  Use page: null when no page number is given.
-  Include only substantive entries (skip "Contents", "Index", etc. if they are standalone headers).
-  
-  Text:
-  Contents
-  
-  Soups .... 3
-  '''
-# ---
 # name: TestSchemaSnapshots.test_cayenne_refinement_schema
   dict({
     '$defs': dict({

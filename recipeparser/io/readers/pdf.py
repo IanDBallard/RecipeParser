@@ -259,7 +259,12 @@ def _extract_page_images(
         xref = img[0]
         try:
             base = doc.extract_image(xref)
-        except Exception:
+        except (ValueError, RuntimeError, fitz.mupdf.FzErrorBase) as exc:
+            # ValueError: a bad xref; MuPDF raises FzErrorBase (RuntimeError before 1.24) for
+            # an image stream it cannot decode. The page's other images are still taken.
+            log.warning(
+                "PDF page %d: could not extract image xref %d — skipping it: %s", page_num + 1, xref, exc
+            )
             continue
         image_bytes = base.get("image")
         ext = base.get("ext", "png")
