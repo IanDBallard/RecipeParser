@@ -1290,37 +1290,46 @@ def refine_recipe_for_cayenne(
                            only evidence outside the recipe text.
         limiter:           Takes a slot for each retry (F-109; see _call_with_retry). The
                            caller takes the first request's.
+
+    Returns:
+        The refinement, or None when Gemini's reply is empty.
+
+    Raises:
+        Whatever ``_call_with_retry`` raises once its retries are spent (the API's
+        own error types, AIServiceTimeoutError, DailyQuotaExhaustedError,
+        JobCancelledError), unchanged: the pipeline's second pass
+        (``_worth_a_second_pass``) reads the type to decide whether a busy chunk is
+        worth another try, and a None in its place would hide it.
+        ValueError: the reply is not JSON or does not match the schema; the
+        message names the recipe and the parse error is its cause.
     """
     schema = CayenneRefinement
     prompt = build_refine_prompt(raw_recipe, source_host)
+    json_schema = refine_json_schema()
+    response = _call_with_retry(
+        client,
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+            "response_json_schema": json_schema,
+        },
+        what="Cayenne refinement",
+        limiter=limiter,
+    )
+    # response_json_schema does not auto-parse; we get raw JSON text.
+    if not response.text or not response.text.strip():
+        log.error("Cayenne refinement failed: Gemini returned empty response")
+        return None
     try:
-        json_schema = refine_json_schema()
-        response = _call_with_retry(
-            client,
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json",
-                "response_json_schema": json_schema,
-            },
-            what="Cayenne refinement",
-            limiter=limiter,
-        )
-        # response_json_schema does not auto-parse; we get raw JSON text.
-        if not response.text or not response.text.strip():
-            log.error("Cayenne refinement failed: Gemini returned empty response")
-            return None
         raw_data = json.loads(response.text)
         # REFINE asks for no tags (F-246); a reply that carries some anyway, or a
         # recording made before the change, must not leak them past the TAG stage.
-        result = schema.model_validate(raw_data).model_copy(update={"grid_categories": {}})
-
-        return result
-    except (JobCancelledError, DailyQuotaExhaustedError):
-        raise  # stops the job or the run, not just this recipe (#161; half of Cayenne F-647)
-    except Exception as e:
-        log.error("Cayenne refinement failed: %s", e)
-        return None
+        return schema.model_validate(raw_data).model_copy(update={"grid_categories": {}})
+    except ValueError as e:  # json.JSONDecodeError and pydantic's ValidationError
+        name = getattr(raw_recipe, "name", None) or "a recipe"
+        log.error("Cayenne refinement reply for '%s' could not be parsed: %s", name, e)
+        raise ValueError(f"Cayenne refinement reply for '{name}' could not be parsed: {e}") from e
 
 
 def build_mentions_prompt(ingredients: List[StructuredIngredient], steps: List[str]) -> str:
