@@ -74,6 +74,26 @@ class SiteRefusedError(UrlFetchError):
         self.host = host
 
 
+class CategoryLoadError(RecipeParserError):
+    """The user's categories could not be loaded: the request failed, the file
+    could not be read or parsed, or the database could not be queried.
+
+    Never "no categories" — a source returns an empty taxonomy for that. An
+    import that cannot know the user's categories stops rather than writing
+    every recipe untagged and calling it a success. The message is a sentence
+    the job row can show the cook as it is.
+    """
+
+
+class ImageStoreError(RecipeParserError):
+    """A picture could not be stored (the upload or its public URL failed).
+
+    Distinct from "no picture": ``ImageStore.put`` returns ``None`` for that.
+    The pipeline catches this, keeps the recipe without the picture and
+    reports the loss on the job.
+    """
+
+
 class ExportError(RecipeParserError):
     """Raised when the Paprika export bundle cannot be written."""
 

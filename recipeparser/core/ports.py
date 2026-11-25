@@ -28,8 +28,16 @@ class CategorySource(ABC):
       - ``SupabaseCategorySource`` — loads from the Supabase ``categories`` table
 
     Returns a dict mapping axis name → list of valid tag strings.
-    An empty dict means "no categories defined" — the engine will skip
-    categorization entirely (Zero-Tag Mandate: no Uncategorized fallback).
+    An empty dict means "no categories defined" (or a source that is
+    documented as not configured, such as no file path or no credentials in
+    local/test mode) — the engine will skip categorization entirely
+    (Zero-Tag Mandate: no Uncategorized fallback).
+
+    A source that cannot load the categories — a failed request, an
+    unreadable or malformed file, a database error — raises
+    ``recipeparser.exceptions.CategoryLoadError``. It never returns empty for
+    that: an import that runs untagged and finishes as a success hides the
+    failure from the cook.
 
     Example return value::
 
@@ -105,7 +113,12 @@ class ImageStore(ABC):
     def put(self, image_bytes: bytes, recipe_id: str, content_type: str = "image/jpeg") -> Optional[str]:
         """Store *image_bytes* and return its public URL.
 
-        Returns None on any failure.  Implementations must not raise: a
-        photograph that cannot be stored is a recipe without a picture, never a
-        recipe that fails to import.
+        Returns None only when there is nothing to store or no store is
+        configured (empty bytes, no credentials in local or test mode).
+
+        Raises ``recipeparser.exceptions.ImageStoreError`` when storing fails,
+        so a storage outage is told apart from "no picture". A photograph that
+        cannot be stored is still a recipe without a picture, never a recipe
+        that fails to import: the caller catches the error, keeps the recipe
+        and reports the lost picture (the pipeline through ``on_picture_lost``).
         """

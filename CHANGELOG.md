@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.45.0] — 2026-11-25
+
+An import whose categories cannot be loaded now fails instead of finishing untagged, and a lost picture or tag write is counted instead of only logged (architecture review 2026-11-25, `soft.fail-loud`).
+
+**For Cayenne:** a job whose categories cannot load ends `error` with "Your categories could not be loaded, so nothing was imported. Try again in a moment." No new columns or fields. The counts of lost pictures and tag writes go into `refused_links`, which no `ingestion_jobs` column holds yet, so the app cannot show them until it gets one.
+
+### 🐛 Fixed
+- The Supabase, YAML and Paprika category sources raise `CategoryLoadError` on an HTTP or network failure, an unreadable or unparsable file, or a database error, instead of returning no categories. Empty still means none defined, no credentials or path configured, or no Paprika categories table.
+- The pipeline no longer catches a failed load of the category axes or parents and carries on: the run fails before any chunk.
+- A Cayenne restore chunk with no recipe data is reported as skipped instead of vanishing from the counts.
+- A picture that cannot be stored keeps the recipe and is counted on the job; a recipe whose tag links cannot be written is counted the same way.
+- A failed finalize of the job row is tried once more; if that fails too, the row is left to the liveness reaper (about 5 minutes), which ends it as interrupted.
+- `cleanup_jobs.py` checks the fetch and every update and exits 1 when Supabase refuses one.
+
+### 🔧 Changed
+- `ImageStore.put` raises `ImageStoreError` when storing fails; None now means no bytes or no store configured. `RecipePipeline.run` takes `on_picture_lost`.
+
 ## [9.44.1] — 2026-11-25
 
 Readers, writers and the category editor stop losing things quietly, and two pieces of dead code go (architecture review 2026-11-25, `soft.fail-loud`).

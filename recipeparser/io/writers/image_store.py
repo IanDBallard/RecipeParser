@@ -10,6 +10,7 @@ import os
 from typing import Optional
 
 from recipeparser.core.ports import ImageStore
+from recipeparser.exceptions import ImageStoreError
 from recipeparser.io.writers.picture_scale import scale_picture
 
 log = logging.getLogger(__name__)
@@ -57,9 +58,10 @@ class SupabaseImageStore(ImageStore):
             )
             public_url: str = sb.storage.from_(BUCKET).get_public_url(path)
             return public_url
-        except Exception:
-            log.exception("SupabaseImageStore: failed to store the image for %s — continuing without it.", recipe_id)
-            return None
+        except Exception as exc:  # fail-loud.bare-except-ok: re-raised as ImageStoreError
+            # Whatever the client raised (it has no one base class), the caller is told it as
+            # one typed error: a storage failure is not "no picture" (ImageStore port).
+            raise ImageStoreError(f"the picture for {recipe_id} could not be stored: {exc}") from exc
 
     def remove(self, recipe_id: str, keep: Optional[str] = None) -> None:
         """Delete this recipe's stored pictures, optionally keeping one path.

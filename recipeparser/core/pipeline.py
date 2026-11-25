@@ -40,14 +40,24 @@ from recipeparser.core.stages.extract import extract
 from recipeparser.core.stages.refine import refine
 from recipeparser.core.stages.tag import TAG_BATCH_SIZE, TagFailure, tag_batch
 from recipeparser.core.yields import YIELD_KINDS
-from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
+from recipeparser.exceptions import DailyQuotaExhaustedError, ImageStoreError, JobCancelledError
 from recipeparser.gemini import categorize_batch
-from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse, Photo
+from recipeparser.models import CayenneRecipe, CayenneRefinement, IngestResponse, Photo, RecipeExtraction
 
 log = logging.getLogger(__name__)
 
 # Maximum number of concurrent Gemini API calls.
 MAX_CONCURRENT_API_CALLS: int = 4
+
+# The skip reason of a Cayenne restore entry that reached the pipeline with no recipe to restore.
+_NO_RESTORE_DATA = "the restore entry held no recipe data"
+
+
+def _chunk_name(chunk: Chunk) -> Optional[str]:
+    """What to call a chunk's recipe in a report: its label, else a restore's own title."""
+    if chunk.label:
+        return chunk.label
+    return chunk.pre_parsed.title if chunk.pre_parsed is not None else None
 
 
 class ChunkResult(NamedTuple):
@@ -166,6 +176,10 @@ class RecipePipeline:
         self._categorize_fn = categorize_fn or categorize_batch
         self._picture_source = picture_source
         self._food_check = food_check
+        # Pictures a worker could not store or copy, as (recipe label, reason): recorded on
+        # the worker's thread, handed to run()'s on_picture_lost on the caller's thread.
+        self._pictures_lost: List[Tuple[Optional[str], str]] = []
+        self._pictures_lost_lock = threading.Lock()
         # Initialise (or retrieve) the process-level rate limiter.
         if rpm is not None:
             self._limiter = GlobalRateLimiter(rpm=rpm)
@@ -186,6 +200,7 @@ class RecipePipeline:
         on_skip: Optional[Callable[[Chunk, str, int], None]] = None,
         on_tags: Optional[Callable[[IngestResponse], None]] = None,
         on_tag_failed: Optional[Callable[[TagFailure], None]] = None,
+        on_picture_lost: Optional[Callable[[Optional[str], str], None]] = None,
     ) -> List[IngestResponse]:
         """
         Process all chunks and return successfully assembled IngestResponse objects.
@@ -221,6 +236,15 @@ class RecipePipeline:
                          ``on_result``, untagged (Fix Roadmap F-246, design D1).
             on_tag_failed: Optional callback fired once per axis whose TAG call
                          failed twice for a batch (design D8).
+            on_picture_lost: Optional callback ``(label, reason) -> None`` fired, from
+                         this thread, once per picture the ImageStore refused
+                         (``ImageStoreError``) or a restore's bucket picture that
+                         could not be copied. The recipe is kept without it, so it
+                         is not a skip. ``label`` is the recipe's name when known,
+                         else the chunk's label (None for a book chunk's own picture).
+
+        A category source that cannot load raises ``CategoryLoadError`` before any
+        chunk starts; the run does not go on untagged.
 
         Tagging: REFINE no longer categorises.  Each finished recipe that went
         through REFINE is queued; every ``TAG_BATCH_SIZE`` of them are tagged one
@@ -243,18 +267,15 @@ class RecipePipeline:
         all_results: List[IngestResponse] = []
 
         # Pre-load taxonomy axes once for the whole batch (avoids N round-trips).
-        try:
-            user_axes: Dict[str, List[str]] = self._category_source.load_axes(user_id)
-        except Exception:
-            log.exception("RecipePipeline: failed to load category axes — proceeding without categorisation.")
-            user_axes = {}
+        # Not caught: a source that cannot load the categories raises CategoryLoadError
+        # (CategorySource contract), and the run fails before any chunk starts rather
+        # than writing every recipe untagged and finishing as a success.
+        user_axes: Dict[str, List[str]] = self._category_source.load_axes(user_id)
         # The tree's shape, for the prompt and for pruning a parent picked beside
-        # its child (F-205). Losing it costs only that pruning, not the tags.
-        try:
-            parents: Dict[str, str] = self._category_source.load_parents(user_id) if user_axes else {}
-        except Exception:
-            log.exception("RecipePipeline: failed to load category parents — tags will not be pruned.")
-            parents = {}
+        # its child (F-205). Loaded from the same source, so it fails the same way.
+        parents: Dict[str, str] = self._category_source.load_parents(user_id) if user_axes else {}
+        with self._pictures_lost_lock:
+            self._pictures_lost.clear()
 
         # Transition FSM to RUNNING.
         self._controller.transition("start")
@@ -288,8 +309,8 @@ class RecipePipeline:
             ):
                 chunk.image_bytes = None
             if chunk.image_bytes and not chunk.image_url and self._image_store is not None:
-                chunk.image_url = self._image_store.put(
-                    chunk.image_bytes, str(uuid.uuid4()), chunk.image_content_type
+                chunk.image_url = self._store_picture(
+                    chunk.image_bytes, chunk.image_content_type, _chunk_name(chunk)
                 )
             self._restore_bucket_picture(chunk)
             stages = self._get_stages(chunk)
@@ -335,6 +356,15 @@ class RecipePipeline:
                 on_skip(chunk, reason, index)
             except Exception:
                 log.exception("RecipePipeline: on_skip callback failed — continuing.")
+
+        def _report_pictures() -> None:
+            """Hand the caller every picture the workers lost since the last call, on this thread."""
+            with self._pictures_lost_lock:
+                lost = list(self._pictures_lost)
+                self._pictures_lost.clear()
+            if on_picture_lost is not None:
+                for label, reason in lost:
+                    on_picture_lost(label, reason)
 
         with ThreadPoolExecutor(max_workers=self._cap) as executor:
             # Every chunk once; then, once, those lost to a transient Gemini failure (#149).
@@ -450,6 +480,7 @@ class RecipePipeline:
                         log.error("RecipePipeline: chunk worker raised unexpectedly — skipping. Error: %s", exc)
                         _report_skip(chunk, f"{type(exc).__name__}: {exc}", index)
                     finally:
+                        _report_pictures()
                         if counted:
                             completed += 1
                             if on_progress is not None:
@@ -462,6 +493,7 @@ class RecipePipeline:
 
         # What is left in the queue, after the last chunk or a cancel (design D1).
         _flush_tags()
+        _report_pictures()  # a cancelled chunk still running when the loop stopped may have lost one
 
         if quota_error is not None:
             log.info(
@@ -500,6 +532,24 @@ class RecipePipeline:
     # Per-chunk processing
     # ──────────────────────────────────────────────────────────────────────────
 
+    def _picture_lost(self, label: Optional[str], reason: str) -> None:
+        """Note a picture the recipe goes without, for run() to report (any thread)."""
+        with self._pictures_lost_lock:
+            self._pictures_lost.append((label, reason))
+
+    def _store_picture(self, data: bytes, content_type: str, label: Optional[str]) -> Optional[str]:
+        """Store one picture and return its URL; None, with the loss noted, when storage refuses it.
+
+        A storage failure costs the recipe its picture, never the recipe (ImageStore port).
+        """
+        assert self._image_store is not None
+        try:
+            return self._image_store.put(data, str(uuid.uuid4()), content_type)
+        except ImageStoreError as exc:
+            log.error("The picture for %r could not be stored: %s", label, exc)
+            self._picture_lost(label, f"the picture could not be stored: {exc}")
+            return None
+
     def _restore_bucket_picture(self, chunk: Chunk) -> None:
         """Make a Cayenne restore's bucket picture its own, or drop the address (R1).
 
@@ -511,17 +561,18 @@ class RecipePipeline:
         pr = chunk.pre_parsed
         if source is None or pr is None or chunk.input_type != InputType.PAPRIKA_CAYENNE:
             return
-        old_url = getattr(pr, "image_url", None)
+        old_url = pr.image_url
         if not old_url or not source.owns(old_url):
             return
         if not chunk.image_url and not chunk.image_bytes and self._image_store is not None:
             try:
                 got = source.download(old_url)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: recipe kept, loss reported via on_picture_lost
                 log.warning("restore: could not copy the picture %s (%s).", old_url, exc)
+                self._picture_lost(_chunk_name(chunk), f"the picture could not be copied: {exc}")
                 got = None
             if got is not None:
-                chunk.image_url = self._image_store.put(got[0], str(uuid.uuid4()), got[1])
+                chunk.image_url = self._store_picture(got[0], got[1], _chunk_name(chunk))
         if not chunk.image_url:
             log.warning("restore: the recipe %r goes without its picture.", chunk.label or pr.title)
             pr.image_url = None
@@ -597,7 +648,7 @@ class RecipePipeline:
         if stages == ["ASSEMBLE"]:
             if chunk.pre_parsed is None:
                 log.warning("_process_chunk: ASSEMBLE-only stage but pre_parsed is None — skipping chunk.")
-                return ChunkResult([], [])
+                return ChunkResult([], [_NO_RESTORE_DATA])
             # Use the pre-parsed data directly; re-assemble to get a clean IngestResponse.
             pr = chunk.pre_parsed
             # Use explicit None check — an empty list is a valid (if degenerate) embedding
@@ -627,7 +678,7 @@ class RecipePipeline:
         if stages == ["EMBED", "ASSEMBLE"]:
             if chunk.pre_parsed is None:
                 log.warning("_process_chunk: EMBED+ASSEMBLE stage but pre_parsed is None — skipping chunk.")
-                return ChunkResult([], [])
+                return ChunkResult([], [_NO_RESTORE_DATA])
             pr = chunk.pre_parsed
             self._enter_stage("EMBEDDING")
             self._limiter.wait_then_record_start()
@@ -672,7 +723,7 @@ class RecipePipeline:
             log.info("_process_chunk: no recipes kept from chunk — skipping.")
             return ChunkResult([], skipped)
 
-        def _one(raw: Any) -> IngestResponse:
+        def _one(raw: RecipeExtraction) -> IngestResponse:
             """REFINE, EMBED and ASSEMBLE one extracted recipe."""
             # REFINE
             self._enter_stage("REFINING")
@@ -695,15 +746,13 @@ class RecipePipeline:
             # recipe (one chunk can hold several); else the chunk's own.
             photo = self._food_book_photo(
                 chunk,
-                _book_photo(chunk, getattr(raw, "photo_filename", None)),
+                _book_photo(chunk, raw.photo_filename),
                 alone=len(extraction.recipes) == 1,
-                label=getattr(raw, "name", None),
+                label=raw.name,
             )
             image_url = chunk.image_url
             if photo is not None and self._image_store is not None:
-                image_url = (
-                    self._image_store.put(photo.data, str(uuid.uuid4()), photo.content_type) or chunk.image_url
-                )
+                image_url = self._store_picture(photo.data, photo.content_type, raw.name) or chunk.image_url
             elif photo is None:
                 photo = _chunk_photo(chunk)
 
@@ -714,21 +763,21 @@ class RecipePipeline:
                 source_url=chunk.source_url,
                 image_url=image_url,
                 grid_categories={},
-                prep_time=raw.prep_time if hasattr(raw, "prep_time") else None,
-                cook_time=raw.cook_time if hasattr(raw, "cook_time") else None,
+                prep_time=raw.prep_time,
+                cook_time=raw.cook_time,
                 meta=chunk.meta,
                 ingredient_lines=list(raw.ingredients),
                 direction_steps=list(raw.directions),
-                servings_text=getattr(raw, "servings", None),
+                servings_text=raw.servings,
                 citation=resolve_citation(
                     chunk.citation,
-                    getattr(raw, "stated_source", None),
-                    getattr(raw, "byline", None),
+                    raw.stated_source,
+                    raw.byline,
                 ),
-                total_time=getattr(raw, "total_time", None),
-                description=getattr(raw, "description", None),
-                nutritional_info=getattr(raw, "nutritional_info", None),
-                notes=getattr(raw, "notes", None),
+                total_time=raw.total_time,
+                description=raw.description,
+                nutritional_info=raw.nutritional_info,
+                notes=raw.notes,
                 restore=chunk.restore,
             )
             result.attach_photo(photo)
@@ -741,7 +790,7 @@ class RecipePipeline:
         # A later stage failing the chunk must not swallow the drops EXTRACT named (D2).
         try:
             done: List[Tuple[int, IngestResponse]] = []
-            failed: List[Tuple[int, Any]] = []
+            failed: List[Tuple[int, RecipeExtraction]] = []
             for position, raw in enumerate(extraction.recipes):
                 try:
                     done.append((position, _one(raw)))
@@ -751,7 +800,7 @@ class RecipePipeline:
                     job_signal.checkpoint()  # refine() reads a cancel as a failure; stop for it here
                     log.warning(
                         "_process_chunk: %r failed (%s: %s) — trying it again after the others.",
-                        getattr(raw, "name", "?"), type(exc).__name__, exc,
+                        raw.name, type(exc).__name__, exc,
                     )
                     failed.append((position, raw))
             for position, raw in failed:
@@ -762,7 +811,7 @@ class RecipePipeline:
                     raise
                 except Exception as exc:
                     job_signal.checkpoint()
-                    name = getattr(raw, "name", None) or "a recipe"
+                    name = raw.name or "a recipe"
                     log.error("_process_chunk: %r failed twice — skipping it: %s: %s", name, type(exc).__name__, exc)
                     skipped.append(f"{name}: {type(exc).__name__}: {exc}")
             results.extend(result for _position, result in sorted(done, key=lambda d: d[0]))

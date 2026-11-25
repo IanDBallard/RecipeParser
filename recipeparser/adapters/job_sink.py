@@ -74,7 +74,10 @@ class JobSink:
         # whichever site happened to have the most recipes in it.
         self._source_keys: Set[str] = set()
         # Category links the writer could not make for a recipe it DID write
-        # (Fix Roadmap F-115, 2026-09-29): {"label", "category_id", "reason"}.
+        # (Fix Roadmap F-115, 2026-09-29): {"label", "category_id", "reason"};
+        # an axis TAG could not ask ({"label", "axis", "reason"}); a recipe whose
+        # tag write failed outright ({"label", "reason"}); and a picture the
+        # recipe is kept without ({"label", "picture": True, "reason"}).
         # Deliberately not in `skipped`: the client reads every entry there as a
         # section that produced no recipe ("1 section produced no recipe", "1
         # missed"), which a recipe that lost one tag is not. No column the
@@ -100,7 +103,7 @@ class JobSink:
             self.cap_reached = True
             self._on_cap()
             return False
-        title = getattr(recipe, "title", None)
+        title = recipe.title
 
         def _link_refused(link: Dict[str, str]) -> None:
             self.refused_link_count += 1
@@ -121,16 +124,16 @@ class JobSink:
             log.exception(
                 "Job %s: failed to write recipe %r — counting it as skipped.",
                 self._job_id,
-                getattr(recipe, "title", "?"),
+                title,
             )
             # No chunk survives to this point, so there is no submission position to
             # report — -1 tells a consumer this was a write failure, not a lost chunk.
-            self._record_skip(getattr(recipe, "title", None), f"write failed: {exc}", -1)
+            self._record_skip(title, f"write failed: {exc}", -1)
             return
         self.recipe_count += 1
         if isinstance(rid, str):
             self._row_ids[id(recipe)] = rid
-        key = getattr(recipe, "source_key", None)
+        key = recipe.source_key
         if key:
             self._source_keys.add(key)
 
@@ -155,8 +158,20 @@ class JobSink:
                 rid, self._user_id, recipe.grid_categories, self._category_ids,
                 on_link_refused=_link_refused,
             )
-        except Exception:
+        except Exception as exc:  # fail-loud.bare-except-ok: counted on the job as a refused link
+            # The recipe is written; only its tags are lost. One entry for the recipe, as
+            # on_tag_failed counts one per recipe an axis left untagged.
             log.exception("Job %s: the tags for recipe %r could not be written.", self._job_id, title)
+            self._refuse(title, {"reason": f"its tags could not be written: {exc}"})
+
+    def on_picture_lost(self, label: Optional[str], reason: str) -> None:
+        """A recipe kept without its picture (ImageStoreError, or a restore's copy failed).
+
+        Counted with the refused links, not as a skip: the client reads every skipped
+        entry as a section that produced no recipe, and this recipe was written.
+        """
+        self._refuse(label, {"picture": True, "reason": reason})
+        log.warning("Job %s: recipe %r goes without its picture: %s", self._job_id, label, reason)
 
     def on_tag_failed(self, failure: TagFailure) -> None:
         """An axis TAG could not ask for a batch (F-246, design D8): counted with the refused links."""
@@ -245,6 +260,12 @@ class JobSink:
         return payload
 
     # ── internals ─────────────────────────────────────────────────────────────
+
+    def _refuse(self, label: Optional[str], entry: Dict[str, Any]) -> None:
+        """Count one refused link (or lost tag write or picture); list it while under the cap."""
+        self.refused_link_count += 1
+        if len(self.refused_links) < SKIPPED_LIST_CAP:
+            self.refused_links.append({"label": label, **entry})
 
     def _record_skip(self, label: Optional[str], reason: str, index: int) -> None:
         self.skipped_count += 1

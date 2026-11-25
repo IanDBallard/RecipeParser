@@ -30,8 +30,11 @@ def _sink(**kwargs: Any) -> JobSink:
 
 
 class _Recipe:
+    """The IngestResponse fields JobSink reads."""
+
     def __init__(self, title: str = "R") -> None:
         self.title = title
+        self.source_key: Optional[str] = None
 
 
 def test_each_result_is_written_immediately_and_counted():
@@ -298,6 +301,7 @@ class _Tagged:
     def __init__(self, title: str, grid: Dict[str, List[str]]) -> None:
         self.title = title
         self.grid_categories = grid
+        self.source_key: Optional[str] = None
 
 
 def _tag_sink(write_links, row_id: Optional[str] = "row-1") -> JobSink:
@@ -352,7 +356,8 @@ def test_a_refused_tag_link_is_counted_on_the_job():
     assert sink.refused_links == [{"label": "Gnocchi", "category_id": "cat-it", "reason": "409 foreign key"}]
 
 
-def test_a_failed_tag_write_is_logged_not_raised():
+def test_a_failed_tag_write_is_counted_on_the_job_not_raised():
+    """The recipe stays written; the tags it lost are a refused link, never only a log line."""
     def _boom(*a, **k):
         raise RuntimeError("network down")
 
@@ -361,6 +366,22 @@ def test_a_failed_tag_write_is_logged_not_raised():
     sink.on_result(recipe)
     sink.on_tags(recipe)  # must not raise
     assert sink.recipe_count == 1
+    assert sink.skipped_count == 0
+    assert sink.refused_link_count == 1
+    assert len(sink.refused_links) == 1
+    entry = sink.refused_links[0]
+    assert entry["label"] == "Gnocchi"
+    assert "network down" in entry["reason"]
+
+
+def test_a_lost_picture_is_counted_with_the_refused_links_not_as_a_skip():
+    sink = _sink()
+    sink.on_picture_lost("Gnocchi", "the picture could not be stored: bucket unreachable")
+    assert sink.skipped_count == 0
+    assert sink.refused_link_count == 1
+    assert sink.refused_links == [
+        {"label": "Gnocchi", "picture": True, "reason": "the picture could not be stored: bucket unreachable"},
+    ]
 
 
 def test_an_axis_that_could_not_be_asked_counts_each_recipe_it_left_untagged():

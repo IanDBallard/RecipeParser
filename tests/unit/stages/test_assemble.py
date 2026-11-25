@@ -111,7 +111,7 @@ def test_the_full_pipeline_hands_assemble_the_four_extracted_fields(monkeypatch)
 
     src = inspect.getsource(pipeline_mod.RecipePipeline._process_chunk)
     for name in ("total_time", "description", "nutritional_info", "notes"):
-        assert f'{name}=getattr(raw, "{name}", None)' in src, name
+        assert f"{name}=raw.{name}," in src, name
 
 
 def test_assemble_carries_the_tins_bake_type_and_bake_step():

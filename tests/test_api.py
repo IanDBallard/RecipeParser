@@ -1256,9 +1256,20 @@ class TestRecipeImage:
     def test_a_storage_failure_is_a_503_and_the_row_is_left_alone(self, client: TestClient) -> None:
         sb = _service_client()
         with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
-            store_cls.return_value.put.return_value = None   # put() logs and returns None
+            store_cls.return_value.put.return_value = None   # no store configured
             resp = self._post(client, "dinner.jpg", b"\xff\xd8", "image/jpeg")
         assert resp.status_code == 503
+        sb.table.return_value.update.assert_not_called()
+
+    def test_a_raised_storage_error_is_a_503_and_the_row_is_left_alone(self, client: TestClient) -> None:
+        from recipeparser.exceptions import ImageStoreError
+
+        sb = _service_client()
+        with patch(_SERVICE_CLIENT, return_value=sb), patch(_IMAGE_STORE) as store_cls:
+            store_cls.return_value.put.side_effect = ImageStoreError("bucket unreachable")
+            resp = self._post(client, "dinner.jpg", b"\xff\xd8", "image/jpeg")
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "Could not store the picture."
         sb.table.return_value.update.assert_not_called()
 
     def test_no_supabase_configured_is_a_503(self, client: TestClient) -> None:
