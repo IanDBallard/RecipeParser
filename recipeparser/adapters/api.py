@@ -83,7 +83,9 @@ from recipeparser.core.pipeline import RecipePipeline, chunk_calls_ai, chunk_nee
 from recipeparser.core.taxonomy import descendants_of, root_of
 from recipeparser.exceptions import (
     AIServiceTimeoutError,
+    CategoryLoadError,
     DailyQuotaExhaustedError,
+    ImageStoreError,
     JobCancelledError,
     SiteRefusedError,
     UnreadableInputError,
@@ -102,6 +104,7 @@ from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.category_sources.restore_paths import clean_path, ensure_category_paths, restore_grid
 from recipeparser.io.writers.supabase import _get_creds, write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
+from recipeparser.models import CayenneRecipe
 
 # Before the first logger call in this module: uvicorn leaves the root logger
 # bare, so without this every INFO line in the package is silent.
@@ -577,7 +580,9 @@ async def _upload_image_to_storage(
     for URL submissions, which arrive with an address rather than bytes. With
     ``ask_food`` the picture is shown to the model first and one that is not food
     is not stored (Cayenne F-209); a check that cannot run stores it, as before.
-    Failures are logged but never raised — a recipe without a picture, not a failed job.
+    A picture that cannot be fetched, or is not food, is None. A storage failure
+    raises ImageStoreError (ImageStore port), so the caller can report the lost
+    picture on the job; it is still a recipe without a picture, not a failed job.
     """
     fetched = await _fetch_picture(image_url)
     if fetched is None:
@@ -869,8 +874,9 @@ def _job_error_message(name: Optional[str], exc: BaseException) -> str:
     so the two join as a sentence. Anything else keeps the "<name>: <error>"
     shape. A pasted-text job has no name and reports the error alone.
     """
-    if isinstance(exc, (_AiRefusal, AIServiceTimeoutError, DailyQuotaExhaustedError)):
-        # A sentence of its own, as the endpoint (or the vision OCR, or the quota stop) worded it for the cook.
+    if isinstance(exc, (_AiRefusal, AIServiceTimeoutError, DailyQuotaExhaustedError, CategoryLoadError)):
+        # A sentence of its own, as the endpoint (or the vision OCR, or the quota stop, or the
+        # category source) worded it for the cook.
         return str(exc)
     if not name:
         return str(exc)
@@ -896,7 +902,16 @@ def _finalize_ingestion_job(job_id: str, payload: dict[str, Any]) -> None:
     """UPDATE ingestion_jobs to the terminal state the JobSink built.
 
     The payload comes from JobSink.finalize_payload, which is where the rules
-    about counts and progress live.  Failures are logged but NOT re-raised.
+    about counts and progress live.
+
+    A failed write is tried once more. If that fails too it is logged at ERROR and
+    NOT re-raised: this runs as the job's last step, after the recipes are written,
+    so there is no caller left to tell. The row is left ``running``, and the ingest
+    liveness reaper (``adapters/ingest_liveness.reap_stale_ingests``) ends it: the
+    caller's ``finally`` drops the job from ``_active_jobs``, so its heartbeat stops
+    and the row goes stale within ``LEASE_MINUTES`` and is ended as an error with
+    ``INTERRUPTED_MESSAGE``. The cook is told the import stopped rather than seeing
+    it run for ever; the counts this payload carried are lost (they are in the log).
     """
     if _live_writes_blocked():
         logger.warning("Test run: skipping the finalize for job %s.", job_id)
@@ -905,20 +920,31 @@ def _finalize_ingestion_job(job_id: str, payload: dict[str, Any]) -> None:
     if sb is None:
         logger.warning("Job %s: Supabase credentials not set — skipping ingestion_jobs finalize.", job_id)
         return
-    try:
-        # Never over a row already ended as an error by someone else: the liveness tick ends a
-        # hung job's row and cancels the job, and a job that wakes later must not overwrite
-        # that ending with its own. 'cancelled' stays writable: the cancel endpoint writes the
-        # status first and the job adds its counts here (Cayenne F-426).
-        sb.table("ingestion_jobs").update(payload).eq("id", job_id).in_(
-            "status", ["pending", "running", "cancelled"]
-        ).execute()
+    for attempt in (1, 2):
+        try:
+            # Never over a row already ended as an error by someone else: the liveness tick ends a
+            # hung job's row and cancels the job, and a job that wakes later must not overwrite
+            # that ending with its own. 'cancelled' stays writable: the cancel endpoint writes the
+            # status first and the job adds its counts here (Cayenne F-426).
+            sb.table("ingestion_jobs").update(payload).eq("id", job_id).in_(
+                "status", ["pending", "running", "cancelled"]
+            ).execute()
+        except Exception:  # fail-loud.bare-except-ok: retried once, then left to the liveness reaper (docstring)
+            if attempt == 1:
+                logger.warning("Job %s: finalizing the ingestion_jobs row failed — trying once more.", job_id,
+                               exc_info=True)
+                continue
+            logger.error(
+                "Job %s: COULD NOT FINALIZE the ingestion_jobs row (twice) — it stays running until the "
+                "liveness reaper ends it. Lost payload: %s",
+                job_id, payload, exc_info=True,
+            )
+            return
         logger.info(
             "Job %s: finalized — status=%s, recipes=%s, skipped=%s.",
             job_id, payload.get("status"), payload.get("recipe_count"), payload.get("skipped_count"),
         )
-    except Exception:
-        logger.exception("Job %s: failed to finalize ingestion_jobs row.", job_id)
+        return
 
 
 def _make_stage_callback(job_id: str) -> Callable[[str], None]:
@@ -1227,14 +1253,12 @@ def _create_restore_categories(user_id: str, chunks: List[Chunk]) -> Dict[str, L
     """
     wanted = []
     for chunk in chunks:
-        raw = getattr(chunk.pre_parsed, "category_paths", None)
-        raw_lists = getattr(chunk.pre_parsed, "list_paths", None)
-        if chunk.input_type != InputType.PAPRIKA_CAYENNE or not isinstance(raw, list):
+        # pre_parsed is a CayenneRecipe | IngestResponse union; only a restore's CayenneRecipe
+        # carries category and list paths.
+        if chunk.input_type != InputType.PAPRIKA_CAYENNE or not isinstance(chunk.pre_parsed, CayenneRecipe):
             continue
-        paths = [clean_path(p) for p in raw if isinstance(p, (list, tuple))]
-        paths = [p for p in paths if p]
-        lists = [clean_path(p) for p in raw_lists if isinstance(p, (list, tuple))] if isinstance(raw_lists, list) else []
-        lists = [p for p in lists if p]
+        paths = [p for p in (clean_path(p) for p in chunk.pre_parsed.category_paths) if p]
+        lists = [p for p in (clean_path(p) for p in chunk.pre_parsed.list_paths) if p]
         if paths or lists:
             wanted.append((chunk, paths, lists))
     if not wanted:
@@ -1315,6 +1339,7 @@ async def _run_ingestion_job(
     log_label: str,
     gate_after_read: bool = False,
     url_host: Optional[str] = None,
+    pictures_lost: Optional[List[Tuple[Optional[str], str]]] = None,
 ) -> None:
     """Run one ingestion job to its end: the half ``POST /jobs`` and ``POST /jobs/file`` share.
 
@@ -1331,6 +1356,10 @@ async def _run_ingestion_job(
 
     ``url_host`` is set only for a job that fetched a web address: a clean finish clears that
     host from the refusal record, and a SiteRefusedError records it. A pasted text never sets it.
+
+    ``pictures_lost`` is filled by ``read`` with each ``(label, reason)`` picture it could not
+    store (a URL import stores its page picture before the pipeline runs); once the sink exists
+    each is counted on the job as the pipeline's own lost pictures are.
     """
     # NOTE: Do NOT call controller.transition("start") here.
     # RecipePipeline.run() calls it internally (IDLE → RUNNING).
@@ -1358,6 +1387,8 @@ async def _run_ingestion_job(
                 consume=_ai_gate.consume_recipe,
                 on_cap=controller.request_cancel,
             )
+            for label, reason in pictures_lost or []:
+                sink.on_picture_lost(label, reason)
             # For the closing note only; consume_recipe is what enforces the cap. A failed read
             # must not fail the import, so it falls back to a note without the number.
             try:
@@ -1396,10 +1427,11 @@ async def _run_ingestion_job(
                     on_skip=sink.on_skip,
                     on_tags=sink.on_tags,
                     on_tag_failed=sink.on_tag_failed,
+                    on_picture_lost=sink.on_picture_lost,
                 )
             )
             logger.info(
-                "Job %s completed — %d recipe(s), %d skipped, %d category link(s) refused.",
+                "Job %s completed — %d recipe(s), %d skipped, %d refused link(s), lost tag write(s) or picture(s).",
                 job_id, sink.recipe_count, sink.skipped_count, sink.refused_link_count,
             )
             await asyncio.to_thread(
@@ -1504,6 +1536,7 @@ async def submit_job(
             return AsyncJobResponse(**slot.replay)
         job_id = str(uuid.uuid4())
         controller = _register_job(job_id, user_id)
+        pictures_lost: List[Tuple[Optional[str], str]] = []
 
         async def _read() -> Tuple[Any, List[Chunk]]:
             client = _get_client()
@@ -1531,7 +1564,14 @@ async def submit_job(
                 recipe_id_for_img = str(uuid.uuid4())
                 ask_food = _food_check_for(client)
                 for candidate in _url_picture_candidates(page_meta, markdown_text):
-                    stored_image_url = await _upload_image_to_storage(candidate, recipe_id_for_img, ask_food)
+                    try:
+                        stored_image_url = await _upload_image_to_storage(candidate, recipe_id_for_img, ask_food)
+                    except ImageStoreError as exc:
+                        # Storage itself refused: the next candidate would fare no better. The
+                        # recipe goes without a picture and the job says so.
+                        logger.error("Job %s: the page picture could not be stored: %s", job_id, exc)
+                        pictures_lost.append((body.url, f"the picture could not be stored: {exc}"))
+                        break
                     if stored_image_url:
                         break
                 source_text = html_to_text(markdown_text)
@@ -1562,6 +1602,7 @@ async def submit_job(
         asyncio.create_task(_run_ingestion_job(
             job_id, user_id, controller, _read, body.url, "Job",
             url_host=host_of(body.url) if body.url else None,
+            pictures_lost=pictures_lost,
         ))
         slot.done({"job_id": job_id})
         return AsyncJobResponse(job_id=job_id)
@@ -2094,10 +2135,13 @@ async def set_recipe_image(
     sb = await _owned_recipe_client(recipe_id, user_id)
 
     store = SupabaseImageStore()
-    public_url = await asyncio.to_thread(store.put, data, recipe_id, content_type)
+    try:
+        public_url = await asyncio.to_thread(store.put, data, recipe_id, content_type)
+    except ImageStoreError as exc:
+        logger.error("Recipe %s: the new picture could not be stored: %s", recipe_id, exc)
+        public_url = None
     if not public_url:
-        # put() logs and returns None rather than raising, so this covers both a
-        # storage failure and credentials the process does not have.
+        # A storage failure (ImageStoreError) or credentials the process does not have (None).
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not store the picture.",

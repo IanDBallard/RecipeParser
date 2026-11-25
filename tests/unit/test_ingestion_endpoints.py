@@ -259,3 +259,91 @@ def test_a_failing_allowance_read_leaves_the_cap_unknown_and_the_job_running(mon
     sink, _controller, finalized = _drive_job(monkeypatch, _boom)
     assert sink.cap is None
     assert finalized[0]["status"] == "done"
+
+
+def _drive_failing_category_job(monkeypatch, name):
+    import asyncio
+    from contextlib import nullcontext
+    from unittest.mock import patch
+
+    from recipeparser.core.fsm import PipelineController
+    from recipeparser.exceptions import CategoryLoadError
+
+    finalized = []
+    monkeypatch.setattr(api, "_finalize_ingestion_job", lambda jid, payload: finalized.append(payload))
+    monkeypatch.setattr(api.usage, "attributed", lambda *a, **k: nullcontext())
+    with patch.object(api, "RecipePipeline") as pipeline_cls, \
+         patch.object(api, "SupabaseCategorySource") as cat_src, \
+         patch.object(api, "SupabaseImageStore"):
+        cat_src.return_value.load_category_ids.side_effect = CategoryLoadError(
+            "Your categories could not be loaded, so nothing was imported. Try again in a moment."
+        )
+
+        async def _read():
+            return MagicMock(), []
+
+        asyncio.run(api._run_ingestion_job("job-1", "user-1", PipelineController(), _read, name, "Job"))
+    return pipeline_cls, finalized
+
+
+def test_categories_that_cannot_load_end_the_job_as_an_error(monkeypatch):
+    """Never an untagged import that finishes as a success (architecture review 2026-11-25)."""
+    pipeline_cls, finalized = _drive_failing_category_job(monkeypatch, "Ottolenghi.epub")
+    pipeline_cls.return_value.run.assert_not_called()
+    assert len(finalized) == 1
+    assert finalized[0]["status"] == "error"
+    # The sentence stands on its own: it is about the cook's categories, not their file.
+    assert finalized[0]["error_message"] == (
+        "Your categories could not be loaded, so nothing was imported. Try again in a moment."
+    )
+
+
+class _FlakyTable:
+    """An ingestion_jobs table whose update fails the first ``failures`` times."""
+
+    def __init__(self, failures: int) -> None:
+        self.failures = failures
+        self.attempts = 0
+        self.sent: list = []
+
+    def update(self, payload):
+        self._payload = payload
+        return self
+
+    def eq(self, *_a):
+        return self
+
+    def in_(self, *_a):
+        return self
+
+    def execute(self):
+        self.attempts += 1
+        if self.attempts <= self.failures:
+            raise RuntimeError("supabase unreachable")
+        self.sent.append(self._payload)
+
+
+def _finalize_against(monkeypatch, table):
+    client = MagicMock()
+    client.table.return_value = table
+    monkeypatch.setattr(api, "_get_supabase_service_client", lambda: client)
+    monkeypatch.setattr(api, "_live_writes_blocked", lambda: False)
+    api._finalize_ingestion_job("job-1", {"status": "done", "recipe_count": 3, "skipped_count": 0})
+
+
+def test_a_failed_finalize_is_tried_once_more(monkeypatch):
+    table = _FlakyTable(failures=1)
+    _finalize_against(monkeypatch, table)
+    assert table.attempts == 2
+    assert table.sent[0]["status"] == "done"
+
+
+def test_a_finalize_that_fails_twice_is_logged_as_an_error_and_left_to_the_reaper(monkeypatch, caplog):
+    import logging
+
+    table = _FlakyTable(failures=5)
+    with caplog.at_level(logging.ERROR, logger=api.logger.name):
+        _finalize_against(monkeypatch, table)  # must not raise: the liveness reaper ends the row
+    assert table.attempts == 2
+    assert table.sent == []
+    assert any(r.levelno == logging.ERROR and "job-1" in r.getMessage() for r in caplog.records)

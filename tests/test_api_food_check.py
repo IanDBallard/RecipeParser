@@ -168,6 +168,30 @@ def test_no_candidate_that_is_food_is_a_recipe_without_a_picture_not_a_failed_jo
     assert mock_pipeline_cls.return_value.run.call_args.args[0][0].image_url is None
 
 
+def test_a_storage_failure_keeps_the_url_recipe_and_counts_the_lost_picture():
+    """A storage outage is not "no picture": it is counted on the job (architecture review 2026-11-25)."""
+    from recipeparser.exceptions import ImageStoreError
+
+    stack, _client, mock_pipeline_cls = _patch_pipeline_and_writer()
+    upload = AsyncMock(side_effect=ImageStoreError("bucket unreachable"))
+    with stack, \
+         patch(_JINA_GET, return_value=_Resp()), \
+         patch.object(api_mod, "_fetch_page_meta",
+                      new=AsyncMock(return_value=PageMeta("https://cdn.site.test/dish.jpg", None))), \
+         patch.object(api_mod, "_upload_image_to_storage", new=upload), \
+         TestClient(app, raise_server_exceptions=False) as tc:
+        _drain(tc, {"url": "https://www.epicurious.test/recipes/duck"})
+
+    assert upload.await_count == 1, "storage refused: no point trying the next candidate"
+    run = mock_pipeline_cls.return_value.run
+    run.assert_called_once()
+    assert run.call_args.args[0][0].image_url is None
+    sink = run.call_args.kwargs["on_result"].__self__
+    assert sink.refused_link_count == 1
+    assert "bucket unreachable" in sink.refused_links[0]["reason"]
+    assert run.call_args.kwargs["on_picture_lost"] == sink.on_picture_lost
+
+
 def test_the_pipeline_is_handed_the_food_check_for_every_other_route():
     """A file (PDF, EPUB, Paprika) or pasted text: the pipeline asks before it stores."""
     stack, mock_client, mock_pipeline_cls = _patch_pipeline_and_writer()

@@ -945,7 +945,9 @@ class _NestedCategorySource(CategorySource):
 
     def load_parents(self, user_id: str = "") -> Dict[str, str]:
         if self.parents_error:
-            raise RuntimeError("categories unreachable")
+            from recipeparser.exceptions import CategoryLoadError
+
+            raise CategoryLoadError("categories unreachable")
         return {"Thai": "Asian"}
 
 
@@ -1004,9 +1006,14 @@ def test_each_axis_is_asked_on_its_own_and_the_tree_prunes_a_parent_beside_its_c
     assert results[0].categories == ["Thai", "Chicken"]
 
 
-def test_a_failed_parents_load_keeps_the_tags_unpruned():
-    results, _ = _tag_run(1, source=_NestedCategorySource(parents_error=True))
-    assert results[0].grid_categories == {"Cuisine": ["Asian", "Thai"], "Protein": ["Chicken"]}
+def test_a_failed_parents_load_fails_the_run():
+    """The tree's shape comes from the same source as the axes: when it cannot load, the
+    categories cannot be loaded, and the import stops rather than tagging unpruned
+    (architecture review 2026-11-25; until then it tagged on without pruning)."""
+    from recipeparser.exceptions import CategoryLoadError
+
+    with pytest.raises(CategoryLoadError):
+        _tag_run(1, source=_NestedCategorySource(parents_error=True))
 
 
 def test_recipes_are_tagged_five_at_a_time_and_the_rest_at_the_end():
@@ -1503,3 +1510,103 @@ def test_a_daily_quota_inside_refine_is_not_retried_as_a_recipe_failure():
         pipeline.run([_book_chunk()])
 
     assert refine_calls == ["Pakoras"]
+
+
+# --- Fail loud: no silent successes (architecture review 2026-11-25) ---------
+
+
+class _UnloadableCategorySource(CategorySource):
+    def load_axes(self, user_id: str = "") -> Dict[str, List[str]]:
+        from recipeparser.exceptions import CategoryLoadError
+
+        raise CategoryLoadError("Your categories could not be loaded.")
+
+    def load_category_ids(self, user_id: str = "") -> Dict[str, str]:
+        return {}
+
+
+def test_categories_that_cannot_load_fail_the_run_before_any_chunk():
+    """An import must never run untagged and finish as a success."""
+    from recipeparser.exceptions import CategoryLoadError
+
+    GlobalRateLimiter().reset()
+    controller = PipelineController()
+    pipeline = RecipePipeline(
+        client=MagicMock(), controller=controller, category_source=_UnloadableCategorySource(), rpm=9999,
+        categorize_fn=lambda rows, axes, client, parents=None, limiter=None: {},
+    )
+    seen: List[IngestResponse] = []
+    with patch(_PATCH_EXTRACT) as extract, pytest.raises(CategoryLoadError):
+        pipeline.run([_book_chunk()], on_result=lambda r, _ai: seen.append(r))
+    extract.assert_not_called()
+    assert seen == []
+
+
+@pytest.mark.parametrize("embedding", [FAKE_EMBEDDING, None])
+def test_a_restore_chunk_without_pre_parsed_is_reported_as_a_skip(embedding):
+    chunk = Chunk(text="", input_type=InputType.PAPRIKA_CAYENNE, label="Scones", pre_parsed_embedding=embedding)
+    skipped: List[tuple] = []
+    results = _make_pipeline().run([chunk], on_skip=lambda c, reason, i: skipped.append((c.label, reason, i)))
+    assert results == []
+    assert len(skipped) == 1
+    label, reason, index = skipped[0]
+    assert (label, index) == ("Scones", 0)
+    assert reason
+
+
+class _BrokenImageStore(ImageStore):
+    """Storage is down: put() raises, as the port says it must for a real failure."""
+
+    def __init__(self) -> None:
+        self.calls: List[bytes] = []
+
+    def put(self, image_bytes: bytes, recipe_id: str, content_type: str = "image/jpeg") -> Optional[str]:
+        from recipeparser.exceptions import ImageStoreError
+
+        self.calls.append(image_bytes)
+        raise ImageStoreError("storage is down")
+
+
+def test_a_storage_failure_keeps_the_recipe_and_reports_the_lost_picture():
+    store = _BrokenImageStore()
+    chunk = Chunk(
+        text="", input_type=InputType.PAPRIKA_CAYENNE, label="R",
+        pre_parsed=_make_ingest_response("R"), pre_parsed_embedding=FAKE_EMBEDDING,
+        image_bytes=b"bytes",
+    )
+    lost: List[tuple] = []
+    skipped: list = []
+    with patch(_PATCH_ASSEMBLE, side_effect=_assemble_reflecting_image_url):
+        results = _make_pipeline(image_store=store).run(
+            [chunk],
+            on_skip=lambda *a: skipped.append(a),
+            on_picture_lost=lambda label, reason: lost.append((label, reason)),
+        )
+    assert store.calls == [b"bytes"]
+    assert len(results) == 1 and results[0].image_url is None
+    assert skipped == [], "the recipe was kept: a lost picture is not a skipped section"
+    assert len(lost) == 1
+    assert lost[0][0] == "R" and "storage is down" in lost[0][1]
+
+
+def test_a_storage_failure_for_a_book_photo_keeps_the_recipe_and_reports_it():
+    store = _BrokenImageStore()
+    lost: List[tuple] = []
+    pipeline = _make_pipeline(image_store=store)
+    with patch(_PATCH_EXTRACT, return_value=Extraction([_named("A", "a.jpg")], [])), \
+         patch(_PATCH_REFINE, side_effect=lambda raw, **_: _make_refinement(raw.name)), \
+         patch(_PATCH_EMBED, return_value=FAKE_EMBEDDING):
+        results = pipeline.run([_book_chunk()], on_picture_lost=lambda label, reason: lost.append((label, reason)))
+    assert [r.title for r in results] == ["A"]
+    assert results[0].image_url is None
+    assert lost == [("A", lost[0][1])] and "storage is down" in lost[0][1]
+
+
+def test_a_storage_failure_for_a_restore_bucket_picture_drops_it_and_reports_it():
+    store = _BrokenImageStore()
+    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL)
+    lost: List[tuple] = []
+    results = _restore_pipeline(_picture_client(), store).run(
+        [chunk], on_picture_lost=lambda label, reason: lost.append((label, reason)))
+    assert len(results) == 1 and results[0].image_url is None
+    assert len(lost) == 1 and "storage is down" in lost[0][1]
