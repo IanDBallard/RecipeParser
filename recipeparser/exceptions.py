@@ -129,6 +129,17 @@ class ExtractionParseError(RecipeParserError):
     """
 
 
+class UnsupportedGenerationParameterError(RecipeParserError):
+    """Raised when a Gemini call's config sets a sampling parameter this service never sends.
+
+    ``temperature``, ``top_p``, ``top_k`` and ``thinking_budget`` are deprecated by Google:
+    Gemini 4 and 3.6+ ignore them (and will reject them in a future release), and for earlier
+    Gemini 3 models Google says to leave them at their defaults. Until 9.46.0 they were dropped
+    silently, so callers passing ``temperature: 0`` believed a determinism they never had. A
+    caller that sets one is a programming error, raised before any request is made.
+    """
+
+
 class JobCancelledError(RecipeParserError):
     """Raised at a job checkpoint once its owner has cancelled it (Cayenne F-426).
 

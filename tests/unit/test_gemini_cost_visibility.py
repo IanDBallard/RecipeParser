@@ -14,11 +14,15 @@ Three things this covers, none of which existed before:
 """
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from recipeparser.config import THINKING_LEVEL
 from recipeparser import gemini, usage
+from recipeparser.exceptions import UnsupportedGenerationParameterError
 from recipeparser.gemini import _call_with_retry, _finalize_config, _log_usage_metadata
 
 
@@ -52,13 +56,27 @@ def test_finalize_config_sets_thinking_level_alongside_the_timeout():
     assert config["response_mime_type"] == "application/json"
 
 
-def test_finalize_config_strips_deprecated_parameters():
-    config = _finalize_config({"temperature": 0.1, "top_p": 0.9, "top_k": 40, "thinking_budget": 0})
+@pytest.mark.parametrize("param", ["temperature", "top_p", "top_k", "thinking_budget"])
+def test_finalize_config_refuses_a_deprecated_sampling_parameter(param):
+    """Google deprecated these (Gemini 4 and 3.6+ ignore them); a caller that sets one would
+    claim a sampling it never gets, so it is refused rather than silently stripped."""
+    with pytest.raises(UnsupportedGenerationParameterError, match=param):
+        _finalize_config({"response_mime_type": "application/json", param: 0})
 
-    assert "temperature" not in config
-    assert "top_p" not in config
-    assert "top_k" not in config
-    assert "thinking_budget" not in config
+
+def test_call_with_retry_refuses_a_deprecated_parameter_before_any_request():
+    """The refusal is raised before the retry ladder, so it is neither retried nor sent."""
+    client = MagicMock()
+    with pytest.raises(UnsupportedGenerationParameterError):
+        _call_with_retry(client, model="m", contents="c", config={"temperature": 0}, what="Test")
+    client.models.generate_content.assert_not_called()
+
+
+def test_no_gemini_call_site_sets_a_deprecated_sampling_parameter():
+    """Every call runs at the model's default sampling: no config literal in the module names one."""
+    source = inspect.getsource(gemini)
+    for param in ("temperature", "top_p", "top_k", "thinking_budget"):
+        assert f'"{param}":' not in source, param
 
 
 def test_call_with_retry_sends_the_thinking_level_to_generate_content():

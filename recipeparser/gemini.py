@@ -42,6 +42,7 @@ from recipeparser.exceptions import (
     DailyQuotaExhaustedError,
     ExtractionParseError,
     JobCancelledError,
+    UnsupportedGenerationParameterError,
 )
 from recipeparser.models import (
     CayenneRefinement,
@@ -176,11 +177,23 @@ def _is_transient_server_error(exc: Exception) -> bool:
 # call an unusable ~0.18s timeout.
 _HTTP_TIMEOUT_MS = HTTP_TIMEOUT_SECS * 1000
 
+# Sampling parameters Google has deprecated (Gemini 4 and 3.6+ ignore them; earlier
+# Gemini 3 models should keep their defaults). _finalize_config refuses a config that sets one.
+_DEPRECATED_SAMPLING_PARAMS = frozenset({"temperature", "top_p", "top_k", "thinking_budget"})
+
 
 def _finalize_config(config: dict) -> dict:
     """Return a copy of ``config`` with the per-call HTTP timeout and thinking
-    level applied, stripping deprecated parameters (temperature, top_p, top_k,
-    thinking_budget).
+    level applied.
+
+    Raises:
+        UnsupportedGenerationParameterError: ``config`` sets ``temperature``,
+            ``top_p``, ``top_k`` or ``thinking_budget``. Google has deprecated
+            them: Gemini 4 and 3.6+ ignore them, and earlier Gemini 3 models
+            (the pinned ``gemini-3.1-flash-lite``) should keep their defaults.
+            Every call runs at the model's default sampling, so none is
+            deterministic; a caller that passes one is refused rather than
+            silently stripped, so no caller can claim a sampling it never gets.
 
     Passed per-call (not at client construction) because ``_call_with_retry``
     only ever receives an already-constructed ``client`` — this is the one
@@ -194,13 +207,14 @@ def _finalize_config(config: dict) -> dict:
     THINKING_LEVEL defaults to 'minimal' — thinking tokens bill at the output rate
     and buy nothing here.
     """
-    sanitized = {
-        k: v
-        for k, v in config.items()
-        if k not in ("temperature", "top_p", "top_k", "thinking_budget")
-    }
+    refused = sorted(_DEPRECATED_SAMPLING_PARAMS.intersection(config))
+    if refused:
+        raise UnsupportedGenerationParameterError(
+            f"Gemini config sets deprecated sampling parameter(s) {', '.join(refused)}: "
+            "every call runs at the model's default sampling; remove them from the caller."
+        )
     return {
-        **sanitized,
+        **config,
         # Merge into any http_options the caller already set rather than
         # replacing it: an api_version pin, custom headers or a base_url
         # override would otherwise be dropped silently on the way to the SDK.
@@ -208,7 +222,7 @@ def _finalize_config(config: dict) -> dict:
         # classify call's 60 s), never lengthen it — min() applied last keeps
         # merging from becoming a way to opt out of the bound.
         "http_options": {
-            **sanitized.get("http_options", {}),
+            **config.get("http_options", {}),
             # A falsy caller timeout (0, or an explicit None) must still become
             # a real bound: `.get(..., default)` only supplies the default when
             # the key is absent, so a caller-set 0 would reach min() as 0 (an
@@ -216,7 +230,7 @@ def _finalize_config(config: dict) -> dict:
             # min() as None and raise TypeError against _HTTP_TIMEOUT_MS. `or`
             # catches both before min() ever sees them.
             "timeout": min(
-                sanitized.get("http_options", {}).get("timeout") or _HTTP_TIMEOUT_MS,
+                config.get("http_options", {}).get("timeout") or _HTTP_TIMEOUT_MS,
                 _HTTP_TIMEOUT_MS,
             ),
         },
@@ -277,11 +291,16 @@ def _call_with_retry(
     the shopping classify call) shorten the ladder, as ``get_embeddings``
     already does.
     """
+    # Finalized once, outside the retry loop: a refused config (a deprecated sampling
+    # parameter) is a programming error and must raise here, not be retried by
+    # _with_backoff's handler.
+    final_config = _finalize_config(config)
+
     def _once() -> object:
         response = client.models.generate_content(
             model=model,
             contents=contents,
-            config=_finalize_config(config),
+            config=final_config,
         )
         _log_usage_metadata(response, what, model)
         return response
@@ -1472,9 +1491,6 @@ def tag_temperatures(
         config={
             "response_mime_type": "application/json",
             "response_json_schema": _schema_for_gemini(TemperatureMentions),
-            # A backfill re-run must give the same answer: at the default the model reported a bare
-            # "425 degrees" on one call and nothing on the next (2026-10-13).
-            "temperature": 0,
         },
         what="Temperatures",
         limiter=limiter,
@@ -1553,7 +1569,6 @@ def tag_pans(
             "response_mime_type": "application/json",
             # RecipePan.edited and .removed are set by a person, never by the model.
             "response_json_schema": _with_bake_step_description(schema_without_client_fields(_schema_for_gemini(PanAnswer))),
-            "temperature": 0,
         },
         what="Pans",
         limiter=limiter,
@@ -1630,7 +1645,6 @@ def tag_yield(
         config={
             "response_mime_type": "application/json",
             "response_json_schema": schema_without_client_fields(_schema_for_gemini(YieldAnswer)),
-            "temperature": 0,
         },
         what="Yield",
         limiter=limiter,
@@ -1679,7 +1693,6 @@ def estimate_servings(
                     "properties": {"servings": {"type": "integer"}},
                     "required": ["servings"],
                 },
-                "temperature": 0,
             },
             what="Servings",
             limiter=limiter,

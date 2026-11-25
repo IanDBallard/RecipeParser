@@ -161,7 +161,7 @@ def _write_recording(root, fixture, stage, body, ordinal, response_text, sha=Non
                 "stage": stage,
                 "ordinal": ordinal,
                 "model": "gemini-2.5-flash",
-                "config": {"temperature": 0.1},
+                "config": {"response_mime_type": "application/json"},
                 "prompt_sha256": sha or "0" * 64,
                 "response_text": response_text,
             }
