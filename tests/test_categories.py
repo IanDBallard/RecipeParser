@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from tests.conftest import make_mock_client
+from recipeparser.exceptions import ConfigurationError, DailyQuotaExhaustedError, JobCancelledError
 from recipeparser.models import RecipeExtraction
 from recipeparser.categories import (
     load_category_tree,
@@ -68,10 +69,24 @@ class TestLoadCategoryTree:
         tree = load_category_tree(tmp_path / "nonexistent.yaml")
         assert tree == []
 
-    def test_malformed_yaml_returns_empty_list(self, tmp_path):
+    def test_malformed_yaml_raises(self, tmp_path):
+        # An empty tree would file every recipe under the fallback, which reads as
+        # a categorisation result rather than a broken file.
         p = self._write_yaml(tmp_path, "categories: ][invalid yaml")
-        tree = load_category_tree(p)
-        assert tree == []
+        with pytest.raises(ConfigurationError, match="Could not read"):
+            load_category_tree(p)
+
+    @pytest.mark.parametrize("content", [
+        "",                                   # no mapping at all
+        "- Soup\n- Salads\n",                 # a list, not a mapping
+        "categories: Soup\n",                 # categories not a list
+        "categories:\n  - 42\n",              # an entry neither name nor parent
+        "categories:\n  - Dessert: Cake\n",   # children not a list
+    ])
+    def test_wrong_shape_raises(self, tmp_path, content):
+        p = self._write_yaml(tmp_path, content)
+        with pytest.raises(ConfigurationError):
+            load_category_tree(p)
 
     def test_empty_categories_list_returns_empty(self, tmp_path):
         p = self._write_yaml(tmp_path, "categories: []\n")
@@ -140,8 +155,31 @@ class TestCategoriseRecipe:
         )
         assert result == ["EPUB Imports"]
 
-    def test_api_exception_falls_back(self):
-        client = make_mock_client(side_effect=Exception("network error"))
+    def test_api_exception_propagates(self):
+        # An API failure is not an answer: the fallback would overwrite the
+        # recipe's categories as if Gemini had chosen it. The caller decides.
+        client = make_mock_client(side_effect=ValueError("bad request"))
+        with pytest.raises(ValueError, match="bad request"):
+            categorise_recipe(
+                _make_recipe("Pasta Carbonara"), _CATEGORY_TREE, PAPRIKA_CATEGORIES, client
+            )
+
+    @pytest.mark.parametrize("exc", [DailyQuotaExhaustedError(3600), JobCancelledError("stopped")])
+    def test_quota_and_cancel_propagate(self, exc, monkeypatch):
+        import recipeparser.gemini as gemini
+
+        def raises(*_a, **_k):
+            raise exc
+        monkeypatch.setattr(gemini, "_call_with_retry", raises)
+        with pytest.raises(type(exc)):
+            categorise_recipe(
+                _make_recipe("Pasta Carbonara"), _CATEGORY_TREE, PAPRIKA_CATEGORIES, MagicMock()
+            )
+
+    def test_non_json_reply_falls_back(self):
+        resp = MagicMock()
+        resp.text = "I think this is Italian."
+        client = make_mock_client(return_value=resp)
         result = categorise_recipe(
             _make_recipe("Pasta Carbonara"), _CATEGORY_TREE, PAPRIKA_CATEGORIES, client
         )
