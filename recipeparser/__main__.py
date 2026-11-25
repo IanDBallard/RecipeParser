@@ -113,11 +113,21 @@ def _cmd_merge(paths: list, output_dir: str) -> None:
         sys.exit(1)
 
     try:
-        out = merge_exports(resolved, _Path(output_dir))
-        print(f"Merged export written to: {out}")
+        result = merge_exports(resolved, _Path(output_dir))
     except RecipeParserError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+    print(
+        f"Merged export written to: {result.path} "
+        f"({result.written} recipe(s); {result.duplicates} duplicate(s) dropped)"
+    )
+    if result.unreadable:
+        print(
+            f"Warning: {len(result.unreadable)} could not be read and were left out:",
+            file=sys.stderr,
+        )
+        for item in result.unreadable:
+            print(f"  - {item}", file=sys.stderr)
 
 
 def _cmd_recategorize(paprika_path: str, output_dir: str) -> None:

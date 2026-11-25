@@ -75,7 +75,7 @@ class TestMergeExports:
             tmp_path / "a.paprikarecipes",
             [{"name": "Pasta", "ingredients": "", "directions": ""}],
         )
-        out = merge_exports([src], tmp_path)
+        out = merge_exports([src], tmp_path).path
         assert out.exists()
         assert out.suffix == ".paprikarecipes"
         assert "merged_" in out.name
@@ -91,7 +91,7 @@ class TestMergeExports:
             tmp_path / "b.paprikarecipes",
             [{"name": "Soup"}, {"name": "Bread"}],
         )
-        out = merge_exports([a, b], tmp_path)
+        out = merge_exports([a, b], tmp_path).path
         names = _read_names(out)
         assert set(names) == {"Pasta", "Salad", "Soup", "Bread"}
         assert len(names) == 4
@@ -99,21 +99,21 @@ class TestMergeExports:
     def test_exact_duplicate_removed(self, tmp_path):
         a = _make_archive(tmp_path / "a.paprikarecipes", [{"name": "Pasta"}])
         b = _make_archive(tmp_path / "b.paprikarecipes", [{"name": "Pasta"}])
-        out = merge_exports([a, b], tmp_path)
+        out = merge_exports([a, b], tmp_path).path
         names = _read_names(out)
         assert names.count("Pasta") == 1
 
     def test_case_insensitive_dedup(self, tmp_path):
         a = _make_archive(tmp_path / "a.paprikarecipes", [{"name": "Chocolate Cake"}])
         b = _make_archive(tmp_path / "b.paprikarecipes", [{"name": "chocolate cake"}])
-        out = merge_exports([a, b], tmp_path)
+        out = merge_exports([a, b], tmp_path).path
         names = _read_names(out)
         assert len(names) == 1
 
     def test_accent_insensitive_dedup(self, tmp_path):
         a = _make_archive(tmp_path / "a.paprikarecipes", [{"name": "Crème Brûlée"}])
         b = _make_archive(tmp_path / "b.paprikarecipes", [{"name": "Creme Brulee"}])
-        out = merge_exports([a, b], tmp_path)
+        out = merge_exports([a, b], tmp_path).path
         names = _read_names(out)
         assert len(names) == 1
 
@@ -127,20 +127,20 @@ class TestMergeExports:
             tmp_path / "b.paprikarecipes",
             [{"name": "Pasta", "source": "Book B"}],
         )
-        out = merge_exports([a, b], tmp_path)
+        out = merge_exports([a, b], tmp_path).path
         with zipfile.ZipFile(out, "r") as zf:
             data = json.loads(gzip.decompress(zf.read(zf.namelist()[0])).decode("utf-8"))
         assert data.get("source") == "Book A"
 
     def test_output_is_valid_zip(self, tmp_path):
         a = _make_archive(tmp_path / "a.paprikarecipes", [{"name": "Soup"}])
-        out = merge_exports([a], tmp_path)
+        out = merge_exports([a], tmp_path).path
         assert zipfile.is_zipfile(out)
 
     def test_output_dir_created_if_missing(self, tmp_path):
         a = _make_archive(tmp_path / "a.paprikarecipes", [{"name": "Soup"}])
         new_dir = tmp_path / "subdir" / "output"
-        out = merge_exports([a], new_dir)
+        out = merge_exports([a], new_dir).path
         assert out.exists()
 
     def test_bad_zip_skipped_gracefully(self, tmp_path):
@@ -148,7 +148,7 @@ class TestMergeExports:
         bad = tmp_path / "bad.paprikarecipes"
         bad.write_bytes(b"not a zip file")
         good = _make_archive(tmp_path / "good.paprikarecipes", [{"name": "Soup"}])
-        out = merge_exports([bad, good], tmp_path)
+        out = merge_exports([bad, good], tmp_path).path
         names = _read_names(out)
         assert "Soup" in names
 
@@ -160,7 +160,7 @@ class TestMergeExports:
 
     def test_output_filename_has_timestamp(self, tmp_path):
         a = _make_archive(tmp_path / "a.paprikarecipes", [{"name": "Soup"}])
-        out = merge_exports([a], tmp_path)
+        out = merge_exports([a], tmp_path).path
         # filename: merged_YYYYMMDD_HHMMSS.paprikarecipes
         import re
         assert re.match(r"merged_\d{8}_\d{6}\.paprikarecipes", out.name)
@@ -170,6 +170,61 @@ class TestMergeExports:
         for i, name in enumerate(["Apple Pie", "Beef Stew", "Carrot Cake"]):
             p = _make_archive(tmp_path / f"{i}.paprikarecipes", [{"name": name}])
             archives.append(p)
-        out = merge_exports(archives, tmp_path)
+        out = merge_exports(archives, tmp_path).path
         names = _read_names(out)
         assert set(names) == {"Apple Pie", "Beef Stew", "Carrot Cake"}
+
+
+# ---------------------------------------------------------------------------
+# merge_exports — what was left out is reported, not only logged
+# ---------------------------------------------------------------------------
+
+class TestMergeExportsReportsWhatItLeftOut:
+
+    def test_counts_written_and_duplicates(self, tmp_path):
+        a = _make_archive(tmp_path / "a.paprikarecipes", [{"name": "Pasta"}, {"name": "Soup"}])
+        b = _make_archive(tmp_path / "b.paprikarecipes", [{"name": "pasta"}])
+        result = merge_exports([a, b], tmp_path)
+        assert (result.written, result.duplicates, result.unreadable) == (2, 1, ())
+
+    @pytest.mark.parametrize(
+        "member_bytes",
+        [
+            pytest.param(b"not gzip at all", id="not-gzip"),
+            pytest.param(gzip.compress(b"{not json"), id="not-json"),
+            pytest.param(gzip.compress(b"[1, 2]"), id="json-not-an-object"),
+        ],
+    )
+    def test_an_unparseable_entry_is_reported(self, tmp_path, member_bytes):
+        a = _make_archive(tmp_path / "a.paprikarecipes", [{"name": "Pasta"}])
+        with zipfile.ZipFile(a, "a") as zf:
+            zf.writestr("Broken.paprikarecipe", member_bytes)
+        result = merge_exports([a], tmp_path)
+        assert _read_names(result.path) == ["Pasta"]
+        assert result.written == 1
+        assert result.unreadable == ("Broken.paprikarecipe in a.paprikarecipes",)
+
+    def test_an_archive_that_is_not_a_zip_is_reported(self, tmp_path):
+        bad = tmp_path / "bad.paprikarecipes"
+        bad.write_bytes(b"not a zip file")
+        good = _make_archive(tmp_path / "good.paprikarecipes", [{"name": "Soup"}])
+        result = merge_exports([bad, good], tmp_path)
+        assert result.written == 1
+        assert result.unreadable == ("bad.paprikarecipes (not a ZIP archive)",)
+
+    def test_the_cli_prints_what_was_left_out(self, tmp_path, capsys):
+        from recipeparser.__main__ import _cmd_merge
+
+        bad = tmp_path / "bad.paprikarecipes"
+        bad.write_bytes(b"not a zip file")
+        good = _make_archive(tmp_path / "good.paprikarecipes", [{"name": "Soup"}, {"name": "Stew"}])
+        with zipfile.ZipFile(good, "a") as zf:
+            zf.writestr("Broken.paprikarecipe", b"not gzip")
+
+        _cmd_merge([str(bad), str(good)], str(tmp_path / "out"))
+
+        captured = capsys.readouterr()
+        assert "2 recipe(s)" in captured.out
+        assert "2 could not be read and were left out" in captured.err
+        assert "bad.paprikarecipes (not a ZIP archive)" in captured.err
+        assert "Broken.paprikarecipe in good.paprikarecipes" in captured.err
