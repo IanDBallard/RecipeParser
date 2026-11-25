@@ -803,6 +803,21 @@ def test_brave_failing_is_silent(monkeypatch: pytest.MonkeyPatch, caplog: pytest
     assert "links lane" in caplog.text
 
 
+def test_a_bug_in_the_links_lane_is_silent_but_logged_with_its_traceback(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _refuse(monkeypatch, "seriouseats.com")
+    brave = FakeBrave(error=KeyError("web"))
+    tc, _ = _app(brave=brave)
+    with caplog.at_level("WARNING"):
+        lines = _lines(_post(tc))
+    assert all(line["type"] != "error" for line in lines)
+    assert [c["url"] for c in lines[-1]["candidates"]] == [GRAVY, MINE]  # the agent's finds alone
+    [record] = [r for r in caplog.records if "links lane failed" in r.getMessage()]
+    assert record.getMessage() == "search look: the links lane failed: KeyError"
+    assert record.exc_info is not None and record.exc_info[0] is KeyError
+
+
 def test_agent_error_drops_links(monkeypatch: pytest.MonkeyPatch) -> None:
     _refuse(monkeypatch, "seriouseats.com")
     brave = FakeBrave([BraveResult(SE_GRAVY, "Vegan Gravy")])
