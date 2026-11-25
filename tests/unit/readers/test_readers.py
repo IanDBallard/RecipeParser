@@ -640,6 +640,28 @@ class TestReaderCitations:
         doc.metadata = {}
         assert _get_book_citation(doc).key == "unknown-book"
 
+    def test_pdf_image_that_cannot_be_extracted_is_logged_with_page_and_xref(self, tmp_path, caplog):
+        import logging
+
+        from recipeparser.io.readers.pdf import _extract_page_images
+
+        good = b"x" * 50_000
+        doc = MagicMock()
+        doc.extract_image.side_effect = lambda xref: (
+            (_ for _ in ()).throw(ValueError("bad xref")) if xref == 7 else {"image": good, "ext": "jpeg"}
+        )
+        page = MagicMock()
+        page.get_images.return_value = [(7,), (8,)]
+
+        with caplog.at_level(logging.WARNING, logger="recipeparser.io.readers.pdf"), \
+                patch("recipeparser.io.readers.pdf.keep_as_photo", return_value=True):
+            names = _extract_page_images(doc, page, 2, str(tmp_path))
+
+        assert names == ["page3_img2.jpeg"]
+        warned = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warned) == 1
+        assert "page 3" in warned[0].getMessage() and "xref 7" in warned[0].getMessage()
+
     def test_url_reader_chunk_carries_the_host(self):
         response = MagicMock()
         response.text = "Tomato soup\n1 tin tomatoes\nHeat."
