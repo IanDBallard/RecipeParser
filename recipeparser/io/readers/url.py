@@ -417,7 +417,8 @@ def _json_ld_images(html: str) -> Tuple[str, ...]:
         return ()
     try:
         recipe = find_json_ld_recipe(html)
-    except Exception:  # noqa: BLE001 -- a page's own markup never fails the job
+    except Exception:  # fail-loud.bare-except-ok: page markup never fails the job; logged  # noqa: BLE001
+        log.warning("Could not read the page's JSON-LD for its pictures — offering none.", exc_info=True)
         return ()
     if recipe is None:
         return ()
