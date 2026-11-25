@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.44.1] — 2026-11-25
+
+Readers, writers and the category editor stop losing things quietly, and two pieces of dead code go (architecture review 2026-11-25, `soft.fail-loud`).
+
+### 🐛 Fixed
+- A Paprika entry that cannot be read (corrupt or truncated member, not JSON, JSON that is not a recipe, larger than the cap) is reported in the import's "What was missed" list instead of being dropped. JSON that is not an object used to crash the read.
+- `--merge` reports the entries and archives it left out (and keeps going past a corrupt member instead of abandoning the rest of that archive); it prints the written and duplicate counts.
+- The category editor refuses to load an unreadable or malformed `categories.yaml` and disables Save, so a Save can no longer overwrite the cook's file with an empty tree. A missing file still opens empty on first run.
+- A PDF image PyMuPDF cannot extract is logged with its page and xref instead of being dropped silently.
+- JSON-LD that breaks the URL import's picture lookup is logged with its traceback instead of being swallowed.
+
+### 🗑️ Removed
+- `recipeparser/toc.py` and its tests: nothing in production called it.
+- `PaprikaReader.read_entries_with_images`: no callers.
+
+### 🔧 Changed
+- `merge_exports()` returns `MergeResult(path, written, duplicates, unreadable)` instead of a path.
+
 ## [9.44.0] — 2026-11-25
 
 A used-up daily Gemini quota or a cancel now stops the work instead of being recorded as one more failure. `recipeparser/exceptions.py` has always said every `except Exception` must let `JobCancelledError` and `DailyQuotaExhaustedError` through; about a dozen handlers did not (architecture review 2026-11-25, `soft.fail-loud`).
