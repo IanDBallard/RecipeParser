@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-11-19T22:08:15.004284+00:00",
-  "commit": "85ec090994887ecbd96492837ee29e5e095efaf7",
+  "generated_at": "2026-11-25T21:40:40.715400+00:00",
+  "commit": "4971ffb5fe48a3355237fd4b83e7d7f4422b17dc",
   "invocation": "/architecture-review --update-baseline",
   "counts": [
     {
       "mandate_id": "soft.class-cohesion",
       "subsystem": "recipeparser/adapters/",
-      "count": 4
+      "count": 5
     },
     {
       "mandate_id": "soft.class-cohesion",
@@ -15,33 +15,33 @@
     },
     {
       "mandate_id": "soft.fail-loud",
-      "subsystem": "recipeparser/",
-      "count": 5
-    },
-    {
-      "mandate_id": "soft.fail-loud",
       "subsystem": "recipeparser/adapters/",
-      "count": 6
+      "count": 1
     },
     {
       "mandate_id": "soft.fail-loud",
       "subsystem": "recipeparser/core/",
-      "count": 3
+      "count": 5
     },
     {
       "mandate_id": "soft.fail-loud",
       "subsystem": "recipeparser/io/",
-      "count": 7
+      "count": 1
+    },
+    {
+      "mandate_id": "soft.fail-loud",
+      "subsystem": "scripts/",
+      "count": 8
     },
     {
       "mandate_id": "soft.no-shims",
       "subsystem": "recipeparser/",
-      "count": 10
+      "count": 13
     },
     {
       "mandate_id": "soft.no-shims",
       "subsystem": "recipeparser/adapters/",
-      "count": 3
+      "count": 9
     },
     {
       "mandate_id": "soft.no-shims",
@@ -51,12 +51,12 @@
     {
       "mandate_id": "soft.no-shims",
       "subsystem": "recipeparser/io/",
-      "count": 8
+      "count": 10
     },
     {
       "mandate_id": "soft.no-shims",
       "subsystem": "scripts/",
-      "count": 8
+      "count": 9
     }
   ]
 }
