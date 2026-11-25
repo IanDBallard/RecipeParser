@@ -63,6 +63,26 @@ class _QueueHandler(logging.Handler):
 # Category editor frame
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _read_category_entries(path: Path) -> list:
+    """The ``categories`` list of a categories YAML file (an empty file has none).
+
+    Raises:
+        FileNotFoundError: the file does not exist (the first run).
+        OSError / yaml.YAMLError: it cannot be read or parsed.
+        ValueError: it parses, but is not ``categories:`` over a list.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+    if raw is None:
+        return []
+    if not isinstance(raw, dict):
+        raise ValueError(f"expected a 'categories:' mapping at the top, found a {type(raw).__name__}")
+    entries = raw.get("categories") or []
+    if not isinstance(entries, list):
+        raise ValueError(f"'categories' should be a list, found a {type(entries).__name__}")
+    return entries
+
+
 class CategoryEditorFrame(ctk.CTkFrame):
     """Two-panel category editor: parent list on the left, children on the right."""
 
@@ -70,10 +90,13 @@ class CategoryEditorFrame(ctk.CTkFrame):
         super().__init__(master, **kwargs)
         self._dirty = False
         self._data: dict[str, list[str]] = {}   # parent -> [child, ...]
+        self._order: list[str] = []
         self._selected_parent: Optional[str] = None
+        self._save_blocked = False
 
         self._build_ui()
-        self._load()
+        if not self._load():
+            self._block_save()
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -151,17 +174,27 @@ class CategoryEditorFrame(ctk.CTkFrame):
 
     # ── Data model helpers ─────────────────────────────────────────────────────
 
-    def _load(self, path: Path = _CATEGORIES_FILE):
-        """Read the YAML and populate internal data structures."""
+    def _load(self, path: Path = _CATEGORIES_FILE) -> bool:
+        """Read the YAML and populate internal data structures; False when it could not be read.
+
+        A missing file is the first run, and the editor starts empty. A file that exists but
+        cannot be read or parsed is shown in an error dialog and replaces nothing, so an empty
+        tree is never mistaken for the user's real one (a later Save would overwrite it).
+        """
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                raw = yaml.safe_load(f)
-            entries = raw.get("categories", [])
-        except Exception:
+            entries = _read_category_entries(path)
+        except FileNotFoundError:
             entries = []
+        except (OSError, yaml.YAMLError, ValueError) as exc:
+            logging.getLogger(__name__).warning("Could not read categories from %s: %s", path, exc)
+            messagebox.showerror(
+                "Could not read categories",
+                f"{path}\n\n{exc}\n\nNothing was loaded from it, and it will not be overwritten.",
+            )
+            return False
 
         self._data = {}
-        self._order: list[str] = []   # preserves parent insertion order
+        self._order = []   # preserves parent insertion order
 
         for entry in entries:
             if isinstance(entry, str):
@@ -174,6 +207,17 @@ class CategoryEditorFrame(ctk.CTkFrame):
 
         self._dirty = False
         self._refresh_parents()
+        return True
+
+    def _block_save(self) -> None:
+        """Refuse every save: categories.yaml was unreadable, so the editor holds no real tree."""
+        self._save_blocked = True
+        self._save_btn.configure(state="disabled")
+
+    def _unblock_save(self) -> None:
+        """The editor now holds a whole tree the user chose (imported or synced); saving is safe."""
+        self._save_blocked = False
+        self._save_btn.configure(state="normal")
 
     def _to_yaml_structure(self) -> dict:
         entries = []
@@ -328,6 +372,15 @@ class CategoryEditorFrame(ctk.CTkFrame):
     # ── Persistence ────────────────────────────────────────────────────────────
 
     def _save(self, path: Path = _CATEGORIES_FILE):
+        if self._save_blocked:
+            messagebox.showerror(
+                "Save refused",
+                f"{_CATEGORIES_FILE} could not be read when the editor opened, so saving now would "
+                "replace your categories with an empty list.\n\n"
+                "Fix the file and reopen RecipeParser, or use Import YAML… or Sync from Paprika… "
+                "to load a full category list first.",
+            )
+            return
         try:
             with open(path, "w", encoding="utf-8") as f:
                 yaml.dump(
@@ -347,9 +400,9 @@ class CategoryEditorFrame(ctk.CTkFrame):
             title="Import categories YAML",
             filetypes=[("YAML files", "*.yaml *.yml"), ("All files", "*.*")],
         )
-        if path:
-            self._load(Path(path))
+        if path and self._load(Path(path)):
             self._dirty = True
+            self._unblock_save()
 
     def _export_yaml(self):
         path = filedialog.asksaveasfilename(
@@ -395,6 +448,7 @@ class CategoryEditorFrame(ctk.CTkFrame):
         self._order = order
         self._selected_parent = order[0]
         self._dirty = True
+        self._unblock_save()
         self._refresh_parents()
         messagebox.showinfo(
             "Sync Complete",
