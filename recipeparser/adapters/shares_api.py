@@ -22,6 +22,7 @@ from collections import deque
 from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from postgrest.exceptions import APIError
 from pydantic import BaseModel, Field
 
 from recipeparser.adapters.idempotency import HEADER as IDEMPOTENCY_HEADER
@@ -140,9 +141,12 @@ def build_router(
         a 422 carrying ``invalid`` where the caller expects one. Anything else is a 503."""
         try:
             return sb.rpc(fn, params).execute().data
-        except Exception as exc:  # noqa: BLE001
-            if invalid is not None and getattr(exc, "code", None) == "22023":
+        except APIError as exc:
+            if invalid is not None and exc.code == "22023":
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=invalid) from exc
+            log.exception("Sharing function %s failed.", fn)
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
+        except Exception as exc:  # noqa: BLE001 - transport or client failure: an outage, never a refusal
             log.exception("Sharing function %s failed.", fn)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
 
