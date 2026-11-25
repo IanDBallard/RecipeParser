@@ -541,3 +541,17 @@ def test_regen_calls_are_attributed_to_the_rows_owner():
     _worker(fake, refine_fn=refine).run_once()
     assert seen == [("u9", "regen")]
     assert usage.ai_context.get() is None
+
+
+def test_a_used_up_daily_quota_releases_the_claim_and_spends_no_attempt():
+    # regen_failed counts an attempt against the row; a quota outage is not the row's
+    # failure. The claim is released and the poll ends (run_workers logs the raise).
+    import pytest
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+    fake = FakeSupabase(rpc_responses={"claim_stale_recipes": [_row()]}, responses={"recipes": [{"id": "r1"}]})
+    refine_fn = MagicMock(side_effect=DailyQuotaExhaustedError(3600))
+    with pytest.raises(DailyQuotaExhaustedError):
+        _worker(fake, refine_fn=refine_fn, clock=lambda: 0.0).run_once()
+    assert not any(n == "regen_failed" for n, _ in fake.rpcs)
+    ops = _ops(fake, "recipes")
+    assert len(ops) == 1 and ops[0][0][1][0] == {"claimed_at": None}

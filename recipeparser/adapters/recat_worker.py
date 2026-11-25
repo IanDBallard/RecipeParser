@@ -25,6 +25,7 @@ from recipeparser.core.clock import utc_timestamp
 from recipeparser.core.stages.categorize import filter_batch_result
 from recipeparser.core.stages.tag import TAG_BATCH_SIZE
 from recipeparser.core.taxonomy import parents_from_rows, root_of, without_lists
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
 from recipeparser.gemini import categorize_batch
 
 log = logging.getLogger(__name__)
@@ -186,6 +187,22 @@ class RecatWorker:
         try:
             with usage.attributed(held.user_id, "recat", held.job_id, get_client=self._usage_client):
                 finished = self._step(held)
+        except DailyQuotaExhaustedError as exc:
+            # Every later batch would fail the same way, so the job ends here on the
+            # quota rather than recording each remaining batch as skipped. The batch
+            # in flight never moved the cursor, so nothing is marked skipped for it,
+            # and the counts reached so far are kept.
+            self._held = None
+            log.warning("recat job %s stopped: %s", held.job_id, exc)
+            self._finish(held.job_id, "error", count=held.matched, skipped=held.skipped,
+                         skipped_count=held.skipped_count, error=str(exc)[:2000])
+            return 1
+        except JobCancelledError:
+            self._held = None
+            log.info("recat job %s cancelled after %d batch(es).", held.job_id, held.done_batches)
+            self._finish(held.job_id, "cancelled", count=held.matched, skipped=held.skipped,
+                         skipped_count=held.skipped_count)
+            return 1
         except Exception as exc:  # noqa: BLE001
             # Let go first: if the terminal write fails too, the next poll must not
             # keep feeding batches to a job it has already given up on.
@@ -335,6 +352,8 @@ class RecatWorker:
                 held.matched += len(hits)  # distinct recipes matched, not junction rows inserted
                 last_exc = None
                 break
+            except (DailyQuotaExhaustedError, JobCancelledError):
+                raise  # not this batch's failure: run_once ends the job (exceptions.py)
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 if attempt == 1:

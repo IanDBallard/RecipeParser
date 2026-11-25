@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List
 from recipeparser import usage
 from recipeparser.core.regen import raw_body_column
 from recipeparser.core.stages.embed import _EXPECTED_DIMS, build_embedding_text
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
 from recipeparser.gemini import get_embeddings
 
 log = logging.getLogger(__name__)
@@ -85,6 +86,13 @@ class EmbedWorker:
                     self._release_claim(rid)
                 else:
                     log.info("embed: %s embedded at rev %d.", rid, rev)
+            except (DailyQuotaExhaustedError, JobCancelledError):
+                # Not this row's failure: a used-up quota fails every row the same way,
+                # and embed_failed would count it against the row until the database
+                # stops offering it. Release the claim and end the poll (run_workers
+                # logs the raise and sleeps), so the row is tried again after the reset.
+                self._release_claim(rid)
+                raise
             except Exception as exc:  # noqa: BLE001 — every failure is recorded, never fatal
                 log.warning("embed: %s failed: %s", rid, exc, exc_info=True)
                 self._record_failure(rid)
