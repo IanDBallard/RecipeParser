@@ -226,6 +226,27 @@ def test_an_unexpected_database_error_is_a_503_not_a_refusal(client, fake):
     assert (r.status_code, r.json()["detail"]) == (503, "Could not reach the household service. Try again.")
 
 
+def test_a_transport_failure_is_a_503(client, fake):
+    def boom(_p):
+        raise RuntimeError("connection reset")
+    fake.rpcs["leave_household"] = boom
+    r = _as(client, ME).post("/household/leave")
+    assert (r.status_code, r.json()["detail"]) == (503, "Could not reach the household service. Try again.")
+
+
+def test_only_postgrests_apierror_picks_a_refusal(client, fake):
+    # The refusal table is read off postgrest's typed APIError, not off any exception that
+    # happens to carry a ``code``: a stray error shaped like "household of one" is an outage.
+    class Lookalike(Exception):
+        code, message = "23514", "household of one"
+
+    def lookalike(_p):
+        raise Lookalike()
+    fake.rpcs["leave_household"] = lookalike
+    r = _as(client, ME).post("/household/leave")
+    assert (r.status_code, r.json()["detail"]) == (503, "Could not reach the household service. Try again.")
+
+
 def test_no_service_client_is_503(client, monkeypatch):
     monkeypatch.setattr(api, "_get_supabase_service_client", lambda: None)
     r = _as(client, ME).post("/household/leave")
