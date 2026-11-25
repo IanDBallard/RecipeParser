@@ -17,7 +17,9 @@ from unittest.mock import MagicMock
 
 import anthropic
 import httpx
+import pydantic
 import pytest
+from anthropic.types.beta import BetaContentBlock
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.testclient import TestClient
@@ -105,17 +107,31 @@ def _response(stop: str, content: list[Any]) -> SimpleNamespace:
     return SimpleNamespace(stop_reason=stop, content=content, model=MODEL, usage=_usage())
 
 
-def _fetch(url: str, tid: str) -> list[SimpleNamespace]:
+_BLOCK = pydantic.TypeAdapter(BetaContentBlock)
+
+
+def _block(**fields: Any) -> Any:
+    """A real SDK content block, so the look reads the same objects Anthropic returns."""
+    return _BLOCK.validate_python(fields)
+
+
+def _text(text: str) -> Any:
+    return _block(type="text", text=text, citations=None)
+
+
+def _fetch(url: str, tid: str) -> list[Any]:
     caller = {"type": "code_execution_20260120", "tool_id": "srvtoolu_ce"}
-    use = SimpleNamespace(type="server_tool_use", id=tid, caller=caller, name="web_fetch", input={"url": url})
-    content = SimpleNamespace(type="web_fetch_result", url=url, retrieved_at="2026-11-14T00:00:00+00:00", content=None)
-    return [use, SimpleNamespace(type="web_fetch_tool_result", tool_use_id=tid, caller=caller, content=content)]
+    use = _block(type="server_tool_use", id=tid, caller=caller, name="web_fetch", input={"url": url})
+    document = {
+        "type": "document", "title": "Page", "citations": None,
+        "source": {"type": "text", "media_type": "text/plain", "data": "page text"},
+    }
+    content = {"type": "web_fetch_result", "url": url, "retrieved_at": "2026-11-14T00:00:00+00:00", "content": document}
+    return [use, _block(type="web_fetch_tool_result", tool_use_id=tid, caller=caller, content=content)]
 
 
-def _search(query: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        type="server_tool_use", id="srvtoolu_s", caller=None, name="web_search", input={"query": query}
-    )
+def _search(query: str) -> Any:
+    return _block(type="server_tool_use", id="srvtoolu_s", caller=None, name="web_search", input={"query": query})
 
 
 def _found() -> SimpleNamespace:
@@ -130,7 +146,7 @@ def _found() -> SimpleNamespace:
             _search("vegan side"),
             *_fetch(GRAVY, "f1"),
             *_fetch(MINE, "f2"),
-            SimpleNamespace(type="text", text=json.dumps({"candidates": candidates}), citations=None),
+            _text(json.dumps({"candidates": candidates})),
         ],
     )
 
@@ -459,7 +475,7 @@ def test_web_scope_emits_a_find_off_the_cook_sites() -> None:
     candidates = [{"gap": 0, "url": url, "title": "Any", "note": "x"}]
     response = _response(
         "end_turn",
-        [*_fetch(url, "f1"), SimpleNamespace(type="text", text=json.dumps({"candidates": candidates}), citations=None)],
+        [*_fetch(url, "f1"), _text(json.dumps({"candidates": candidates}))],
     )
     tc, _ = _app(client=FakeAnthropic([response]))
     found = _lines(_post(tc, WEB))[-1]["candidates"]
@@ -497,7 +513,7 @@ def test_blocked_hosts_mark_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_nothing_found_is_an_empty_candidates_line() -> None:
-    final = _response("end_turn", [SimpleNamespace(type="text", text='{"candidates": []}', citations=None)])
+    final = _response("end_turn", [_text('{"candidates": []}')])
     tc, _ = _app(client=FakeAnthropic([final]))
     assert _lines(_post(tc)) == [{"type": "candidates", "candidates": []}]
 
@@ -710,7 +726,7 @@ def _one_find(url: str = "https://anysite.example/r/1") -> SimpleNamespace:
     candidates = [{"gap": 0, "url": url, "title": "Any", "note": "x"}]
     return _response(
         "end_turn",
-        [*_fetch(url, "f1"), SimpleNamespace(type="text", text=json.dumps({"candidates": candidates}), citations=None)],
+        [*_fetch(url, "f1"), _text(json.dumps({"candidates": candidates}))],
     )
 
 

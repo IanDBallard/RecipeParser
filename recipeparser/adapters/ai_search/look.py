@@ -207,21 +207,24 @@ def site_of(host: str, sites: Iterable[str]) -> str | None:
     return None
 
 
-def _get(obj: Any, key: str) -> Any:
-    if isinstance(obj, Mapping):
-        return obj.get(key)
-    return getattr(obj, key, None)
+def content_blocks(response: Any) -> list[dict[str, Any]]:
+    """The response's content blocks as plain dicts: the one place the SDK objects are read.
+
+    Every block is a pydantic model of the Anthropic SDK; ``model_dump()`` turns it, nested
+    content included, into dicts. The readers below index the fields they need, so a field the
+    SDK renames raises a ``KeyError`` rather than reading as absent."""
+    return [block.model_dump() for block in response.content]
 
 
-def fetched_urls(response: Any) -> set[str]:
-    """The addresses a web fetch in this response read successfully (ruling 15)."""
+def fetched_urls(blocks: list[dict[str, Any]]) -> set[str]:
+    """The addresses a web fetch in these blocks read successfully (ruling 15)."""
     urls: set[str] = set()
-    for block in _get(response, "content") or []:
-        if _get(block, "type") != "web_fetch_tool_result":
+    for block in blocks:
+        if block["type"] != "web_fetch_tool_result":
             continue
-        content = _get(block, "content")
-        if _get(content, "type") == "web_fetch_result":
-            url = _get(content, "url")
+        content = block["content"]
+        if content["type"] == "web_fetch_result":
+            url = content["url"]
             if isinstance(url, str) and url:
                 urls.add(url)
     return urls
@@ -401,18 +404,19 @@ def refused_domains(exc: anthropic.APIStatusError) -> set[str]:
     return set()
 
 
-def _progress(response: Any, on_progress: Callable[[str], None]) -> None:
-    for block in _get(response, "content") or []:
-        if _get(block, "type") != "server_tool_use":
+def _progress(blocks: list[dict[str, Any]], on_progress: Callable[[str], None]) -> None:
+    for block in blocks:
+        if block["type"] != "server_tool_use":
             continue
-        name = _get(block, "name")
-        tool_input = _get(block, "input") or {}
+        name = block["name"]
+        # The tool's arguments are the model's to write, not the SDK's: any may be missing.
+        tool_input = block["input"] or {}
         if name == "web_search":
-            query = _plain(str(_get(tool_input, "query") or ""))
+            query = _plain(str(tool_input.get("query") or ""))
             if query:
                 on_progress(_clip(f"Looking for {query}", MAX_PROGRESS_CHARS))
         elif name == "web_fetch":
-            host = url_host(str(_get(tool_input, "url") or ""))
+            host = url_host(str(tool_input.get("url") or ""))
             if host:
                 on_progress(_clip(f"Reading a page on {host}", MAX_PROGRESS_CHARS))
 
@@ -435,9 +439,9 @@ def _json_text(text: str) -> Any:
         raise AgentFailed("the final answer was not readable JSON") from exc
 
 
-def parse_candidates(response: Any) -> list[RawCandidate]:
-    """The candidates the final response names, unchecked. Malformed entries are dropped."""
-    texts = [str(_get(b, "text") or "") for b in _get(response, "content") or [] if _get(b, "type") == "text"]
+def parse_candidates(blocks: list[dict[str, Any]]) -> list[RawCandidate]:
+    """The candidates the final response's blocks name, unchecked. Malformed entries are dropped."""
+    texts = [b["text"] for b in blocks if b["type"] == "text"]
     if not texts:
         raise AgentFailed("the final response carried no text block")
     try:
@@ -522,11 +526,12 @@ def run_look(
             raise AgentFailed(type(exc).__name__) from exc
 
         usage.record_claude("look", response.model, response.usage)
-        fetched |= fetched_urls(response)
-        _progress(response, on_progress)
+        blocks = content_blocks(response)
+        fetched |= fetched_urls(blocks)
+        _progress(blocks, on_progress)
         stop = response.stop_reason
         if stop == "end_turn":
-            return parse_candidates(response), fetched
+            return parse_candidates(blocks), fetched
         if stop != "pause_turn":
             if stop == "refusal":
                 logger.warning("search look: refusal %s", getattr(response, "stop_details", None))

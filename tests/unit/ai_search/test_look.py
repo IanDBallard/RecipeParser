@@ -14,7 +14,9 @@ from typing import Any
 
 import anthropic
 import httpx
+import pydantic
 import pytest
+from anthropic.types.beta import BetaContentBlock
 
 from recipeparser.adapters.ai_search import look
 from recipeparser.adapters.ai_search.agent import AgentFailed, AgentTimeout
@@ -27,6 +29,7 @@ from recipeparser.adapters.ai_search.look import (
     UnsearchableSites,
     check_candidates,
     classify,
+    content_blocks,
     fetched_urls,
     normalise_url,
     parse_candidates,
@@ -51,52 +54,57 @@ HOSTS = {"food52.com", "bbcgoodfood.com"}
 _CE = {"type": "code_execution_20260120", "tool_id": "srvtoolu_ce"}
 
 
-def _code(code: str = "r = await web_search({})") -> SimpleNamespace:
-    return SimpleNamespace(
-        type="server_tool_use", id="srvtoolu_ce", caller=None, name="code_execution", input={"code": code}
-    )
+_BLOCK = pydantic.TypeAdapter(BetaContentBlock)
 
 
-def _search_use(query: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        type="server_tool_use", id="srvtoolu_s", caller=_CE, name="web_search", input={"query": query}
-    )
+def _block(**fields: Any) -> Any:
+    """A real SDK content block, so the look reads the same objects Anthropic returns."""
+    return _BLOCK.validate_python(fields)
 
 
-def _search_result(*urls: str) -> SimpleNamespace:
+def _code(code: str = "r = await web_search({})") -> Any:
+    return _block(type="server_tool_use", id="srvtoolu_ce", caller=None, name="code_execution", input={"code": code})
+
+
+def _search_use(query: str) -> Any:
+    return _block(type="server_tool_use", id="srvtoolu_s", caller=_CE, name="web_search", input={"query": query})
+
+
+def _search_result(*urls: str) -> Any:
     results = [
-        SimpleNamespace(type="web_search_result", url=u, title="t", page_age=None, encrypted_content="x") for u in urls
+        {"type": "web_search_result", "url": u, "title": "t", "page_age": None, "encrypted_content": "x"} for u in urls
     ]
-    return SimpleNamespace(type="web_search_tool_result", tool_use_id="srvtoolu_s", caller=_CE, content=results)
+    return _block(type="web_search_tool_result", tool_use_id="srvtoolu_s", caller=_CE, content=results)
 
 
-def _fetch_use(url: str, tid: str = "srvtoolu_f") -> SimpleNamespace:
-    return SimpleNamespace(type="server_tool_use", id=tid, caller=_CE, name="web_fetch", input={"url": url})
+def _fetch_use(url: str, tid: str = "srvtoolu_f") -> Any:
+    return _block(type="server_tool_use", id=tid, caller=_CE, name="web_fetch", input={"url": url})
 
 
-def _fetch_ok(url: str, tid: str = "srvtoolu_f") -> SimpleNamespace:
-    document = SimpleNamespace(type="document", title="Page", source=SimpleNamespace(data="page text"), citations=None)
-    content = SimpleNamespace(
-        type="web_fetch_result", url=url, retrieved_at="2025-09-21T04:01:14+00:00", content=document
-    )
-    return SimpleNamespace(type="web_fetch_tool_result", tool_use_id=tid, caller=_CE, content=content)
+def _fetch_ok(url: str, tid: str = "srvtoolu_f") -> Any:
+    document = {
+        "type": "document", "title": "Page", "citations": None,
+        "source": {"type": "text", "media_type": "text/plain", "data": "page text"},
+    }
+    content = {"type": "web_fetch_result", "url": url, "retrieved_at": "2025-09-21T04:01:14+00:00", "content": document}
+    return _block(type="web_fetch_tool_result", tool_use_id=tid, caller=_CE, content=content)
 
 
-def _fetch_error(tid: str = "srvtoolu_g") -> SimpleNamespace:
-    content = SimpleNamespace(type="web_fetch_tool_result_error", error_code="url_not_accessible")
-    return SimpleNamespace(type="web_fetch_tool_result", tool_use_id=tid, caller=_CE, content=content)
+def _fetch_error(tid: str = "srvtoolu_g") -> Any:
+    content = {"type": "web_fetch_tool_result_error", "error_code": "url_not_accessible"}
+    return _block(type="web_fetch_tool_result", tool_use_id=tid, caller=_CE, content=content)
 
 
-def _code_result(stdout: str) -> SimpleNamespace:
-    return SimpleNamespace(
+def _code_result(stdout: str) -> Any:
+    return _block(
         type="code_execution_tool_result",
         tool_use_id="srvtoolu_ce",
-        content=SimpleNamespace(type="code_execution_result", stdout=stdout, stderr="", return_code=0),
+        content={"type": "code_execution_result", "stdout": stdout, "stderr": "", "return_code": 0, "content": []},
     )
 
 
-def _text(text: str) -> SimpleNamespace:
-    return SimpleNamespace(type="text", text=text, citations=None)
+def _text(text: str) -> Any:
+    return _block(type="text", text=text, citations=None)
 
 
 def _usage() -> SimpleNamespace:
@@ -416,7 +424,17 @@ def test_fetched_urls_reads_successful_fetches_only() -> None:
             _text("done"),
         ],
     )
-    assert fetched_urls(response) == {GRAVY}
+    assert fetched_urls(content_blocks(response)) == {GRAVY}
+
+
+def test_a_block_missing_a_field_the_look_reads_fails_rather_than_reading_as_absent() -> None:
+    # The blocks are read from one dict shape; a field the SDK renamed is a KeyError, not None.
+    class Renamed:
+        def model_dump(self) -> dict[str, Any]:
+            return {"type": "web_fetch_tool_result", "result": {"type": "web_fetch_result", "url": GRAVY}}
+
+    with pytest.raises(KeyError):
+        fetched_urls(content_blocks(_response("end_turn", [Renamed()])))
 
 
 def test_parse_candidates_reads_a_fenced_answer_and_drops_malformed_entries() -> None:
@@ -429,17 +447,17 @@ def test_parse_candidates_reads_a_fenced_answer_and_drops_malformed_entries() ->
         ]
     }
     response = _response("end_turn", [_text("Here you are."), _text("```json\n" + json.dumps(body) + "\n```")])
-    assert parse_candidates(response) == [_raw(GRAVY)]
+    assert parse_candidates(content_blocks(response)) == [_raw(GRAVY)]
 
 
 def test_parse_candidates_accepts_a_bare_list() -> None:
     response = _response("end_turn", [_text(json.dumps([_cand(GRAVY)]))])
-    assert parse_candidates(response) == [_raw(GRAVY)]
+    assert parse_candidates(content_blocks(response)) == [_raw(GRAVY)]
 
 
 def test_parse_candidates_without_json_fails() -> None:
     with pytest.raises(AgentFailed):
-        parse_candidates(_response("end_turn", [_text("I could not find anything.")]))
+        parse_candidates(content_blocks(_response("end_turn", [_text("I could not find anything.")])))
 
 
 # -- run_look -------------------------------------------------------------------------------------
