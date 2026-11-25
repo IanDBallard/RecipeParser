@@ -13,6 +13,7 @@ import logging
 from collections import Counter
 from typing import Any, List, Optional
 
+import PIL
 from PIL import Image
 
 from recipeparser.config import (
@@ -35,10 +36,22 @@ _LEVELS_SHIFT = 5
 _REAL_SHARE = 0.001
 
 
+#: The Pillow release that added ``Image.get_flattened_data`` and deprecated ``getdata``
+#: (removed in Pillow 14). The project allows ``Pillow>=11.0``, so both sides are supported.
+_FLATTENED_DATA_SINCE = (12, 1)
+_PILLOW_VERSION = tuple(int(part) for part in PIL.__version__.split(".")[:2])
+
+
 def _flattened(img: "Image.Image") -> List[Any]:
-    # getdata() is deprecated from Pillow 12 (removed in 14); its replacement is new in 12.
-    getter = getattr(img, "get_flattened_data", None) or img.getdata
-    return list(getter())
+    """The image's pixel values, line after line, through the API the installed Pillow has.
+
+    The one place the Pillow-version switch lives: chosen by ``PIL.__version__``, not by probing
+    the image, so a Pillow that should have ``get_flattened_data`` and lacks it fails loudly.
+    Drop the ``getdata`` branch once the pin is ``Pillow>=12.1``.
+    """
+    if _PILLOW_VERSION >= _FLATTENED_DATA_SINCE:
+        return list(img.get_flattened_data())
+    return list(img.getdata())
 
 
 def photo_refusal(data: bytes) -> Optional[str]:

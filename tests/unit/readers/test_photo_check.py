@@ -100,6 +100,16 @@ class TestWhatIsNotAPhotograph:
         assert "too thin" in (photo_refusal(_encode(strip)) or "")
 
 
+def test_judging_a_photo_uses_no_deprecated_pillow_api() -> None:
+    # The Pillow-version switch reads PIL.__version__: on a Pillow with get_flattened_data,
+    # the deprecated getdata() is never called.
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        assert photo_refusal(COFFEE) is None
+
+
 def test_keep_as_photo_logs_the_reason(caplog) -> None:
     caplog.set_level("INFO")
     assert keep_as_photo("page3_img2.jpeg", _encode(_spiky_ornament())) is False

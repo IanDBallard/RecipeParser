@@ -430,7 +430,10 @@ def _links_results(lane: _Links) -> list[BraveResult]:
     except BraveError as exc:  # its message never carries the key
         logger.warning("search look: the links lane failed: %s", exc)
     except Exception as exc:  # noqa: BLE001 - the lane never fails a look
-        logger.warning("search look: the links lane failed: %s", type(exc).__name__)
+        # Not a BraveError, so a bug: keep the traceback. The key cannot be in it: BraveSearch holds
+        # it only in its httpx client's headers, and wraps every httpx failure in a BraveError (from
+        # None) above, so no request or header text reaches this handler.
+        logger.warning("search look: the links lane failed: %s", type(exc).__name__, exc_info=exc)
     return []
 
 

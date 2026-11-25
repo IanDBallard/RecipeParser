@@ -17,6 +17,7 @@ import uuid
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from postgrest.exceptions import APIError
 from pydantic import BaseModel
 
 from recipeparser.adapters.idempotency import HEADER as IDEMPOTENCY_HEADER
@@ -94,11 +95,14 @@ def build_router(
     def _rpc(sb: Any, fn: str, params: Dict[str, Any], refusals: Optional[Refusals] = None) -> Any:
         try:
             return sb.rpc(fn, params).execute().data
-        except Exception as exc:  # noqa: BLE001
-            code, message = getattr(exc, "code", None), getattr(exc, "message", None)
+        except APIError as exc:
+            # PostgREST's answer: the function's SQLSTATE and message pick a refusal.
             for (want_code, want_message), (http, detail) in (refusals or {}).items():
-                if code == want_code and (want_message is None or message == want_message):
+                if exc.code == want_code and (want_message is None or exc.message == want_message):
                     raise HTTPException(status_code=http, detail=detail) from exc
+            log.exception("Household function %s failed.", fn)
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
+        except Exception as exc:  # noqa: BLE001 - transport or client failure: an outage, never a refusal
             log.exception("Household function %s failed.", fn)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
 

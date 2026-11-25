@@ -265,6 +265,19 @@ def test_a_malformed_recipe_id_is_422(client, fake):
     assert fake.rpc_calls == []
 
 
+def test_only_postgrests_apierror_is_read_as_a_refused_argument(client, fake):
+    # 22023 is read off postgrest's typed APIError; any other exception, whatever it carries, is a 503.
+    class Lookalike(Exception):
+        code = "22023"
+
+    def lookalike(p):
+        raise Lookalike()
+
+    fake.rpcs["create_recipe_share"] = lookalike
+    response = _as(client, SENDER).post("/shares", json={"email": "friend@example.com", "recipe_ids": [R1]})
+    assert response.status_code == 503
+
+
 def test_a_database_failure_is_503(client, fake):
     def boom(p):
         raise RuntimeError("connection reset")
