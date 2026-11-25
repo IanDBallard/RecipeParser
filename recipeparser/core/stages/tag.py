@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from recipeparser.core.stages.categorize import filter_batch_result
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
 from recipeparser.models import IngestResponse
 
 log = logging.getLogger(__name__)
@@ -84,6 +85,8 @@ def tag_batch(
                 raw = categorize(rows, {axis: offered})
                 hits = filter_batch_result(raw, set(offered), {axis: offered}, parents)
                 break
+            except (DailyQuotaExhaustedError, JobCancelledError):
+                raise  # the run stops, not one axis (exceptions.py)
             except Exception as exc:  # noqa: BLE001 -- one axis must not cost the others
                 reason = str(exc)[:300]
                 log.warning("TAG: the %r call failed for %d recipe(s): %s", axis, len(recipes), reason)
