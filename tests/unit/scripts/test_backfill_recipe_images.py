@@ -231,11 +231,24 @@ class TestStoreAndRecord:
         assert store.calls == [(_PIXEL, "r1", "image/png")]
         assert patches == [("eq.r1", {"image_url": "https://bucket.test/r1.png"})]
 
-    def test_leaves_the_row_untouched_when_the_upload_fails(self, monkeypatch):
-        # put() returns None rather than raising. Recording a URL we never got
+    def test_leaves_the_row_untouched_when_no_store_is_configured(self, monkeypatch):
+        # put() returns None without credentials. Recording a URL we never got
         # would point the row at nothing.
         patches = self._patched(monkeypatch)
         store = _FakeStore(public_url=None)
+        update = mod.ImageUpdate("r1", "Chicken Pie", _PIXEL, "image/png", None)
+
+        assert mod.store_and_record("https://db.test", "key", store, update) is False
+        assert patches == []
+
+    def test_leaves_the_row_untouched_when_the_upload_fails(self, monkeypatch):
+        # A storage failure raises ImageStoreError (ImageStore port); one recipe's
+        # refused upload must not end the backfill.
+        from recipeparser.exceptions import ImageStoreError
+
+        patches = self._patched(monkeypatch)
+        store = _FakeStore()
+        store.put = lambda *a, **k: (_ for _ in ()).throw(ImageStoreError("bucket unreachable"))
         update = mod.ImageUpdate("r1", "Chicken Pie", _PIXEL, "image/png", None)
 
         assert mod.store_and_record("https://db.test", "key", store, update) is False

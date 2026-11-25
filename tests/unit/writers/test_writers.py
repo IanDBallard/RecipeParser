@@ -532,6 +532,18 @@ def test_image_store_returns_none_for_empty_bytes():
     assert SupabaseImageStore(url="https://x.test", service_key="k").put(b"", "some-id") is None
 
 
+def test_image_store_raises_a_typed_error_when_the_upload_fails():
+    """A storage outage must be told apart from "no picture" (architecture review 2026-11-25)."""
+    from recipeparser.exceptions import ImageStoreError
+
+    mock_client = MagicMock()
+    mock_client.storage.from_.return_value.upload.side_effect = RuntimeError("bucket unreachable")
+    with patch("supabase.create_client", return_value=mock_client):
+        store = SupabaseImageStore(url="https://fake.supabase.co", service_key="k")
+        with pytest.raises(ImageStoreError, match="bucket unreachable"):
+            store.put(b"bytes", "some-id", "image/jpeg")
+
+
 def test_image_store_uploads_and_returns_public_url():
     """Happy path: neither of the two tests above reaches this far. Asserts
     the object key built from recipe_id + extension -- from_(BUCKET) already

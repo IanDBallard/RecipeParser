@@ -141,7 +141,7 @@ class FakeSupabase:
 
 
 class FakeImageStore:
-    """SupabaseImageStore.put's contract: the object's public URL, or None on any failure."""
+    """SupabaseImageStore.put's contract: the object's public URL, or ImageStoreError on a failure."""
 
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
@@ -151,7 +151,9 @@ class FakeImageStore:
     def put(self, image_bytes: bytes, recipe_id: str, content_type: str = "image/jpeg") -> Optional[str]:
         self.puts.append((image_bytes, recipe_id, content_type))
         if self.fail:
-            return None
+            from recipeparser.exceptions import ImageStoreError
+
+            raise ImageStoreError("storage is down")
         return f"{PUBLIC_PREFIX}{recipe_id}.jpg"
 
     def remove(self, recipe_id: str, keep: Optional[str] = None) -> None:

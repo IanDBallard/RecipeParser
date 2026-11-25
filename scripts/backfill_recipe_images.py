@@ -51,6 +51,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from recipeparser.io.readers.paprika import PaprikaReader, _decode_photo  # noqa: E402
+from recipeparser.exceptions import ImageStoreError  # noqa: E402
 from recipeparser.io.writers.image_store import SupabaseImageStore  # noqa: E402
 
 # The title key is the matching rule, and it belongs to the backfill that worked
@@ -225,10 +226,14 @@ def store_and_record(
     if not photo_bytes:
         return False
 
-    public_url = store.put(photo_bytes, update.recipe_id, content_type)
+    try:
+        public_url = store.put(photo_bytes, update.recipe_id, content_type)
+    except ImageStoreError as exc:
+        log.error("could not store the image for %r (%s): %s", update.title, update.recipe_id, exc)
+        return False
     if not public_url:
-        # put() logs its own reason and returns None rather than raising.
-        log.error("could not store the image for %r (%s).", update.title, update.recipe_id)
+        # put() returns None only when no store is configured.
+        log.error("could not store the image for %r (%s): no store configured.", update.title, update.recipe_id)
         return False
 
     apply_update(url, key, update.recipe_id, public_url)
