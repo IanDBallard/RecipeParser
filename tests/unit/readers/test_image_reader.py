@@ -90,3 +90,15 @@ def test_input_type_image_routes_through_the_full_pipeline():
 
     stages = RecipePipeline._get_stages(MagicMock(), Chunk(text="x", input_type=InputType.IMAGE))
     assert stages == ["EXTRACT", "REFINE", "EMBED", "ASSEMBLE", "TAG"]
+
+
+def test_a_used_up_daily_quota_is_not_reported_as_a_bad_photo(tmp_path, monkeypatch):
+    # The cook must be told the quota is spent, not that the photo cannot be opened.
+    import recipeparser.gemini as gemini
+    from recipeparser.exceptions import DailyQuotaExhaustedError
+
+    def spent(*_a, **_k):
+        raise DailyQuotaExhaustedError(3600)
+    monkeypatch.setattr(gemini, "extract_text_from_images", spent)
+    with pytest.raises(DailyQuotaExhaustedError):
+        ImageReader(_client("x")).read(_png(tmp_path))

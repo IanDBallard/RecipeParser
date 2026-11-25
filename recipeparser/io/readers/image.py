@@ -10,7 +10,7 @@ import fitz  # type: ignore[import-untyped]  # PyMuPDF
 
 from recipeparser.config import VISION_JPEG_QUALITY, VISION_MAX_EDGE_PX
 from recipeparser.core.models import Chunk, InputType
-from recipeparser.exceptions import ImageExtractionError, JobCancelledError
+from recipeparser.exceptions import ImageExtractionError, RecipeParserError
 from recipeparser.io.readers import RecipeReader
 
 if TYPE_CHECKING:
@@ -103,10 +103,11 @@ class ImageReader(RecipeReader):
                     # Something PyMuPDF opens and Pillow does not (a one-page PDF
                     # named .jpg): the page render, capped like any other.
                     text = extract_text_via_vision(doc, self._client, what="photo")
-            except (RuntimeError, JobCancelledError):
+            except (RuntimeError, RecipeParserError):
                 # The model read the page fine and found nothing on it, or kept
                 # timing out (AIServiceTimeoutError is a RuntimeError), or the
-                # cook cancelled — none of them is a bad file.
+                # cook cancelled, or the daily quota is used up, or any other
+                # typed error from the call — none of them is a bad file.
                 raise
             except Exception as exc:
                 # PyMuPDF defers format validation past fitz.open(): a file
