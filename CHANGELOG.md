@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.45.1] — 2026-11-25
+
+Typed dispatch instead of attribute probing, and a diagnosable search log (architecture review 2026-11-25, `soft.fail-loud` nits and suggestions). No behaviour change for a real PostgREST answer.
+
+### 🔧 Changed
+- The household and sharing endpoints map PostgREST's `APIError` by type instead of probing any exception for `.code`; anything else is the existing 503.
+- The search look's links lane stays non-fatal but logs an unexpected failure with its traceback (no secret can reach it: Brave errors are converted with `from None`).
+- The book-photo check picks Pillow's pixel API by `PIL.__version__` in one helper instead of probing the image.
+- The Supabase writer and the search look read declared fields directly; a field the Anthropic SDK renames now fails instead of reading as absent.
+
 ## [9.45.0] — 2026-11-25
 
 An import whose categories cannot be loaded now fails instead of finishing untagged, and a lost picture or tag write is counted instead of only logged (architecture review 2026-11-25, `soft.fail-loud`).
