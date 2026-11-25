@@ -1632,7 +1632,14 @@ def estimate_servings(
     *,
     limiter: Optional["GlobalRateLimiter"] = None,
 ) -> Optional[int]:
-    """The model's estimate of a recipe's servings, or None on any failure. Never raises."""
+    """The model's estimate of a recipe's servings, or None.
+
+    None, logged at WARNING, when the API call fails past its retries (an
+    ``APIError`` or ``AIServiceTimeoutError``) or the reply is not a servings
+    count from 1 to 200. Anything else — a code bug, a transport failure the
+    retry does not know, a used-up daily quota, a cancel — propagates, so a
+    permanently broken estimate is not mistaken for "no estimate".
+    """
     try:
         response: Any = _call_with_retry(
             client,
@@ -1650,14 +1657,18 @@ def estimate_servings(
             what="Servings",
             limiter=limiter,
         )
-        n = json.loads(response.text)["servings"]
-        if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 200:
-            return None
-        return n
-    except (JobCancelledError, DailyQuotaExhaustedError):
-        raise
-    except Exception:  # noqa: BLE001
+    except (genai_errors.APIError, AIServiceTimeoutError) as exc:
+        log.warning("Servings estimate for '%s' failed: %s", title, exc)
         return None
+    try:
+        n = json.loads(response.text)["servings"]
+    except (ValueError, KeyError, TypeError) as exc:  # not JSON, no "servings", not an object
+        log.warning("Servings reply for '%s' could not be parsed: %s", title, exc)
+        return None
+    if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= 200:
+        log.warning("Servings reply for '%s' was not a count from 1 to 200: %r", title, n)
+        return None
+    return n
 
 
 class _RecipeTags(BaseModel):
