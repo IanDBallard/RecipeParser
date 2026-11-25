@@ -1,7 +1,7 @@
 """Tests for recipeparser.gemini — API calls, retries, normalisation."""
 import json
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from tests.conftest import make_recipe, make_mock_client
 from recipeparser.config import GEMINI_MODEL
@@ -545,8 +545,11 @@ class TestExtractTextViaVision:
     # Partial failure — some pages succeed, some fail
     # ------------------------------------------------------------------
 
-    def test_failed_page_skipped_others_returned(self):
-        """If one page raises, the others should still be returned."""
+    def test_a_page_lost_to_a_busy_service_is_skipped_and_named_in_the_log(self, caplog):
+        """A transient failure that outlived the retries drops that page; the others
+        are returned and the log names the missing page."""
+        import logging
+        from google.genai import errors as genai_errors
         from recipeparser.gemini import extract_text_via_vision
         doc = self._make_doc(page_count=3)
 
@@ -554,13 +557,28 @@ class TestExtractTextViaVision:
         r1.text = "Page 1 text"
         r3 = MagicMock()
         r3.text = "Page 3 text"
+        busy = genai_errors.ServerError(503, {"error": {"code": 503, "message": "busy", "status": "UNAVAILABLE"}})
+        with patch("recipeparser.gemini._call_with_retry", side_effect=[r1, busy, r3]):
+            with caplog.at_level(logging.WARNING, logger="recipeparser.gemini"):
+                result = extract_text_via_vision(doc, MagicMock())
+
+        assert result == "Page 1 text\n\nPage 3 text"
+        assert any("missing page(s) 2 of 3" in r.getMessage() for r in caplog.records)
+
+    def test_a_page_that_fails_for_a_lasting_reason_fails_the_read(self):
+        """A non-transient failure (a 4xx, a code bug) must not leave the transcript
+        silently missing that page."""
+        from recipeparser.gemini import extract_text_via_vision
+        doc = self._make_doc(page_count=3)
+
+        r1 = MagicMock()
+        r1.text = "Page 1 text"
         client = MagicMock()
-        client.models.generate_content.side_effect = [r1, Exception("API error"), r3]
+        client.models.generate_content.side_effect = [r1, Exception("API error"), r1]
 
-        result = extract_text_via_vision(doc, client)
-
-        assert "Page 1 text" in result
-        assert "Page 3 text" in result
+        with pytest.raises(RuntimeError, match="could not read page 2 of 3") as excinfo:
+            extract_text_via_vision(doc, client)
+        assert str(excinfo.value.__cause__) == "API error"
 
     def test_empty_response_page_skipped(self):
         """Pages where Gemini returns empty string are silently skipped."""
@@ -588,13 +606,12 @@ class TestExtractTextViaVision:
 
     def test_all_pages_fail_raises_runtime_error(self):
         """If every page fails, RuntimeError is raised (not a silent empty string)."""
+        import httpx
         from recipeparser.gemini import extract_text_via_vision
         doc = self._make_doc(page_count=2)
-        client = MagicMock()
-        client.models.generate_content.side_effect = Exception("Vision API down")
-
-        with pytest.raises(RuntimeError, match="no text for any page"):
-            extract_text_via_vision(doc, client)
+        with patch("recipeparser.gemini._call_with_retry", side_effect=httpx.ConnectError("down")):
+            with pytest.raises(RuntimeError, match="no text for any page"):
+                extract_text_via_vision(doc, MagicMock())
 
     def test_all_pages_empty_raises_runtime_error(self):
         """If every page returns empty text, RuntimeError is raised."""

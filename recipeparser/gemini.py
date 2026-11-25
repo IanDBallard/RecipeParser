@@ -818,6 +818,17 @@ def _is_deadline_error(exc: BaseException) -> bool:
     return "timeout" in type(exc).__name__.lower()
 
 
+def _is_transient_vision_failure(exc: BaseException) -> bool:
+    """A page failure the service might not repeat: a timeout, a 5xx, a 429, a dropped connection."""
+    if _is_deadline_error(exc) or isinstance(exc, httpx.TransportError):
+        return True
+    if not isinstance(exc, Exception):
+        return False
+    if _is_transient_server_error(exc):
+        return True
+    return isinstance(exc, genai_errors.APIError) and getattr(exc, "code", None) == 429
+
+
 def render_page_for_vision(page: Any) -> VisionImage:
     """Render one PyMuPDF page for the vision OCR, its long edge capped at VISION_MAX_EDGE_PX.
 
@@ -852,8 +863,10 @@ def extract_text_via_vision(doc, client, *, what: str = "document") -> str:
     Returns:
         A non-empty string of extracted text. Raises ``AIServiceTimeoutError`` if
         every page failed and at least one timed out, ``RuntimeError`` if Gemini
-        returned nothing useful for every page, and ``JobCancelledError`` at once
-        if the job was cancelled.
+        returned nothing useful for every page or a page failed for a reason that
+        is not transient (naming the page), and ``JobCancelledError`` at once if
+        the job was cancelled. A page lost to a transient failure (timeout, 5xx,
+        429, dropped connection) after the retries is logged and left out.
     """
     pages = (render_page_for_vision(doc[page_num]) for page_num in range(doc.page_count))
     return extract_text_from_images(pages, client, count=doc.page_count, what=what)
@@ -877,6 +890,7 @@ def extract_text_from_images(
 
     page_texts: List[str] = []
     timed_out = 0
+    dropped: List[int] = []  # pages lost to a transient failure that outlived the retries
     for page_num, image in enumerate(images, start=1):
         job_signal.checkpoint()
         log.info(
@@ -902,11 +916,24 @@ def extract_text_from_images(
                 log.warning("Vision OCR page %d/%d: empty response.", page_num, count)
         except (JobCancelledError, DailyQuotaExhaustedError):
             raise
-        except Exception as exc:
+        except Exception as exc:  # fail-loud.bare-except-ok: a non-transient failure re-raises; a transient one is logged and listed
+            if not _is_transient_vision_failure(exc):
+                # A failure that would fail the same way again (a 4xx, a code bug) must
+                # not leave a transcript silently missing this page.
+                raise RuntimeError(
+                    f"Gemini Vision could not read page {page_num} of {count} "
+                    f"({type(exc).__name__}: {exc})."
+                ) from exc
             if _is_deadline_error(exc):
                 timed_out += 1
+            dropped.append(page_num)
             log.warning("Vision OCR page %d/%d failed: %s", page_num, count, exc)
 
+    if dropped and page_texts:
+        log.warning(
+            "Vision OCR: the transcript is missing page(s) %s of %d (the AI service was busy).",
+            ", ".join(map(str, dropped)), count,
+        )
     if not page_texts:
         if timed_out:
             raise AIServiceTimeoutError(ai_timeout_sentence(what))
