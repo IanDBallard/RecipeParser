@@ -400,7 +400,7 @@ def write_recipe_to_supabase(
 
     # Write recipe_categories junction rows (best-effort — non-fatal; a refused
     # row costs only its own link, see _write_category_junctions)
-    grid = getattr(recipe, "grid_categories", None) or {}
+    grid = recipe.grid_categories
     if grid and category_ids:
         refused = _write_category_junctions(
             recipe_id=rid,
