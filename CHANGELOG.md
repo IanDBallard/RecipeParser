@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.46.2] — 2026-11-26
+
+The architecture rules are checked on every pull request and before every branch push (architecture compliance roadmap, Phase 1). No change to the package's behaviour.
+
+### 🔧 Changed
+- `.github/workflows/arch-compliance.yml` runs on pull requests. It has two jobs: the arch-compliance plugin's `check-diff` action at 0.3.4 (the `ci` mandates in `config/architecture/mandates.yml`), and ruff on the lines the pull request changed.
+- `scripts/ci/ruff_changed_lines.py` runs ruff on the changed Python files and reports only the findings on added or changed lines. The repository's 236 older ruff findings don't fail a pull request that didn't write them.
+- `.githooks/pre-push` runs `acf-check-diff --call-site precommit` against `origin/master` whenever a branch is pushed. A finding or a refusal blocks the push. Without the package, the push is refused unless `ACF_PREPUSH_OPTIONAL=1` is set in that environment.
+- ruff's layer ban (`TID251`: no `recipeparser.io` or `recipeparser.adapters` imports) now applies only to `recipeparser/core/`, which is the rule's subject. One negated pattern replaces 33 per-file exemptions, and the ban no longer fires on the package-root entry points.
+- `.githooks/*` are kept LF on every checkout.
+
+### 🐛 Fixed
+- `adapters/gui.py` names `PipelineController` in an annotation without importing it (ruff `F821`). It is now imported under `TYPE_CHECKING`. Annotations there are strings, so this was never a runtime error.
+
+### 📝 Docs
+- README and `.githooks/README.md`: enabling the hooks and installing the arch-compliance package. `ACF_ROADMAP.md`: Phase 0 and Phase 1 items marked done; making the CI job a required check is still the owner's decision.
+
 ## [9.46.1] — 2026-11-25
 
 The servings fixture's byte check passes on Windows checkouts (architecture compliance roadmap, Phase 0).
