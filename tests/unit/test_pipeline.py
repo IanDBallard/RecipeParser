@@ -17,9 +17,10 @@ from recipeparser.core.citation import web_citation
 from recipeparser.core.fsm import PipelineController
 from recipeparser.core.models import Chunk, InputType, RestoreFields, SourceMeta
 from recipeparser.core.pipeline import ChunkResult, RecipePipeline
-from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.ports import CategorySource, ImageStore
+from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.stages.extract import Extraction
+from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError
 from recipeparser.models import (
     CayenneRecipe,
     CayenneRefinement,
@@ -28,7 +29,6 @@ from recipeparser.models import (
     StructuredIngredient,
     TokenizedDirection,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -1269,6 +1269,45 @@ def test_restore_picture_copy_failure_drops_old_url(caplog):
     assert skipped == []
     assert store.calls == []
     assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+@pytest.mark.parametrize("client_kwargs, reason_word", [
+    ({"error": RuntimeError("bucket gone")}, "bucket gone"),
+    ({"data": b""}, "empty"),
+])
+def test_a_failed_bucket_download_counts_as_a_lost_picture(client_kwargs, reason_word):
+    # download_bucket_picture used to turn a failed download into None, the same as
+    # "no picture", so the job's refused-link count never saw it (architecture
+    # review 2026-11-25). It now raises, and the restore reports the loss.
+    store = _FakeImageStore()
+    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL)
+    lost: List[tuple] = []
+    results = _restore_pipeline(_picture_client(**client_kwargs), store).run(
+        [chunk], on_picture_lost=lambda label, reason: lost.append((label, reason)))
+    assert len(results) == 1 and results[0].image_url is None
+    assert store.calls == []
+    assert len(lost) == 1 and reason_word in lost[0][1]
+
+
+def test_a_cancel_during_a_bucket_download_stops_the_chunk_and_is_not_a_lost_picture():
+    store = _FakeImageStore()
+    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL)
+    lost: List[tuple] = []
+    skipped: list = []
+    results = _restore_pipeline(_picture_client(error=JobCancelledError()), store).run(
+        [chunk], on_skip=lambda *a: skipped.append(a),
+        on_picture_lost=lambda label, reason: lost.append((label, reason)))
+    assert results == [] and lost == [] and skipped == []
+
+
+def test_a_used_up_quota_during_a_bucket_download_stops_the_run_and_is_not_a_lost_picture():
+    store = _FakeImageStore()
+    chunk = _restore_chunk(image_url=_OLD_BUCKET_URL)
+    lost: List[tuple] = []
+    with pytest.raises(DailyQuotaExhaustedError):
+        _restore_pipeline(_picture_client(error=DailyQuotaExhaustedError()), store).run(
+            [chunk], on_picture_lost=lambda label, reason: lost.append((label, reason)))
+    assert lost == []
 
 
 def test_restore_keeps_a_foreign_image_url():

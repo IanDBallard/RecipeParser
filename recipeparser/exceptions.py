@@ -86,9 +86,11 @@ class CategoryLoadError(RecipeParserError):
 
 
 class ImageStoreError(RecipeParserError):
-    """A picture could not be stored (the upload or its public URL failed).
+    """A picture could not be stored (the upload or its public URL failed), or a
+    restore's bucket picture could not be downloaded to be stored again.
 
-    Distinct from "no picture": ``ImageStore.put`` returns ``None`` for that.
+    Distinct from "no picture": ``ImageStore.put`` returns ``None`` for that, and so
+    does ``download_bucket_picture`` for a URL that is not a bucket picture.
     The pipeline catches this, keeps the recipe without the picture and
     reports the loss on the job.
     """
