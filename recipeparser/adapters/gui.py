@@ -12,7 +12,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import customtkinter as ctk
 import yaml
@@ -21,6 +21,9 @@ from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 from recipeparser.categories import _CATEGORIES_FILE, load_category_tree
 from recipeparser.paths import get_default_output_dir, get_env_file
+
+if TYPE_CHECKING:
+    from recipeparser.core.fsm import PipelineController
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Theme
