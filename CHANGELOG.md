@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.46.1] — 2026-11-25
+
+The servings fixture's byte check passes on Windows checkouts (architecture compliance roadmap, Phase 0).
+
+### 🐛 Fixed
+- `tests/fixtures/servings_source_cases.json` is kept LF in `.gitattributes`, like the other two fixtures shared with Cayenne. With `core.autocrlf=true` it was checked out as CRLF, so `test_fixture_is_byte_identical_to_the_copy_cayenne_runs` failed its SHA-256 pin on every Windows checkout. The committed file was already LF; nothing in it changes.
+
 ## [9.46.0] — 2026-11-25
 
 No Gemini call claims temperature 0 any more, and a call that sets a deprecated sampling parameter is refused instead of silently stripped (architecture review 2026-11-25, `soft.no-shims`). Google has deprecated `temperature`, `top_p`, `top_k` and `thinking_budget`: Gemini 4 and 3.6+ ignore them, and for earlier Gemini 3 models (the pinned `gemini-3.1-flash-lite`) Google says to keep the defaults. Since #100 (2026-10-06) none had reached the model; what was false was the claim. No change to what is sent.
