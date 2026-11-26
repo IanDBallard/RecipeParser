@@ -1,0 +1,36 @@
+name: Architecture compliance
+
+# Two gates on every pull request (docs/architecture/ACF_ROADMAP.md, Phase 1):
+#   - acf-check-diff --call-site ci: the mandates in config/architecture/mandates.yml
+#     that declare the ci site, on the files the pull request changed;
+#   - ruff on the lines the pull request changed (scripts/ci/ruff_changed_lines.py).
+# Both look only at the pull request's diff, so on a push to master there is nothing
+# to check and the workflow does not run there.
+on:
+  pull_request:
+
+jobs:
+  arch-compliance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # The plugin version the local hooks run (arch-compliance 0.3.4), so CI and
+      # the pre-push hook apply the same detectors.
+      - uses: IanDBallard/arch-compliance-for-superpowers/.github/actions/check-diff@v0.3.4
+
+  ruff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # The version ruff resolves to locally (pyproject.toml allows >=0.4).
+      - run: pip install "ruff==0.15.8"
+      - run: python scripts/ci/ruff_changed_lines.py --base "origin/${{ github.base_ref }}"
