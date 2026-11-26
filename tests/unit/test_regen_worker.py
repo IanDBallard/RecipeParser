@@ -315,6 +315,7 @@ def test_run_workers_loops_until_stopped():
     from recipeparser.adapters.regen_worker import run_workers
     calls = []
     class W:
+        keeps_loop_busy = False
         def run_once(self):
             calls.append(1)
             if len(calls) >= 2:
@@ -329,6 +330,7 @@ def test_run_workers_survives_exceptions(caplog):
     from recipeparser.adapters.regen_worker import run_workers
     n = {"count": 0}
     class W:
+        keeps_loop_busy = False
         def run_once(self):
             n["count"] += 1
             if n["count"] == 1:
@@ -385,12 +387,14 @@ def test_run_workers_records_each_workers_last_good_poll():
     from recipeparser.adapters.regen_worker import run_workers
     n = {"count": 0}
     class RegenWorker:
+        keeps_loop_busy = False
         def run_once(self):
             n["count"] += 1
             if n["count"] == 2:
                 stop.set()
             return 0
     class RecatWorker:
+        keeps_loop_busy = True
         def run_once(self):
             raise RuntimeError("supabase down")
     polls = {}
@@ -409,10 +413,11 @@ def test_run_workers_still_sleeps_between_rounds_of_a_regen_backlog():
 
     from recipeparser.adapters.recat_worker import RecatWorker
     from recipeparser.adapters.regen_worker import RegenWorker, run_workers
-    assert getattr(RegenWorker, "keeps_loop_busy", False) is False
+    assert RegenWorker.keeps_loop_busy is False
     assert RecatWorker.keeps_loop_busy is True
     stamps = []
     class RegenLike:
+        keeps_loop_busy = False
         def run_once(self):
             stamps.append(time.monotonic())
             if len(stamps) == 3:
@@ -555,3 +560,16 @@ def test_a_used_up_daily_quota_releases_the_claim_and_spends_no_attempt():
     assert not any(n == "regen_failed" for n, _ in fake.rpcs)
     ops = _ops(fake, "recipes")
     assert len(ops) == 1 and ops[0][0][1][0] == {"claimed_at": None}
+
+
+def test_every_worker_run_workers_drives_declares_keeps_loop_busy():
+    # run_workers reads keeps_loop_busy straight off the Worker protocol; no worker
+    # may leave it to an optional-attribute default (architecture review 2026-11-25).
+    from recipeparser.adapters.embed_worker import EmbedWorker
+    from recipeparser.adapters.recat_worker import RecatWorker
+    from recipeparser.adapters.regen_worker import RegenWorker
+    from recipeparser.adapters.share_worker import ShareWorker
+    declared = {cls.__name__: vars(cls).get("keeps_loop_busy") for cls in
+                (RegenWorker, RecatWorker, ShareWorker, EmbedWorker)}
+    assert declared == {"RegenWorker": False, "RecatWorker": True,
+                        "ShareWorker": True, "EmbedWorker": False}
