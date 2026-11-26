@@ -69,17 +69,17 @@ Each item names its mechanism, where it runs and what "done" means.
 | The four fail-loud fix PRs (quota/cancel, readers/writers/dead code, pipeline/job losses, probing) | Merged. |
 | Re-run `/architecture-review --update-baseline` | Baseline reflects the fixes; committed. |
 | `tests/fixtures/servings_source_cases.json` byte check | Fails on every Windows checkout (`core.autocrlf=true` rewrites it). Add `tests/fixtures/servings_source_cases.json -text` (or `eol=lf`) to `.gitattributes`. **Done in 9.46.1** (`text eol=lf`, like the other two shared fixtures). |
-| Developer setup | `acf` installed into the interpreter that has the project's dependencies (`C:\Python313\python.exe` here), and `git config core.hooksPath .githooks` documented in the README. |
+| Developer setup | `acf` installed into the interpreter that has the project's dependencies (`C:\Python313\python.exe` here), and `git config core.hooksPath .githooks` documented in the README. **Done in 9.46.2** (README and `.githooks/README.md`). |
 
 ### Phase 1 — Make the gates real (week 1)
 
 | Item | Mechanism | Done when |
 |---|---|---|
-| ACF on every pull request | `.github/workflows/arch-compliance.yml` using the plugin's `check-diff` action at the installed plugin version | Runs on PRs; made a required status check. |
-| ACF before every push | `acf-check-diff --base origin/master --call-site precommit` appended to `.githooks/pre-push` (guarded, with `ACF_PREPUSH_OPTIONAL=1` for environments without the package) | A push with a new bare `except:` is refused locally. |
-| ruff in CI | `ruff check` on the PR diff (`--diff` against the base) in the same workflow | No new ruff finding can merge. |
-| Fix ruff's layer rule scope | Move the `TID251` ban to `recipeparser/core/**` only (per-file config), so it checks what `soft.layer-imports` describes | `ruff check` reports only real core crossings (none today). |
-| Fix the real bug ruff already sees | `recipeparser/adapters/gui.py:507` `F821` undefined `PipelineController` | Fixed. |
+| ACF on every pull request | `.github/workflows/arch-compliance.yml` using the plugin's `check-diff` action at the installed plugin version | Runs on PRs; made a required status check. **Runs on PRs since 9.46.2**; making it required is decision 1 below. |
+| ACF before every push | `acf-check-diff --base origin/master --call-site precommit` appended to `.githooks/pre-push` (guarded, with `ACF_PREPUSH_OPTIONAL=1` for environments without the package) | A push with a new bare `except:` is refused locally. **Done in 9.46.2.** |
+| ruff in CI | `ruff check` on the PR diff in the same workflow | No new ruff finding can merge. **Done in 9.46.2:** `scripts/ci/ruff_changed_lines.py` reports ruff findings only on the lines a pull request adds or changes (ruff has no diff mode; the 236 older findings are Phase 5's). |
+| Fix ruff's layer rule scope | Move the `TID251` ban to `recipeparser/core/**` only (per-file config), so it checks what `soft.layer-imports` describes | `ruff check` reports only real core crossings (none today). **Done in 9.46.2** (`"!recipeparser/core/**" = ["TID251"]` replaces 33 per-file exemptions). |
+| Fix the real bug ruff already sees | `recipeparser/adapters/gui.py:507` `F821` undefined `PipelineController` | Fixed. **Done in 9.46.2** (a `TYPE_CHECKING` import; it was a string annotation, so not a runtime error). |
 
 ### Phase 2 — Tighten the rules we have (weeks 1–2)
 
