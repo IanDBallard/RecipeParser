@@ -68,7 +68,7 @@ Each item names its mechanism, where it runs and what "done" means.
 |---|---|
 | The four fail-loud fix PRs (quota/cancel, readers/writers/dead code, pipeline/job losses, probing) | Merged. |
 | Re-run `/architecture-review --update-baseline` | Baseline reflects the fixes; committed. |
-| `tests/fixtures/servings_source_cases.json` byte check | Fails on every Windows checkout (`core.autocrlf=true` rewrites it). Add `tests/fixtures/servings_source_cases.json -text` (or `eol=lf`) to `.gitattributes`. |
+| `tests/fixtures/servings_source_cases.json` byte check | Fails on every Windows checkout (`core.autocrlf=true` rewrites it). Add `tests/fixtures/servings_source_cases.json -text` (or `eol=lf`) to `.gitattributes`. **Done in 9.46.1** (`text eol=lf`, like the other two shared fixtures). |
 | Developer setup | `acf` installed into the interpreter that has the project's dependencies (`C:\Python313\python.exe` here), and `git config core.hooksPath .githooks` documented in the README. |
 
 ### Phase 1 — Make the gates real (week 1)
