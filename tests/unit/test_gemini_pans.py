@@ -29,12 +29,12 @@ def test_the_prompt_numbers_steps_lists_ingredients_and_shares_the_vocabulary():
     assert "pie-savoury" in prompt and "quiche" in prompt
 
 
-def test_tag_pans_returns_a_pan_answer_at_temperature_zero():
+def test_tag_pans_returns_a_pan_answer_at_default_sampling():
     with patch("recipeparser.gemini._call_with_retry", return_value=MagicMock(text=json.dumps(_REPLY))) as call:
         answer = tag_pans(["Grease two 20cm tins.", "Bake."], ["flour"], None, MagicMock())
     assert isinstance(answer, PanAnswer) and answer.pans[0].id == "pan_01" and answer.bake_step == 0
     config = call.call_args.kwargs["config"]
-    assert config["temperature"] == 0 and "response_json_schema" in config
+    assert "temperature" not in config and "response_json_schema" in config
     sent = json.dumps(config["response_json_schema"])
     assert "edited" not in sent and "tokenized_directions" not in sent
 

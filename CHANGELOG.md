@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.46.0] — 2026-11-25
+
+No Gemini call claims temperature 0 any more, and a call that sets a deprecated sampling parameter is refused instead of silently stripped (architecture review 2026-11-25, `soft.no-shims`). Google has deprecated `temperature`, `top_p`, `top_k` and `thinking_budget`: Gemini 4 and 3.6+ ignore them, and for earlier Gemini 3 models (the pinned `gemini-3.1-flash-lite`) Google says to keep the defaults. Since #100 (2026-10-06) none had reached the model; what was false was the claim. No change to what is sent.
+
+### 🐛 Fixed
+- `tag_temperatures`, `tag_pans`, `tag_yield` and `estimate_servings` no longer pass `temperature: 0`, which `_finalize_config` had been dropping: every call runs at the model's default sampling, so none is deterministic.
+- `_finalize_config` raises `UnsupportedGenerationParameterError` (a `RecipeParserError`) for any of the four parameters, before the retry ladder and before any request; a test also checks that no call site in `gemini.py` sets one.
+
+### 📝 Docs
+- `ARCHITECTURE.md` (tagging section) no longer says the TAG stage samples at 0.0, and `config.py` says the tagging accuracy figures were measured on 2026-10-03, under the old sampling.
+
 ## [9.45.1] — 2026-11-25
 
 Typed dispatch instead of attribute probing, and a diagnosable search log (architecture review 2026-11-25, `soft.fail-loud` nits and suggestions). No behaviour change for a real PostgREST answer.

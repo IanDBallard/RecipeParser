@@ -50,13 +50,13 @@ def test_the_kind_test_comes_before_the_container():
     assert rules.index("3. servings:") < rules.index('"container":')
 
 
-def test_tag_yield_returns_a_yield_answer_at_temperature_zero():
+def test_tag_yield_returns_a_yield_answer_at_default_sampling():
     with patch("recipeparser.gemini._call_with_retry", return_value=MagicMock(text=json.dumps(_REPLY))) as call:
         answer = tag_yield(["Line the plate."], _ING, [_PAN], "pie-fruit", MagicMock())
     assert isinstance(answer, YieldAnswer) and answer.kind == "servings"
     assert answer.container.component_lines == [2]
     config = call.call_args.kwargs["config"]
-    assert config["temperature"] == 0 and "response_json_schema" in config
+    assert "temperature" not in config and "response_json_schema" in config
     sent = json.dumps(config["response_json_schema"])
     assert "edited" not in sent and "component_lines" in sent
     assert "description" in sent

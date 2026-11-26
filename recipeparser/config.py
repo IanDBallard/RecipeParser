@@ -60,8 +60,12 @@ HERO_INJECT_MAX_STUB_CHARS: int = 120
 # without a code change.
 #
 # This tier is kept knowingly, and it costs tagging accuracy (Cayenne Fix
-# Roadmap F-205, ruled 2026-10-03). Measured over 14 recipes through the real
-# refine path, five runs each: these rules score 147/160 here (133/160 before
+# Roadmap F-205, ruled 2026-10-03). Measured on 2026-10-03 over 14 recipes
+# through the real refine path, five runs each, while refine still asked for
+# temperature 0.1 -- before #100 (2026-10-06) stopped sending sampling
+# parameters -- so the figures describe the old sampling. Every call now runs
+# at the model's default sampling: Google deprecated temperature, top_p, top_k
+# and thinking_budget, and gemini._finalize_config refuses them. These rules score 147/160 here (133/160 before
 # 9.6.4's empty-axis rule), against 89/96 on gemini-3.5-flash and 96/96 on
 # gemini-3.8-flash. The failure is always the same move -- the model reaches for
 # the nearest ingredient when an axis would otherwise be empty -- and what
