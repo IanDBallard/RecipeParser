@@ -281,19 +281,6 @@ MAX_UPLOAD_BYTES: int = 100_000_000
 MAX_PICTURE_BYTES: int = 50_000_000
 
 # ---------------------------------------------------------------------------
-# Phase 3 — Pipeline control and rate-limit auto-pause
-# ---------------------------------------------------------------------------
-
-# Number of consecutive HTTP 429 responses before the pipeline auto-pauses.
-RATE_LIMIT_PAUSE_THRESHOLD: int = 3
-
-# Seconds to wait before auto-resuming after a rate-limit pause (default 12 h).
-RATE_LIMIT_AUTO_RESUME_SECS: int = 43_200
-
-# Subdirectory name (relative to output_dir) where checkpoint JSON files are stored.
-CHECKPOINT_SUBDIR: str = ".recipeparser_checkpoints"
-
-# ---------------------------------------------------------------------------
 # Live-write guard
 # ---------------------------------------------------------------------------
 #
