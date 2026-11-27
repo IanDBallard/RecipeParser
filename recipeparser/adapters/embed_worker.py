@@ -26,6 +26,9 @@ log = logging.getLogger(__name__)
 
 
 class EmbedWorker:
+    # Like RegenWorker, a backlog keeps its pause between polls (see run_workers).
+    keeps_loop_busy = False
+
     def __init__(
         self,
         supabase: Any,

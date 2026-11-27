@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.47.0] — 2026-11-26
+
+A restore's bucket picture that cannot be downloaded is now counted as a lost picture, `PipelineController` loses its unused checkpoint and 429 auto-pause code, and the background workers are driven through a typed protocol (architecture review 2026-11-25: the two blocking findings and the `picture_copy.py` important one).
+
+**For Cayenne:** a restore whose old bucket picture cannot be copied now adds a `{"picture": true, ...}` entry to the job's `refused_links`, as a failed upload already did in 9.45.0. No new columns or fields.
+
+### 🐛 Fixed
+- `download_bucket_picture` raises `ImageStoreError` when the download fails or comes back empty instead of returning `None`, the same as "no picture". The restore's `_restore_bucket_picture` catches `ImageStoreError` (not every `Exception`), keeps the recipe without its picture and reports it through `on_picture_lost`. A URL that is not a bucket picture still returns `None`; `JobCancelledError` and `DailyQuotaExhaustedError` pass through untouched.
+
+### 🗑️ Removed
+- `PipelineController`'s checkpoint persistence (`save_checkpoint`, `load_checkpoint`, `delete_checkpoint`, `_book_hash`, `_checkpoint_path`, the `output_dir` argument) and 429 auto-pause policy (`record_429`, `reset_429_counter`, `trigger_rate_limit_pause`, the auto-resume timer). Nothing outside their own tests called them. With them go `CHECKPOINT_SUBDIR`, `RATE_LIMIT_PAUSE_THRESHOLD` and `RATE_LIMIT_AUTO_RESUME_SECS` (`config.py`) and `CheckpointError` and `RateLimitPauseError` (`exceptions.py`). The controller is now the transition table plus pause, cancel and progress signalling.
+
+### 🔧 Changed
+- `run_workers` takes `Sequence[Worker]`, a protocol with `run_once()` and `keeps_loop_busy`, and reads `keeps_loop_busy` directly instead of probing for it. Every worker declares it: `RegenWorker` and `EmbedWorker` `False`, `RecatWorker` and `ShareWorker` `True`, as before.
+
 ## [9.46.2] — 2026-11-26
 
 The architecture rules are checked on every pull request and before every branch push (architecture compliance roadmap, Phase 1). No change to the package's behaviour.

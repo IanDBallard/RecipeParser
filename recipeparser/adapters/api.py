@@ -276,7 +276,7 @@ async def _lifespan(_app: FastAPI):
         from recipeparser.adapters.embed_worker import EmbedWorker  # noqa: PLC0415
         from recipeparser.adapters.recat_worker import RecatWorker  # noqa: PLC0415
         from recipeparser.adapters.share_worker import ShareWorker  # noqa: PLC0415
-        workers: list = [
+        workers: list[_rw.Worker] = [
             _rw.RegenWorker(
                 supabase, _get_client(),
                 ai_allowed=_ai_gate.ai_allowed,

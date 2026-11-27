@@ -1,9 +1,11 @@
 """Copying a bucket picture out of an export's address (Cayenne restore)."""
 from __future__ import annotations
 
-import logging
 from unittest.mock import MagicMock
 
+import pytest
+
+from recipeparser.exceptions import DailyQuotaExhaustedError, ImageStoreError, JobCancelledError
 from recipeparser.io.writers.picture_copy import BucketPictures, download_bucket_picture
 
 SUPABASE = "https://old.supabase.co"
@@ -38,15 +40,23 @@ def test_foreign_url_is_not_downloaded():
     client.storage.from_.assert_not_called()
 
 
-def test_download_error_returns_none_and_logs(caplog):
-    with caplog.at_level(logging.WARNING):
-        got = download_bucket_picture(BUCKET_URL, supabase_url=SUPABASE, client=_client(error=RuntimeError("gone")))
-    assert got is None
-    assert any("gone" in r.getMessage() for r in caplog.records)
+def test_download_error_raises_image_store_error():
+    # A failed download is a lost picture, not "no picture": the pipeline counts it
+    # through on_picture_lost only if it raises (architecture review 2026-11-25).
+    with pytest.raises(ImageStoreError, match="gone"):
+        download_bucket_picture(BUCKET_URL, supabase_url=SUPABASE, client=_client(error=RuntimeError("gone")))
 
 
-def test_empty_download_returns_none():
-    assert download_bucket_picture(BUCKET_URL, supabase_url=SUPABASE, client=_client(data=b"")) is None
+def test_empty_download_raises_image_store_error():
+    with pytest.raises(ImageStoreError, match="empty"):
+        download_bucket_picture(BUCKET_URL, supabase_url=SUPABASE, client=_client(data=b""))
+
+
+@pytest.mark.parametrize("exc", [JobCancelledError("cancelled"), DailyQuotaExhaustedError()])
+def test_cancel_and_quota_pass_through_untouched(exc):
+    with pytest.raises(type(exc)) as got:
+        download_bucket_picture(BUCKET_URL, supabase_url=SUPABASE, client=_client(error=exc))
+    assert got.value is exc
 
 
 def test_bucket_pictures_owns_only_bucket_urls():
