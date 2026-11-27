@@ -13,7 +13,7 @@ sit beside it (ruff, mypy, vulture), because both feed the same gates.
 | Rule | Kind | Runs where | Notes |
 |---|---|---|---|
 | `fail-loud.bare-except` | ACF built-in, BLOCK | Claude Code edits | Declares `ci` and `precommit` too, but nothing invokes those sites (below). Flags every broad handler in an edited file, old ones included: noisy until the ratchet (Phase 2) lands. |
-| `no-shims.hasattr` | ACF built-in, WARN | nowhere in practice | Declares only `ci` and `precommit`, which nothing invokes. |
+| `no-shims.hasattr` | ACF built-in, WARN | `ci`, `precommit`, `hook` | Pull requests and pushes since 9.46.2; Claude Code edits since 9.48.3. |
 | `posix-paths.str-serialization` | ACF built-in, BLOCK | Claude Code edits | Same: `ci`/`precommit` declared, not invoked. |
 | `ops.no-build-artifacts` | ACF built-in, BLOCK | Claude Code edits | Same. |
 | `soft.fail-loud` | ACF review rule | `/architecture-review` | No `exception_base` set, so "exception outside `RecipeParserError`" is off. |
@@ -85,10 +85,10 @@ Each item names its mechanism, where it runs and what "done" means.
 
 | Item | Mechanism | Done when |
 |---|---|---|
-| `fail-loud.ratchet` | ACF built-in, `ci` + `precommit`, with `config/architecture/fail_loud_ratchet.json` holding each file's broad-handler count after Phase 0 | The count can only fall; the edit hook stops nagging about old handlers. |
-| Exemption marker convention | Convert reasoned `# noqa: BLE001 — …` handlers to `# fail-loud.bare-except-ok: …` | No reasoned handler is reported. |
-| `soft.fail-loud` exception base | `params.exception_base: {class_name: RecipeParserError, module: recipeparser/exceptions.py}` | Sub-check 4 runs in the review. |
-| `no-shims.hasattr` | Add the `hook` site | Checked on Claude Code edits too, not only on push and PR. |
+| `fail-loud.ratchet` | ACF built-in, `ci` + `precommit`, with `config/architecture/fail_loud_ratchet.json` holding each file's broad-handler count after Phase 0 | The count can only fall. **Done in 9.48.3:** 141 handlers in 58 files under `recipeparser/` and `scripts/`. The ratchet does not quiet the edit hook, which still reports every unexempted handler in a file it scans; the 50 handlers with no reason on the line need one (or a fix) for that. |
+| Exemption marker convention | Convert reasoned `# noqa: BLE001 — …` handlers to `# fail-loud.bare-except-ok: …` | No reasoned handler is reported. **Done in 9.48.3:** 31 handlers converted to `# noqa: BLE001  # fail-loud.bare-except-ok: <reason>`. |
+| `soft.fail-loud` exception base | `params.exception_base: {class_name: RecipeParserError, module: recipeparser/exceptions.py}` | Sub-check 4 runs in the review. **Done in 9.48.3.** |
+| `no-shims.hasattr` | Add the `hook` site | Checked on Claude Code edits too, not only on push and PR. **Done in 9.48.3.** |
 | Package-root shims | `soft.no-shims` already reports them; schedule their removal (`epub.py`, `export.py`, `pdf.py`, `supabase_writer.py`, `category_sources/base.py`) | Callers import the real modules; shims deleted. |
 
 ### Phase 3 — Project rules as deterministic checks (weeks 2–4)
