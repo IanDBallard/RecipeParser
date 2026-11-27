@@ -461,6 +461,43 @@ class TestABracketedSizeAfterACount:
         assert result.structured_ingredients[0].converted_amount is None
 
 
+class TestABracketedSizeAfterTheFood:
+    """Fix Roadmap F-858: "1 standing rib roast (about 8 lb)" kept converted_amount null: "≈ 1 roast"."""
+
+    @pytest.mark.parametrize("line,amount,unit", [
+        ("1 standing rib roast (about 8 lb)", 8.0, "lb"),
+        ("1 bone-in ham (7 pounds), rind on", 7.0, "pounds"),
+        ("1 whole chicken (about 1.5 kg)", 1.5, "kg"),
+        ("1 boneless pork shoulder (4 to 5 lb), tied", 5.0, "lb"),
+        ("2 cans chickpeas (400g each)", 400.0, "g"),
+        ("1 turkey (12-pound)", 12.0, "pound"),
+    ])
+    def test_the_bracketed_size_becomes_the_writers_second_measure(self, line, amount, unit):
+        ing = _line("ing_01", line, float(line.split()[0]), None, "thing")
+        result, _ = _refine(_refinement(ing), raw=_raw(line))
+        got = result.structured_ingredients[0]
+        assert (got.converted_amount, got.converted_unit, got.is_ai_converted) == (amount, unit, False)
+
+    def test_a_count_unit_keeps_the_size_too(self):
+        line = "1 standing rib roast (about 8 lb)"
+        roast = _line("ing_01", line, 1.0, "roast", "standing rib roast")
+        result, _ = _refine(_refinement(roast), raw=_raw(line))
+        got = result.structured_ingredients[0]
+        assert (got.converted_amount, got.converted_unit) == (8.0, "lb")
+
+    @pytest.mark.parametrize("line,unit", [
+        ("1 onion (or 2 shallots)", None),
+        ("1 piece ginger (2 inches)", None),
+        ("2 cups onions (about 300 g)", "cups"),
+        ("1 lemon (see note)", None),
+        ("1 ham (about 7 lb) or 2 small (3 lb) hams", None),
+    ])
+    def test_a_bracket_that_is_not_a_lone_size_is_ignored(self, line, unit):
+        ing = _line("ing_01", line, float(line.split()[0]), unit, "thing")
+        result, _ = _refine(_refinement(ing), raw=_raw(line))
+        assert result.structured_ingredients[0].converted_amount is None
+
+
 class TestAnExtraAmount:
     """Fix Roadmap F-685: "60g coconut cream, plus 100g extra for the coriander cream" was stored as 60 g."""
 

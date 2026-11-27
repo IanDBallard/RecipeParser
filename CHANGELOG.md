@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.48.1] — 2026-11-27
+
+A size in brackets after the food's name is kept as the line's second measure (Cayenne F-858, fix roadmap batch 84).
+
+**For Cayenne:** no wire change. `converted_amount`/`converted_unit` are now filled (the writer's, `is_ai_converted` false) for lines like "1 standing rib roast (about 8 lb)".
+
+### 🐛 Fixed
+- "1 standing rib roast (about 8 lb)" kept `converted_amount` null, so the list read "≈ 1 roast" (owner's holiday test, 2026-11-26). REFINE's bracketed-size pass (F-686, which took only a bracket straight after the count) now also takes a size bracket after the food's name: "(about 8 lb)", "(7 pounds), rind on", "(4 to 5 lb)" (the larger), "(400g each)". Only when the line's unit is a count or none, nothing holds the second measure yet, and the line has exactly one bracketed size ("1 ham (about 7 lb) or 2 small (3 lb) hams" is left alone).
+
 ## [9.48.0] — 2026-11-27
 
 The search look offers recipes only: a round-up or guide page is no longer offered (Cayenne F-866, fix roadmap batch 86).
