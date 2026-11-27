@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.49.0] — 2026-11-27
+
+The package-root compatibility shims are gone: import from the real modules (architecture review 2026-11-25, `soft.no-shims`).
+
+**For Cayenne and other callers:** no wire change, and the server entrypoint is unchanged (`recipeparser.adapters.api:app`, as the Dockerfile and `start_server.py` already use). Six Python import paths no longer exist; anything importing or `patch()`-ing them must move:
+
+| Removed | Import from |
+|---|---|
+| `recipeparser.api` | `recipeparser.adapters.api` |
+| `recipeparser.epub` | `recipeparser.io.readers.epub` |
+| `recipeparser.pdf` | `recipeparser.io.readers.pdf` |
+| `recipeparser.export` | `recipeparser.io.writers.paprika_zip` |
+| `recipeparser.supabase_writer` | `recipeparser.io.writers.supabase` |
+| `recipeparser.io.category_sources.base` | `recipeparser.core.ports` (`CategorySource`; still re-exported by `recipeparser.io.category_sources`) |
+
+### 🔧 Changed
+- Deleted `recipeparser/api.py` (a `sys.modules` alias), `epub.py`, `pdf.py`, `export.py`, `supabase_writer.py` and `io/category_sources/base.py`. The CLI's `--merge` now imports `merge_exports` from `io.writers.paprika_zip`; `io/category_sources/__init__.py` imports `CategorySource` from `core.ports`; the tests import and patch the real modules.
+
 ## [9.48.2] — 2026-11-27
 
 A web page's times come from its own JSON-LD, and a page's source title is never its URL (Cayenne F-877, F-878, fix roadmap batch 88).
