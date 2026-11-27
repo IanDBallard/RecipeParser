@@ -103,7 +103,7 @@ def _cmd_sync_categories() -> None:
 def _cmd_merge(paths: list, output_dir: str) -> None:
     """Merge multiple .paprikarecipes archives into one."""
     from pathlib import Path as _Path
-    from recipeparser.export import merge_exports
+    from recipeparser.io.writers.paprika_zip import merge_exports
     from recipeparser.exceptions import RecipeParserError
 
     resolved = [_Path(p) for p in paths]

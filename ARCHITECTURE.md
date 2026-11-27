@@ -503,7 +503,7 @@ Category taxonomy is injected into the engine by the adapter. The adapter fetche
 ### CategorySource ABC
 
 ```python
-# io/category_sources/base.py
+# core/ports.py
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Optional, Tuple

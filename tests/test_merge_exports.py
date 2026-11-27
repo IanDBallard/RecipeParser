@@ -1,4 +1,4 @@
-"""Tests for recipeparser.export.merge_exports — Phase 3a multi-file merge."""
+"""Tests for recipeparser.io.writers.paprika_zip.merge_exports — Phase 3a multi-file merge."""
 import gzip
 import json
 import zipfile
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from recipeparser.export import merge_exports, _normalise_recipe_name
+from recipeparser.io.writers.paprika_zip import merge_exports, _normalise_recipe_name
 from recipeparser.exceptions import ExportError
 
 
