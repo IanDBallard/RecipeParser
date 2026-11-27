@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.49.2] — 2026-11-27
+
+A Cayenne restore reads its recipe's fields directly instead of probing for them (architecture review 2026-11-25, `soft.no-shims`). No change to the package's behaviour.
+
+### 🔧 Changed
+- `Chunk.pre_parsed` is typed `CayenneRecipe`, the only type a reader puts there (`IngestResponse` subclasses it). The restore fast paths, `_citation_from`, `_pre_parsed_to_refinement` and `_restore_spans` read `ingredient_lines`, `direction_steps`, the four citation columns, `pans`, `bake_type`, `bake_step`, `yield_spec` and the detected measures as fields. An export that predates a column still restores: the column parses with the model's default, as it did before. A rename of one of these fields now fails loudly instead of restoring the recipe without it.
+- `check_yield` loses its `pans` argument, which nothing has read since D97; `regen._checked_against` and the yield backfill scripts follow.
+- `recipeparser.core.regen` no longer re-exports `strip_fat_tokens`; import it from `recipeparser.core.fat_tokens`.
+
 ## [9.49.1] — 2026-11-27
 
 The count of broad exception handlers can only fall, and reasoned handlers carry the architecture gate's exemption marker (architecture compliance roadmap, Phase 2). No change to the package's behaviour.
