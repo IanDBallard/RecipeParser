@@ -69,13 +69,14 @@ def fit_sites(question: str, sites: Sequence[str]) -> list[str]:
     return kept
 
 
-def links_query(question: str, sites: Sequence[str]) -> str | None:
+def links_query(question: str, sites: Sequence[str], *, suffix: str = "") -> str | None:
     """The question restricted to the given sites with ``site:`` operators, within Brave's limits.
 
-    The operator group is kept whole; the question loses whole words from its end until the query
-    fits ``MAX_QUERY_CHARS`` and ``MAX_QUERY_WORDS``. None when the operator group alone does not fit.
+    ``suffix`` (the look's "recipe", say) follows the question. The suffix and the operator group are
+    kept whole; the question loses whole words from its end until the query fits ``MAX_QUERY_CHARS``
+    and ``MAX_QUERY_WORDS``. None when the suffix and operator group alone do not fit.
     """
-    group = _group(sites)
+    group = f"{suffix} {_group(sites)}" if suffix else _group(sites)
     group_words = len(group.split())
     if len(group) > MAX_QUERY_CHARS or group_words > MAX_QUERY_WORDS:
         return None

@@ -582,79 +582,92 @@ class UrlReader(RecipeReader):
         return text
 
     def _read_directly(self, source: str) -> str:
-        """The page fetched with a browser user-agent, read from its Recipe JSON-LD or visible text.
+        """The page fetched with a browser user-agent, read from its Recipe JSON-LD or visible text."""
+        from recipeparser.exceptions import UrlFetchError
 
-        With ``PAGE_FETCH_PROXY`` set the fetch goes through that proxy; a proxy that
-        cannot be reached (or cannot open the tunnel) is skipped and the page is
-        fetched without it, so the proxy being down is never worse than no proxy.
-        """
-        proxy = page_fetch_proxy()
-        if proxy:
-            try:
-                return self._fetch_page_text(source, proxy)
-            except (requests.exceptions.ProxyError, requests.exceptions.ConnectTimeout) as exc:
-                log.warning("UrlReader: page proxy %s failed (%r) — fetching %s without it.", proxy, exc, source)
-        return self._fetch_page_text(source, None)
-
-    def _fetch_page_text(self, source: str, proxy: Optional[str]) -> str:
-        """``_read_directly``'s fetch, through ``proxy`` when one is given.
-
-        Redirects are followed by hand, at most ``_MAX_REDIRECTS``, so every hop
-        passes the same private-address checks as the first. With a proxy, a
-        ProxyError or a connect timeout propagates for the caller to retry without it.
-        """
-        from recipeparser.exceptions import SiteRefusedError, UrlFetchError
-
-        proxies = {"http": proxy, "https": proxy} if proxy else None
-        timeout: Any = (_PROXY_CONNECT_TIMEOUT, self.timeout) if proxy else self.timeout
-        url = source
-        for _ in range(_MAX_REDIRECTS + 1):
-            try:
-                unsafe = is_unsafe_fetch_target(url)
-            except ValueError:
-                unsafe = True
-            if unsafe or not _resolves_to_public(urlparse(url).hostname or ""):
-                raise UrlFetchError("is not a public web address.")
-            try:
-                response = requests.get(
-                    url, headers=_PAGE_HEADERS, timeout=timeout, allow_redirects=False, proxies=proxies
-                )
-            except (requests.exceptions.ProxyError, requests.exceptions.ConnectTimeout) as exc:
-                if proxy:
-                    raise
-                if isinstance(exc, requests.Timeout):
-                    raise UrlFetchError("did not respond in time.") from exc
-                raise UrlFetchError(f"could not be fetched: {exc}") from exc
-            except requests.Timeout as exc:
-                raise UrlFetchError("did not respond in time.") from exc
-            except requests.RequestException as exc:
-                raise UrlFetchError(f"could not be fetched: {exc}") from exc
-            location = response.headers.get("location") if response.status_code in (301, 302, 303, 307, 308) else None
-            if not location:
-                break
-            url = urljoin(url, location)
-        else:
-            raise UrlFetchError("redirected too many times.")
-
-        if is_cloudflare_challenge(response.headers):
-            raise SiteRefusedError(
-                f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}", host=host_of(url)
-            )
-        if response.status_code in _REFUSING_STATUSES:
-            raise SiteRefusedError(
-                f"refuses automated readers (HTTP {response.status_code}). {_PASTE_INSTEAD}", host=host_of(url)
-            )
-        if not 200 <= response.status_code < 300:
-            raise UrlFetchError(f"could not be fetched (HTTP {response.status_code}).")
-        content_type = response.headers.get("content-type") or ""
-        if not isinstance(content_type, str) or "html" not in content_type.lower():
-            raise UrlFetchError("is not a web page.")
-        html = response.text[:_MAX_HTML_CHARS]
-        if looks_like_html_challenge(html):
-            raise SiteRefusedError(
-                f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}", host=host_of(url)
-            )
-        text = page_text_from_html(html)
+        text = page_text_from_html(fetch_page_html(source, self.timeout))
         if not text.strip():
             raise UrlFetchError("contains no readable text.")
         return text
+
+
+def fetch_page_html(source: str, timeout: float) -> str:
+    """The page's HTML, fetched directly with a browser user-agent, or the error saying why not.
+
+    The URL reader's direct fetch, shared with the search look's recipe check (Cayenne F-866).
+    ``timeout`` bounds the connect and each read. With ``PAGE_FETCH_PROXY`` set the fetch goes
+    through that proxy; a proxy that cannot be reached (or cannot open the tunnel) is skipped and
+    the page is fetched without it, so the proxy being down is never worse than no proxy.
+
+    Raises ``UrlFetchError`` (an unsafe address, a network failure or timeout, too many redirects,
+    an error status, not a web page) or ``SiteRefusedError`` (a refusing status or a bot-protection
+    challenge).
+    """
+    proxy = page_fetch_proxy()
+    if proxy:
+        try:
+            return _fetch_page_html(source, proxy, timeout)
+        except (requests.exceptions.ProxyError, requests.exceptions.ConnectTimeout) as exc:
+            log.warning("UrlReader: page proxy %s failed (%r) — fetching %s without it.", proxy, exc, source)
+    return _fetch_page_html(source, None, timeout)
+
+
+def _fetch_page_html(source: str, proxy: Optional[str], timeout_s: float) -> str:
+    """``fetch_page_html``'s fetch, through ``proxy`` when one is given.
+
+    Redirects are followed by hand, at most ``_MAX_REDIRECTS``, so every hop
+    passes the same private-address checks as the first. With a proxy, a
+    ProxyError or a connect timeout propagates for the caller to retry without it.
+    """
+    from recipeparser.exceptions import SiteRefusedError, UrlFetchError
+
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    timeout: Any = (min(_PROXY_CONNECT_TIMEOUT, timeout_s), timeout_s) if proxy else timeout_s
+    url = source
+    for _ in range(_MAX_REDIRECTS + 1):
+        try:
+            unsafe = is_unsafe_fetch_target(url)
+        except ValueError:
+            unsafe = True
+        if unsafe or not _resolves_to_public(urlparse(url).hostname or ""):
+            raise UrlFetchError("is not a public web address.")
+        try:
+            response = requests.get(
+                url, headers=_PAGE_HEADERS, timeout=timeout, allow_redirects=False, proxies=proxies
+            )
+        except (requests.exceptions.ProxyError, requests.exceptions.ConnectTimeout) as exc:
+            if proxy:
+                raise
+            if isinstance(exc, requests.Timeout):
+                raise UrlFetchError("did not respond in time.") from exc
+            raise UrlFetchError(f"could not be fetched: {exc}") from exc
+        except requests.Timeout as exc:
+            raise UrlFetchError("did not respond in time.") from exc
+        except requests.RequestException as exc:
+            raise UrlFetchError(f"could not be fetched: {exc}") from exc
+        location = response.headers.get("location") if response.status_code in (301, 302, 303, 307, 308) else None
+        if not location:
+            break
+        url = urljoin(url, location)
+    else:
+        raise UrlFetchError("redirected too many times.")
+
+    if is_cloudflare_challenge(response.headers):
+        raise SiteRefusedError(
+            f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}", host=host_of(url)
+        )
+    if response.status_code in _REFUSING_STATUSES:
+        raise SiteRefusedError(
+            f"refuses automated readers (HTTP {response.status_code}). {_PASTE_INSTEAD}", host=host_of(url)
+        )
+    if not 200 <= response.status_code < 300:
+        raise UrlFetchError(f"could not be fetched (HTTP {response.status_code}).")
+    content_type = response.headers.get("content-type") or ""
+    if not isinstance(content_type, str) or "html" not in content_type.lower():
+        raise UrlFetchError("is not a web page.")
+    html = response.text[:_MAX_HTML_CHARS]
+    if looks_like_html_challenge(html):
+        raise SiteRefusedError(
+            f"is blocked by the site's bot-protection challenge page. {_PASTE_INSTEAD}", host=host_of(url)
+        )
+    return str(html)

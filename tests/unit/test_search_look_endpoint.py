@@ -28,8 +28,10 @@ from recipeparser.adapters import search_api
 from recipeparser.adapters.ai_gate import PAUSED_DETAIL, AiGate
 from recipeparser.adapters.ai_search import ai_db, links
 from recipeparser.adapters.ai_search.ai_db import QueryResult
+from recipeparser.adapters.ai_search.links import look_links_query
 from recipeparser.adapters.ai_search.look import UNSEARCHABLE, WEB_BLOCK_REFUSED
-from recipeparser.adapters.brave import BraveError, BraveResult, links_query
+from recipeparser.adapters.brave import BraveError, BraveResult
+from recipeparser.exceptions import UrlFetchError
 
 MODEL = "claude-opus-5-5"
 SUB = "11111111-1111-1111-1111-111111111111"
@@ -65,6 +67,11 @@ def _isolated(monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.setattr(links, "KNOWN_UNSEARCHABLE", frozenset())
     UNSEARCHABLE.clear()
     WEB_BLOCK_REFUSED.clear()
+
+    def no_network(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a unit test tried to fetch a page")
+
+    monkeypatch.setattr("recipeparser.io.readers.url.requests.get", no_network)
     yield
     UNSEARCHABLE.clear()
     WEB_BLOCK_REFUSED.clear()
@@ -97,6 +104,36 @@ class FakeDb:
 
     def close(self) -> None:
         pass
+
+
+RECIPE_PAGE = (
+    '<html><head><script type="application/ld+json">'
+    '{"@context": "https://schema.org", "@type": "Recipe", "name": "A recipe"}'
+    "</script></head><body>A recipe</body></html>"
+)
+ROUNDUP_PAGE = (
+    '<html><head><script type="application/ld+json">'
+    '{"@context": "https://schema.org", "@type": "ItemList", "name": "13 Crowd-Pleasing Christmas Dinner Sides"}'
+    "</script></head><body>13 Crowd-Pleasing Christmas Dinner Sides</body></html>"
+)
+
+
+class FakePages:
+    """The look's page fetcher (F-866): every page declares a Recipe unless named in ``pages``, whose
+    value is the page's HTML or an exception to raise. Records each address fetched."""
+
+    def __init__(self, pages: dict[str, Any] | None = None) -> None:
+        self.pages = pages or {}
+        self.fetched: list[str] = []
+        self._lock = threading.Lock()
+
+    def __call__(self, url: str, timeout: float) -> str:
+        with self._lock:
+            self.fetched.append(url)
+        page = self.pages.get(url, RECIPE_PAGE)
+        if isinstance(page, BaseException):
+            raise page
+        return str(page)
 
 
 def _usage() -> SimpleNamespace:
@@ -214,6 +251,7 @@ def _app(
     gate: AiGate | None = None,
     service: Any = None,
     brave: Any = None,
+    fetch_page: Any = None,
 ) -> tuple[TestClient, dict[str, Any]]:
     state: dict[str, Any] = {
         "db": FakeDb() if db == "default" else db,
@@ -231,6 +269,7 @@ def _app(
             lambda: service,
             MODEL,
             lambda: brave,
+            fetch_page=fetch_page if fetch_page is not None else FakePages(),
         )
     )
     return TestClient(app, raise_server_exceptions=False), state
@@ -672,6 +711,7 @@ def test_look_cancel_stops_before_next_call() -> None:
                 get_service_client=lambda: None,
                 model=MODEL,
                 cancel=cancel,
+                fetch_page=FakePages(),
             )
         ]
 
@@ -741,7 +781,7 @@ def test_web_look_appends_links_after_finds(monkeypatch: pytest.MonkeyPatch) -> 
         (SE_GRAVY, "Vegan Gravy", "", "importable", 0),
         (NYT_PIE, "Apple Pie", "", "importable", 0),
     ]
-    assert brave.queries == [links_query(BODY["question"], ["nytimes.com", "seriouseats.com"])]
+    assert brave.queries == [look_links_query(BODY["question"], ["nytimes.com", "seriouseats.com"])]
     assert brave.queries[0].endswith("(site:nytimes.com OR site:seriouseats.com)")
 
 
@@ -787,7 +827,7 @@ def test_sites_look_with_only_refused_sites_gives_links_not_no_sites(monkeypatch
             ],
         }
     ]
-    assert brave.queries == [links_query(BODY["question"], ["seriouseats.com"])]
+    assert brave.queries == [look_links_query(BODY["question"], ["seriouseats.com"])]
 
 
 def test_sites_look_with_no_refused_sites_sends_no_brave_request() -> None:
@@ -891,6 +931,7 @@ def test_cancelled_look_emits_no_links(monkeypatch: pytest.MonkeyPatch) -> None:
                 model=MODEL,
                 cancel=cancel,
                 brave=brave,  # type: ignore[arg-type]
+                fetch_page=FakePages(),
             )
         ]
 
@@ -964,6 +1005,7 @@ def test_cook_leaving_while_the_lane_is_awaited_emits_nothing(monkeypatch: pytes
                 model=MODEL,
                 cancel=cancel,
                 brave=brave,  # type: ignore[arg-type]
+                fetch_page=FakePages(),
             )
         ]
 
@@ -973,3 +1015,58 @@ def test_cook_leaving_while_the_lane_is_awaited_emits_nothing(monkeypatch: pytes
         hold.set()
     assert lines == []  # no candidates line after the cook left
     assert client.calls == [] and len(brave.queries) == 1
+
+
+# -- the recipe check (F-866): a page that declares no schema.org Recipe is not offered -----------
+
+
+def test_an_agent_find_that_declares_no_recipe_is_dropped() -> None:
+    pages = FakePages({GRAVY: ROUNDUP_PAGE})
+    tc, _ = _app(fetch_page=pages)
+    found = _lines(_post(tc))[-1]["candidates"]
+    assert [c["url"] for c in found] == [MINE]
+
+
+def test_a_link_that_declares_no_recipe_is_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
+    _refuse(monkeypatch, "seriouseats.com")
+    brave = FakeBrave([BraveResult(SE_GRAVY, "Roasting Guides"), BraveResult(SE_PIE, "Pumpkin Pie")])
+    pages = FakePages({SE_GRAVY: "<html><body>Roasting Guides</body></html>"})
+    tc, _ = _app(
+        db=FakeDb(sites=[("seriouseats.com", 3, None)]), client=FakeAnthropic([]), brave=brave, fetch_page=pages
+    )
+    found = _lines(_post(tc))[-1]["candidates"]
+    assert [c["url"] for c in found] == [SE_PIE]
+
+
+def test_a_page_that_cannot_be_fetched_is_kept() -> None:
+    pages = FakePages({GRAVY: UrlFetchError("did not respond in time."), MINE: ROUNDUP_PAGE})
+    tc, _ = _app(fetch_page=pages)
+    found = _lines(_post(tc))[-1]["candidates"]
+    assert [c["url"] for c in found] == [GRAVY]
+
+
+def test_both_lanes_are_checked_and_nothing_excluded_or_unread_is_fetched(monkeypatch: pytest.MonkeyPatch) -> None:
+    _refuse(monkeypatch, "seriouseats.com")
+    brave = FakeBrave([BraveResult(SE_GRAVY, "Vegan Gravy"), BraveResult(SE_PIE, "Pumpkin Pie")])
+    pages = FakePages()
+    tc, _ = _app(brave=brave, fetch_page=pages)
+    found = _lines(_post(tc, {**BODY, "exclude": [GRAVY, SE_PIE]}))[-1]["candidates"]
+    assert [c["url"] for c in found] == [MINE, SE_GRAVY]
+    assert sorted(pages.fetched) == sorted([MINE, SE_GRAVY])  # not UNREAD, GRAVY or SE_PIE
+
+
+def test_the_links_lane_asks_brave_for_recipes(monkeypatch: pytest.MonkeyPatch) -> None:
+    _refuse(monkeypatch, "seriouseats.com")
+    brave = FakeBrave([])
+    tc, _ = _app(db=FakeDb(sites=[("seriouseats.com", 3, None)]), client=FakeAnthropic([]), brave=brave)
+    _post(tc)
+    assert brave.queries == ["A vegan dinner for four recipe (site:seriouseats.com)"]
+
+
+def test_the_look_is_wired_to_the_url_readers_fetch_by_default() -> None:
+    import inspect
+
+    from recipeparser.io.readers.url import fetch_page_html
+
+    assert inspect.signature(search_api.look_stream).parameters["fetch_page"].default is fetch_page_html
+    assert inspect.signature(search_api.build_router).parameters["fetch_page"].default is fetch_page_html

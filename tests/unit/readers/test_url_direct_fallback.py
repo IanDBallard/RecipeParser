@@ -413,3 +413,43 @@ def test_a_challenge_header_on_a_200_is_never_read_as_a_recipe(public_dns: Any) 
     with patch("recipeparser.io.readers.url.requests.get", side_effect=[_jina_refusal(451), page]):
         with pytest.raises(SiteRefusedError):
             UrlReader().read(SOURCE)
+
+
+# ---------------------------------------------------------------------------
+# fetch_page_html: the direct fetch on its own, shared with the search look's recipe check (F-866)
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_page_html_returns_the_page_and_uses_the_given_timeout(public_dns: Any, monkeypatch: Any) -> None:
+    from recipeparser.io.readers.url import fetch_page_html
+
+    monkeypatch.delenv("PAGE_FETCH_PROXY", raising=False)
+    html = _html_with_json_ld(_SERIOUS_EATS_LD)
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=[_page(html)]) as mock_get:
+        assert fetch_page_html(SOURCE, 3.0) == html
+    call = mock_get.call_args
+    assert call.args == (SOURCE,)
+    assert call.kwargs["timeout"] == 3.0
+    assert "Chrome" in call.kwargs["headers"]["User-Agent"]
+
+
+def test_fetch_page_html_through_the_proxy_caps_the_connect_timeout(public_dns: Any, monkeypatch: Any) -> None:
+    from recipeparser.io.readers.url import fetch_page_html
+
+    monkeypatch.setenv("PAGE_FETCH_PROXY", _PROXY)
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=[_page("<html></html>")]) as mock_get:
+        fetch_page_html(SOURCE, 3.0)
+    assert mock_get.call_args.kwargs["timeout"] == (3.0, 3.0)
+    assert mock_get.call_args.kwargs["proxies"] == {"http": _PROXY, "https": _PROXY}
+
+
+def test_fetch_page_html_raises_for_a_refusal_and_an_error_status(public_dns: Any, monkeypatch: Any) -> None:
+    from recipeparser.io.readers.url import fetch_page_html
+
+    monkeypatch.delenv("PAGE_FETCH_PROXY", raising=False)
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=[_page("x", status=402)]):
+        with pytest.raises(SiteRefusedError):
+            fetch_page_html(SOURCE, 3.0)
+    with patch("recipeparser.io.readers.url.requests.get", side_effect=[_page("x", status=500)]):
+        with pytest.raises(UrlFetchError):
+            fetch_page_html(SOURCE, 3.0)

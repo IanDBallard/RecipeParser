@@ -30,9 +30,15 @@ _SEPARATORS = (" | ", " - ", " \u2013 ")
 _AMP = re.compile(r"^([^?#]*?)/amp/?([?#].*)?$", re.DOTALL)
 
 
+def recipe_suffix(query: str) -> str:
+    """The word "recipe", or nothing when the question already ends in "recipe" or "recipes"."""
+    return "" if _ENDS_WITH_RECIPE.search(query.strip()) else "recipe"
+
+
 def web_query(query: str) -> str:
     """The question plus " recipe", unless it already ends in "recipe" or "recipes"."""
-    return query if _ENDS_WITH_RECIPE.search(query.strip()) else f"{query} recipe"
+    suffix = recipe_suffix(query)
+    return f"{query} {suffix}" if suffix else query
 
 
 def sites_query(query: str, hosts: Sequence[str]) -> str | None:

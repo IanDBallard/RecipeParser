@@ -52,7 +52,7 @@ from recipeparser.adapters.ai_search.answer import (
     raw_ids,
 )
 from recipeparser.adapters.ai_search.find import SITES_MAX, WEB_MAX, pick, site_names, sites_query, web_query
-from recipeparser.adapters.ai_search.links import links_sites, to_links
+from recipeparser.adapters.ai_search.links import links_sites, look_links_query, to_links
 from recipeparser.adapters.ai_search.look import (
     KNOWN_UNSEARCHABLE,
     MAX_URL_CHARS,
@@ -74,8 +74,10 @@ from recipeparser.adapters.ai_search.look_prompt import (
     web_look_system_blocks,
 )
 from recipeparser.adapters.ai_search.prompt import request_text, system_blocks
+from recipeparser.adapters.ai_search.recipe_pages import PageFetcher, keep_recipe_pages
 from recipeparser.adapters.ai_search.tools import ToolBox
-from recipeparser.adapters.brave import BraveError, BraveResult, BraveSearch, fit_sites, links_query
+from recipeparser.adapters.brave import BraveError, BraveResult, BraveSearch, fit_sites
+from recipeparser.io.readers.url import fetch_page_html
 
 logger = logging.getLogger(__name__)
 
@@ -397,19 +399,20 @@ def _start_links(brave: BraveSearch | None, body: LookRequest, db: AiReaderDb, c
     """Send the lane's one Brave request on a worker thread, so it runs alongside the agent.
 
     The web look asks about the whole refused set; the sites look about the cook's own sites in it.
-    Nothing in scope (or no client) sends no request."""
+    The question gains " recipe" as the find's does (``look_links_query``, F-866). Nothing in scope
+    (or no client) sends no request."""
     if brave is None:
         return _Links(sites=[])
     cook = cook_sites(db, claims)
     sites = links_sites(body.scope, [host for host, _ in cook])
-    fitted = fit_sites(body.question, sites)
+    fitted = fit_sites(web_query(body.question), sites)
     if len(fitted) < len(sites):
         logger.warning(
             "search look: the links lane asked about %d of %d sites to fit Brave's limits", len(fitted), len(sites)
         )
     sites = fitted
     names = {host: name for host, name in cook if host in sites}
-    query = links_query(body.question, sites) if sites else None
+    query = look_links_query(body.question, sites) if sites else None
     if query is None:
         return _Links(sites=sites, names=names)
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix=LINKS_WORKER_NAME)
@@ -460,6 +463,7 @@ def _look_work(
     model: str,
     limits: LookLimits,
     brave: BraveSearch | None,
+    fetch_page: PageFetcher,
     cancel: threading.Event,
     emit: Callable[[dict[str, Any] | None], None],
 ) -> None:
@@ -467,7 +471,8 @@ def _look_work(
 
     With ``brave``, the links lane runs alongside the agent and its plain links follow the agent's
     finds in the one ``candidates`` line. The lane never adds an error: when the agent fails, its
-    error line stands alone."""
+    error line stands alone. Every page from either lane is then fetched with ``fetch_page`` and
+    dropped when it declares no schema.org Recipe (``keep_recipe_pages``, F-866)."""
     sub = str(claims.get("sub", ""))
     started = time.monotonic()
     kind = "failed"
@@ -557,8 +562,11 @@ def _look_work(
                     )
                     if lane.future is not None and cancel.is_set():
                         raise AgentCancelled  # the cook left while the lane was awaited
-                    link_count = len(plain)
-                    checked += plain
+                    links_offered = set(plain)
+                    checked = keep_recipe_pages([*checked, *plain], fetch=fetch_page)
+                    if cancel.is_set():
+                        raise AgentCancelled  # the cook left while the pages were read
+                    link_count = sum(1 for c in checked if c in links_offered)
                     own = own_source_urls(db, claims, [c.url for c in checked]) if checked else {}
                     blocked = _blocked(get_service_client, {url_host(c.url) for c in checked})
                     # The cook's names for the lane's sites too: the cook never sees which search found a page.
@@ -604,9 +612,11 @@ async def look_stream(
     limits: LookLimits = LookLimits(),
     cancel: threading.Event | None = None,
     brave: BraveSearch | None = None,
+    fetch_page: PageFetcher = fetch_page_html,
 ) -> AsyncIterator[bytes]:
     """The NDJSON lines of one look. Leaving early (the cook went away) sets ``cancel``. Without
-    ``brave`` the look shows no plain links."""
+    ``brave`` the look shows no plain links. ``fetch_page`` reads each candidate page for the
+    recipe check (a fake in tests)."""
     async for line in _stream(
         _look_work,
         LOOK_WORKER_NAME,
@@ -619,6 +629,7 @@ async def look_stream(
         model=model,
         limits=limits,
         brave=brave,
+        fetch_page=fetch_page,
     ):
         yield line
 
@@ -737,6 +748,8 @@ def build_router(
     get_service_client: Callable[[], Any],
     model: str,
     get_brave: Callable[[], BraveSearch | None],
+    *,
+    fetch_page: PageFetcher = fetch_page_html,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -777,6 +790,7 @@ def build_router(
                 get_service_client=get_service_client,
                 model=model,
                 brave=get_brave(),  # None (no key) only turns the plain links off; never a 503
+                fetch_page=fetch_page,
             ),
             media_type=MEDIA_TYPE,
         )
