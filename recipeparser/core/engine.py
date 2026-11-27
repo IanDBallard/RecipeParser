@@ -7,8 +7,7 @@ ARCHITECTURAL INVARIANT:
   provider (via the injected client) and the models layer.
 
   Allowed imports: recipeparser.models, recipeparser.gemini, recipeparser.utils
-  Forbidden imports: recipeparser.export, recipeparser.supabase_writer,
-                     recipeparser.io.*, recipeparser.adapters.*
+  Forbidden imports: recipeparser.io.*, recipeparser.adapters.*
 """
 from __future__ import annotations
 

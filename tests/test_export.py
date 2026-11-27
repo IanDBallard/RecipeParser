@@ -1,4 +1,4 @@
-"""Tests for recipeparser.export — Paprika archive bundling."""
+"""Tests for recipeparser.io.writers.paprika_zip — Paprika archive bundling."""
 import base64
 import gzip
 import json
@@ -8,7 +8,7 @@ import pytest
 
 from tests.conftest import make_recipe
 from recipeparser.models import RecipeExtraction
-from recipeparser.export import create_paprika_export
+from recipeparser.io.writers.paprika_zip import create_paprika_export
 
 
 class TestCreatePaprikaExport:

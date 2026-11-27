@@ -26,8 +26,8 @@ import httpx
 from rich.console import Console
 from rich.table import Table
 
-# supabase_writer provides verify/delete — reuse the same logic as the API itself
-from recipeparser.supabase_writer import (
+# io.writers.supabase provides verify/delete — reuse the same logic as the API itself
+from recipeparser.io.writers.supabase import (
     delete_recipe_from_supabase,
     verify_recipe_in_supabase,
 )

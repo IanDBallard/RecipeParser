@@ -1,4 +1,4 @@
-"""Tests for recipeparser.epub — EPUB parsing, chunking, image extraction."""
+"""Tests for recipeparser.io.readers.epub — EPUB parsing, chunking, image extraction."""
 import zipfile
 from typing import Optional
 from unittest.mock import MagicMock
@@ -7,7 +7,7 @@ import ebooklib
 import pytest
 from ebooklib import epub
 
-from recipeparser.epub import (
+from recipeparser.io.readers.epub import (
     extract_all_images,
     extract_chapters_with_image_markers,
     is_recipe_candidate,
