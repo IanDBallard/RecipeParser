@@ -120,6 +120,19 @@ def test_resolve_citation_web_takes_site_name_and_byline_from_the_model():
     assert resolve_citation(host, None, None) == host
 
 
+@pytest.mark.parametrize("stated", [
+    "https://www.allrecipes.com/recipe/24002/famous-chili/",
+    "http://allrecipes.com",
+    "www.allrecipes.com/recipe/24002/famous-chili/",
+    "allrecipes.com",
+])
+def test_resolve_citation_web_never_takes_an_address_as_the_site_name(stated):
+    # Cayenne F-878: the model stated the page's URL as its source, and Cayenne shows source_title first.
+    host = web_citation("https://www.allrecipes.com/recipe/24002/famous-chili/")
+    got = resolve_citation(host, stated, "John Doe")
+    assert got == Citation("web", "allrecipes.com", "allrecipes.com", "John Doe")
+
+
 def test_resolve_citation_with_nothing_known_classifies_the_stated_source():
     assert resolve_citation(None, "Bon Appétit", "Molly Baz") == Citation(
         "person", "bon appétit", "Bon Appétit", "Molly Baz"
