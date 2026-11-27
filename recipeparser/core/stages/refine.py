@@ -414,12 +414,30 @@ def _check_conversions(refinement: CayenneRefinement) -> None:
 
 
 _SIZE_NUM = r"\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?"
-# A count with its size in brackets: "1 (4- to 5-pound) brisket", "2 (14-ounce) cans", "1 (400g) tin".
-_BRACKETED_SIZE_RE = re.compile(
-    rf"^\s*(?:{_SIZE_NUM})\s*\(\s*(?:about\s+)?(?:(?:{_SIZE_NUM})\s*-?\s*(?:to|-)\s*)?({_SIZE_NUM})\s*-?\s*"
-    r"([a-z][a-z. ]*?)\s*\)",
-    re.IGNORECASE,
+# A size in brackets: "(4- to 5-pound)", "(about 8 lb)", "(400g each)". Group 1 is the (larger)
+# figure, group 2 its unit.
+_SIZE_BRACKET = (
+    rf"\(\s*(?:about\s+)?(?:(?:{_SIZE_NUM})\s*-?\s*(?:to|-)\s*)?({_SIZE_NUM})\s*-?\s*"
+    r"([a-z][a-z. ]*?)(?:\s+each)?\s*\)"
 )
+_SIZE_BRACKET_RE = re.compile(_SIZE_BRACKET, re.IGNORECASE)
+# A count with its size in brackets: "1 (4- to 5-pound) brisket", "2 (14-ounce) cans", "1 (400g) tin".
+_BRACKETED_SIZE_RE = re.compile(rf"^\s*(?:{_SIZE_NUM})\s*{_SIZE_BRACKET}", re.IGNORECASE)
+# A count and then words: "1 standing rib roast (about 8 lb)" (F-858).
+_COUNT_THEN_WORD_RE = re.compile(rf"^\s*(?:{_SIZE_NUM})\s+[^\d\s(]")
+
+
+def _bracketed_size(line: str) -> re.Match[str] | None:
+    """
+    The size in brackets on a counted line: straight after the count ("1 (4- to 5-pound) brisket"),
+    or after the food's name ("1 standing rib roast (about 8 lb)", F-858) when it is the line's only
+    bracketed size; two ("1 ham (about 7 lb) or 2 small (3 lb) hams") say nothing about which is meant.
+    """
+    m = _BRACKETED_SIZE_RE.match(line)
+    if m or not _COUNT_THEN_WORD_RE.match(line):
+        return m
+    sizes = list(_SIZE_BRACKET_RE.finditer(line))
+    return sizes[0] if len(sizes) == 1 else None
 
 
 def _size_value(token: str) -> float:
@@ -436,7 +454,8 @@ def _size_value(token: str) -> float:
 def _fill_bracketed_sizes(refinement: CayenneRefinement) -> None:
     """
     F-686, in place. A count with its size in brackets ("1 (4- to 5-pound) brisket") keeps the size
-    as the writer's second measure, so the list reads "Beef · 1 (5 pound)" rather than "Beef · 1".
+    as the writer's second measure, so the list reads "Beef · 1 (5 pound)" rather than "Beef · 1";
+    so does a size after the food's name ("1 standing rib roast (about 8 lb)", F-858).
     Only when the line's unit is a count or none and nothing holds the second measure yet; for a
     range the larger figure is taken (the one _check_conversions finds beside its unit). Runs after
     _check_conversions, so an AI guess at a can's size has already given way.
@@ -446,7 +465,7 @@ def _fill_bracketed_sizes(refinement: CayenneRefinement) -> None:
             continue
         if _kind(ing.unit) is not None:
             continue
-        m = _BRACKETED_SIZE_RE.match(ing.fallback_string or "")
+        m = _bracketed_size(ing.fallback_string or "")
         if not m or _kind(m.group(2)) is None:
             continue
         ing.converted_amount = _size_value(m.group(1))
