@@ -12,8 +12,10 @@ Classes, run one at a time:
 
 This script only reads and plans. With --sql it writes ONE transaction: a guarded UPDATE per row
 (each column written must still hold the value it was planned from, so a row a cook changed in
-between is left alone and a second run plans nothing), a verification SELECT, and ROLLBACK -- or
-COMMIT with --commit. None of the columns written is a body column, so nothing regenerates or
+between is left alone), a verification SELECT, and ROLLBACK -- or COMMIT with --commit. A second
+run of sources, sizes or fetch-times plans nothing. totals cannot tell a repaired row from an
+unrepaired one, so it needs --created-before (the 9.48.1 deploy) and --skip-record for every earlier
+totals and fetch-times record. None of the columns written is a body column, so nothing regenerates or
 re-embeds and no trigger is touched. The SQL holds owner data: write it to a scratch path, never
 the repo. Run it with ``supabase db query --linked``. To commit what was reviewed, run the same
 file with its last line changed from ``rollback;`` to ``commit;``, rather than re-planning.
@@ -27,6 +29,11 @@ file with its last line changed from ``rollback;`` to ``commit;``, rather than r
     # undo: the reverse transaction, guarded by the values the backfill wrote
     python scripts/backfill_f888.py restore <records>/f888-sources.json --sql <scratch>/undo.sql
 
+The SQL is pure ASCII (non-ASCII text as U&'' escapes, jsonb with JSON's own escapes), so it survives any
+shell or code page. A verification shortfall means rows changed since the plan (or, rarely, a stored
+jsonb number with more than 17 significant digits that Python cannot carry back exactly): those rows
+were left alone.
+
 Reads with SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY from the environment, or from --env-file.
 """
 from __future__ import annotations
@@ -38,6 +45,7 @@ import sys
 import time
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import AbstractSet, Any, Callable, Dict, List, Optional
 
@@ -141,15 +149,22 @@ def _single(lo: Any, hi: Any, note: Any) -> bool:
     return lo is not None and lo == hi and note is None
 
 
-def plan_totals(rows: List[Dict[str, Any]], skip_ids: AbstractSet[str] = frozenset()) -> List[RowChange]:
+def plan_totals(rows: List[Dict[str, Any]], skip_ids: AbstractSet[str] = frozenset(), *,
+                created_before: str) -> List[RowChange]:
     """
     F-877: with no cook text, the cook minutes came from a stated total; the cook is the total less the
-    prep (_cook_from_total). Only an imported, unedited single prep under a single longer cook. A
-    repaired row still looks like this, so ids already repaired (an earlier record's) are skipped.
+    prep (_cook_from_total). Only an imported, unedited single prep under a single longer cook, created
+    before ``created_before`` (the 9.48.1 deploy): a newer import, a row fetch-times filled, and a row
+    this class already repaired all have the same shape, so they are told apart only by that cutoff and
+    by ``skip_ids`` (earlier records' ids). Not idempotent on its own: always pass both.
     """
+    cutoff = datetime.fromisoformat(created_before)
     plan = []
     for row in rows:
         if row["id"] in skip_ids or row.get("cook_time") is not None or not row.get("prep_time"):
+            continue
+        created = row.get("created_at")
+        if created is None or datetime.fromisoformat(created) >= cutoff:
             continue
         prep, cook = row.get("prep_min_minutes"), row.get("cook_min_minutes")
         if not (_single(prep, row.get("prep_max_minutes"), row.get("prep_note"))
@@ -173,7 +188,7 @@ _COOK = ("cook_time", "cook_min_minutes", "cook_max_minutes", "cook_note")
 
 
 def _fetch_candidate(row: Dict[str, Any]) -> bool:
-    return (row.get("source_kind", "web") == "web" and bool(row.get("source_url"))
+    return ((row.get("source_kind") or "web") == "web" and bool(row.get("source_url"))
             and all(row.get(k) is None for k in _COOK))
 
 
@@ -183,7 +198,7 @@ def plan_fetch_times(rows: List[Dict[str, Any]], fetch: Callable[[str], str], *,
     F-877: a web recipe with no cook at all gets the times its page's JSON-LD states, as a fresh import
     now does: cook = cookTime, else the total less the prep (_cook_from_total). The cook_time text is
     written only when the page states a cook time, and prep only when the row has none. Never
-    overwrites. The Counter is keyed (source_key, outcome): filled, refused, fetch-failed, no-times.
+    overwrites. The Counter is keyed (source_key, outcome): filled, refused, fetch-failed, error, no-times.
     """
     plan: List[RowChange] = []
     report: Counter = Counter()
@@ -202,6 +217,10 @@ def plan_fetch_times(rows: List[Dict[str, Any]], fetch: Callable[[str], str], *,
             continue
         except UrlFetchError:
             report[(host, "fetch-failed")] += 1
+            continue
+        except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: one odd page must not end the run
+            report[(host, "error")] += 1
+            print(f"  error {row['source_url']}: {exc!r}")
             continue
         has_prep = any(row.get(k) is not None for k in _PREP)
         prep_text = row.get("prep_time") if has_prep else meta.prep_time
@@ -226,7 +245,25 @@ def plan_fetch_times(rows: List[Dict[str, Any]], fetch: Callable[[str], str], *,
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 def _quote(text: str) -> str:
-    return "'" + text.replace("'", "''") + "'"
+    """A string literal in pure ASCII, so the file survives any shell or code page on its way to psql.
+
+    Non-ASCII text becomes a Unicode escape literal (U&'...', with standard_conforming_strings on).
+    """
+    if text.isascii():
+        return "'" + text.replace("'", "''") + "'"
+    out = []
+    for ch in text:
+        if ch == "'":
+            out.append("''")
+        elif ch == "\\":
+            out.append("\\\\")
+        elif ch.isascii():
+            out.append(ch)
+        elif ord(ch) <= 0xFFFF:
+            out.append(f"\\{ord(ch):04x}")
+        else:
+            out.append(f"\\+{ord(ch):06X}")
+    return "U&'" + "".join(out) + "'"
 
 
 def sql_literal(value: Any, kind: str) -> str:
@@ -234,7 +271,7 @@ def sql_literal(value: Any, kind: str) -> str:
     if value is None:
         return "null"
     if kind == "jsonb":
-        return _quote(json.dumps(value, ensure_ascii=False)) + "::jsonb"
+        return _quote(json.dumps(value, ensure_ascii=True)) + "::jsonb"
     if kind == "integer":
         return str(int(value))
     return _quote(str(value))
@@ -316,13 +353,13 @@ def _read(sb, columns: str) -> List[Dict[str, Any]]:
         offset += PAGE
 
 
-_TIMES = ("id,prep_time,cook_time,prep_min_minutes,prep_max_minutes,prep_note,"
+_TIMES = ("id,created_at,prep_time,cook_time,prep_min_minutes,prep_max_minutes,prep_note,"
           "cook_min_minutes,cook_max_minutes,cook_note")
 CLASSES: Dict[str, tuple[str, Callable[..., List[RowChange]]]] = {
     "sources": ("id,source_title,source_url", plan_sources),
     "sizes": ("id,structured_ingredients", plan_sizes),
     "totals": (_TIMES, plan_totals),
-    "fetch-times": ("id,source_url,source_key,source_kind," + _TIMES[3:], plan_fetch_times),
+    "fetch-times": ("id,source_url,source_key,source_kind," + _TIMES[len("id,created_at,"):], plan_fetch_times),
 }
 
 
@@ -336,9 +373,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--env-file", type=Path, help="Read SUPABASE_URL and the service key from this file.")
     ap.add_argument("--skip-record", type=Path, action="append", default=[],
                     help="totals: skip the recipes this earlier record holds (repeatable).")
+    ap.add_argument("--created-before", help="totals (required): only rows created before this ISO time, "
+                                             "the 9.48.1 deploy; newer imports already have the fix.")
     args = ap.parse_args(argv)
     if args.commit and not args.sql:
         ap.error("--commit needs --sql")
+    if args.what == "totals" and not args.created_before:
+        ap.error("totals needs --created-before (the 9.48.1 deploy time)")
     if args.record and args.record.exists():
         ap.error(f"{args.record} exists: a before-image is never overwritten")
     if args.what == "restore":
@@ -351,7 +392,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         columns, planner = CLASSES[args.what]
         rows = _read(_client(args.env_file), columns)
         if args.what == "totals":
-            changes = planner(rows, skip_ids=record_ids(args.skip_record))
+            changes = planner(rows, skip_ids=record_ids(args.skip_record), created_before=args.created_before)
         elif args.what == "fetch-times":
             changes, report = planner(rows, lambda url: fetch_page_html(url, 20.0))
             for (host, outcome), n in sorted(report.items()):

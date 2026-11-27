@@ -12,6 +12,7 @@ sys.modules["backfill_f888"] = mod
 _spec.loader.exec_module(mod)
 
 RowChange = mod.RowChange
+CUTOFF = "2026-11-27T17:00:00+00:00"
 CHILLI = "https://www.bbcgoodfood.com/recipes/chilli"
 
 
@@ -65,11 +66,12 @@ def test_guard_names_only_written_columns():
 
 
 def test_literals_round_trip_quotes_and_unicode():
-    assert mod.sql_literal("Nigella's purée ½ \\ x", "text") == "'Nigella''s purée ½ \\ x'"
+    assert mod.sql_literal("Nigella's pie \\ x", "text") == "'Nigella''s pie \\ x'"
+    assert mod.sql_literal("Nigella's purée ½ \\ x", "text") == r"U&'Nigella''s pur\00e9e \00bd \\ x'"
     assert mod.sql_literal(None, "text") == "null"
     assert mod.sql_literal(45, "integer") == "45"
     jsonb = mod.sql_literal([{"fallback_string": "Nigella's purée"}], "jsonb")
-    assert jsonb.endswith("'::jsonb") and "Nigella''s purée" in jsonb
+    assert jsonb.endswith("'::jsonb") and ("Nigella''s pur" + chr(92) + "u00e9e") in jsonb and jsonb.isascii()
 
 
 def test_a_null_old_value_is_guarded_with_is_not_distinct_from_null():
@@ -158,7 +160,7 @@ def test_non_list_ingredients_are_skipped(ingredients):
 # ── totals (F-877a) ────────────────────────────────────────────────────────────
 
 def _times(**over):
-    row = {"id": "t", "prep_time": "15 minutes", "cook_time": None,
+    row = {"id": "t", "created_at": "2026-11-20T10:00:00+00:00", "prep_time": "15 minutes", "cook_time": None,
            "prep_min_minutes": 15, "prep_max_minutes": 15, "prep_note": None,
            "cook_min_minutes": 60, "cook_max_minutes": 60, "cook_note": None}
     row.update(over)
@@ -166,7 +168,7 @@ def _times(**over):
 
 
 def test_totals_takes_prep_off_a_cook_that_came_from_a_total():
-    [c] = mod.plan_totals([_times()])
+    [c] = mod.plan_totals([_times()], created_before=CUTOFF)
     assert c.new == {"cook_min_minutes": 45, "cook_max_minutes": 45}
     assert c.old == {"cook_min_minutes": 60, "cook_max_minutes": 60}
 
@@ -181,7 +183,7 @@ def test_totals_takes_prep_off_a_cook_that_came_from_a_total():
     {"cook_min_minutes": None, "cook_max_minutes": None},
 ])
 def test_totals_leaves_edited_prep_cook_text_ranges_and_notes(over):
-    assert mod.plan_totals([_times(**over)]) == []
+    assert mod.plan_totals([_times(**over)], created_before=CUTOFF) == []
 
 
 # ── idempotence ────────────────────────────────────────────────────────────────
@@ -200,14 +202,14 @@ def test_a_second_run_plans_nothing():
         assert first
         assert planner(_apply(rows, first)) == []
     # A repaired total still looks like one (cook > prep, no cook text): the earlier record's ids are skipped.
-    first = mod.plan_totals(totals)
+    first = mod.plan_totals(totals, created_before=CUTOFF)
     assert first
-    assert mod.plan_totals(_apply(totals, first), skip_ids={c.recipe_id for c in first}) == []
+    assert mod.plan_totals(_apply(totals, first), skip_ids={c.recipe_id for c in first}, created_before=CUTOFF) == []
 
 
 def test_skip_record_ids_come_from_earlier_records(tmp_path):
     p = tmp_path / "totals.json"
-    mod.write_record(mod.plan_totals([_times()]), p)
+    mod.write_record(mod.plan_totals([_times()], created_before=CUTOFF), p)
     assert mod.record_ids([p]) == {"t"}
 
 
@@ -297,3 +299,50 @@ def test_fetches_are_paced():
     pauses = []
     mod.plan_fetch_times(rows, _fetcher({r["source_url"]: _page() for r in rows}), pause_s=1.0, sleep=pauses.append)
     assert pauses == [1.0, 1.0]
+
+
+# ── final review fixes ─────────────────────────────────────────────────────────
+
+def test_totals_leaves_rows_created_on_or_after_the_cutoff():
+    # A fresh import since 9.48.1 already stores cook = total - prep with no cook text: the same shape.
+    old = _times(id="old", created_at="2026-11-20T10:00:00+00:00")
+    new = _times(id="new", created_at="2026-11-27T18:00:00+00:00")
+    changes = mod.plan_totals([old, new], created_before="2026-11-27T17:00:00+00:00")
+    assert [c.recipe_id for c in changes] == ["old"]
+
+
+def test_totals_needs_a_created_before_cutoff_on_the_command_line(monkeypatch):
+    monkeypatch.setattr(mod, "_client", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
+    with pytest.raises(SystemExit):
+        mod.main(["totals"])
+
+
+def test_a_web_row_with_no_source_kind_is_fetched():
+    row = _web(source_kind=None)
+    changes, report = mod.plan_fetch_times(
+        [row], _fetcher({row["source_url"]: _page(cookTime="PT1H")}), sleep=lambda _s: None)
+    assert len(changes) == 1
+
+
+def test_a_book_row_is_not_fetched():
+    row = _web(source_kind="book")
+    changes, report = mod.plan_fetch_times([row], _fetcher({}), sleep=lambda _s: None)
+    assert changes == [] and sum(report.values()) == 0
+
+
+def test_an_unexpected_error_on_one_page_is_reported_and_the_run_goes_on():
+    rows = [_web("a"), _web("b")]
+    pages = {rows[0]["source_url"]: RuntimeError("odd page"), rows[1]["source_url"]: _page(cookTime="PT1H")}
+    changes, report = mod.plan_fetch_times(rows, _fetcher(pages), sleep=lambda _s: None)
+    assert [c.recipe_id for c in changes] == ["b"]
+    assert report[("example.com", "error")] == 1
+
+
+def test_the_sql_is_pure_ascii_so_any_shell_carries_it():
+    c = RowChange("11111111-1111-1111-1111-111111111111",
+                  {"source_title": "https://example.com/purée", "structured_ingredients": [{"n": "purée ½"}]},
+                  {"source_title": "Délia's \\ 𝄞", "structured_ingredients": [{"n": "purée ½ 8"}]}, "n")
+    sql = mod.render_sql([c], label="x", commit=False)
+    assert sql.isascii()
+    assert mod.sql_literal("Délia's \\ 𝄞", "text") == r"U&'D\00e9lia''s \\ \+01D11E'"
+    assert mod.sql_literal("plain", "text") == "'plain'"
