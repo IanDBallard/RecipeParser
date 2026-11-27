@@ -96,7 +96,7 @@ class EmbedWorker:
                 # logs the raise and sleeps), so the row is tried again after the reset.
                 self._release_claim(rid)
                 raise
-            except Exception as exc:  # noqa: BLE001 — every failure is recorded, never fatal
+            except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: every failure is recorded, never fatal
                 log.warning("embed: %s failed: %s", rid, exc, exc_info=True)
                 self._record_failure(rid)
 

@@ -158,7 +158,7 @@ def plan_retag(
                 raw = categorize(batch)
                 hits = filter_batch_result(raw, set(offer.tag_ids), offer.axes, offer.parents)
                 break
-            except Exception as exc:  # noqa: BLE001 -- one bad batch must not stop the run
+            except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: one bad batch must not stop the run
                 reason = str(exc)[:300]
         if hits is None:
             plan.failed.extend((r.get("title") or r["id"], reason) for r in batch)
@@ -217,7 +217,7 @@ def apply_plan(sb: Any, user_id: str, changes: Sequence[Change]) -> Tuple[int, i
                 (sb.table("recipe_categories").delete()
                  .eq("recipe_id", c.recipe_id).eq("category_id", c.category_id).execute())
                 dropped += 1
-        except Exception as exc:  # noqa: BLE001 -- report it and carry on with the rest
+        except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: report it and carry on with the rest
             failed += 1
             log.error("could not %s %s on %r: %s", c.action, c.tag, c.title, exc)
     return added, dropped, failed

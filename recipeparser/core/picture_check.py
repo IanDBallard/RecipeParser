@@ -88,7 +88,7 @@ def picture_for_check(data: bytes, content_type: str) -> Optional[Tuple[bytes, s
             source.draft("RGB", (FOOD_CHECK_MAX_EDGE_PX, FOOD_CHECK_MAX_EDGE_PX))
             upright = ImageOps.exif_transpose(source)
             rgba = upright.convert("RGBA")
-    except Exception as exc:  # noqa: BLE001 -- any decoder failure means "cannot judge"
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: any decoder failure means "cannot judge"
         log.info("food check: could not decode a %s picture (%s).", content_type, exc)
         return None
     flat = Image.new("RGB", rgba.size, (255, 255, 255))
@@ -108,7 +108,7 @@ def check_picture(data: bytes, content_type: str, ask: AskFood) -> PictureVerdic
         verdict = ask(*small)
     except JobCancelledError:
         raise
-    except Exception as exc:  # noqa: BLE001 -- a failed check never costs the picture or the import
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: a failed check never costs the picture or the import
         log.warning("food check: could not check a picture (%s: %s); storing it unchecked.",
                     type(exc).__name__, exc)
         return PictureVerdict(True, False, None, f"not checked: {type(exc).__name__}")

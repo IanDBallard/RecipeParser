@@ -146,7 +146,7 @@ def build_router(
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=invalid) from exc
             log.exception("Sharing function %s failed.", fn)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
-        except Exception as exc:  # noqa: BLE001 - transport or client failure: an outage, never a refusal
+        except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: transport or client failure: an outage, never a refusal
             log.exception("Sharing function %s failed.", fn)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
 

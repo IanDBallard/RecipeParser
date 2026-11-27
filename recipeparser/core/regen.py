@@ -109,7 +109,7 @@ def _checked_against(refinement: CayenneRefinement, pans: List[Any]) -> Optional
         return refinement.yield_checked
     try:
         checked, warnings = check_yield(refinement.yield_spec, refinement.structured_ingredients, pans)
-    except Exception as exc:  # noqa: BLE001 - any failure here is the field's, not the regeneration's
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: any failure here is the field's, not the regeneration's
         log.warning("regen: '%s': yield check failed (%r); no yield_spec", refinement.title, exc)
         return None
     for line in warnings:

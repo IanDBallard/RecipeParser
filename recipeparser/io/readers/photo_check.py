@@ -70,7 +70,7 @@ def photo_refusal(data: bytes) -> Optional[str]:
                 return f"too thin to be a photograph ({width}x{height} px)"
             img.draft("RGB", (_SAMPLE_EDGE * 4, _SAMPLE_EDGE * 4))
             rgba = img.convert("RGBA")
-    except Exception as exc:  # noqa: BLE001 -- any decoder failure means "cannot judge"
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: any decoder failure means "cannot judge"
         log.debug("photo_refusal: could not decode an image (%s); keeping it.", exc)
         return None
 

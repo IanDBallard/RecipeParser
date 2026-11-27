@@ -80,7 +80,7 @@ def plan_row(row: Dict[str, Any]) -> RowResult:
     try:
         directions = [TokenizedDirection(step=int(d["step"]), text=str(d["text"])) for d in raw_dirs]
         ingredients = [StructuredIngredient(**i) for i in raw_ings]
-    except Exception:  # noqa: BLE001 — a row the models refuse is reported, never written
+    except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: a row the models refuse is reported, never written
         return RowResult(rid, title, "malformed")
     base = row.get("base_servings")
     yields = yield_numbers(

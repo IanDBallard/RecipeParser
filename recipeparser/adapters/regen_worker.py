@@ -123,7 +123,7 @@ class RegenWorker:
                         current_yield = current.get("yield_spec")
                         yields = yield_numbers(current.get("base_servings"), current.get("servings_min"),
                                                current.get("servings_max"), current.get("servings_note"))
-                except Exception as exc:  # noqa: BLE001 — the guard must not fail the regen
+                except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: the guard must not fail the regen
                     log.warning("regen: %s: could not read current tins and yield (%s); writing REFINE's", rid, exc)
                 payload = build_update(
                     refinement, vector, read_rev,
@@ -150,7 +150,7 @@ class RegenWorker:
                 # the claim and end the poll (run_workers logs the raise and sleeps).
                 self._release_claim(rid, claimed_at)
                 raise
-            except Exception as exc:  # noqa: BLE001 — every failure is recorded, never fatal
+            except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: every failure is recorded, never fatal
                 log.warning("regen: %s failed at rev %d: %s", rid, read_rev, exc, exc_info=True)
                 self._record_failure(rid, exc)
 

@@ -2374,7 +2374,7 @@ def _close_search_clients() -> None:
     if db is not None:
         try:
             db.close()
-        except Exception:  # noqa: BLE001 - shutting down; nothing to hand the error to
+        except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: shutting down; nothing to hand the error to
             logger.exception("Could not close the search connection pool.")
 
 
