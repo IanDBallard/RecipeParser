@@ -104,7 +104,6 @@ from recipeparser.io.writers.image_store import SupabaseImageStore
 from recipeparser.io.category_sources.restore_paths import clean_path, ensure_category_paths, restore_grid
 from recipeparser.io.writers.supabase import _get_creds, write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
-from recipeparser.models import CayenneRecipe
 
 # Before the first logger call in this module: uvicorn leaves the root logger
 # bare, so without this every INFO line in the package is silent.
@@ -1266,9 +1265,8 @@ def _create_restore_categories(user_id: str, chunks: List[Chunk]) -> Dict[str, L
     """
     wanted = []
     for chunk in chunks:
-        # pre_parsed is a CayenneRecipe | IngestResponse union; only a restore's CayenneRecipe
-        # carries category and list paths.
-        if chunk.input_type != InputType.PAPRIKA_CAYENNE or not isinstance(chunk.pre_parsed, CayenneRecipe):
+        # Only a Cayenne restore's pre_parsed carries category and list paths.
+        if chunk.input_type != InputType.PAPRIKA_CAYENNE or chunk.pre_parsed is None:
             continue
         paths = [p for p in (clean_path(p) for p in chunk.pre_parsed.category_paths) if p]
         lists = [p for p in (clean_path(p) for p in chunk.pre_parsed.list_paths) if p]
