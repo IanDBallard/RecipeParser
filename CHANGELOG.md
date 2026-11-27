@@ -14,8 +14,17 @@ A batter pudding is its own bake type, `batter-pudding`, chosen by how the batte
 
 ### 🔧 Changed
 - Bake-type step 6 is `batter-pudding / quick-bread`: `batter-pudding` when a thin pouring batter of eggs, milk and flour with no baking powder or soda is poured into hot fat or a hot tin and puffs in a hot oven (Yorkshire puddings, popovers, toad in the hole, Dutch baby), whatever it is called; otherwise `quick-bread`. The fixed order of D29 is unchanged. Before, popovers, Yorkshire puddings and toad in the hole were `quick-bread` on purpose.
-- The bake-type probe set's Toad in the Hole and Perfect Yorkshire Puddings move from `quick-bread` to `batter-pudding`. The live probe (`scripts/probe_bake_types.py`) has not been run on the new wording.
+- The bake-type probe set's Toad in the Hole and Perfect Yorkshire Puddings move from `quick-bread` to `batter-pudding`. The live probe (`scripts/probe_bake_types.py --runs 2`) gave both `batter-pudding` in both runs; 76/79 cases as expected, the three misses not batter puddings.
 - Stored recipes keep `quick-bread`; Cayenne's F-888 backfill retypes them.
+
+## [9.49.2] — 2026-11-27
+
+A Cayenne restore reads its recipe's fields directly instead of probing for them (architecture review 2026-11-25, `soft.no-shims`). No change to the package's behaviour.
+
+### 🔧 Changed
+- `Chunk.pre_parsed` is typed `CayenneRecipe`, the only type a reader puts there (`IngestResponse` subclasses it). The restore fast paths, `_citation_from`, `_pre_parsed_to_refinement` and `_restore_spans` read `ingredient_lines`, `direction_steps`, the four citation columns, `pans`, `bake_type`, `bake_step`, `yield_spec` and the detected measures as fields. An export that predates a column still restores: the column parses with the model's default, as it did before. A rename of one of these fields now fails loudly instead of restoring the recipe without it.
+- `check_yield` loses its `pans` argument, which nothing has read since D97; `regen._checked_against` and the yield backfill scripts follow.
+- `recipeparser.core.regen` no longer re-exports `strip_fat_tokens`; import it from `recipeparser.core.fat_tokens`.
 
 ## [9.49.1] — 2026-11-27
 

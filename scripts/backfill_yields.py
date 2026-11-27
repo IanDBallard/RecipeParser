@@ -239,7 +239,7 @@ def plan_row(row: Dict[str, Any], ask: Asker, force: bool = False, settle_pieces
 def _settle(row: Dict[str, Any], result: RowResult, answer: YieldAnswer, ingredients: List[StructuredIngredient],
             pans: List[RecipePan], stored: Any, settle_pieces: bool) -> RowResult:
     """The checked spec and the settlement, on a row the model answered for."""
-    spec, warnings = check_yield(answer, ingredients, pans)
+    spec, warnings = check_yield(answer, ingredients)
     result.notes = list(warnings)
     if spec is None:
         result.status = "none-found"
