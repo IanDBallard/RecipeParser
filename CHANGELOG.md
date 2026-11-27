@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.48.1] — 2026-11-27
+
+A web page's times come from its own JSON-LD, and a page's source title is never its URL (Cayenne F-877, F-878, fix roadmap batch 88).
+
+**For Cayenne:** no wire change. A URL import's `prep_*`/`cook_*` columns now follow the page's schema.org times; `source_title` is a site name or the host, never an address.
+
+### 🐛 Fixed
+- The Best Yorkshire Pudding (Serious Eats, imported 2026-11-26) stored prep 5 min and no cook, so Cayenne's total read "5 min"; the same page imported on 11-22 had cook 30 mins. The page's JSON-LD times reached the model only as text, and it dropped two. `page_meta_from_html` now reads `prepTime`, `cookTime` and `totalTime` from the page's JSON-LD (read once, with its pictures) and the URL job passes them as the source's own statement (`SourceMeta`, which gains `total_time`), which beats the model's reading.
+- A stated total with a single prep figure and no cook time now fills the cook span with the total less the prep ("Prep 5 min, Total 35 min" cooks for 30), since Cayenne adds prep and cook; it filled it with the whole total. A range, a note, or a total no longer than the prep is the total, as before.
+- `resolve_citation` took the model's stated source for a web page as its site name without checking it was a name: the Chilli Con Carne showed its URL. A URL, a bare host or a host with a path now falls back to the page's own title, its host.
+
 ## [9.48.0] — 2026-11-27
 
 The search look offers recipes only: a round-up or guide page is no longer offered (Cayenne F-866, fix roadmap batch 86).

@@ -596,6 +596,19 @@ async def _upload_image_to_storage(
     return await asyncio.to_thread(SupabaseImageStore().put, data, recipe_id, content_type)
 
 
+def _url_source_meta(page_meta: PageMeta) -> Optional[SourceMeta]:
+    """What a page states for itself: its meta description and its JSON-LD times (Cayenne F-877); None when nothing."""
+    meta = SourceMeta(
+        description=page_meta.description,
+        prep_time=page_meta.prep_time,
+        cook_time=page_meta.cook_time,
+        total_time=page_meta.total_time,
+    )
+    if not any((meta.description, meta.prep_time, meta.cook_time, meta.total_time)):
+        return None
+    return meta
+
+
 def _url_picture_candidates(page_meta: PageMeta, markdown: str) -> List[str]:
     """The pictures a URL import may store, in the order they are tried (Cayenne F-209).
 
@@ -1593,7 +1606,7 @@ async def submit_job(
                     source_url=source_url,
                     image_url=stored_image_url,
                     citation=web_citation(source_url) if source_url else None,
-                    meta=SourceMeta(description=page_meta.description) if page_meta.description else None,
+                    meta=_url_source_meta(page_meta),
                 )
             ]
             return client, chunks

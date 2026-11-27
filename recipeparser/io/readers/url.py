@@ -159,6 +159,11 @@ class PageMeta:
     image_url: Optional[str]
     description: Optional[str]
     images: Tuple[str, ...] = ()
+    # The times its JSON-LD Recipe states, as words ("1 hr 35 min"); None for one it leaves out.
+    # The source's own statement, so the model cannot drop them (Cayenne F-877).
+    prep_time: Optional[str] = None
+    cook_time: Optional[str] = None
+    total_time: Optional[str] = None
 
 
 _CHALLENGE_TITLE_RE = re.compile(r"^Title:\s*Just a moment", re.IGNORECASE)
@@ -404,22 +409,43 @@ def page_meta_from_html(html: str) -> PageMeta:
     if image is not None and not _is_absolute_http(image):
         image = None
     description = next((tags[k] for k in _DESCRIPTION_KEYS if k in tags), None)
-    return PageMeta(image_url=image, description=description, images=_json_ld_images(html))
+    recipe = _page_recipe(html)
+    prep, cook, total = _json_ld_times(recipe)
+    return PageMeta(
+        image_url=image, description=description, images=_json_ld_images(recipe),
+        prep_time=prep, cook_time=cook, total_time=total,
+    )
 
 
-def _json_ld_images(html: str) -> Tuple[str, ...]:
-    """The absolute http(s) pictures the page's JSON-LD Recipe declares, in order, each once.
+def _page_recipe(html: str) -> Optional[Dict[str, Any]]:
+    """The page's JSON-LD Recipe, read once for its pictures and its times; None without one or unparseable."""
+    if "ld+json" not in html.lower():
+        return None
+    try:
+        return find_json_ld_recipe(html)
+    except Exception:  # fail-loud.bare-except-ok: page markup never fails the job; logged  # noqa: BLE001
+        log.warning("Could not read the page's JSON-LD for its pictures and times — offering none.", exc_info=True)
+        return None
+
+
+def _json_ld_times(recipe: Optional[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """The prep, cook and total times a JSON-LD Recipe states, as words; None for each it leaves out.
+
+    On 2026-11-26 The Best Yorkshire Pudding came in with prep 5 min and no cook: the times reached the
+    model only as text, and it dropped two (Cayenne F-877).
+    """
+    if recipe is None:
+        return None, None, None
+    prep, cook, total = (_duration(recipe.get(k)) or None for k in ("prepTime", "cookTime", "totalTime"))
+    return prep, cook, total
+
+
+def _json_ld_images(recipe: Optional[Dict[str, Any]]) -> Tuple[str, ...]:
+    """The absolute http(s) pictures a JSON-LD Recipe declares, in order, each once.
 
     ``image`` is a URL, an ImageObject (``url`` or ``contentUrl``), or a list of either.
     A page without a Recipe, or one whose JSON-LD will not parse, declares none.
     """
-    if "ld+json" not in html.lower():
-        return ()
-    try:
-        recipe = find_json_ld_recipe(html)
-    except Exception:  # fail-loud.bare-except-ok: page markup never fails the job; logged  # noqa: BLE001
-        log.warning("Could not read the page's JSON-LD for its pictures — offering none.", exc_info=True)
-        return ()
     if recipe is None:
         return ()
     value = recipe.get("image")
