@@ -105,3 +105,115 @@ def test_commit_without_sql_is_refused(monkeypatch):
     monkeypatch.setattr(mod, "_client", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
     with pytest.raises(SystemExit):
         mod.main(["sources", "--commit"])
+
+
+# ── sizes (F-858, F-892) ───────────────────────────────────────────────────────
+
+def _item(line, amount, unit=None, **over):
+    item = {"id": "ing_01", "kind": "ingredient", "amount": amount, "unit": unit, "name": "thing",
+            "fallback_string": line, "converted_amount": None, "converted_unit": None,
+            "is_ai_converted": False, "line_index": 0, "state": None}
+    item.update(over)
+    return item
+
+
+def test_sizes_fills_the_safe_lines_only():
+    items = [_item("1 standing rib roast (about 8 lb)", 1.0),
+             _item("9 large egg whites (about 280-300 gms)", 9.0),
+             _item("2 (15-ounce) cans white beans", 2.0, "cans"),
+             {"id": "h", "kind": "heading", "amount": None, "unit": None, "name": "For the beans",
+              "fallback_string": "For the beans (15 oz)"}]
+    [c] = mod.plan_sizes([{"id": "r", "structured_ingredients": items}])
+    new = c.new["structured_ingredients"]
+    assert (new[0]["converted_amount"], new[0]["converted_unit"], new[0]["is_ai_converted"]) == (8.0, "lb", False)
+    assert (new[2]["converted_amount"], new[2]["converted_unit"]) == (15.0, "ounce")
+    assert new[1] == items[1] and new[3] == items[3]
+    assert c.old == {"structured_ingredients": items}
+    assert items[0]["converted_amount"] is None  # the input is not mutated
+
+
+def test_unknown_item_keys_survive():
+    item = _item("1 standing rib roast (about 8 lb)", 1.0, x_cayenne=1)
+    del item["line_index"]
+    [c] = mod.plan_sizes([{"id": "r", "structured_ingredients": [item]}])
+    got = c.new["structured_ingredients"][0]
+    assert got["x_cayenne"] == 1
+    assert set(got) == set(item)
+
+
+@pytest.mark.parametrize("item", [
+    _item("1 roast (about 8 lb)", 1.0, "g"),
+    _item("1 roast (about 8 lb)", 1.0, converted_amount=5.0, converted_unit="lb"),
+    _item("1 roast (about 8 lb)", None),
+])
+def test_sizes_skips_a_weight_unit_a_second_measure_or_no_amount(item):
+    assert mod.plan_sizes([{"id": "r", "structured_ingredients": [item]}]) == []
+
+
+@pytest.mark.parametrize("ingredients", [None, {}, [], [_item(None, 1.0)], ["a string"]])
+def test_non_list_ingredients_are_skipped(ingredients):
+    assert mod.plan_sizes([{"id": "r", "structured_ingredients": ingredients}]) == []
+
+
+# ── totals (F-877a) ────────────────────────────────────────────────────────────
+
+def _times(**over):
+    row = {"id": "t", "prep_time": "15 minutes", "cook_time": None,
+           "prep_min_minutes": 15, "prep_max_minutes": 15, "prep_note": None,
+           "cook_min_minutes": 60, "cook_max_minutes": 60, "cook_note": None}
+    row.update(over)
+    return row
+
+
+def test_totals_takes_prep_off_a_cook_that_came_from_a_total():
+    [c] = mod.plan_totals([_times()])
+    assert c.new == {"cook_min_minutes": 45, "cook_max_minutes": 45}
+    assert c.old == {"cook_min_minutes": 60, "cook_max_minutes": 60}
+
+
+@pytest.mark.parametrize("over", [
+    {"prep_min_minutes": 20, "prep_max_minutes": 20},   # prep edited since import
+    {"cook_time": "1 hour"},                            # the page stated a cook time
+    {"cook_max_minutes": 75},                           # a range
+    {"cook_note": "about"},                             # a note
+    {"cook_min_minutes": 15, "cook_max_minutes": 15},   # not longer than the prep
+    {"prep_time": None},                                # not imported (typed by a cook)
+    {"cook_min_minutes": None, "cook_max_minutes": None},
+])
+def test_totals_leaves_edited_prep_cook_text_ranges_and_notes(over):
+    assert mod.plan_totals([_times(**over)]) == []
+
+
+# ── idempotence ────────────────────────────────────────────────────────────────
+
+def _apply(rows, changes):
+    by_id = {c.recipe_id: c.new for c in changes}
+    return [{**r, **by_id.get(r["id"], {})} for r in rows]
+
+
+def test_a_second_run_plans_nothing():
+    sizes = [{"id": "r", "structured_ingredients": [_item("1 standing rib roast (about 8 lb)", 1.0)]}]
+    sources = [{"id": "s", "source_title": CHILLI, "source_url": CHILLI}]
+    totals = [_times()]
+    for planner, rows in ((mod.plan_sizes, sizes), (mod.plan_sources, sources)):
+        first = planner(rows)
+        assert first
+        assert planner(_apply(rows, first)) == []
+    # A repaired total still looks like one (cook > prep, no cook text): the earlier record's ids are skipped.
+    first = mod.plan_totals(totals)
+    assert first
+    assert mod.plan_totals(_apply(totals, first), skip_ids={c.recipe_id for c in first}) == []
+
+
+def test_skip_record_ids_come_from_earlier_records(tmp_path):
+    p = tmp_path / "totals.json"
+    mod.write_record(mod.plan_totals([_times()]), p)
+    assert mod.record_ids([p]) == {"t"}
+
+
+def test_an_existing_record_is_never_overwritten(tmp_path, monkeypatch):
+    p = tmp_path / "rec.json"
+    p.write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(mod, "_client", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
+    with pytest.raises(SystemExit):
+        mod.main(["sources", "--record", str(p)])

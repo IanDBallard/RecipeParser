@@ -5,6 +5,8 @@ disagree. Design: Cayenne docs/superpowers/specs/2026-11-27-f888-stored-recipe-b
 
 Classes, run one at a time:
     sources      a source title that is a web address becomes the page's host (F-878)
+    sizes        a size in brackets becomes the line's second measure (F-858, as fixed by F-892)
+    totals       a cook time taken whole from a stated total loses the prep (F-877)
 
 This script only reads and plans. With --sql it writes ONE transaction: a guarded UPDATE per row
 (each column written must still hold the value it was planned from, so a row a cook changed in
@@ -33,11 +35,15 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import AbstractSet, Any, Callable, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from recipeparser.core.citation import _site_name, host_of  # noqa: E402
+from recipeparser.core.durations import parse_duration  # noqa: E402
+from recipeparser.core.stages.assemble import _cook_from_total  # noqa: E402
+from recipeparser.core.stages.refine import fill_bracketed_size  # noqa: E402
+from recipeparser.models import StructuredIngredient  # noqa: E402
 
 PAGE = 500
 COLUMN_TYPES: Dict[str, str] = {
@@ -80,6 +86,78 @@ def plan_sources(rows: List[Dict[str, Any]]) -> List[RowChange]:
         if host and host != title:
             plan.append(RowChange(row["id"], {"source_title": title}, {"source_title": host},
                                   f"{title!r} -> {host!r}"))
+    return plan
+
+
+_SIZE_KEYS = ("converted_amount", "converted_unit", "is_ai_converted")
+
+
+def _size_for(item: Any, index: int) -> Optional[Dict[str, Any]]:
+    """The three size keys fill_bracketed_size gives a stored item, or None when it gives none."""
+    if not isinstance(item, dict) or item.get("kind") == "heading" or not item.get("fallback_string"):
+        return None
+    try:
+        ing = StructuredIngredient(
+            id=str(item.get("id") or f"ing_{index}"), kind="ingredient", amount=item.get("amount"),
+            unit=item.get("unit"), name=str(item.get("name") or ""), fallback_string=item["fallback_string"],
+            converted_amount=item.get("converted_amount"), converted_unit=item.get("converted_unit"),
+            is_ai_converted=bool(item.get("is_ai_converted")),
+        )
+    except (TypeError, ValueError):
+        return None  # a stored item the model refuses is left as it is
+    if not fill_bracketed_size(ing):
+        return None
+    return {k: getattr(ing, k) for k in _SIZE_KEYS}
+
+
+def plan_sizes(rows: List[Dict[str, Any]]) -> List[RowChange]:
+    """F-858/F-892: each line the shipped rule would give a second measure gets it; nothing else changes."""
+    plan = []
+    for row in rows:
+        items = row.get("structured_ingredients")
+        if not isinstance(items, list):
+            continue
+        new_items, notes = [], []
+        for i, item in enumerate(items):
+            size = _size_for(item, i)
+            if size is None:
+                new_items.append(item)
+                continue
+            new_items.append({**item, **size})
+            notes.append(f"{item['fallback_string']!r} -> {size['converted_amount']:g} {size['converted_unit']}")
+        if notes:
+            plan.append(RowChange(row["id"], {"structured_ingredients": items},
+                                  {"structured_ingredients": new_items}, "; ".join(notes)))
+    return plan
+
+
+def _single(lo: Any, hi: Any, note: Any) -> bool:
+    return lo is not None and lo == hi and note is None
+
+
+def plan_totals(rows: List[Dict[str, Any]], skip_ids: AbstractSet[str] = frozenset()) -> List[RowChange]:
+    """
+    F-877: with no cook text, the cook minutes came from a stated total; the cook is the total less the
+    prep (_cook_from_total). Only an imported, unedited single prep under a single longer cook. A
+    repaired row still looks like this, so ids already repaired (an earlier record's) are skipped.
+    """
+    plan = []
+    for row in rows:
+        if row["id"] in skip_ids or row.get("cook_time") is not None or not row.get("prep_time"):
+            continue
+        prep, cook = row.get("prep_min_minutes"), row.get("cook_min_minutes")
+        if not (_single(prep, row.get("prep_max_minutes"), row.get("prep_note"))
+                and _single(cook, row.get("cook_max_minutes"), row.get("cook_note"))):
+            continue
+        stated = parse_duration(row["prep_time"])
+        if (stated.min, stated.max) != (prep, prep):
+            continue  # the prep was edited since import
+        new = parse_duration(_cook_from_total(row["prep_time"], f"{cook} min")).min
+        if new is None or new == cook:
+            continue
+        plan.append(RowChange(row["id"], {"cook_min_minutes": cook, "cook_max_minutes": cook},
+                              {"cook_min_minutes": new, "cook_max_minutes": new},
+                              f"prep {prep} + cook {cook} -> cook {new}"))
     return plan
 
 
@@ -148,6 +226,11 @@ def read_record(path: Path) -> List[RowChange]:
             for d in json.loads(path.read_text(encoding="utf-8"))]
 
 
+def record_ids(paths: List[Path]) -> set[str]:
+    """The recipe ids earlier records hold (--skip-record)."""
+    return {c.recipe_id for p in paths for c in read_record(p)}
+
+
 # ── reading ────────────────────────────────────────────────────────────────────
 
 def _client(env_file: Optional[Path]):
@@ -171,8 +254,12 @@ def _read(sb, columns: str) -> List[Dict[str, Any]]:
         offset += PAGE
 
 
-CLASSES: Dict[str, tuple[str, Callable[[List[Dict[str, Any]]], List[RowChange]]]] = {
+_TIMES = ("id,prep_time,cook_time,prep_min_minutes,prep_max_minutes,prep_note,"
+          "cook_min_minutes,cook_max_minutes,cook_note")
+CLASSES: Dict[str, tuple[str, Callable[..., List[RowChange]]]] = {
     "sources": ("id,source_title,source_url", plan_sources),
+    "sizes": ("id,structured_ingredients", plan_sizes),
+    "totals": (_TIMES, plan_totals),
 }
 
 
@@ -184,9 +271,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--commit", action="store_true", help="End the transaction in COMMIT, not ROLLBACK.")
     ap.add_argument("--record", type=Path, help="Write the before-image here (needed with --commit).")
     ap.add_argument("--env-file", type=Path, help="Read SUPABASE_URL and the service key from this file.")
+    ap.add_argument("--skip-record", type=Path, action="append", default=[],
+                    help="totals: skip the recipes this earlier record holds (repeatable).")
     args = ap.parse_args(argv)
     if args.commit and not args.sql:
         ap.error("--commit needs --sql")
+    if args.record and args.record.exists():
+        ap.error(f"{args.record} exists: a before-image is never overwritten")
     if args.what == "restore":
         if args.record_in is None or not args.sql:
             ap.error("restore needs a record and --sql")
@@ -195,7 +286,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.commit and not args.record:
             ap.error("--commit needs --record: the record is the only way back")
         columns, planner = CLASSES[args.what]
-        changes = planner(_read(_client(args.env_file), columns))
+        rows = _read(_client(args.env_file), columns)
+        if args.what == "totals":
+            changes = planner(rows, skip_ids=record_ids(args.skip_record))
+        else:
+            changes = planner(rows)
     for c in changes:
         print(f"  {c.recipe_id}  {c.note}")
     print(f"{len(changes)} recipe(s) would change ({args.what})")
