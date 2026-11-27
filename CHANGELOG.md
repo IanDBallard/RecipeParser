@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.50.0] — 2026-11-27
+
+`scripts/backfill_f888.py` brings recipes stored before 9.48.1 and 9.49.2 in line with the parser fixes new imports have (Cayenne F-888). No change to the package's behaviour.
+
+### ✨ Added
+- Four classes, run one at a time. `sources`: a source title that is a web address becomes the page's host (F-878). `sizes`: a size in brackets becomes the line's second measure by `fill_bracketed_size` (F-858, as fixed by F-892). `totals`: a cook time taken whole from a stated total loses the prep (F-877). `fetch-times`: a web recipe with no cook time gets its page's JSON-LD times, one fetch a second, no model, filling only what is empty (F-877).
+- The script only reads and plans. `--sql` writes one transaction: a guarded UPDATE per row (every column written must still hold its planned-from value), a verification row, and ROLLBACK, or COMMIT with `--commit`. `--commit` needs `--record`, which writes the before-image and is never overwritten. `restore <record> --sql` writes the reverse transaction. `--skip-record` keeps `totals` from repairing a row twice. No body column is written, so nothing regenerates or re-embeds.
+
 ## [9.49.2] — 2026-11-27
 
 A size in brackets after the food's name is the size of each item only when the count is 1 or the bracket says "each" (Cayenne F-892).

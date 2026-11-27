@@ -217,3 +217,83 @@ def test_an_existing_record_is_never_overwritten(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "_client", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
     with pytest.raises(SystemExit):
         mod.main(["sources", "--record", str(p)])
+
+
+# ── fetch-times (F-877, the page's JSON-LD times) ───────────────────────────────
+
+from recipeparser.exceptions import SiteRefusedError, UrlFetchError  # noqa: E402
+
+
+def _page(**times):
+    body = ", ".join(f'"{k}": "{v}"' for k, v in times.items())
+    recipe = '{"@type": "Recipe"' + (", " + body if body else "") + "}"
+    return f'<html><head><script type="application/ld+json">{recipe}</script></head></html>'
+
+
+def _web(rid="w", host="example.com", **over):
+    row = {"id": rid, "source_url": f"https://{host}/r/{rid}", "source_key": host, "source_kind": "web",
+           "prep_time": "5 mins", "prep_min_minutes": 5, "prep_max_minutes": 5, "prep_note": None,
+           "cook_time": None, "cook_min_minutes": None, "cook_max_minutes": None, "cook_note": None}
+    row.update(over)
+    return row
+
+
+def _fetcher(pages):
+    def fetch(url):
+        page = pages[url]
+        if isinstance(page, Exception):
+            raise page
+        return page
+    return fetch
+
+
+def test_a_stated_total_less_the_prep_fills_cook():
+    row = _web()
+    changes, report = mod.plan_fetch_times(
+        [row], _fetcher({row["source_url"]: _page(prepTime="PT5M", totalTime="PT35M")}), sleep=lambda _s: None)
+    [c] = changes
+    assert c.new == {"cook_min_minutes": 30, "cook_max_minutes": 30, "cook_note": None}
+    assert c.old == {"cook_min_minutes": None, "cook_max_minutes": None, "cook_note": None}
+    assert report[("example.com", "filled")] == 1
+
+
+def test_a_stated_cook_time_fills_cook_and_its_text():
+    row = _web()
+    [c], _ = mod.plan_fetch_times(
+        [row], _fetcher({row["source_url"]: _page(cookTime="PT1H")}), sleep=lambda _s: None)
+    assert c.new["cook_time"] == "1 hr"
+    assert (c.new["cook_min_minutes"], c.new["cook_max_minutes"]) == (60, 60)
+    assert c.old["cook_time"] is None
+    assert not any(k.startswith("prep") for k in c.new)
+
+
+def test_prep_is_filled_only_when_the_row_has_none():
+    row = _web(prep_time=None, prep_min_minutes=None, prep_max_minutes=None)
+    [c], _ = mod.plan_fetch_times(
+        [row], _fetcher({row["source_url"]: _page(prepTime="PT10M", cookTime="PT20M")}), sleep=lambda _s: None)
+    assert c.new["prep_time"] == "10 min"
+    assert (c.new["prep_min_minutes"], c.new["prep_max_minutes"], c.new["prep_note"]) == (10, 10, None)
+    assert (c.new["cook_min_minutes"], c.new["cook_time"]) == (20, "20 min")
+
+
+def test_a_refused_or_empty_page_is_reported_not_written():
+    rows = [_web("a"), _web("b"), _web("c")]
+    pages = {rows[0]["source_url"]: SiteRefusedError("403"), rows[1]["source_url"]: UrlFetchError("timeout"),
+             rows[2]["source_url"]: "<html><body>no recipe</body></html>"}
+    changes, report = mod.plan_fetch_times(rows, _fetcher(pages), sleep=lambda _s: None)
+    assert changes == []
+    assert (report[("example.com", "refused")], report[("example.com", "fetch-failed")],
+            report[("example.com", "no-times")]) == (1, 1, 1)
+
+
+def test_a_row_that_already_has_a_cook_is_not_fetched():
+    row = _web(cook_min_minutes=20, cook_max_minutes=20)
+    changes, report = mod.plan_fetch_times([row], _fetcher({}), sleep=lambda _s: None)
+    assert changes == [] and sum(report.values()) == 0
+
+
+def test_fetches_are_paced():
+    rows = [_web("a"), _web("b"), _web("c")]
+    pauses = []
+    mod.plan_fetch_times(rows, _fetcher({r["source_url"]: _page() for r in rows}), pause_s=1.0, sleep=pauses.append)
+    assert pauses == [1.0, 1.0]

@@ -7,6 +7,8 @@ Classes, run one at a time:
     sources      a source title that is a web address becomes the page's host (F-878)
     sizes        a size in brackets becomes the line's second measure (F-858, as fixed by F-892)
     totals       a cook time taken whole from a stated total loses the prep (F-877)
+    fetch-times  a web recipe with no cook time gets its page's JSON-LD times (F-877); this fetches
+                 each page (no model, one a second) and fills only what is empty
 
 This script only reads and plans. With --sql it writes ONE transaction: a guarded UPDATE per row
 (each column written must still hold the value it was planned from, so a row a cook changed in
@@ -33,6 +35,8 @@ import argparse
 import json
 import os
 import sys
+import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AbstractSet, Any, Callable, Dict, List, Optional
@@ -40,9 +44,11 @@ from typing import AbstractSet, Any, Callable, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from recipeparser.core.citation import _site_name, host_of  # noqa: E402
-from recipeparser.core.durations import parse_duration  # noqa: E402
+from recipeparser.core.durations import duration_columns, parse_duration  # noqa: E402
 from recipeparser.core.stages.assemble import _cook_from_total  # noqa: E402
 from recipeparser.core.stages.refine import fill_bracketed_size  # noqa: E402
+from recipeparser.exceptions import SiteRefusedError, UrlFetchError  # noqa: E402
+from recipeparser.io.readers.url import fetch_page_html, page_meta_from_html  # noqa: E402
 from recipeparser.models import StructuredIngredient  # noqa: E402
 
 PAGE = 500
@@ -161,6 +167,62 @@ def plan_totals(rows: List[Dict[str, Any]], skip_ids: AbstractSet[str] = frozens
     return plan
 
 
+
+_PREP = ("prep_time", "prep_min_minutes", "prep_max_minutes", "prep_note")
+_COOK = ("cook_time", "cook_min_minutes", "cook_max_minutes", "cook_note")
+
+
+def _fetch_candidate(row: Dict[str, Any]) -> bool:
+    return (row.get("source_kind", "web") == "web" and bool(row.get("source_url"))
+            and all(row.get(k) is None for k in _COOK))
+
+
+def plan_fetch_times(rows: List[Dict[str, Any]], fetch: Callable[[str], str], *, pause_s: float = 1.0,
+                     sleep: Callable[[float], Any] = time.sleep) -> tuple[List[RowChange], Counter]:
+    """
+    F-877: a web recipe with no cook at all gets the times its page's JSON-LD states, as a fresh import
+    now does: cook = cookTime, else the total less the prep (_cook_from_total). The cook_time text is
+    written only when the page states a cook time, and prep only when the row has none. Never
+    overwrites. The Counter is keyed (source_key, outcome): filled, refused, fetch-failed, no-times.
+    """
+    plan: List[RowChange] = []
+    report: Counter = Counter()
+    first = True
+    for row in rows:
+        if not _fetch_candidate(row):
+            continue
+        if not first:
+            sleep(pause_s)
+        first = False
+        host = row.get("source_key") or host_of(row["source_url"])
+        try:
+            meta = page_meta_from_html(fetch(row["source_url"]))
+        except SiteRefusedError:
+            report[(host, "refused")] += 1
+            continue
+        except UrlFetchError:
+            report[(host, "fetch-failed")] += 1
+            continue
+        has_prep = any(row.get(k) is not None for k in _PREP)
+        prep_text = row.get("prep_time") if has_prep else meta.prep_time
+        cook_span = meta.cook_time or _cook_from_total(prep_text, meta.total_time)
+        cols = duration_columns(prep_text, cook_span, None, None)
+        new: Dict[str, Any] = {}
+        if cols["cook_min_minutes"] is not None or cols["cook_note"] is not None:
+            new.update({k: cols[k] for k in _COOK[1:]})
+            if meta.cook_time:
+                new["cook_time"] = meta.cook_time
+        if new and not has_prep and meta.prep_time:
+            new.update({"prep_time": meta.prep_time, **{k: cols[k] for k in _PREP[1:]}})
+        if not new:
+            report[(host, "no-times")] += 1
+            continue
+        report[(host, "filled")] += 1
+        plan.append(RowChange(row["id"], {k: row.get(k) for k in new}, new,
+                              f"{row['source_url']}: " + ", ".join(f"{k}={v}" for k, v in new.items())))
+    return plan, report
+
+
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 def _quote(text: str) -> str:
@@ -260,6 +322,7 @@ CLASSES: Dict[str, tuple[str, Callable[..., List[RowChange]]]] = {
     "sources": ("id,source_title,source_url", plan_sources),
     "sizes": ("id,structured_ingredients", plan_sizes),
     "totals": (_TIMES, plan_totals),
+    "fetch-times": ("id,source_url,source_key,source_kind," + _TIMES[3:], plan_fetch_times),
 }
 
 
@@ -289,6 +352,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         rows = _read(_client(args.env_file), columns)
         if args.what == "totals":
             changes = planner(rows, skip_ids=record_ids(args.skip_record))
+        elif args.what == "fetch-times":
+            changes, report = planner(rows, lambda url: fetch_page_html(url, 20.0))
+            for (host, outcome), n in sorted(report.items()):
+                print(f"  {host:32} {outcome:13} {n}")
         else:
             changes = planner(rows)
     for c in changes:
