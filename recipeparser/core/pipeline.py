@@ -156,7 +156,8 @@ class RecipePipeline:
             categorize_fn:      The TAG stage's model call, ``gemini.categorize_batch``
                                 by default; a test passes a fake.
             picture_source:     Optional bucket-picture source (``owns(url)`` and
-                                ``download(url)``): a Cayenne restore whose export
+                                ``download(url)``, which raises ``ImageStoreError``
+                                when the copy fails): a Cayenne restore whose export
                                 names a picture without carrying its bytes has it
                                 copied into the new account.  Without one the
                                 address is kept as it is.
@@ -567,7 +568,7 @@ class RecipePipeline:
         if not chunk.image_url and not chunk.image_bytes and self._image_store is not None:
             try:
                 got = source.download(old_url)
-            except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: recipe kept, loss reported via on_picture_lost
+            except ImageStoreError as exc:  # the download failed: recipe kept, loss reported via on_picture_lost
                 log.warning("restore: could not copy the picture %s (%s).", old_url, exc)
                 self._picture_lost(_chunk_name(chunk), f"the picture could not be copied: {exc}")
                 got = None

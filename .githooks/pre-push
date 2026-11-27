@@ -1,12 +1,20 @@
 #!/bin/sh
 # When pushing a tag refs/tags/v* (e.g. v2.0.6), check that the tagged commit
 # has pyproject.toml and installer.iss both set to that version.
+# When pushing a branch, run the architecture-compliance gate on the branch's diff
+# against origin/master (config/architecture/mandates.yml rows with the precommit site).
 # Install: git config core.hooksPath .githooks
 
 set -e
 
+zero=0000000000000000000000000000000000000000
+pushes_branch=0
+
 while read local_ref local_sha1 remote_ref remote_sha1; do
   case "$local_ref" in
+    refs/heads/*)
+      [ "$local_sha1" = "$zero" ] || pushes_branch=1
+      ;;
     refs/tags/v*)
       tag_ver="${local_ref#refs/tags/v}"
       commit=$(git rev-parse "$local_sha1^{commit}" 2>/dev/null || git rev-parse "$local_sha1")
@@ -26,5 +34,20 @@ while read local_ref local_sha1 remote_ref remote_sha1; do
       ;;
   esac
 done
+
+# The architecture gate. It checks committed work, but reads changed files from the
+# working tree, and compares with the local origin/master (not fetched here); the pull
+# request's CI job checks exactly what merges. ACF_PREPUSH_OPTIONAL=1 belongs in an
+# environment's own settings (one without the package), never in a committed file.
+if [ "$pushes_branch" = 1 ]; then
+  if command -v acf-check-diff >/dev/null 2>&1; then
+    PYTHONUTF8=1 acf-check-diff --base origin/master --repo . --call-site precommit || exit 1
+  elif [ "${ACF_PREPUSH_OPTIONAL:-}" = "1" ]; then
+    echo "acf-check-diff is not installed; ACF_PREPUSH_OPTIONAL=1, so skipping the architecture check (the pull request's CI job runs it)." >&2
+  else
+    echo "acf-check-diff is not installed: install the arch-compliance Python package (see .githooks/README.md), or set ACF_PREPUSH_OPTIONAL=1 where CI is the only gate." >&2
+    exit 1
+  fi
+fi
 
 exit 0

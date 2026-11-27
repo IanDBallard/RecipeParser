@@ -96,11 +96,19 @@ Create a `.env` file in the project root (or export the variable into your shell
 GOOGLE_API_KEY=your_api_key_here
 ```
 
-**Git hooks (optional):** If you push release tags (`v*`), enable the version-check hook so that `pyproject.toml` and `installer.iss` must match the tag (see [.githooks/README.md](.githooks/README.md)):
+**Git hooks (contributors):** enable the repository's hooks once per clone (see [.githooks/README.md](.githooks/README.md)):
 
 ```bash
 git config core.hooksPath .githooks
 ```
+
+The pre-push hook runs two checks. A pushed release tag (`v*`) must match the version in `pyproject.toml` and `installer.iss`. A pushed branch must pass the architecture-compliance gate (`acf-check-diff`, the mandates in `config/architecture/mandates.yml`). The gate comes from the arch-compliance package. Install it into the same Python that has this project's dependencies:
+
+```bash
+pip install "git+https://github.com/IanDBallard/arch-compliance-for-superpowers@v0.3.4"
+```
+
+Pull requests run the same gate, and ruff on the changed lines, in CI (`.github/workflows/arch-compliance.yml`).
 
 ---
 

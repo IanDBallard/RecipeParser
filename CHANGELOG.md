@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [9.47.0] — 2026-11-26
+## [9.48.0] — 2026-11-27
 
 The search look offers recipes only: a round-up or guide page is no longer offered (Cayenne F-866, fix roadmap batch 86).
 
@@ -18,6 +18,38 @@ The search look offers recipes only: a round-up or guide page is no longer offer
 ### 🔧 Changed
 - The URL reader's direct fetch is now `fetch_page_html(url, timeout)` in `io/readers/url.py` (same user-agent, page proxy, private-address checks and refusals), used by the reader and by the look's recipe check (`adapters/ai_search/recipe_pages.py`). Through the proxy, the connect timeout is now the smaller of 10 s and the read timeout; the reader's 30 s is unchanged.
 - `links_query` takes a `suffix` kept whole beside the `site:` group; `build_router` and `look_stream` take a `fetch_page` (the fetch by default; a fake in tests).
+
+## [9.47.0] — 2026-11-26
+
+A restore's bucket picture that cannot be downloaded is now counted as a lost picture, `PipelineController` loses its unused checkpoint and 429 auto-pause code, and the background workers are driven through a typed protocol (architecture review 2026-11-25: the two blocking findings and the `picture_copy.py` important one).
+
+**For Cayenne:** a restore whose old bucket picture cannot be copied now adds a `{"picture": true, ...}` entry to the job's `refused_links`, as a failed upload already did in 9.45.0. No new columns or fields.
+
+### 🐛 Fixed
+- `download_bucket_picture` raises `ImageStoreError` when the download fails or comes back empty instead of returning `None`, the same as "no picture". The restore's `_restore_bucket_picture` catches `ImageStoreError` (not every `Exception`), keeps the recipe without its picture and reports it through `on_picture_lost`. A URL that is not a bucket picture still returns `None`; `JobCancelledError` and `DailyQuotaExhaustedError` pass through untouched.
+
+### 🗑️ Removed
+- `PipelineController`'s checkpoint persistence (`save_checkpoint`, `load_checkpoint`, `delete_checkpoint`, `_book_hash`, `_checkpoint_path`, the `output_dir` argument) and 429 auto-pause policy (`record_429`, `reset_429_counter`, `trigger_rate_limit_pause`, the auto-resume timer). Nothing outside their own tests called them. With them go `CHECKPOINT_SUBDIR`, `RATE_LIMIT_PAUSE_THRESHOLD` and `RATE_LIMIT_AUTO_RESUME_SECS` (`config.py`) and `CheckpointError` and `RateLimitPauseError` (`exceptions.py`). The controller is now the transition table plus pause, cancel and progress signalling.
+
+### 🔧 Changed
+- `run_workers` takes `Sequence[Worker]`, a protocol with `run_once()` and `keeps_loop_busy`, and reads `keeps_loop_busy` directly instead of probing for it. Every worker declares it: `RegenWorker` and `EmbedWorker` `False`, `RecatWorker` and `ShareWorker` `True`, as before.
+
+## [9.46.2] — 2026-11-26
+
+The architecture rules are checked on every pull request and before every branch push (architecture compliance roadmap, Phase 1). No change to the package's behaviour.
+
+### 🔧 Changed
+- `.github/workflows/arch-compliance.yml` runs on pull requests. It has two jobs: the arch-compliance plugin's `check-diff` action at 0.3.4 (the `ci` mandates in `config/architecture/mandates.yml`), and ruff on the lines the pull request changed.
+- `scripts/ci/ruff_changed_lines.py` runs ruff on the changed Python files and reports only the findings on added or changed lines. The repository's 236 older ruff findings don't fail a pull request that didn't write them.
+- `.githooks/pre-push` runs `acf-check-diff --call-site precommit` against `origin/master` whenever a branch is pushed. A finding or a refusal blocks the push. Without the package, the push is refused unless `ACF_PREPUSH_OPTIONAL=1` is set in that environment.
+- ruff's layer ban (`TID251`: no `recipeparser.io` or `recipeparser.adapters` imports) now applies only to `recipeparser/core/`, which is the rule's subject. One negated pattern replaces 33 per-file exemptions, and the ban no longer fires on the package-root entry points.
+- `.githooks/*` are kept LF on every checkout.
+
+### 🐛 Fixed
+- `adapters/gui.py` names `PipelineController` in an annotation without importing it (ruff `F821`). It is now imported under `TYPE_CHECKING`. Annotations there are strings, so this was never a runtime error.
+
+### 📝 Docs
+- README and `.githooks/README.md`: enabling the hooks and installing the arch-compliance package. `ACF_ROADMAP.md`: Phase 0 and Phase 1 items marked done; making the CI job a required check is still the owner's decision.
 
 ## [9.46.1] — 2026-11-25
 

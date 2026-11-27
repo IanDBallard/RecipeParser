@@ -15,7 +15,7 @@ import datetime
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence
 
 from recipeparser import usage
 from recipeparser.core.citation import host_of
@@ -36,7 +36,19 @@ CLAIM_LEASE_SECONDS = 300.0
 CLAIM_RELEASE_MARGIN_SECONDS = 60.0
 
 
+class Worker(Protocol):
+    """What run_workers drives: one poll per run_once, plus whether a poll that did
+    work should skip the sleep before the next round (see run_workers)."""
+
+    keeps_loop_busy: bool
+
+    def run_once(self) -> Any: ...
+
+
 class RegenWorker:
+    # A regen backlog must keep its pause between polls (see run_workers).
+    keeps_loop_busy = False
+
     def __init__(
         self,
         supabase: Any,
@@ -200,7 +212,7 @@ class RegenWorker:
 # ── the loop ─────────────────────────────────────────────────────────────
 
 async def run_workers(
-    workers: Sequence[Any],
+    workers: Sequence[Worker],
     stop: asyncio.Event,
     poll_seconds: float = 10.0,
     *,
@@ -209,7 +221,8 @@ async def run_workers(
     """
     Call every worker's run_once() in a thread, repeat until stop is set.
 
-    The loop skips its sleep only after a round in which a worker that opts in
+    Every worker declares keeps_loop_busy (the Worker protocol). The loop skips
+    its sleep only after a round in which a worker that opts in
     (keeps_loop_busy = True) did work. A recategorise poll is one batch (Fix
     Roadmap F-008), so sleeping after every round would add a full poll interval
     to every batch of a job; polling again at once keeps a held job moving while
@@ -230,7 +243,7 @@ async def run_workers(
         for w in workers:
             try:
                 did_work = bool(await asyncio.to_thread(w.run_once))
-                busy = busy or (did_work and getattr(w, "keeps_loop_busy", False))
+                busy = busy or (did_work and w.keeps_loop_busy)
                 if polls is not None:
                     polls[type(w).__name__] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             except Exception as exc:  # noqa: BLE001
