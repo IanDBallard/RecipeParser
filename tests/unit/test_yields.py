@@ -46,7 +46,8 @@ def test_component_lines_are_positions_mapped_to_ids_and_headings_are_dropped():
 
 def test_unknown_kind_is_none_and_unknown_values_take_defaults():
     assert check_yield(YieldAnswer(kind="crusts"), ING)[0] is None
-    spec, _ = check_yield(YieldAnswer(kind="component", container=YieldContainer(pastry="choux", sides="tall", top="full", thickness="standard", base=True)), ING)
+    choux = YieldContainer(pastry="choux", sides="tall", top="full", thickness="standard", base=True)
+    spec, _ = check_yield(YieldAnswer(kind="component", container=choux), ING)
     assert spec["container"]["pastry"] == "shortcrust" and spec["container"]["sides"] == "full"
     assert spec["edited"] is False
 
@@ -70,7 +71,8 @@ def test_area_is_dropped_off_a_component_and_when_out_of_range():
     area = {"count": 2, "noun": "round", "diameter_mm": 300}
     spec, warnings = check_yield(YieldAnswer(kind="servings", area=area), ING)
     assert spec["area"] is None and warnings
-    spec, warnings = check_yield(YieldAnswer(kind="component", area={"count": 2, "noun": "round", "diameter_mm": 700}), ING)
+    too_wide = {"count": 2, "noun": "round", "diameter_mm": 700}
+    spec, warnings = check_yield(YieldAnswer(kind="component", area=too_wide), ING)
     assert spec["area"] is None and warnings
     spec, _ = check_yield(YieldAnswer(kind="component", area={"count": 0, "noun": "round", "diameter_mm": 300}), ING)
     assert spec["area"] is None
@@ -256,7 +258,8 @@ def test_a_crumb_crust_with_a_base_is_not_a_crumble():
 
 
 def test_a_puff_container_with_no_base_and_no_top_is_still_dropped():
-    spec, _ = check_yield(YieldAnswer(kind="servings", container=YieldContainer(pastry="puff", base=False, top="none")), ING)
+    no_piece = YieldContainer(pastry="puff", base=False, top="none")
+    spec, _ = check_yield(YieldAnswer(kind="servings", container=no_piece), ING)
     assert spec["container"] is None
 
 def test_a_crumble_with_no_rolled_piece_moves_its_component_lines_to_the_topping():
