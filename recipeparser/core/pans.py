@@ -29,6 +29,9 @@ BAKE_TYPES = (
     "sponge",
     "butter-cake",
     "quick-bread",
+    # Cayenne F-890: Yorkshire puddings, popovers, toad in the hole, Dutch baby. Cayenne gives them a
+    # quick bread's tins and band but their own doneness cue (a skewer tells nothing in a hollow pudding).
+    "batter-pudding",
     "bar",
     "bread-lean",
     "bread-enriched",

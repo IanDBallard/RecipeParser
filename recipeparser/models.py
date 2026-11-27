@@ -354,7 +354,7 @@ class RecipePan(BaseModel):
 
 
 _BAKE_TYPE_DESC = (
-    "What the recipe bakes, one word from the prompt's list of 14 bake types; null when nothing bakes."
+    "What the recipe bakes, one word from the prompt's list of 15 bake types; null when nothing bakes."
 )
 # Cayenne pie tins (owner, 2026-11-01): asked before bake_type, so a recipe that fills its own crust
 # can never be pie-shell; core.pans.check_bake drops a pie-shell answer when a quote is given. A yes/no

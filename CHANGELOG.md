@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.50.0] — 2026-11-27
+
+A batter pudding is its own bake type, `batter-pudding`, chosen by how the batter is made, not by the title (Cayenne F-890). **Deploy note:** needs the Cayenne PR for F-890 deployed first: its migration admits `batter-pudding` to `recipes_bake_type_check`, and without it a recipe typed `batter-pudding` is refused on write.
+
+### ✨ Added
+- `BAKE_TYPES` gains `batter-pudding` after `quick-bread` (now 15). Cayenne gives it a quick bread's tins and band but its own doneness cue: risen, deep golden and crisp, with the oven door kept shut. Cayenne #648 had given that cue only to a quick-bread whose title said Yorkshire, popover, toad in the hole or Dutch baby.
+
+### 🔧 Changed
+- Bake-type step 6 is `batter-pudding / quick-bread`: `batter-pudding` when a thin pouring batter of eggs, milk and flour with no baking powder or soda is poured into hot fat or a hot tin and puffs in a hot oven (Yorkshire puddings, popovers, toad in the hole, Dutch baby), whatever it is called; otherwise `quick-bread`. The fixed order of D29 is unchanged. Before, popovers, Yorkshire puddings and toad in the hole were `quick-bread` on purpose.
+- The bake-type probe set's Toad in the Hole and Perfect Yorkshire Puddings move from `quick-bread` to `batter-pudding`. The live probe (`scripts/probe_bake_types.py`) has not been run on the new wording.
+- Stored recipes keep `quick-bread`; Cayenne's F-888 backfill retypes them.
+
 ## [9.49.1] — 2026-11-27
 
 The count of broad exception handlers can only fall, and reasoned handlers carry the architecture gate's exemption marker (architecture compliance roadmap, Phase 2). No change to the package's behaviour.
