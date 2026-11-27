@@ -6,6 +6,7 @@ import html
 from collections.abc import Iterable, Sequence
 from typing import Literal
 
+from recipeparser.adapters.ai_search.find import recipe_suffix
 from recipeparser.adapters.ai_search.look import (
     KNOWN_UNSEARCHABLE,
     MAX_NOTE_CHARS,
@@ -17,7 +18,7 @@ from recipeparser.adapters.ai_search.look import (
     _plain,
     normalise_url,
 )
-from recipeparser.adapters.brave import BraveResult
+from recipeparser.adapters.brave import BraveResult, links_query
 
 MAX_LINKS = 3
 
@@ -35,6 +36,13 @@ def links_sites(scope: Literal["sites", "web"], cook_hosts: Iterable[str]) -> li
     if scope == "web":
         return [*sorted(KNOWN_UNSEARCHABLE), *sorted(refused - KNOWN_UNSEARCHABLE)]
     return [host for host in cook_hosts if host in refused]
+
+
+def look_links_query(question: str, sites: Sequence[str]) -> str | None:
+    """The lane's one Brave query: the question plus " recipe" as the find's ``web_query`` adds it,
+    restricted to ``sites``. "recipe" is kept whole when a long question is trimmed to Brave's limits
+    (F-866: without it Brave offered round-ups and guides). The caller fits ``sites`` first."""
+    return links_query(question, sites, suffix=recipe_suffix(question))
 
 
 def to_links(

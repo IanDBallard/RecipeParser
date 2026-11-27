@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.47.0] — 2026-11-26
+
+The search look offers recipes only: a round-up or guide page is no longer offered (Cayenne F-866, fix roadmap batch 86).
+
+**For Cayenne:** no wire change. A look's `candidates` line can hold fewer rows than before, and takes up to about 4 s longer. Find (`POST /search/find`) is unchanged.
+
+### 🐛 Fixed
+- `POST /search/look` returned roundup and hub pages ("13 Crowd-Pleasing Christmas Dinner Sides", "Roasting Guides"), and adding one failed with "Nothing there looked like a recipe" (owner's holiday test, 2026-11-26). Before the look answers, every candidate page from both lanes (the agent's checked finds and the links lane's links) is fetched in parallel, 3 s per page and 4 s for the whole check, and dropped when its HTML declares no schema.org Recipe in JSON-LD. A page that cannot be fetched (a timeout, an error status, a refusal, a challenge page, or still loading after 4 s) is kept: the import says why. Excluded and unread pages are never fetched.
+- The links lane's Brave query adds " recipe" to the question the way find's does (`web_query`), and keeps it whole when a long question is trimmed to Brave's 400-character, 50-word limit.
+
+### 🔧 Changed
+- The URL reader's direct fetch is now `fetch_page_html(url, timeout)` in `io/readers/url.py` (same user-agent, page proxy, private-address checks and refusals), used by the reader and by the look's recipe check (`adapters/ai_search/recipe_pages.py`). Through the proxy, the connect timeout is now the smaller of 10 s and the read timeout; the reader's 30 s is unchanged.
+- `links_query` takes a `suffix` kept whole beside the `site:` group; `build_router` and `look_stream` take a `fetch_page` (the fetch by default; a fake in tests).
+
 ## [9.46.1] — 2026-11-25
 
 The servings fixture's byte check passes on Windows checkouts (architecture compliance roadmap, Phase 0).

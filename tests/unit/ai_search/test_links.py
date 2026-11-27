@@ -115,3 +115,21 @@ def test_long_description_is_clipped():
 
 def test_no_description_gives_empty_note():
     assert to_links([_r("https://seriouseats.com/a")], **_kw())[0].note == ""
+
+
+def test_look_links_query_adds_recipe_the_way_find_does():
+    from recipeparser.adapters.ai_search.find import sites_query
+    from recipeparser.adapters.ai_search.links import look_links_query
+
+    assert look_links_query("christmas dinner sides", ["a.com"]) == "christmas dinner sides recipe (site:a.com)"
+    assert look_links_query("christmas dinner sides", ["a.com"]) == sites_query("christmas dinner sides", ["a.com"])
+    assert look_links_query("vegan pie recipes", ["a.com"]) == "vegan pie recipes (site:a.com)"
+
+
+def test_look_links_query_keeps_recipe_when_a_long_question_is_trimmed():
+    from recipeparser.adapters.ai_search.links import look_links_query
+    from recipeparser.adapters.brave import MAX_QUERY_CHARS, MAX_QUERY_WORDS
+
+    q = look_links_query(" ".join(["vegetarian"] * 100)[:1000], ["a.com", "b.com"])
+    assert q is not None and len(q) <= MAX_QUERY_CHARS and len(q.split()) <= MAX_QUERY_WORDS
+    assert q.endswith(" recipe (site:a.com OR site:b.com)")

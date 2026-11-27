@@ -202,3 +202,19 @@ def test_search_ignores_non_string_recipe_fields():
     assert first.recipe_title == "" and first.recipe_publisher == "" and first.profile_name == ""
     assert first.has_recipe is True
     assert second.profile_name == "" and second.has_recipe is False
+
+
+def test_links_query_suffix_follows_the_question():
+    assert links_query("pad thai", ["a.com", "b.com"], suffix="recipe") == "pad thai recipe (site:a.com OR site:b.com)"
+
+
+def test_links_query_keeps_the_suffix_whole_when_the_question_is_trimmed():
+    question = " ".join(["vegetarian"] * 100)[:1000]
+    q = links_query(question, ELEVEN, suffix="recipe")
+    group = "(" + " OR ".join(f"site:{s}" for s in ELEVEN) + ")"
+    assert q is not None
+    assert len(q) <= MAX_QUERY_CHARS and len(q.split()) <= MAX_QUERY_WORDS
+    assert q.endswith(" recipe " + group)
+    many = links_query(" ".join(f"w{i}" for i in range(80)), ["a.com", "b.com"], suffix="recipe")
+    assert many is not None and len(many.split()) == MAX_QUERY_WORDS
+    assert many.endswith(" recipe (site:a.com OR site:b.com)")
