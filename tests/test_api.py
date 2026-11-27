@@ -298,7 +298,10 @@ class TestPostJobs:
              patch(
                  "recipeparser.adapters.api._fetch_page_meta",
                  new=AsyncMock(
-                     return_value=PageMeta("https://static01.nyt.com/hero.jpg", "A weeknight noodle dish.")
+                     return_value=PageMeta(
+                         "https://static01.nyt.com/hero.jpg", "A weeknight noodle dish.",
+                         prep_time="5 min", cook_time="30 min", total_time="1 hr 35 min",
+                     )
                  ),
              ) as meta, \
              patch("recipeparser.adapters.api._upload_image_to_storage",
@@ -317,6 +320,9 @@ class TestPostJobs:
         chunks = mock_pipeline_cls.return_value.run.call_args.args[0]
         assert chunks[0].image_url == "https://storage.test/hero.jpg"
         assert chunks[0].meta is not None and chunks[0].meta.description == "A weeknight noodle dish."
+        # Cayenne F-877: the page's JSON-LD times are the source's own statement.
+        m = chunks[0].meta
+        assert (m.prep_time, m.cook_time, m.total_time) == ("5 min", "30 min", "1 hr 35 min")
 
     def test_a_badge_og_image_does_not_win_and_does_not_suppress_the_markdown_photo(self) -> None:
         """A site-wide logo served AS the page's own og:image must not become

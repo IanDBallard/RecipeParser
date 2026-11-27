@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from recipeparser.core.citation import Citation
 from recipeparser.core.count_tokens import scalable_counts, yield_numbers
-from recipeparser.core.durations import duration_columns
+from recipeparser.core.durations import duration_columns, parse_duration
 from recipeparser.core.models import RestoreFields, SourceMeta
 from recipeparser.core.regen import raw_lines_from_derived
 from recipeparser.core.servings import Servings, servings_for_recipe
@@ -109,6 +109,7 @@ def assemble(
     if meta is not None:
         prep_time = meta.prep_time or prep_time
         cook_time = meta.cook_time or cook_time
+        total_time = meta.total_time or total_time
         description = meta.description or description
         nutritional_info = meta.nutritional_info or nutritional_info
         notes = meta.notes or notes
@@ -124,7 +125,8 @@ def assemble(
     if spans is not None:
         cols = spans
     else:
-        cols = duration_columns(prep_time, cook_time or total_time, servings_text, recipe.base_servings)
+        cook_span = cook_time or _cook_from_total(prep_time, total_time)
+        cols = duration_columns(prep_time, cook_span, servings_text, recipe.base_servings)
     # The recipe's own yield, then its tins, then REFINE's estimate (D44). The estimate is
     # recipe.base_servings, not cols["base_servings"]: for "Makes 1 cake" the latter is the 1.
     # A restore's spans already carry the pair, settled by the pipeline without the model.
@@ -206,3 +208,21 @@ def assemble(
         len(result.embedding),
     )
     return result
+
+
+def _cook_from_total(prep_text: Optional[str], total_text: Optional[str]) -> Optional[str]:
+    """
+    The cook span a stated total gives when no cook time is known (Cayenne F-877).
+
+    Cayenne adds prep and cook for its total, so with a single prep figure under a single total
+    figure the cook span is the difference: "Prep 5 min, Total 35 min" cooks for 30, where the
+    whole total read 40. Anything else (a range, a note, a total no longer than the prep) is
+    the total itself, as before.
+    """
+    if not total_text:
+        return None
+    prep, total = parse_duration(prep_text), parse_duration(total_text)
+    single = prep.min is not None and prep.min == prep.max and total.min is not None and total.min == total.max
+    if single and total.note is None and total.min > prep.min:
+        return f"{total.min - prep.min} min"
+    return total_text

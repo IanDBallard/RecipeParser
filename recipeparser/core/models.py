@@ -72,6 +72,9 @@ class SourceMeta:
     nutritional_info: Optional[str] = None
     description: Optional[str] = None
     difficulty: Optional[str] = None
+    # A page's stated total (its JSON-LD totalTime, Cayenne F-877): feeds the cook span when no cook
+    # time is known, as assemble()'s total_time does; never the cook_time text column.
+    total_time: Optional[str] = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -82,6 +85,7 @@ class SourceMeta:
             "nutritional_info",
             "description",
             "difficulty",
+            "total_time",
         ):
             value = getattr(self, name)
             if value is None:

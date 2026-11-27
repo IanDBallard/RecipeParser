@@ -52,6 +52,27 @@ def test_a_stated_total_fills_the_cook_span_when_cook_is_absent():
     assert r.cook_time is None            # the text column is what the page said for cook: nothing
 
 
+def test_a_stated_total_less_the_prep_fills_the_cook_span_so_prep_and_cook_add_to_it():
+    # Cayenne F-877: The Best Yorkshire Pudding stated prep 5 min and a total, no cook; Cayenne adds
+    # prep and cook, so the cook span is the total less the prep.
+    r = _assemble(prep_time="5 min", total_time="35 min")
+    assert (r.prep_min_minutes, r.cook_min_minutes, r.cook_max_minutes) == (5, 30, 30)
+    assert r.cook_time is None
+
+
+def test_a_total_with_a_range_or_no_more_than_the_prep_is_the_cook_span_as_before():
+    r = _assemble(prep_time="10 to 15 min", total_time="45 min")
+    assert (r.cook_min_minutes, r.cook_max_minutes) == (45, 45)
+    r = _assemble(prep_time="40 min", total_time="30 min")
+    assert (r.cook_min_minutes, r.cook_max_minutes) == (30, 30)
+
+
+def test_the_pages_own_times_beat_the_models_reading():
+    meta = SourceMeta(prep_time="5 min", total_time="1 hr 35 min")
+    r = _assemble(prep_time="5 mins", meta=meta)
+    assert (r.prep_min_minutes, r.cook_min_minutes, r.cook_max_minutes) == (5, 90, 90)
+
+
 def test_a_stated_cook_time_beats_the_total():
     r = _assemble(cook_time="30 mins", total_time="8 hours")
     assert (r.cook_min_minutes, r.cook_max_minutes) == (30, 30)

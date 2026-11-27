@@ -51,6 +51,17 @@ def _clean(value: Optional[str]) -> Optional[str]:
     return stripped or None
 
 
+_DOMAIN_PATH = re.compile(r"^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+/\S*$", re.I)
+
+
+def _site_name(value: Optional[str]) -> Optional[str]:
+    """A stated site name, or None when it is an address rather than a name (Cayenne F-878)."""
+    name = _clean(value)
+    if name is None or _HTTP.match(name) or _DOMAIN.match(name) or _DOMAIN_PATH.match(name):
+        return None
+    return name
+
+
 def normalise_key(value: str) -> str:
     """The key two source strings share when a cook would call them one source. Never shown."""
     v = value.strip().lower()
@@ -115,11 +126,12 @@ def resolve_citation(known: Optional[Citation], stated_source: Optional[str], by
     The reader's knowledge beats the model's reading; the model fills only what the reader could not.
 
     A book with metadata, and an unknown book, are settled by the reader. A page keeps its host as
-    the key and takes the site's stated name and the byline from the model. With nothing known, the
+    the key and takes the site's stated name and the byline from the model; a stated "name" that is a
+    URL or a bare host is not one, and the page keeps its own title (Cayenne F-878). With nothing known, the
     model's stated source is classified by the same rules the backfill uses.
     """
     if known is None:
         return classify_source(stated_source, byline).citation
     if known.kind == "web":
-        return Citation("web", known.key, _clean(stated_source) or known.title, known.author or _clean(byline))
+        return Citation("web", known.key, _site_name(stated_source) or known.title, known.author or _clean(byline))
     return known
