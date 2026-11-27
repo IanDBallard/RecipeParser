@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from recipeparser.core.citation import Citation
 
 if TYPE_CHECKING:
     # Avoid circular imports at runtime; only used for type hints.
-    from recipeparser.models import CayenneRecipe, IngestResponse
+    from recipeparser.models import CayenneRecipe
 
 
 class InputType(Enum):
@@ -143,7 +143,7 @@ class Chunk:
         names its pick in ``photo_filename``; the pipeline takes the bytes
         from here. Empty for every source that is not a book.
     pre_parsed:
-        Fully-assembled IngestResponse deserialized from ``_cayenne_meta``.
+        The ``CayenneRecipe`` parsed from a Cayenne export's ``_cayenne_meta``.
         Set only for PAPRIKA_CAYENNE chunks.  When present, the pipeline
         skips EXTRACT, REFINE, and CATEGORIZE entirely.
     pre_parsed_embedding:
@@ -184,7 +184,7 @@ class Chunk:
     image_bytes: Optional[bytes] = None
     image_content_type: str = "image/jpeg"
     images: Dict[str, bytes] = field(default_factory=dict)
-    pre_parsed: Optional[Union["CayenneRecipe", "IngestResponse"]] = None
+    pre_parsed: Optional["CayenneRecipe"] = None
     pre_parsed_embedding: Optional[List[float]] = field(default=None)
     label: Optional[str] = None
     meta: Optional[SourceMeta] = None

@@ -665,8 +665,8 @@ class RecipePipeline:
                 prep_time=pr.prep_time,
                 cook_time=pr.cook_time,
                 meta=chunk.meta or _source_meta_from(pr),
-                ingredient_lines=list(getattr(pr, "ingredient_lines", []) or []),
-                direction_steps=list(getattr(pr, "direction_steps", []) or []),
+                ingredient_lines=list(pr.ingredient_lines),
+                direction_steps=list(pr.direction_steps),
                 servings_text=None,
                 citation=chunk.citation or _citation_from(pr),
                 spans=_restore_spans(pr),
@@ -696,8 +696,8 @@ class RecipePipeline:
                 prep_time=pr.prep_time,
                 cook_time=pr.cook_time,
                 meta=chunk.meta or _source_meta_from(pr),
-                ingredient_lines=list(getattr(pr, "ingredient_lines", []) or []),
-                direction_steps=list(getattr(pr, "direction_steps", []) or []),
+                ingredient_lines=list(pr.ingredient_lines),
+                direction_steps=list(pr.direction_steps),
                 servings_text=None,
                 citation=chunk.citation or _citation_from(pr),
                 spans=_restore_spans(pr),
@@ -871,12 +871,12 @@ def _chunk_photo(chunk: Chunk) -> Optional[Photo]:
     return Photo(data=chunk.image_bytes, content_type=chunk.image_content_type)
 
 
-def _source_meta_from(pr: "CayenneRecipe | IngestResponse") -> SourceMeta:
+def _source_meta_from(pr: CayenneRecipe) -> SourceMeta:
     """
     The six metadata fields of a pre-parsed recipe, in the shape ``assemble()`` reads.
 
-    ``_pre_parsed_to_refinement`` is a shim over the four fields ``embed()`` needs and
-    carries none of these, so without this the six would arrive from ``_cayenne_meta``
+    ``_pre_parsed_to_refinement`` builds what ``embed()`` reads and carries none of
+    these, so without this the six would arrive from ``_cayenne_meta``
     and then be dropped on the last hop of a restore.
     """
     return SourceMeta(
@@ -891,22 +891,16 @@ def _source_meta_from(pr: "CayenneRecipe | IngestResponse") -> SourceMeta:
     )
 
 
-def _citation_from(pr: "CayenneRecipe | IngestResponse") -> Optional[Citation]:
+def _citation_from(pr: CayenneRecipe) -> Optional[Citation]:
     """
     The four citation columns of a pre-parsed recipe, in the shape ``assemble()`` reads,
     so a Cayenne export restores what a cook filed with Set source rather than nulling it.
-    None when the export predates the columns (no kind), which lets the reader's or the
-    model's citation apply as for any other chunk.
+    None when the export carries no kind (an export that predates the columns parses with
+    them None), which lets the reader's or the model's citation apply as for any other chunk.
     """
-    kind = getattr(pr, "source_kind", None)
-    if not kind:
+    if not pr.source_kind:
         return None
-    return Citation(
-        kind,
-        getattr(pr, "source_key", None),
-        getattr(pr, "source_title", None),
-        getattr(pr, "source_author", None),
-    )
+    return Citation(pr.source_kind, pr.source_key, pr.source_title, pr.source_author)
 
 
 def _restored_yield(spec: Any) -> Optional[dict]:
@@ -921,17 +915,11 @@ def _restored_yield(spec: Any) -> Optional[dict]:
 
 
 def _pre_parsed_to_refinement(
-    pr: "CayenneRecipe | IngestResponse",
+    pr: CayenneRecipe,
 ) -> "CayenneRefinement":
     """
-    Shim: convert a pre-parsed object (either a ``CayenneRecipe`` stored by
-    ``PaprikaReader`` or a legacy ``IngestResponse`` from ``_cayenne_meta``)
-    into the ``CayenneRefinement`` shape expected by ``assemble()`` and
-    ``embed()``.
-
-    Both ``CayenneRecipe`` and ``IngestResponse`` expose the four fields used
-    here (``title``, ``base_servings``, ``structured_ingredients``,
-    ``tokenized_directions``), so the shim works for either type.
+    The ``CayenneRefinement`` that ``assemble()`` and ``embed()`` read, from the
+    ``CayenneRecipe`` that ``PaprikaReader`` parsed out of ``_cayenne_meta``.
 
     The title is kept exactly as given: a Cayenne restore is the cook's own title, and
     title-casing it would undo what they typed.  The measures REFINE detected ride along.
@@ -941,14 +929,14 @@ def _pre_parsed_to_refinement(
         base_servings=pr.base_servings,
         structured_ingredients=pr.structured_ingredients,
         tokenized_directions=pr.tokenized_directions,
-        # A restore skips REFINE, so the tins and the bake would be dropped here. getattr: an archive
-        # that predates them has none.
-        pans=list(getattr(pr, "pans", None) or []),
-        bake_type=getattr(pr, "bake_type", None),
-        bake_step=getattr(pr, "bake_step", None),
-        yield_checked=_restored_yield(getattr(pr, "yield_spec", None)),
-        source_uom_system_detected=getattr(pr, "source_uom_system_detected", None),
-        source_uom_system_evidence=getattr(pr, "source_uom_system_evidence", None),
+        # A restore skips REFINE, so the tins and the bake are carried over here. An archive that
+        # predates them parses with the model's defaults (no tins, no bake).
+        pans=list(pr.pans),
+        bake_type=pr.bake_type,
+        bake_step=pr.bake_step,
+        yield_checked=_restored_yield(pr.yield_spec),
+        source_uom_system_detected=pr.source_uom_system_detected,
+        source_uom_system_evidence=pr.source_uom_system_evidence,
     )
 
 
@@ -961,7 +949,7 @@ _SPAN_KEYS = (
 _SERVINGS_KEYS = ("base_servings", "servings_source")
 
 
-def _restore_spans(pr: "CayenneRecipe | IngestResponse") -> Dict[str, Any]:
+def _restore_spans(pr: CayenneRecipe) -> Dict[str, Any]:
     """
     The span columns of a pre-parsed recipe, as stored.  Re-deriving them from the text
     columns would lose what only the structured columns hold (a servings span and its note).
@@ -980,16 +968,16 @@ def _restore_spans(pr: "CayenneRecipe | IngestResponse") -> Dict[str, Any]:
         return cols
     sv = servings_for_restore(
         Span(cols["servings_min"], cols["servings_max"], cols["servings_note"]),
-        list(getattr(pr, "direction_steps", None) or []),
-        list(getattr(pr, "pans", None) or []),
-        getattr(pr, "bake_type", None),
+        list(pr.direction_steps),
+        list(pr.pans),
+        pr.bake_type,
         cols["base_servings"],
     )
     cols["base_servings"], cols["servings_source"] = sv.base, sv.source
     return cols
 
 
-def _restore_fields(pr: "CayenneRecipe | IngestResponse") -> RestoreFields:
+def _restore_fields(pr: CayenneRecipe) -> RestoreFields:
     """The favourite, chosen measures, picture origin and stale flag a Cayenne export carried."""
     return RestoreFields(
         is_favourite=bool(pr.is_favourite),
