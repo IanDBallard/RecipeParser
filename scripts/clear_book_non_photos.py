@@ -124,7 +124,7 @@ def fetch_image(image_url: str) -> Optional[bytes]:
     try:
         resp = httpx.get(image_url, timeout=FETCH_TIMEOUT, follow_redirects=True)
         resp.raise_for_status()
-    except Exception as exc:  # noqa: BLE001 -- one dead URL must not stop the run
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: one dead URL must not stop the run
         log.warning("could not fetch %s: %s", image_url, exc)
         return None
     return resp.content
@@ -173,7 +173,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             for clear in plan.clears:
                 try:
                     clear_picture(url, key, clear.recipe_id)
-                except Exception as exc:  # noqa: BLE001 -- report it and carry on with the rest
+                except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: report it and carry on with the rest
                     failed += 1
                     log.error("could not clear %r (%s): %s", clear.title, clear.recipe_id, exc)
                     continue

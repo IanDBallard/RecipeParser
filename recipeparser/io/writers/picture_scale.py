@@ -63,7 +63,7 @@ def scale_picture(data: bytes, content_type: str) -> Tuple[bytes, str]:
             scaled = flat.resize(_scaled_size(*flat.size), Image.Resampling.LANCZOS)
             out = io.BytesIO()
             scaled.save(out, "JPEG", quality=PICTURE_QUALITY, optimize=True)
-    except Exception:  # noqa: BLE001 — not a picture Pillow can read: keep the bytes as they came
+    except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: not a picture Pillow can read: keep the bytes as they came
         log.info("picture_scale: could not decode a %s picture — storing it as it is.", content_type)
         return data, content_type
     return out.getvalue(), "image/jpeg"

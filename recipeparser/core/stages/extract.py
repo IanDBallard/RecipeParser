@@ -114,7 +114,7 @@ def extract(
         retry = _run(chunk_text, client, plain_text_mode, limiter)
     except (JobCancelledError, DailyQuotaExhaustedError):
         raise  # stops the run (#161), never "recovered nothing"
-    except Exception as exc:  # noqa: BLE001 — any retry failure degrades to "recovered nothing"
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: any retry failure degrades to "recovered nothing"
         log.warning("extract(): the retry failed (%s: %s) — keeping the first attempt's clean recipes.",
                     type(exc).__name__, exc)
         retry = []

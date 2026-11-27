@@ -146,7 +146,7 @@ def flush(ctx: UsageContext, get_client: Callable[[], Any]) -> None:
             log.warning("usage: no database configured; %d call record(s) not written.", len(rows))
             return
         sb.table("ai_usage").insert(rows).execute()
-    except Exception:  # noqa: BLE001 - usage never fails the user's work
+    except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: usage never fails the user's work
         log.exception("usage: could not write %d call record(s) for %s/%s.", len(rows), ctx.action, ctx.user_id)
 
 

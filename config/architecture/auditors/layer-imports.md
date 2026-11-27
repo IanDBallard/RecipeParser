@@ -27,9 +27,9 @@ Flag a file under `recipeparser/core/` that reaches `recipeparser/io/` or
   layers;
 - `importlib.import_module` or `__import__` with a string naming those packages;
 - an indirect import through a package-root re-export that is itself a shim of an
-  `io/` or `adapters/` module. Example: `recipeparser/epub.py` re-exports
-  `recipeparser.io.readers.epub`, so `from recipeparser.epub import ...` inside
-  `core/` is a crossing.
+  `io/` or `adapters/` module. Example: a package-root `recipeparser/epub.py` that
+  re-exported `recipeparser.io.readers.epub` (such shims were removed in 9.49.0) would
+  make `from recipeparser.epub import ...` inside `core/` a crossing.
 
 Severity: a runtime import is `important`. A crossing that makes the engine depend on
 an adapter (FastAPI, Supabase, HTTP) is `blocking`.

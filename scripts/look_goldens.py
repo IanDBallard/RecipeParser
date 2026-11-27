@@ -222,7 +222,7 @@ def run_one(entry: LookGolden, *, client: Any, measuring: str) -> LookResult:
         )
         result.seconds = time.monotonic() - started
         result.scored = score_candidates(raw, checked, entry.hosts, _loads)
-    except Exception as exc:  # noqa: BLE001 - one failed look must not lose the rest of the run
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: one failed look must not lose the rest of the run
         result.error = f"{type(exc).__name__}: {exc}"
         result.seconds = time.monotonic() - started
     finally:

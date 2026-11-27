@@ -712,7 +712,7 @@ def refine(
         result.yield_checked, yield_warnings = check_yield(
             result.yield_spec, result.structured_ingredients, result.pans
         )
-    except Exception as exc:  # noqa: BLE001 - any failure here is the field's, not the recipe's
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: any failure here is the field's, not the recipe's
         log.warning("refine(): '%s': yield check failed (%r); no yield_spec", result.title, exc)
         result.yield_checked, yield_warnings = None, []
     for line in yield_warnings:

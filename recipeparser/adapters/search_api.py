@@ -197,7 +197,7 @@ def _work(
             except AgentTimeout:
                 kind = "timeout"
                 emit(_error("timeout", TIMEOUT_DETAIL))
-            except Exception:  # noqa: BLE001 - after the stream began, every failure is one error line
+            except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: after the stream began, every failure is one error line
                 logger.error("search ask failed for user %s", sub, exc_info=True)
                 emit(_error("failed", FAILED_DETAIL))
             finally:
@@ -314,7 +314,7 @@ def _blocked(get_service_client: Callable[[], Any], hosts: set[str]) -> set[str]
         return set()
     try:
         return refusing_hosts.blocked_hosts(sb, hosts, datetime.now(timezone.utc))
-    except Exception:  # noqa: BLE001 - the record only colours the rows; it never fails a look
+    except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: the record only colours the rows; it never fails a look
         logger.warning("search look: could not read refusing_hosts", exc_info=True)
         return set()
 
@@ -342,7 +342,7 @@ def _web_blocked(
     if sb is not None:
         try:
             lately = refusing_hosts.blocked_now(sb, datetime.now(timezone.utc))
-        except Exception:  # noqa: BLE001 - the record only steers the look; it never fails one
+        except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: the record only steers the look; it never fails one
             logger.warning("search look: could not read refusing_hosts", exc_info=True)
     listable = refused - WEB_BLOCK_REFUSED.current()
     ordered = [host for host, _ in cook] + sorted(listable) + sorted(lately)
@@ -432,7 +432,7 @@ def _links_results(lane: _Links) -> list[BraveResult]:
         logger.warning("search look: the links lane timed out after %.1f s", LINKS_TIMEOUT_S)
     except BraveError as exc:  # its message never carries the key
         logger.warning("search look: the links lane failed: %s", exc)
-    except Exception as exc:  # noqa: BLE001 - the lane never fails a look
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: the lane never fails a look
         # Not a BraveError, so a bug: keep the traceback. The key cannot be in it: BraveSearch holds
         # it only in its httpx client's headers, and wraps every httpx failure in a BraveError (from
         # None) above, so no request or header text reaches this handler.
@@ -579,7 +579,7 @@ def _look_work(
             except AgentTimeout:
                 kind = "timeout"
                 emit(_error("timeout", TIMEOUT_DETAIL))
-            except Exception:  # noqa: BLE001 - after the stream began, every failure is one error line
+            except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: after the stream began, every failure is one error line
                 logger.error("search look failed for user %s", sub, exc_info=True)
                 emit(_error("failed", FAILED_DETAIL))
             finally:
@@ -664,7 +664,7 @@ def _find_result(
         logger.warning("search find: the %s request timed out after %.1f s", group, FIND_TIMEOUT_S)
     except BraveError as exc:  # its message never carries the key or the query
         logger.warning("search find: the %s request failed: %s", group, exc)
-    except Exception as exc:  # noqa: BLE001 - one request failing empties only its group
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: one request failing empties only its group
         logger.warning("search find: the %s request failed: %s", group, type(exc).__name__)
     return None
 

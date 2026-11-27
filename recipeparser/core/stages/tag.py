@@ -87,7 +87,7 @@ def tag_batch(
                 break
             except (DailyQuotaExhaustedError, JobCancelledError):
                 raise  # the run stops, not one axis (exceptions.py)
-            except Exception as exc:  # noqa: BLE001 -- one axis must not cost the others
+            except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: one axis must not cost the others
                 reason = str(exc)[:300]
                 log.warning("TAG: the %r call failed for %d recipe(s): %s", axis, len(recipes), reason)
         if hits is None:

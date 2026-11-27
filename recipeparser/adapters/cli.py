@@ -71,7 +71,7 @@ def _run_stoppably(work: Callable[[], T], on_stop: Callable[[int], None]) -> T:
     def target() -> None:
         try:
             outcome["result"] = work()
-        except BaseException as exc:  # noqa: BLE001 - handed back to the main thread
+        except BaseException as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: handed back to the main thread
             outcome["error"] = exc
 
     def handler(signum: int, _frame: Any) -> None:
@@ -218,7 +218,7 @@ def run_cli_pipeline(
             return
         try:
             PaprikaWriter(output_path=partial_path).write(recipes)
-        except Exception:  # noqa: BLE001 - the stop must still be reported
+        except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: the stop must still be reported
             log.exception("Could not save the partial archive %s.", partial_path)
             return
         print(f"{why} Saved {len(recipes)} recipe(s) to {partial_path}", flush=True)

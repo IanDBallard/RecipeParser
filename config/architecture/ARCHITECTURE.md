@@ -40,6 +40,23 @@ that swallows the error, unless it is exempted with a reason. A provider call is
 one sanctioned exception (`GEMINI.md`, Error Handling): on a transient API failure it
 returns `None`, and the adapter handles the `None` case.
 
+## Fail-loud ratchet
+
+The number of bare or broad `except` handlers in each file under `recipeparser/` and
+`scripts/` may only fall. `config/architecture/fail_loud_ratchet.json` holds each file's
+count, and `acf-check-diff` refuses a file whose count rose, on pull requests and before
+every push. An exempted handler still counts. When a change removes handlers, regenerate
+the baseline in the same change so the lower count is what is held:
+
+```bash
+python -c "import json,acf.detectors.fail_loud_ratchet as r,pathlib;print(json.dumps({'files':r.scan_tree(pathlib.Path('.'),roots=['recipeparser','scripts'])},indent=2,sort_keys=True))" > config/architecture/fail_loud_ratchet.json
+```
+
+A handler kept on purpose carries its reason on the `except` line:
+`# fail-loud.bare-except-ok: <reason>` (after any `# noqa: BLE001`). That marker satisfies
+the per-line rule but not the ratchet. A change that adds a broad handler on purpose
+raises that file's count in the baseline itself, so the rise is visible in review.
+
 ## No shims
 
 Do not keep code alive for an old shape: compatibility re-exports ("Backward-compat

@@ -102,7 +102,7 @@ def build_router(
                     raise HTTPException(status_code=http, detail=detail) from exc
             log.exception("Household function %s failed.", fn)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
-        except Exception as exc:  # noqa: BLE001 - transport or client failure: an outage, never a refusal
+        except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: transport or client failure: an outage, never a refusal
             log.exception("Household function %s failed.", fn)
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=UNREACHABLE) from exc
 

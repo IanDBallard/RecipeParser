@@ -346,7 +346,7 @@ def run_golden(
             cancel=threading.Event(),
         )
         answer = finalize(raw, permitted=toolbox.permitted(raw_ids(raw)))
-    except Exception as exc:  # noqa: BLE001 - one failed question must not lose the rest of the run
+    except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: one failed question must not lose the rest of the run
         error = f"{type(exc).__name__}: {exc}"
     finally:
         usage_module.record_claude = original
@@ -388,7 +388,7 @@ def dsn_summary(dsn: str) -> str:
             fields = _keyword_fields(dsn)
             host, user = fields.get("host"), fields.get("user")
             port = int(fields["port"]) if "port" in fields else None
-    except Exception:  # noqa: BLE001 - never let the DSN reach a traceback
+    except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: never let the DSN reach a traceback
         return _UNPARSEABLE
     return f"host={host} port={port} user={user}"
 

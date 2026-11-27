@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.49.1] — 2026-11-27
+
+The count of broad exception handlers can only fall, and reasoned handlers carry the architecture gate's exemption marker (architecture compliance roadmap, Phase 2). No change to the package's behaviour.
+
+### 🔧 Changed
+- New mandate `fail-loud.ratchet`, checked on pull requests and before every push. `config/architecture/fail_loud_ratchet.json` holds each file's count of bare or broad `except` handlers under `recipeparser/` and `scripts/` (141 in 58 files). A change that raises a file's count is refused unless it raises the baseline too.
+- 31 handlers whose `# noqa: BLE001` carried a reason now read `# noqa: BLE001  # fail-loud.bare-except-ok: <reason>`, the marker `fail-loud.bare-except` honours. The 50 with no reason on the line are unchanged.
+- `no-shims.hasattr` also runs on Claude Code edits (the `hook` site).
+- The `soft.fail-loud` review rule knows the exception base (`RecipeParserError` in `recipeparser/exceptions.py`), so the architecture review checks that raised errors come from it.
+
+### 📝 Docs
+- `config/architecture/ARCHITECTURE.md` gains a "Fail-loud ratchet" section: what it holds, how to regenerate the baseline, and why a deliberate new handler raises the baseline. `ACF_ROADMAP.md` marks the Phase 2 items done, including the shim removal in 9.49.0, and corrects its claim that the ratchet would quiet the edit hook. The layer-imports auditor's example no longer names the deleted `recipeparser/epub.py` as present.
+
 ## [9.49.0] — 2026-11-27
 
 The package-root compatibility shims are gone: import from the real modules (architecture review 2026-11-25, `soft.no-shims`).
