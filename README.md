@@ -431,7 +431,7 @@ The local `build_installer.ps1` script is for development and testing only. It d
 ```
 pyproject.toml          ← single source of truth for the version number
 installer.iss           ← must have matching AppVersion (CI validates this)
-requirements.txt        ← pinned runtime deps (used by CI for reproducible builds)
+requirements.txt        ← generated lock of pyproject.toml's runtime deps (Docker, CI)
 recipeparser.spec       ← PyInstaller bundle configuration
 build_installer.ps1     ← local build-only script (dev/testing; no release)
 tests/smoke_test_exe.py   ← post-build exe smoke test (run by CI, also runnable locally)
@@ -533,36 +533,20 @@ Go to **Actions → Build Windows Installer → Run workflow** and enter the exi
 
 ### Dependency Management
 
-Dependencies are declared in two places with different purposes:
+Dependencies are declared in one place and locked in another:
 
 | File | Purpose | Used by |
 |------|---------|---------|
-| `pyproject.toml` `[project.dependencies]` | Minimum version constraints for pip users | `pip install recipeparser` |
-| `requirements.txt` | Exact pinned versions for reproducible builds | CI workflow, local builds |
+| `pyproject.toml` `[project.dependencies]` | The declared dependencies, with minimum versions. Edit this one. | `pip install recipeparser` |
+| `requirements.txt` | Generated lock: the exact version of every package, transitive ones included | Docker image, CI, Windows build |
 
-**Both files must be kept in sync.** When adding or updating a dependency:
+When adding or updating a dependency:
 
-1. Update the version constraint in `pyproject.toml`
-2. Update the pinned version in `requirements.txt`
+1. Edit `pyproject.toml`
+2. Run `python scripts/ci/lock_requirements.py` (needs `pip install uv`). To take newer versions, name the packages: `--upgrade fastapi starlette`
 3. If it's a GUI dependency, verify it's also covered in `recipeparser.spec`
 
-Current pinned versions (`requirements.txt`):
-
-```
-EbookLib==0.18
-beautifulsoup4==4.12.2
-customtkinter==5.2.2
-lxml==5.3.1
-pydantic==2.11.9
-google-genai>=1.60.0
-python-dotenv==1.1.1
-pyyaml==6.0.1
-pymupdf>=1.24.0
-fastapi>=0.115.0
-uvicorn>=0.30.0
-httpx>=0.27.0
-PyJWT>=2.8.0
-```
+CI fails when the lock does not match `pyproject.toml`, or when `recipeparser/` imports a package that is not declared (`deptry recipeparser`). Versions no longer move on their own at each image build, so security updates need step 2 too.
 
 ---
 
