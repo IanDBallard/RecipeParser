@@ -1,6 +1,6 @@
 # Architecture compliance roadmap
 
-**Status:** in progress: Phases 0 to 2 done, Phase 3 started; outside review of 2026-11-28 folded in as Phase 3b (updated 2026-11-28). **Owner:** the repository owner.
+**Status:** in progress: Phases 0 to 2 done, Phase 3 started; two outside reviews of 2026-11-28 folded in as Phases 3b and 3c (updated 2026-11-28). **Owner:** the repository owner.
 **Scope:** what RecipeParser checks automatically about its own code, and in what order
 the remaining checks are added. It covers the Architecture Compliance Framework (ACF:
 `config/architecture/`, the `arch-compliance` plugin) and the standard Python tools that
@@ -47,8 +47,12 @@ and the baseline are committed (`docs/reviews/architecture/`,
 - **Types are not gated** (Phase 5, decision 4).
 - **`core/` reaches the model layer directly.** `core/pipeline.py` and the `extract`,
   `refine` and `embed` stages import `recipeparser.gemini`. The layer ban covers only
-  `io/` and `adapters/`, so this passes unseen, and `import recipeparser` loads `.env` and
-  builds a `genai.Client` as a side effect (Phase 3b).
+  `io/` and `adapters/`, so this passes unseen, and `import recipeparser` loads `.env` and,
+  when a key is set, builds a `genai.Client` as a side effect (Phase 3b).
+- **Nothing limits a module's size or mix of duties.** `soft.class-cohesion` reads class
+  bodies only, so `adapters/api.py` (2,398 lines) and `gemini.py` (1,814), which are mostly
+  module-level functions, pass it. They are also the two most-changed modules: 76 and 53
+  commits from 2026-08-28 to 2026-11-28 (`git log --name-only`; Phase 3c).
 
 ## 2. Principles
 
@@ -115,17 +119,33 @@ crossings; the plain-import case moves to ruff (Phase 1).
 ### Phase 3b — Boundary, dependency and doc fixes (from the 2026-11-28 outside review)
 
 An outside review of the repository made five recommendations; each claim was checked
-against master at 9.51.3, one of them wrongly: see the first row. Items 1 and 5 were already here (decision 1, Phase 5) and are
-updated in place; the rest are new. Suggested order: decision 1, then the items below in
+against master at 9.51.3, one of them wrongly: see the first row. Items 1 and 5 were
+already here (decision 1, Phase 5) and are updated in place; the rest are new. Suggested order: decision 1, then the items below in
 table order. The docs rewrite comes last so it describes the shape the boundary fix leaves.
 
 | Item | Mechanism | Done when |
 |---|---|---|
 | Declare and unify dependencies | Declare `requests` and `postgrest`; generate `requirements.txt` from `pyproject.toml` (`scripts/ci/lock_requirements.py`); `deptry` in CI | No module under `recipeparser/` imports an undeclared package; the lock matches `pyproject.toml`. **Done in 9.51.4.** The review's proposal to replace `requests` with `httpx` is **rejected**: through the page proxy, Dotdash Meredith's sites answered `httpx` 403 and `requests` 200 (Cayenne F-687, `_fetch_page_meta`'s docstring), so the swap would bring that bug back. |
 | Dead models and package-wide ruff | Delete `TocEntry`, `TocList`, `TocRecipeClassification` from `models.py` (no reference outside it); clear the 38 findings `ruff check recipeparser` reports today | `ruff check recipeparser` is clean, so CI runs it on the whole package, not only on changed lines; `scripts/` and `tests/` stay diff-only. |
-| `core/` takes its model calls by injection | A typed protocol for the model calls (`LLMCalls`, or one callable per stage) passed into `RecipePipeline`, as `CategorySource`, `ImageStore` and `AskFood` already are; `core/` stops importing `recipeparser.gemini`. A real refactor: spec first, through `/adversarial-design-review` | `recipeparser.gemini` joins the banned-api list in `recipeparser/core/ruff.toml`, and ruff reports nothing. |
-| No import side effects | `load_dotenv()` and `genai.Client(...)` move out of `recipeparser/__init__.py` into the entry points (`__main__`/`adapters/cli.py`, `adapters/gui.py`, `adapters/api.py`); the 7 scripts that read `recipeparser.client` build their own | `import recipeparser` reads no file and builds no client; `__init__.py` leaves the model SDK owners (`pyproject.toml` per-file-ignores, doctrine "Model SDK owners"). |
+| `core/` takes its model calls by injection | A typed protocol for the model calls (`LLMCalls`, or one callable per stage) passed into `RecipePipeline`, as `CategorySource`, `ImageStore` and `AskFood` already are; `core/` stops importing `recipeparser.gemini`. It must also cover the two private error classifiers `core/pipeline.py:842` imports (`_is_rate_limit_error`, `_is_transient_server_error`) and `core/engine.py`'s docstring, which lists `recipeparser.gemini` as an allowed import; delete the empty `core/providers/`. The spec decides whether `core/picture_gen.py`'s call moves too; if it does, it keeps skipping `_call_with_retry`, since a cook is waiting (its docstring, D8). Pillow in `core/` is not part of this: it works on bytes in memory. A real refactor: spec first, through `/adversarial-design-review` | `recipeparser.gemini` joins the banned-api list in `recipeparser/core/ruff.toml`, and ruff reports nothing. |
+| No import side effects | `load_dotenv()` and `genai.Client(...)` move out of `recipeparser/__init__.py`, and `load_dotenv()` out of `io/writers/supabase.py:29`, into the entry points (`__main__`/`adapters/cli.py`, `adapters/gui.py`, `adapters/api.py`); the 7 scripts that read `recipeparser.client` build their own | A test imports every `recipeparser` module in a subprocess and finds no `.env` read and no client built; `tests/conftest.py` no longer needs to blank `REGEN_WORKER_ENABLED` before its import; `__init__.py` leaves the model SDK owners (`pyproject.toml` per-file-ignores, doctrine "Model SDK owners"). |
 | Rewrite `GEMINI.md`, prune `ARCHITECTURE.md` | `GEMINI.md` describes 9.51+ (`RecipePipeline`, `PipelineController`, the current model ids, no package-root shims or `api.py`); `ARCHITECTURE.md` loses the design blocks that were never built and names each model once, pointing at `config.py` | Both match the code; `soft.layer-imports`, which cites `GEMINI.md`, reads current guidance. |
+
+### Phase 3c — Split the modules and classes that mix duties (from the second 2026-11-28 outside review)
+
+Each claim was checked against master at 9.51.4. The three class splits were already
+findings of the 2026-11-25 architecture review. Every split is by duty, not by length, and
+changes no behaviour. Suggested order: the table's, and `gemini.py` only after Phase 3b's
+injection, since both change the same imports.
+
+| Item | Mechanism | Done when |
+|---|---|---|
+| Module-size ratchet | A host check with each module's line count over 1,000 recorded (today `adapters/api.py` and `gemini.py`): a recorded module may not grow and no other may cross 1,000. It asks for no shrinking | Runs at `ci` and `precommit`. |
+| `AiGate` | The in-process rate windows become their own limiter; the database-backed pause and caps stay; `check()` combines them | The review's finding is gone. |
+| `ShareWorker` | The share and household sweeps become a separate maintenance worker | `ShareWorker` runs `share_accept` jobs only. |
+| `RecipePipeline`'s pictures | The food check, book-photo choice, storing and restore copy, and lost-picture count become a collaborator the pipeline calls once per recipe | `RecipePipeline` only orchestrates stages. |
+| `adapters/api.py` | Auth, job orchestration, page fetching and recipe images move to modules and routers, as shares, shopping, household and search already have. Page fetching keeps `requests` (Phase 3b, first row) | `api.py` holds the app, its lifespan and the wiring. |
+| `gemini.py` | Transport (retry, quota, schema scrubbing, token accounting) is separated from the tasks' prompts and parsers | Transport imports no task; the prompt snapshots are unchanged. |
 
 ### Phase 4 — New review rules (month 2)
 
