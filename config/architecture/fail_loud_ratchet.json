@@ -45,6 +45,7 @@
     "scripts/backfill_count_tokens.py": 1,
     "scripts/backfill_direction_amounts.py": 3,
     "scripts/backfill_durations.py": 1,
+    "scripts/backfill_f888.py": 1,
     "scripts/backfill_pans.py": 3,
     "scripts/backfill_paprika_metadata.py": 1,
     "scripts/backfill_recipe_images.py": 2,
