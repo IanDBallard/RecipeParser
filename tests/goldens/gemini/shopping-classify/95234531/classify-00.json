@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "52715f056f27e9e992c19d62af0d3a0dcba90796e69a90d51a8e74f1832fe817",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"milk\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"tomato\",\n      \"aisle\": \"tins_jars\",\n      \"pantry\": true,\n      \"count\": 1,\n      \"count_unit\": \"tin\",\n      \"made\": false,\n      \"grams\": null\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"egg\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": 3,\n      \"count_unit\": \"egg\",\n      \"made\": false,\n      \"grams\": null\n    }\n  ]\n}"
+}

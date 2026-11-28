@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.52.0] — 2026-11-28
+
+The shopping classifier estimates the grams a shopper buys, counts fresh herbs in bunches and counts whole produce whatever measure the recipe uses (Cayenne batch 90, F-882 and F-883).
+
+### ✨ Added
+- The classify prompt gains a `grams` rule: the weight bought at the amount given, set for a solid (spoonfuls included), a herb measure or counted produce or meat, and null for a liquid, a food bought by volume, eggs, an unmeasured line and a container counted whole (a tin).
+- Fresh herbs are counted in `bunch`, `count` being the fraction of a supermarket bunch, never `sprig` or `leaf`; dried herbs have no count. Produce sold as separate items is counted whatever measure the recipe uses ("1/2 cup diced shallot" is a shallot count). `count` is null for a food bought by weight or volume, never an invented pack ("1 block" of cheese). `grams` is for the food as bought (not cooked) and never 0.
+
+### 🧪 Tests
+- `tests/goldens/test_classify_golden.py` gains goldens for gruyere grams, shallot by the cup, herbs in bunches, dried herbs, no grams for liquid, tin, eggs and a garnish, counted meat, and meat and mince by weight. All classify goldens re-recorded with this prompt (owner approved 2026-11-28).
+
 ## [9.51.4] — 2026-11-28
 
 Every package the service imports is declared, and every version it runs is locked (architecture compliance roadmap, Phase 3b). No change to the package's behaviour.

@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "cbdeb7b93e272d3cd074d42f9775cc242ef67fc2ddd7ad454da1156c9167ff1f",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"gruyere\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 220\n    }\n  ]\n}"
+}

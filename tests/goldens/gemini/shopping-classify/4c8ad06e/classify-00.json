@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "addcd931395429f6cac4711b03148b29c7a938e3844c4c8cdd428b24fabe72de",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"dried oregano\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 2.0\n    }\n  ]\n}"
+}

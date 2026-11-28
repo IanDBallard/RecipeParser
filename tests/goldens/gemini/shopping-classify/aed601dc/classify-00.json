@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "196549ff30010dda3834a778623f04e18bf7e7eed447b461f913cb906d339adb",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    }\n  ]\n}"
+  "prompt_sha256": "f92c55540b58c307fb290032ccaa76e7c62ceb3c6da00192c22493423879600e",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 227\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 43\n    }\n  ]\n}"
 }

@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "e4f66ed9ef9794f4850a29decb2123ff7f5109e6b2e58175e0d130271ede317f",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"cheddar\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"bread flour\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    }\n  ]\n}"
+  "prompt_sha256": "c94e69cc4c7356c853c8058e2e4fb4bd92060beb01523ff5ee063a52f0cc6040",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"cheddar\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 150.0\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"bread flour\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 500.0\n    }\n  ]\n}"
 }

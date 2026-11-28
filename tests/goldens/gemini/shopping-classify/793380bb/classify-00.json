@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "ea8a07e9ad9b7702a430f1f94de457516d23d7ba3d33ed8804c05c585164cf23",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"shallot\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 2,\n      \"count_unit\": \"shallot\",\n      \"made\": false,\n      \"grams\": 75\n    }\n  ]\n}"
+}

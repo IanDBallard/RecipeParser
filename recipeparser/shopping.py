@@ -1,7 +1,7 @@
 """The shopping classify call (Cayenne's shopping list design, Part 3 §2).
 
 One synchronous Gemini call that labels a Generate's ingredients — ``food``,
-``aisle``, ``pantry``, ``count``, ``count_unit``, ``made`` — and nothing else.
+``aisle``, ``pantry``, ``count``, ``count_unit``, ``grams``, ``made`` — and nothing else.
 The device merges, sums and writes; this module reads and writes no table. Quantities on
 the list are computed in code (D5), so the model never sums.
 
@@ -54,6 +54,8 @@ class ClassifiedItem(BaseModel):
     count: Optional[float] = None
     count_unit: Optional[str] = None
     made: bool
+    # At the recipe's base servings, the weight a shopper buys for the ingredient.
+    grams: Optional[float] = None
 
 
 class ClassifyReply(BaseModel):
@@ -101,11 +103,32 @@ and then cooked or prepared ("cooked rice", "melted butter", "toasted \
 almonds") is not made, and neither is one that may be shop-bought; when \
 unsure, "made" is false.
 - "count" is how many whole units a shopper buys for this ingredient (2.2 \
-onion, 0.3 head garlic, 1 tin). When "count" is set, "count_unit" names what \
-is counted: the food itself, singular ("onion", "egg"), or how it is bought \
-("tin", "head", "bunch") - never a cooking measure ("cup", "tbsp"). Use null \
-for both "count" and "count_unit" when the food is bought by weight or \
-volume (flour, milk, mince).
+onion, 0.3 head garlic, 1 tin). When "count" is set, "count_unit" names \
+what is counted: the food itself, singular ("onion", "egg"), or how it is \
+bought ("tin", "head", "bunch", "stick") - never a cooking measure ("cup", \
+"tbsp"). Use null for both "count" and "count_unit" when the food is \
+bought by weight or volume (flour, milk, mince, cheese); never invent a \
+pack ("block", "bag", "packet", "wedge") the recipe does not name.
+- Fresh herbs are counted in "bunch", "count" being the fraction of a \
+supermarket bunch the amount needs (2 tbsp chopped parsley is 0.25 bunch); \
+never "sprig" or "leaf". Dried or ground herbs are not bunches: no count.
+- Whole produce sold as separate items (onion, shallot, carrot, lemon) is \
+counted whatever measure the recipe uses, and "count" stays the number of \
+items the amount needs, a fraction when it is less than one (4 garlic \
+cloves is 0.4 head). Estimate it from the volume or weight, not by echoing \
+the amount: "1/2 cup diced shallot" is "shallot", a count of about 2. \
+Produce the recipe gives by weight, or sold loose in bags (spinach, \
+berries, frozen peas), is not counted; potatoes given as a number are.
+- "grams" is the weight a shopper buys for this ingredient at the amount \
+given, in grams, of the food as bought (raw or dry, not cooked: "2 cups \
+cooked rice" is the dry rice), whatever "count" is (counted produce or \
+meat still gets grams). Never 0: use null when there is nothing to buy. \
+Always null, even when a count is set, for: eggs ("3 large eggs" gives \
+null); a line with no amount ("parsley, to garnish" gives null, as does \
+"salt to taste"); a liquid or a food bought by volume (milk, stock, oil); \
+and a container counted whole (a tin). Otherwise set it for a food bought \
+by weight: a solid (spoonfuls included), a herb measure, or counted \
+produce or meat.
 - Answer every ingredient by its "key", each exactly once.
 
 KNOWN FOODS:
@@ -151,6 +174,8 @@ def _check(items: List[ClassifiedItem], ingredients: Sequence[ClassifyIngredient
             raise ValueError(f"unknown aisle {item.aisle!r} for key {item.key}")
         if item.count is not None and (not math.isfinite(item.count) or item.count < 0):
             raise ValueError(f"count must be a finite number >= 0 for key {item.key}")
+        if item.grams is not None and (not math.isfinite(item.grams) or item.grams <= 0):
+            raise ValueError(f"grams must be null or a finite number > 0 for key {item.key}")
         has_unit = bool(item.count_unit and item.count_unit.strip())
         if (item.count is None) != (not has_unit):
             raise ValueError(

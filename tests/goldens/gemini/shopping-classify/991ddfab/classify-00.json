@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "2a768c4b0a31de1c87210ba323c1ec8fc3539ab0b311b73aa9cd59b456432c26",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"chicken breast\",\n      \"aisle\": \"meat_fish\",\n      \"pantry\": false,\n      \"count\": 4,\n      \"count_unit\": \"chicken breast\",\n      \"made\": false,\n      \"grams\": 800\n    }\n  ]\n}"
+}

@@ -35,6 +35,8 @@ def test_garlic_two_writings_one_food(golden_client):
     ], []))
     assert items["a"].food == items["b"].food
     assert "garlic" in items["a"].food
+    assert items["a"].count_unit == "head" and 0.2 <= items["a"].count <= 0.7
+    assert items["b"].count_unit == "head" and 0.1 <= items["b"].count <= 0.5
 
 
 def test_onion_whole_and_chopped_one_food(golden_client):
@@ -212,3 +214,86 @@ def test_a_word_that_makes_another_purchase_stays(golden_client):
     assert items["g"].food.lower() == "dijon mustard"
     assert items["h"].food.lower() == "greek yogurt"
     assert items["i"].food.lower() == "white pepper"
+
+
+# Batch 90 (Cayenne F-882, F-883): grams estimates, herbs in bunches, whole
+# produce counted. All classify goldens re-recorded with this prompt (owner
+# approved 2026-11-28).
+
+
+def test_holiday_gruyere_has_grams(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing(
+            "a",
+            "2 cups gruyere or Colby cheese, shred yourself (or cheddar, Monterey Jack, "
+            "OR 1 cup / 100g shredded parmesan) (Note 4)",
+            "gruyere", 2.0, "cup",
+        ),
+    ], []))
+    assert items["a"].grams is not None and 120 <= items["a"].grams <= 260
+    assert items["a"].count is None and items["a"].count_unit is None
+
+
+def test_shallot_measured_by_cup_is_counted(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "½ cup diced shallot", "shallot", 0.5, "cup"),
+    ], []))
+    assert items["a"].count is not None and 1 <= items["a"].count <= 3
+    assert "shallot" in (items["a"].count_unit or "")
+    assert items["a"].grams is not None
+
+
+def test_herbs_counted_in_bunches(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "2 tbsp chopped parsley", "parsley", 2.0, "tbsp"),
+        ing("b", "4 sprigs thyme", "thyme", 4.0, "sprig"),
+        ing("c", "1 bunch coriander", "coriander", 1.0, "bunch"),
+    ], []))
+    for key in "abc":
+        assert items[key].count_unit == "bunch", key
+        assert items[key].count is not None and 0.05 <= items[key].count <= 1.5, key
+        assert items[key].grams is not None, key
+
+
+def test_liquid_and_tin_and_eggs_have_no_grams(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "1 cup milk", "milk", 1.0, "cup"),
+        ing("b", "1 tin tomatoes", "tomatoes", 1.0, "tin"),
+        ing("c", "3 large eggs", "eggs", 3.0),
+    ], []))
+    for key in "abc":
+        assert items[key].grams is None, key
+
+
+def test_unmeasured_garnish_has_no_grams(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "parsley, to garnish", "parsley"),
+    ], []))
+    assert items["a"].grams is None
+
+
+def test_dried_herb_is_not_a_bunch(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "1 tsp dried oregano", "dried oregano", 1.0, "tsp"),
+    ], []))
+    assert items["a"].count is None and items["a"].count_unit is None
+    assert items["a"].grams is None or 0.3 <= items["a"].grams <= 5
+
+
+def test_counted_meat_has_count_and_grams(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "4 boneless chicken breasts (about 800 g)", "boneless chicken breasts", 4.0),
+    ], []))
+    assert items["a"].count is not None and 3.5 <= items["a"].count <= 4.5
+    assert items["a"].grams is not None and 600 <= items["a"].grams <= 1000
+
+
+def test_meat_by_weight_has_grams_and_no_count(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "2 kg chicken thighs", "chicken thighs", 2.0, "kg"),
+        ing("b", "500 g mince", "mince", 500.0, "g"),
+    ], []))
+    assert items["a"].count is None
+    assert items["a"].grams is not None and 1500 <= items["a"].grams <= 2500
+    assert items["b"].count is None
+    assert items["b"].grams is not None and 400 <= items["b"].grams <= 600
