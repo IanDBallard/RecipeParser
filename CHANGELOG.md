@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.51.2] — 2026-11-28
+
+A broad exception handler can no longer be added that swallows a job cancellation or an exhausted daily quota (architecture compliance roadmap, Phase 3). No change to the package's behaviour.
+
+### 🔧 Changed
+- New mandate `fail-loud.quota-cancel-propagate`, checked on pull requests and before every push by a host detector, `config/architecture/detectors/quota_cancel.py`. On an `except` line a change adds, a bare, `Exception`, `BaseException` or `RecipeParserError` clause must re-raise, or follow a clause of the same `try` that re-raises `JobCancelledError` and `DailyQuotaExhaustedError`. A clause that names either error itself is allowed. Exemption: `# fail-loud.quota-cancel-ok: <reason>`.
+- The 88 existing handlers that do not let them through are not flagged until their `except` line is edited.
+
+### 📝 Docs
+- `config/architecture/ARCHITECTURE.md` gains "Quota and cancel propagate": the rule, the re-raise pattern, approval, and a recount snippet.
+- `docs/architecture/ACF_ROADMAP.md`: status and "What is checked today" brought up to date (Phases 0 to 2 done, Phase 3 started); Phase 0's fix PRs and baseline re-run marked done.
+
+**For developers:** host detectors run locally only after an approval. Run `/acf-approve` once in this repository (it covers every worktree) before your next push; CI needs nothing.
+
 ## [9.51.1] — 2026-11-27
 
 The shopping classifier's food leaves out words that only name a grade, grain, origin or brand of one food (Cayenne F-891), so "Maldon salt" or "granulated sugar" no longer reaches the list as its own food.
