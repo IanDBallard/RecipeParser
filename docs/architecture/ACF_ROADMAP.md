@@ -26,6 +26,7 @@ sit beside it (ruff, mypy, vulture), because both feed the same gates.
 | ruff `E`, `F`, `I`, `TID` | lint | CI (`ruff` job) | Since 9.46.2, on the lines a pull request changes; older findings are Phase 5's. |
 | `layers.model-sdk-owners` | ruff `TID251` | CI (`ruff` job) | Since 9.51.3: only the listed owners import `google.genai` / `anthropic` (doctrine "Model SDK owners"). |
 | `layers.one-clock` | ruff `DTZ` | CI (`ruff` job) | Since 9.51.3: no naive datetime under `recipeparser/` (doctrine "One clock"). |
+| dependencies | `deptry` and the lock check | CI (`dependencies` job) | Since 9.51.4: every import under `recipeparser/` is declared in `pyproject.toml`, and `requirements.txt` is its generated lock. |
 | mypy | types | nobody | 208 errors in 29 files at 2026-11-25; `baseline_mypy.txt` is a stale snapshot. |
 | pytest (+ coverage) | tests | CI (`build-installer.yml`) | |
 
@@ -44,10 +45,6 @@ and the baseline are committed (`docs/reviews/architecture/`,
   recipes, the server as sole writer of derived columns (Phases 3 and 4). Quota and cancel
   propagation is checked since 9.51.2; model SDK owners and one clock since 9.51.3.
 - **Types are not gated** (Phase 5, decision 4).
-- **Dependencies are not checked.** `adapters/api.py` and `io/readers/url.py` import
-  `requests`, which neither `pyproject.toml` nor `requirements.txt` declares; it arrives
-  only as another package's dependency. The Docker image installs `requirements.txt`, a
-  second hand-kept manifest whose pins differ from `pyproject.toml`'s (Phase 3b).
 - **`core/` reaches the model layer directly.** `core/pipeline.py` and the `extract`,
   `refine` and `embed` stages import `recipeparser.gemini`. The layer ban covers only
   `io/` and `adapters/`, so this passes unseen, and `import recipeparser` loads `.env` and
@@ -118,13 +115,13 @@ crossings; the plain-import case moves to ruff (Phase 1).
 ### Phase 3b — Boundary, dependency and doc fixes (from the 2026-11-28 outside review)
 
 An outside review of the repository made five recommendations; each claim was checked
-against master at 9.51.3. Items 1 and 5 were already here (decision 1, Phase 5) and are
+against master at 9.51.3, one of them wrongly: see the first row. Items 1 and 5 were already here (decision 1, Phase 5) and are
 updated in place; the rest are new. Suggested order: decision 1, then the items below in
 table order. The docs rewrite comes last so it describes the shape the boundary fix leaves.
 
 | Item | Mechanism | Done when |
 |---|---|---|
-| Declare and unify dependencies | Replace `requests` in `adapters/api.py` and `io/readers/url.py` with `httpx` (declared, used everywhere else); the `Dockerfile` installs from `pyproject.toml` (or a lockfile generated from it) instead of the hand-kept `requirements.txt`; `deptry` in CI (promoted from Phase 5's optional item) | No module imports an undeclared package; one manifest; `deptry` reports nothing on the PR diff. |
+| Declare and unify dependencies | Declare `requests` and `postgrest`; generate `requirements.txt` from `pyproject.toml` (`scripts/ci/lock_requirements.py`); `deptry` in CI | No module under `recipeparser/` imports an undeclared package; the lock matches `pyproject.toml`. **Done in 9.51.4.** The review's proposal to replace `requests` with `httpx` is **rejected**: through the page proxy, Dotdash Meredith's sites answered `httpx` 403 and `requests` 200 (Cayenne F-687, `_fetch_page_meta`'s docstring), so the swap would bring that bug back. |
 | Dead models and package-wide ruff | Delete `TocEntry`, `TocList`, `TocRecipeClassification` from `models.py` (no reference outside it); clear the 38 findings `ruff check recipeparser` reports today | `ruff check recipeparser` is clean, so CI runs it on the whole package, not only on changed lines; `scripts/` and `tests/` stay diff-only. |
 | `core/` takes its model calls by injection | A typed protocol for the model calls (`LLMCalls`, or one callable per stage) passed into `RecipePipeline`, as `CategorySource`, `ImageStore` and `AskFood` already are; `core/` stops importing `recipeparser.gemini`. A real refactor: spec first, through `/adversarial-design-review` | `recipeparser.gemini` joins the banned-api list in `recipeparser/core/ruff.toml`, and ruff reports nothing. |
 | No import side effects | `load_dotenv()` and `genai.Client(...)` move out of `recipeparser/__init__.py` into the entry points (`__main__`/`adapters/cli.py`, `adapters/gui.py`, `adapters/api.py`); the 7 scripts that read `recipeparser.client` build their own | `import recipeparser` reads no file and builds no client; `__init__.py` leaves the model SDK owners (`pyproject.toml` per-file-ignores, doctrine "Model SDK owners"). |
@@ -176,7 +173,7 @@ replace them.
 - A small host check, `deadcode.test-only-modules`: a module under `recipeparser/` that
   only `tests/` imports is reported. This is the case vulture cannot see, because the
   tests count as callers; it is exactly how `toc.py` survived.
-- `deptry` moved to Phase 3b (it found a real case: `requests`).
+- `deptry` moved to Phase 3b (done in 9.51.4; it found two real cases, `requests` and `postgrest`).
 
 ## 4. Decisions needed
 

@@ -12,6 +12,8 @@ tests/fixtures/servings_source_cases.json text eol=lf
 
 # Git hooks are POSIX shell scripts; keep them LF on every checkout.
 .githooks/* text eol=lf
+# Generated (scripts/ci/lock_requirements.py); uv writes LF.
+requirements.txt text eol=lf
 # Host detectors are approved by their SHA-256 (acf-allow); LF everywhere keeps the
 # bytes, and so the approval, the same on every checkout.
 config/architecture/detectors/*.py text eol=lf

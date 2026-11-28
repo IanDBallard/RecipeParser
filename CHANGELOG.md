@@ -16,6 +16,19 @@ The shopping classifier estimates the grams a shopper buys, counts fresh herbs i
 ### 🧪 Tests
 - `tests/goldens/test_classify_golden.py` gains goldens for gruyere grams, shallot by the cup, herbs in bunches, dried herbs, no grams for liquid, tin, eggs and a garnish, counted meat, and meat and mince by weight. All classify goldens re-recorded with this prompt (owner approved 2026-11-28).
 
+## [9.51.4] — 2026-11-28
+
+Every package the service imports is declared, and every version it runs is locked (architecture compliance roadmap, Phase 3b). No change to the package's behaviour.
+
+### 🔧 Changed
+- `requests` and `postgrest` are declared in `pyproject.toml`; both were imported but arrived only through other packages. `google-genai`'s minimum is 1.60, as `requirements.txt` already had it.
+- `requirements.txt` is generated from `pyproject.toml` by `scripts/ci/lock_requirements.py` and pins every package, transitive ones included. The versions are the ones the production image built on 2026-11-28 installed. Until now most moved to the newest release at every image build.
+- A `dependencies` CI job fails when the lock is stale, or when `recipeparser/` imports an undeclared package (`deptry`).
+
+### 📝 Docs
+- `docs/architecture/ACF_ROADMAP.md`: the item is done, and its proposal to replace `requests` with `httpx` is rejected: Dotdash Meredith's sites refuse `httpx` through the page proxy (Cayenne F-687).
+- `README.md`: "Dependency Management" describes the lock.
+
 ## [9.51.3] — 2026-11-28
 
 Two more project rules are checked on every pull request, both by ruff (architecture compliance roadmap, Phase 3). No change to the package's behaviour.

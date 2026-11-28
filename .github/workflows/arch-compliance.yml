@@ -1,11 +1,13 @@
 name: Architecture compliance
 
-# Two gates on every pull request (docs/architecture/ACF_ROADMAP.md, Phase 1):
+# Three gates on every pull request (docs/architecture/ACF_ROADMAP.md, Phase 1):
 #   - acf-check-diff --call-site ci: the mandates in config/architecture/mandates.yml
 #     that declare the ci site, on the files the pull request changed;
-#   - ruff on the lines the pull request changed (scripts/ci/ruff_changed_lines.py).
-# Both look only at the pull request's diff, so on a push to master there is nothing
-# to check and the workflow does not run there.
+#   - ruff on the lines the pull request changed (scripts/ci/ruff_changed_lines.py);
+#   - dependencies: requirements.txt is the lock of pyproject.toml, and every import in
+#     recipeparser/ is declared there (deptry).
+# The first two look only at the pull request's diff, so the workflow does not run on a
+# push to master.
 on:
   pull_request:
 
@@ -34,3 +36,15 @@ jobs:
       # The version ruff resolves to locally (pyproject.toml allows >=0.4).
       - run: pip install "ruff==0.15.8"
       - run: python scripts/ci/ruff_changed_lines.py --base "origin/${{ github.base_ref }}"
+
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install "uv==0.11.32" "deptry==0.25.1"
+      - run: python scripts/ci/lock_requirements.py --check
+      - run: deptry recipeparser
