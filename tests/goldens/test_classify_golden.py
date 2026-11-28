@@ -236,7 +236,7 @@ def test_shallot_measured_by_cup_is_counted(golden_client):
     items = by_key(classify_ingredients(golden_client(FIXTURE), [
         ing("a", "½ cup diced shallot", "shallot", 0.5, "cup"),
     ], []))
-    assert items["a"].count is not None and 0.5 <= items["a"].count <= 3
+    assert items["a"].count is not None and 1 <= items["a"].count <= 3
     assert "shallot" in (items["a"].count_unit or "")
     assert items["a"].grams is not None
 
