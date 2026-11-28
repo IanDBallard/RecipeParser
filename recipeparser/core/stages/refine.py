@@ -28,7 +28,7 @@ from recipeparser.core.rate_limiter import GlobalRateLimiter
 from recipeparser.core.temperatures import repair_tokens
 from recipeparser.core.yields import check_yield
 from recipeparser.gemini import refine_recipe_for_cayenne
-from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction
+from recipeparser.models import SOURCE_SYSTEMS, CayenneRefinement, RecipeExtraction, StructuredIngredient
 from recipeparser.utils import title_case
 
 log = logging.getLogger(__name__)
@@ -425,6 +425,8 @@ _SIZE_BRACKET_RE = re.compile(_SIZE_BRACKET, re.IGNORECASE)
 _BRACKETED_SIZE_RE = re.compile(rf"^\s*(?:{_SIZE_NUM})\s*{_SIZE_BRACKET}", re.IGNORECASE)
 # A count and then words: "1 standing rib roast (about 8 lb)" (F-858).
 _COUNT_THEN_WORD_RE = re.compile(rf"^\s*(?:{_SIZE_NUM})\s+[^\d\s(]")
+_LEADING_COUNT_RE = re.compile(rf"^\s*({_SIZE_NUM})")
+_EACH_RE = re.compile(r"\beach\b", re.IGNORECASE)
 
 
 def _bracketed_size(line: str) -> re.Match[str] | None:
@@ -432,12 +434,19 @@ def _bracketed_size(line: str) -> re.Match[str] | None:
     The size in brackets on a counted line: straight after the count ("1 (4- to 5-pound) brisket"),
     or after the food's name ("1 standing rib roast (about 8 lb)", F-858) when it is the line's only
     bracketed size; two ("1 ham (about 7 lb) or 2 small (3 lb) hams") say nothing about which is meant.
+    After the name, the size is each item's only when the count is 1 or the bracket says "each":
+    otherwise it is the total ("9 large egg whites (about 280-300 gms)", Cayenne F-892).
     """
     m = _BRACKETED_SIZE_RE.match(line)
     if m or not _COUNT_THEN_WORD_RE.match(line):
         return m
     sizes = list(_SIZE_BRACKET_RE.finditer(line))
-    return sizes[0] if len(sizes) == 1 else None
+    if len(sizes) != 1:
+        return None
+    count = _size_value(_LEADING_COUNT_RE.match(line).group(1))
+    if count != 1 and not _EACH_RE.search(sizes[0].group(0)):
+        return None
+    return sizes[0]
 
 
 def _size_value(token: str) -> float:
@@ -461,16 +470,25 @@ def _fill_bracketed_sizes(refinement: CayenneRefinement) -> None:
     _check_conversions, so an AI guess at a can's size has already given way.
     """
     for ing in refinement.structured_ingredients:
-        if ing.kind == "heading" or ing.amount is None or ing.converted_amount is not None:
-            continue
-        if _kind(ing.unit) is not None:
-            continue
-        m = _bracketed_size(ing.fallback_string or "")
-        if not m or _kind(m.group(2)) is None:
-            continue
-        ing.converted_amount = _size_value(m.group(1))
-        ing.converted_unit = m.group(2).strip()
-        ing.is_ai_converted = False
+        fill_bracketed_size(ing)
+
+
+def fill_bracketed_size(ing: StructuredIngredient) -> bool:
+    """
+    _fill_bracketed_sizes for one line, in place: True when it set the second measure. Shared with
+    RecipeParser's F-888 backfill, so stored lines are repaired by the rule new imports use.
+    """
+    if ing.kind == "heading" or ing.amount is None or ing.converted_amount is not None:
+        return False
+    if _kind(ing.unit) is not None:
+        return False
+    m = _bracketed_size(ing.fallback_string or "")
+    if not m or _kind(m.group(2)) is None:
+        return False
+    ing.converted_amount = _size_value(m.group(1))
+    ing.converted_unit = m.group(2).strip()
+    ing.is_ai_converted = False
+    return True
 
 
 def _plain(text: str) -> str:

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from recipeparser.core.stages.refine import refine
+from recipeparser.core.stages.refine import fill_bracketed_size, refine
 from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
 
 _PATCH = "recipeparser.core.stages.refine.refine_recipe_for_cayenne"
@@ -496,6 +496,33 @@ class TestABracketedSizeAfterTheFood:
         ing = _line("ing_01", line, float(line.split()[0]), unit, "thing")
         result, _ = _refine(_refinement(ing), raw=_raw(line))
         assert result.structured_ingredients[0].converted_amount is None
+
+    @pytest.mark.parametrize("line,unit", [
+        ("9 large egg whites (about 280-300 gms)", None),
+        ("3 ripe Bosc pears (about 1 pound)", None),
+        ("4 cloves garlic, minced (1 tablespoon)", "cloves"),
+        ("1/2 small head napa cabbage, cored and shredded (about 3 1/2 cups)", "head"),
+        ("2 medium butternut squashes (about 4 pounds), peeled", None),
+        ("2 cans (14.5 oz) diced tomatoes", "cans"),
+    ])
+    def test_a_size_after_the_name_with_a_count_other_than_one_is_a_total_and_left(self, line, unit):
+        # Cayenne F-892: "9 large egg whites (about 280-300 gms)" stored 300 g per egg white.
+        first = line.split()[0]
+        amount = 0.5 if first == "1/2" else float(first)
+        ing = _line("ing_01", line, amount, unit, "thing")
+        result, _ = _refine(_refinement(ing), raw=_raw(line))
+        assert result.structured_ingredients[0].converted_amount is None
+
+    def test_each_still_gives_the_size_of_each(self):
+        line = "4 bone-in pork chops (about 8 ounces each)"
+        ing = _line("ing_01", line, 4.0, None, "pork chops")
+        result, _ = _refine(_refinement(ing), raw=_raw(line))
+        got = result.structured_ingredients[0]
+        assert (got.converted_amount, got.converted_unit) == (8.0, "ounces")
+
+    def test_fill_bracketed_size_reports_whether_it_filled(self):
+        assert fill_bracketed_size(_line("i", "1 standing rib roast (about 8 lb)", 1.0, None, "roast")) is True
+        assert fill_bracketed_size(_line("i", "3 ripe Bosc pears (about 1 pound)", 3.0, None, "pears")) is False
 
 
 class TestAnExtraAmount:

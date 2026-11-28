@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.50.1] — 2026-11-27
+
+A size in brackets after the food's name is the size of each item only when the count is 1 or the bracket says "each" (Cayenne F-892).
+
+### 🐛 Fixed
+- 9.48.1 (Cayenne F-858) took a lone size after the food's name as each item's whatever the count, so "9 large egg whites (about 280-300 gms)" stored 300 g per egg white and "3 ripe Bosc pears (about 1 pound)" 1 lb per pear. Such a size is now kept only on a count of exactly 1 ("1 standing rib roast (about 8 lb)") or when it says each ("4 pork chops (about 8 ounces each)"); otherwise the line keeps no second measure, as before 9.48.1. A size straight after the count ("2 (15-ounce) cans") is unchanged.
+- `fill_bracketed_size(ing)` is the per-line rule, shared with the F-888 backfill of stored recipes.
+
 ## [9.50.0] — 2026-11-27
 
 A batter pudding is its own bake type, `batter-pudding`, chosen by how the batter is made, not by the title (Cayenne F-890). **Deploy note:** needs the Cayenne PR for F-890 deployed first: its migration admits `batter-pudding` to `recipes_bake_type_check`, and without it a recipe typed `batter-pudding` is refused on write.
