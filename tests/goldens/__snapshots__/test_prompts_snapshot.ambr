@@ -1524,6 +1524,18 @@
             'title': 'Food',
             'type': 'string',
           }),
+          'grams': dict({
+            'anyOf': list([
+              dict({
+                'type': 'number',
+              }),
+              dict({
+                'type': 'null',
+              }),
+            ]),
+            'default': None,
+            'title': 'Grams',
+          }),
           'key': dict({
             'title': 'Key',
             'type': 'string',
