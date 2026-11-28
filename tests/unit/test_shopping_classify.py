@@ -29,9 +29,9 @@ ING = [
 
 def item(key: str, food: str = "flour", aisle: str = "dry_goods", pantry: bool = True,
          count: Optional[float] = None, count_unit: Optional[str] = None,
-         made: bool = False) -> dict:
+         made: bool = False, grams: Optional[float] = None) -> dict:
     return {"key": key, "food": food, "aisle": aisle, "pantry": pantry,
-            "count": count, "count_unit": count_unit, "made": made}
+            "count": count, "count_unit": count_unit, "made": made, "grams": grams}
 
 
 def reply(items: List[dict]) -> str:
@@ -127,6 +127,23 @@ class TestChecks:
             classify_ingredients(client, ING, [])
         assert len(client.calls) == 2
         assert reason_word in str(err.value).lower()
+
+    def test_check_accepts_null_or_positive_grams(self):
+        good = reply([item("r1:i1", grams=None), item("r1:i2", grams=12.0)])
+        client = ScriptedClient([good])
+        items = classify_ingredients(client, ING, [])
+        assert [i.grams for i in items] == [None, 12.0]
+        assert len(client.calls) == 1
+
+    @pytest.mark.parametrize("bad_grams", [0, -1, float("nan"), float("inf")])
+    def test_check_refuses_bad_grams(self, bad_grams):
+        bad = reply([item("r1:i1"), item("r1:i2", grams=bad_grams)])
+        client = ScriptedClient([bad, bad])
+        with pytest.raises(ClassifyCheckError) as err:
+            classify_ingredients(client, ING, [])
+        assert len(client.calls) == 2
+        assert "grams" in str(err.value).lower()
+        assert "r1:i2" in str(err.value)
 
     def test_a_failed_check_then_a_good_reply_succeeds(self):
         client = ScriptedClient([reply([item("r1:i1")]), GOOD])

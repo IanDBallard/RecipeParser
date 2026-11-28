@@ -54,6 +54,8 @@ class ClassifiedItem(BaseModel):
     count: Optional[float] = None
     count_unit: Optional[str] = None
     made: bool
+    # At the recipe's base servings, the weight a shopper buys for the ingredient.
+    grams: Optional[float] = None
 
 
 class ClassifyReply(BaseModel):
@@ -151,6 +153,8 @@ def _check(items: List[ClassifiedItem], ingredients: Sequence[ClassifyIngredient
             raise ValueError(f"unknown aisle {item.aisle!r} for key {item.key}")
         if item.count is not None and (not math.isfinite(item.count) or item.count < 0):
             raise ValueError(f"count must be a finite number >= 0 for key {item.key}")
+        if item.grams is not None and (not math.isfinite(item.grams) or item.grams <= 0):
+            raise ValueError(f"grams must be null or a finite number > 0 for key {item.key}")
         has_unit = bool(item.count_unit and item.count_unit.strip())
         if (item.count is None) != (not has_unit):
             raise ValueError(

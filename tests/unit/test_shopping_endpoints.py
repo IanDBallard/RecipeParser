@@ -142,6 +142,22 @@ def test_classify_passes_made_through(client, monkeypatch):
     assert by_key["r1:i2"]["made"] is False
 
 
+def test_classify_response_always_carries_grams(client, monkeypatch):
+    # The contract with Cayenne (.clinerules 13): grams is on every item, null included.
+    with_grams = json.dumps({"items": [
+        {"key": "r1:i1", "food": "flour", "aisle": "dry_goods", "pantry": True,
+         "count": None, "count_unit": None, "made": False, "grams": 250.0},
+        {"key": "r1:i2", "food": "crème fraîche", "aisle": "dairy_eggs", "pantry": False,
+         "count": None, "count_unit": None, "made": False, "grams": None},
+    ]})
+    monkeypatch.setattr(api, "_get_client", lambda: ScriptedClient([with_grams]))
+    response = _post(_as(client))
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert all("grams" in i for i in items)
+    assert [i["grams"] for i in items] == [250.0, None]
+
+
 def test_too_many_ingredients_is_400_without_a_call(client, monkeypatch):
     scripted = ScriptedClient([])
     monkeypatch.setattr(api, "_get_client", lambda: scripted)
