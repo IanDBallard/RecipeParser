@@ -8,7 +8,7 @@ sit beside it (ruff, mypy, vulture), because both feed the same gates.
 
 ## 1. Where we are
 
-### What is checked today (9.51.2)
+### What is checked today (9.51.3)
 
 | Rule | Kind | Runs where | Notes |
 |---|---|---|---|
@@ -20,10 +20,12 @@ sit beside it (ruff, mypy, vulture), because both feed the same gates.
 | `ops.no-build-artifacts` | ACF built-in, BLOCK | `ci`, `precommit`, `hook` | |
 | `soft.fail-loud` | ACF review rule | `/architecture-review` | `exception_base` set since 9.49.1. |
 | `soft.no-shims` | ACF review rule | `/architecture-review` | |
-| `soft.layer-imports` | ACF review rule (host prompt) | `/architecture-review` | Plain imports also checked by ruff `TID251`, scoped to `recipeparser/core/**`. |
+| `soft.layer-imports` | ACF review rule (host prompt) | `/architecture-review` | Plain imports also checked by ruff `TID251`, declared in `recipeparser/core/ruff.toml`. |
 | `soft.state-machines` | ACF review rule | `/architecture-review` | `PipelineController.transition()` / `status`. |
 | `soft.class-cohesion` | ACF review rule | `/architecture-review` | |
 | ruff `E`, `F`, `I`, `TID` | lint | CI (`ruff` job) | Since 9.46.2, on the lines a pull request changes; older findings are Phase 5's. |
+| `layers.model-sdk-owners` | ruff `TID251` | CI (`ruff` job) | Since 9.51.3: only the listed owners import `google.genai` / `anthropic` (doctrine "Model SDK owners"). |
+| `layers.one-clock` | ruff `DTZ` | CI (`ruff` job) | Since 9.51.3: no naive datetime under `recipeparser/` (doctrine "One clock"). |
 | mypy | types | nobody | 208 errors in 29 files at 2026-11-25; `baseline_mypy.txt` is a stale snapshot. |
 | pytest (+ coverage) | tests | CI (`build-installer.yml`) | |
 
@@ -39,8 +41,8 @@ and the baseline are committed (`docs/reviews/architecture/`,
   `PaprikaReader.read_entries_with_images` lived on with no production caller until the
   2026-11-25 fail-loud review happened to notice them (Phase 5).
 - **Most rules specific to this app are written down but unchecked:** one writer of
-  recipes, the server as sole writer of derived columns, model SDKs called from one
-  place, one clock (Phases 3 and 4). Quota and cancel propagation is checked since 9.51.2.
+  recipes, the server as sole writer of derived columns (Phases 3 and 4). Quota and cancel
+  propagation is checked since 9.51.2; model SDK owners and one clock since 9.51.3.
 - **Types are not gated** (Phase 5, decision 4).
 
 ## 2. Principles
@@ -97,8 +99,8 @@ workflow.
 | Rule id (proposed) | What it checks | Source of the rule |
 |---|---|---|
 | `fail-loud.quota-cancel-propagate` | Every `except Exception` / bare `except` under `recipeparser/` either re-raises, or is preceded in the same `try` by a handler that re-raises `JobCancelledError` and `DailyQuotaExhaustedError` (or a `RecipeParserError` base of both), or carries the exemption marker. **Done in 9.51.2** (`config/architecture/detectors/quota_cancel.py`, added lines only, `ci` + `precommit`; 88 existing handlers left to fix or exempt as each is edited). | `recipeparser/exceptions.py` docstrings |
-| `layers.model-sdk-owners` | `google.genai` / `anthropic` are imported only by `gemini.py`, `categories.py`, `core/picture_gen.py`, `core/picture_check.py`, `adapters/ai_search/**` | ARCHITECTURE.md §5, §15 |
-| `layers.one-clock` | No `datetime.now()` / `utcnow()` / `time.time()` used to stamp data outside `core/clock.py` (timers and timeouts exempt by name) — or ruff `DTZ` plus a short allowlist | ARCHITECTURE.md module map (`clock.py`) |
+| `layers.model-sdk-owners` | `google.genai` / `anthropic` are imported only by `gemini.py`, `categories.py`, `core/picture_gen.py`, `core/picture_check.py`, `adapters/ai_search/**`. **Done in 9.51.3** as ruff `TID251`; the real owner list (entry points that build clients, adapters that catch `APIError`) is in the doctrine's "Model SDK owners". | ARCHITECTURE.md §5, §15 |
+| `layers.one-clock` | No `datetime.now()` / `utcnow()` / `time.time()` used to stamp data outside `core/clock.py` (timers and timeouts exempt by name) — or ruff `DTZ` plus a short allowlist. **Done in 9.51.3** as ruff `DTZ`: `clock.py` owns the format, not every reading of the time, so the rule is "no naive datetime". | ARCHITECTURE.md module map (`clock.py`) |
 | `secrets.service-role-key` | The Supabase service-role key is read only in `config.py` and the server's start-up | ARCHITECTURE.md §12, §15 |
 | `ownership.derived-columns` | `structured_ingredients`, `tokenized_directions`, `embedding`, `derived_rev` are written only by `io/writers/supabase.py`, `adapters/regen_worker.py`, `adapters/embed_worker.py` | ARCHITECTURE.md §13 |
 
@@ -135,7 +137,7 @@ name, 1 undefined name). Proposed additions, in order, with today's counts on
 | `B` (bugbear) | ~50 | `B008` defaults (39, mostly FastAPI `Depends` — configure `extend-immutable-calls`), `B905`, `B007`. |
 | `ARG`, `ERA`, `PIE`, `RET`, `SIM` | ~25 | Unused arguments, commented-out code, small simplifications. |
 | `S` (bandit) | ~15 | Review `S608` (SQL strings) by hand; the search gate already parses SQL. |
-| `DTZ` | 0 | Free to adopt now; backs `layers.one-clock`. |
+| `DTZ` | 0 | **Adopted in 9.51.3** (`layers.one-clock`). |
 | `UP` (pyupgrade) | ~1,500 | Almost all auto-fixable annotation modernisation; one mechanical PR, not a ratchet. |
 
 **Types — mypy.** 208 errors today. Record a per-file count (like the fail-loud ratchet),

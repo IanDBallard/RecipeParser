@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recipeparser"
-version = "9.51.2"
+version = "9.51.3"
 description = "Extract recipes from EPUB cookbooks and export to Paprika 3"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -95,18 +95,31 @@ line-length = 120
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "TID"]
+# DTZ: no naive datetime (layers.one-clock, ARCHITECTURE.md "One clock").
+select = ["E", "F", "I", "TID", "DTZ"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-"recipeparser.io".msg = "core/ modules cannot import from io/ — violates hexagonal architecture"
-"recipeparser.adapters".msg = "core/ modules cannot import from adapters/ — violates hexagonal architecture"
+# layers.model-sdk-owners (ARCHITECTURE.md "Model SDK owners"): only the modules listed under
+# per-file-ignores below import a model SDK. recipeparser/core/ruff.toml repeats these two
+# entries beside core's layer ban, because a nested config replaces this table.
+"google.genai".msg = "Only the model SDK owners import google.genai (ARCHITECTURE.md, Model SDK owners)"
+"anthropic".msg = "Only the model SDK owners import anthropic (ARCHITECTURE.md, Model SDK owners)"
 
 [tool.ruff.lint.per-file-ignores]
-# The layer ban is a rule about core/ (ARCHITECTURE.md, hexagonal layout): core/ may not
-# import io/ or adapters/. Everything else -- io/, adapters/, the package-root entry points,
-# scripts/ and tests/ -- is an outer layer that wires them together, so the ban is switched
-# off everywhere except core/ rather than exempted file by file.
-"!recipeparser/core/**" = ["TID251"]
+# The model SDK owners (layers.model-sdk-owners). core/picture_gen.py is one too; it carries
+# a line `noqa: TID251` instead, because a file ignore would also switch off core's layer ban.
+"recipeparser/gemini.py" = ["TID251"]
+"recipeparser/adapters/ai_search/**" = ["TID251"]
+# Entry points that build a client from an API key, and the adapters that type or catch it.
+"recipeparser/__init__.py" = ["TID251"]
+"recipeparser/__main__.py" = ["TID251"]
+"recipeparser/adapters/api.py" = ["TID251"]
+"recipeparser/adapters/gui.py" = ["TID251"]
+"recipeparser/adapters/search_api.py" = ["TID251"]
+"recipeparser/adapters/shopping_api.py" = ["TID251"]
+# Tests and scripts drive the SDKs directly and build naive datetimes on purpose.
+"tests/**" = ["TID251", "DTZ"]
+"scripts/**" = ["TID251", "DTZ"]
 "tests/unit/test_picture_gen.py" = ["E501"]
 
 [tool.mypy]

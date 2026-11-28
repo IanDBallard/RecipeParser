@@ -1,0 +1,14 @@
+# core/'s own ruff settings: everything in the root pyproject.toml, plus the layer ban.
+#
+# The layer ban is a rule about core/ (ARCHITECTURE.md, hexagonal layout): core/ may not
+# import io/ or adapters/. Everything else -- io/, adapters/, the package-root entry points,
+# scripts/ and tests/ -- is an outer layer that wires them together, so the ban lives here
+# rather than being switched off file by file. This table replaces the root one, so it
+# repeats the model SDK entries (layers.model-sdk-owners).
+extend = "../../pyproject.toml"
+
+[lint.flake8-tidy-imports.banned-api]
+"recipeparser.io".msg = "core/ modules cannot import from io/ — violates hexagonal architecture"
+"recipeparser.adapters".msg = "core/ modules cannot import from adapters/ — violates hexagonal architecture"
+"google.genai".msg = "Only the model SDK owners import google.genai (ARCHITECTURE.md, Model SDK owners)"
+"anthropic".msg = "Only the model SDK owners import anthropic (ARCHITECTURE.md, Model SDK owners)"

@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.51.3] — 2026-11-28
+
+Two more project rules are checked on every pull request, both by ruff (architecture compliance roadmap, Phase 3). No change to the package's behaviour.
+
+### 🔧 Changed
+- `layers.model-sdk-owners`: ruff's banned-api (`TID251`) now refuses a `google.genai` or `anthropic` import outside the modules that use one today (`gemini.py`, `core/picture_gen.py`, `adapters/ai_search/**`, the entry points that build a client, and the adapters that type or catch it). Tests and scripts are exempt.
+- `layers.one-clock`: ruff `DTZ` is on under `recipeparser/`, so a naive datetime cannot be added. The one existing case, the local resume time in `core/quota_wait.py`'s quota-pause message, is now aware (`datetime.now().astimezone()`); the message reads the same.
+- The core layer ban moves from a "everything but core" file ignore in `pyproject.toml` to `recipeparser/core/ruff.toml`, so the two `TID251` bans can have different scopes. ruff's other findings are unchanged (222 before and after).
+
+### 🐛 Fixed
+- Host detector files (`config/architecture/detectors/*.py`) check out with LF on every platform (`.gitattributes`). A fresh Windows checkout wrote them with CRLF, so their SHA-256 no longer matched the approved bytes and the pre-push gate refused with a stale approval.
+
+### 📝 Docs
+- `config/architecture/ARCHITECTURE.md` gains "Model SDK owners" and "One clock", each with a recount; "Layer imports" names where the ruff ban lives.
+- `docs/architecture/ACF_ROADMAP.md`: both rules marked done, with the corrected owner list and scope.
+
 ## [9.51.2] — 2026-11-28
 
 A broad exception handler can no longer be added that swallows a job cancellation or an exhausted daily quota (architecture compliance roadmap, Phase 3). No change to the package's behaviour.
