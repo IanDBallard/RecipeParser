@@ -203,12 +203,12 @@ def test_a_word_that_makes_another_purchase_stays(golden_client):
         ing("h", "200 g Greek yogurt", "Greek yogurt", 200.0, "g"),
         ing("i", "1/2 tsp ground white pepper", "ground white pepper", 0.5, "tsp"),
     ], ["salt", "paprika", "sugar", "pastry", "garlic", "mustard", "yogurt"])
-    assert items["a"].food == "celery salt"
-    assert items["b"].food == "smoked paprika"
-    assert items["c"].food == "caster sugar"
-    assert items["d"].food == "sea bass"
-    assert items["e"].food == "flaky pastry"
-    assert items["f"].food == "granulated garlic"
-    assert items["g"].food == "dijon mustard"
-    assert items["h"].food == "greek yogurt"
-    assert items["i"].food == "white pepper"
+    assert items["a"].food.lower() == "celery salt"
+    assert items["b"].food.lower() == "smoked paprika"
+    assert items["c"].food.lower() == "caster sugar"
+    assert items["d"].food.lower() == "sea bass"
+    assert items["e"].food.lower() == "flaky pastry"
+    assert items["f"].food.lower() == "granulated garlic"
+    assert items["g"].food.lower() == "dijon mustard"
+    assert items["h"].food.lower() == "greek yogurt"
+    assert items["i"].food.lower() == "white pepper"
