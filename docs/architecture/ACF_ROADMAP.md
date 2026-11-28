@@ -1,6 +1,6 @@
 # Architecture compliance roadmap
 
-**Status:** proposed, 2026-11-25. **Owner:** the repository owner.
+**Status:** in progress: Phases 0 to 2 done, Phase 3 started (updated 2026-11-28). **Owner:** the repository owner.
 **Scope:** what RecipeParser checks automatically about its own code, and in what order
 the remaining checks are added. It covers the Architecture Compliance Framework (ACF:
 `config/architecture/`, the `arch-compliance` plugin) and the standard Python tools that
@@ -8,43 +8,40 @@ sit beside it (ruff, mypy, vulture), because both feed the same gates.
 
 ## 1. Where we are
 
-### What is checked today (origin/master `04ce4d5`)
+### What is checked today (9.51.2)
 
 | Rule | Kind | Runs where | Notes |
 |---|---|---|---|
-| `fail-loud.bare-except` | ACF built-in, BLOCK | Claude Code edits | Declares `ci` and `precommit` too, but nothing invokes those sites (below). Flags every broad handler in an edited file, old ones included: noisy until the ratchet (Phase 2) lands. |
-| `no-shims.hasattr` | ACF built-in, WARN | `ci`, `precommit`, `hook` | Pull requests and pushes since 9.46.2; Claude Code edits since 9.49.1. |
-| `posix-paths.str-serialization` | ACF built-in, BLOCK | Claude Code edits | Same: `ci`/`precommit` declared, not invoked. |
-| `ops.no-build-artifacts` | ACF built-in, BLOCK | Claude Code edits | Same. |
-| `soft.fail-loud` | ACF review rule | `/architecture-review` | No `exception_base` set, so "exception outside `RecipeParserError`" is off. |
+| `fail-loud.bare-except` | ACF built-in, BLOCK | `ci`, `precommit`, `hook` | Pull requests and pushes since 9.46.2. The edit hook still reports every unexempted handler in a file it scans. |
+| `fail-loud.ratchet` | ACF built-in, BLOCK | `ci`, `precommit` | Since 9.49.1: each file's broad-handler count may only fall. |
+| `fail-loud.quota-cancel-propagate` | host detector, BLOCK | `ci`, `precommit` | Since 9.51.2: an added broad handler must let `JobCancelledError` and `DailyQuotaExhaustedError` through. Approved once per repository with `/acf-approve`. |
+| `no-shims.hasattr` | ACF built-in, WARN | `ci`, `precommit`, `hook` | |
+| `posix-paths.str-serialization` | ACF built-in, BLOCK | `ci`, `precommit`, `hook` | |
+| `ops.no-build-artifacts` | ACF built-in, BLOCK | `ci`, `precommit`, `hook` | |
+| `soft.fail-loud` | ACF review rule | `/architecture-review` | `exception_base` set since 9.49.1. |
 | `soft.no-shims` | ACF review rule | `/architecture-review` | |
-| `soft.layer-imports` | ACF review rule (host prompt) | `/architecture-review` | Also enforced by ruff `TID251`, which nothing runs (below). |
+| `soft.layer-imports` | ACF review rule (host prompt) | `/architecture-review` | Plain imports also checked by ruff `TID251`, scoped to `recipeparser/core/**`. |
 | `soft.state-machines` | ACF review rule | `/architecture-review` | `PipelineController.transition()` / `status`. |
 | `soft.class-cohesion` | ACF review rule | `/architecture-review` | |
-| ruff `E`, `F`, `I`, `TID` | lint | nobody | Configured in `pyproject.toml`; not in CI or any hook. 69 findings today. |
-| mypy | types | nobody | 208 errors in 29 files today; `baseline_mypy.txt` is a stale snapshot. |
-| pytest (+ coverage) | tests | CI (`build-installer.yml`) | The only automated gate on a pull request. |
+| ruff `E`, `F`, `I`, `TID` | lint | CI (`ruff` job) | Since 9.46.2, on the lines a pull request changes; older findings are Phase 5's. |
+| mypy | types | nobody | 208 errors in 29 files at 2026-11-25; `baseline_mypy.txt` is a stale snapshot. |
+| pytest (+ coverage) | tests | CI (`build-installer.yml`) | |
 
-The first review (2026-11-19) and its baseline are committed
-(`docs/reviews/architecture/`, `config/architecture/review_baseline.json`). The adversarial
-design review is configured (`config/architecture/adr.yml`).
+`arch-compliance` and `ruff` run on every pull request but are not yet required checks
+(decision 1), so a red check can still merge. The reviews of 2026-11-19 and 2026-11-25
+and the baseline are committed (`docs/reviews/architecture/`,
+`config/architecture/review_baseline.json`). The adversarial design review is configured
+(`config/architecture/adr.yml`).
 
 ### What is not checked
 
-- **No gate runs the ACF rules on a pull request or a push.** There is no
-  `arch-compliance` CI job and `.githooks/pre-push` only checks tag versions. A change made
-  outside Claude Code is never checked, and the Claude Code hook only warns the agent.
-- **Lint and types are not gated at all.** The ruff config even encodes the layer rule
-  (`TID251`), but it runs nowhere, and it is mis-scoped: it fires on the package-root
-  re-export modules (`recipeparser/epub.py`, `export.py`, `pdf.py`, `supabase_writer.py`,
-  `api.py`, `__main__.py`), which are shims, not core.
 - **Nothing finds dead code.** `recipeparser/toc.py` (about 260 lines) and
   `PaprikaReader.read_entries_with_images` lived on with no production caller until the
-  2026-11-25 fail-loud review happened to notice them.
-- **The rules most specific to this app are written down but unchecked:** one writer of
+  2026-11-25 fail-loud review happened to notice them (Phase 5).
+- **Most rules specific to this app are written down but unchecked:** one writer of
   recipes, the server as sole writer of derived columns, model SDKs called from one
-  place, one clock, and quota and cancel errors never swallowed (the largest theme of the
-  2026-11-25 review: about a dozen handlers).
+  place, one clock (Phases 3 and 4). Quota and cancel propagation is checked since 9.51.2.
+- **Types are not gated** (Phase 5, decision 4).
 
 ## 2. Principles
 
@@ -66,8 +63,8 @@ Each item names its mechanism, where it runs and what "done" means.
 
 | Item | Done when |
 |---|---|
-| The four fail-loud fix PRs (quota/cancel, readers/writers/dead code, pipeline/job losses, probing) | Merged. |
-| Re-run `/architecture-review --update-baseline` | Baseline reflects the fixes; committed. |
+| The four fail-loud fix PRs (quota/cancel, readers/writers/dead code, pipeline/job losses, probing) | Merged. **Done** (#177 to #180). |
+| Re-run `/architecture-review --update-baseline` | Baseline reflects the fixes; committed. **Done** (#181, review of 2026-11-25). |
 | `tests/fixtures/servings_source_cases.json` byte check | Fails on every Windows checkout (`core.autocrlf=true` rewrites it). Add `tests/fixtures/servings_source_cases.json -text` (or `eol=lf`) to `.gitattributes`. **Done in 9.46.1** (`text eol=lf`, like the other two shared fixtures). |
 | Developer setup | `acf` installed into the interpreter that has the project's dependencies (`C:\Python313\python.exe` here), and `git config core.hooksPath .githooks` documented in the README. **Done in 9.46.2** (README and `.githooks/README.md`). |
 
@@ -99,7 +96,7 @@ workflow.
 
 | Rule id (proposed) | What it checks | Source of the rule |
 |---|---|---|
-| `fail-loud.quota-cancel-propagate` | Every `except Exception` / bare `except` under `recipeparser/` either re-raises, or is preceded in the same `try` by a handler that re-raises `JobCancelledError` and `DailyQuotaExhaustedError` (or a `RecipeParserError` base of both), or carries the exemption marker | `recipeparser/exceptions.py` docstrings |
+| `fail-loud.quota-cancel-propagate` | Every `except Exception` / bare `except` under `recipeparser/` either re-raises, or is preceded in the same `try` by a handler that re-raises `JobCancelledError` and `DailyQuotaExhaustedError` (or a `RecipeParserError` base of both), or carries the exemption marker. **Done in 9.51.2** (`config/architecture/detectors/quota_cancel.py`, added lines only, `ci` + `precommit`; 88 existing handlers left to fix or exempt as each is edited). | `recipeparser/exceptions.py` docstrings |
 | `layers.model-sdk-owners` | `google.genai` / `anthropic` are imported only by `gemini.py`, `categories.py`, `core/picture_gen.py`, `core/picture_check.py`, `adapters/ai_search/**` | ARCHITECTURE.md §5, §15 |
 | `layers.one-clock` | No `datetime.now()` / `utcnow()` / `time.time()` used to stamp data outside `core/clock.py` (timers and timeouts exempt by name) — or ruff `DTZ` plus a short allowlist | ARCHITECTURE.md module map (`clock.py`) |
 | `secrets.service-role-key` | The Supabase service-role key is read only in `config.py` and the server's start-up | ARCHITECTURE.md §12, §15 |

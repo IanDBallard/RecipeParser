@@ -57,6 +57,38 @@ A handler kept on purpose carries its reason on the `except` line:
 the per-line rule but not the ratchet. A change that adds a broad handler on purpose
 raises that file's count in the baseline itself, so the rise is visible in review.
 
+## Quota and cancel propagate
+
+`JobCancelledError` and `DailyQuotaExhaustedError` are not failures of one recipe or one
+chunk: a cancel ends the job as 'cancelled', and an exhausted daily quota stops the whole
+run (`recipeparser/exceptions.py`). Every handler under `recipeparser/` that would catch
+one of them must let it through: re-raise (a bare `raise` or `raise <name>`), or follow a
+clause of the same `try` that re-raises it, for example
+
+```python
+except (JobCancelledError, DailyQuotaExhaustedError):
+    raise
+except Exception:  # noqa: BLE001  # fail-loud.bare-except-ok: <reason>
+    ...
+```
+
+A clause catches them when it is bare or names `Exception`, `BaseException` or
+`RecipeParserError`. A clause that names either error itself is deliberate handling (the
+job runner recording 'cancelled') and is allowed. Re-raising as another type
+(`raise X from exc`) does not count: the caller's `except JobCancelledError` would no
+longer match.
+
+`config/architecture/detectors/quota_cancel.py` checks this on pull requests and before
+every push, on the `except` lines a change adds. It is a host detector: each person
+approves it once per repository with `/acf-approve`, and again after the file changes. A
+handler around code that cannot raise either error carries its reason:
+`# fail-loud.quota-cancel-ok: <reason>`. The existing stock (88 handlers in 34 files at
+introduction; recount with the snippet below) is fixed or exempted as each is next edited.
+
+```bash
+python -c "import ast,importlib.util as u,pathlib as p;s=u.spec_from_file_location('q','config/architecture/detectors/quota_cancel.py');q=u.module_from_spec(s);s.loader.exec_module(q);print(sum(len(q.uncovered_handlers(ast.parse(f.read_text(encoding='utf-8')),None,['JobCancelledError','DailyQuotaExhaustedError'],['RecipeParserError'])) for f in p.Path('recipeparser').rglob('*.py')))"
+```
+
 ## No shims
 
 Do not keep code alive for an old shape: compatibility re-exports ("Backward-compat
