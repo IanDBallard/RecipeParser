@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "e4e4547dc5191dc8308c20b96906bc667f0bd97ed6da1e4930a0437abbd97fd8",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"chicken thighs\",\n      \"aisle\": \"meat_fish\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 2000\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"mince\",\n      \"aisle\": \"meat_fish\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 500\n    }\n  ]\n}"
+}

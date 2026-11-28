@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "f4968fef4608992ac47772ed0f232116516814816e5ca6f1f30ac6951f2dea4d",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"baking powder\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 5\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"evaporated milk\",\n      \"aisle\": \"tins_jars\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"salt\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    }\n  ]\n}"
+  "prompt_sha256": "cdc1b68467717d5c7ea2589d7a6ad10ecaaa7e1d8e11b6f7cd235473822d2e18",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"baking powder\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 5\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"evaporated milk\",\n      \"aisle\": \"tins_jars\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"salt\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    }\n  ]\n}"
 }

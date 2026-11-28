@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "0b72d609fa0ee36418533be5f27c527289b2c1c6b47aab9a41cd03b02ca47e64",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"spring onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 3,\n      \"count_unit\": \"spring onion\",\n      \"made\": false,\n      \"grams\": 45\n    }\n  ]\n}"
+  "prompt_sha256": "146e56590704dc6487db5a38646b2b4cf51aca68abcc5ca77a7a4332f3effe35",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"spring onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 3.0,\n      \"count_unit\": \"spring onion\",\n      \"made\": false,\n      \"grams\": 45.0\n    }\n  ]\n}"
 }

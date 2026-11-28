@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "37b251d20222fe869a3715c698e131dccbf3e67c6b746451c9de27907d5761ab",
+  "prompt_sha256": "4870c3ef3d75fc6b38a6cdac350b0b1d4821470c53e532b43cbe91769f9ea09a",
   "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"red onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\",\n      \"made\": false,\n      \"grams\": 150\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\",\n      \"made\": false,\n      \"grams\": 150\n    }\n  ]\n}"
 }

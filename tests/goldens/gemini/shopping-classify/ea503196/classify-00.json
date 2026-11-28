@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "7ac054ec34b8b93b41df7e0fe7afb4d1f05a2178c644cb1fa4a609d90db577be",
+  "prompt_sha256": "fab021dde1fca776f7655e770700e89cd792c325cb5feb22a6ffb45661800a66",
   "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"parsley\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    }\n  ]\n}"
 }

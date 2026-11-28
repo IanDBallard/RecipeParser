@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "6a887a770c379478036dc8078e94dd9d9a83505765852ebe1b4664539ef24660",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"gruyere\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"block\",\n      \"made\": false,\n      \"grams\": 225\n    }\n  ]\n}"
+  "prompt_sha256": "cbdeb7b93e272d3cd074d42f9775cc242ef67fc2ddd7ad454da1156c9167ff1f",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"gruyere\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 220\n    }\n  ]\n}"
 }
