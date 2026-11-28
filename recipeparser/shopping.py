@@ -1,7 +1,7 @@
 """The shopping classify call (Cayenne's shopping list design, Part 3 §2).
 
 One synchronous Gemini call that labels a Generate's ingredients — ``food``,
-``aisle``, ``pantry``, ``count``, ``count_unit``, ``made`` — and nothing else.
+``aisle``, ``pantry``, ``count``, ``count_unit``, ``grams``, ``made`` — and nothing else.
 The device merges, sums and writes; this module reads and writes no table. Quantities on
 the list are computed in code (D5), so the model never sums.
 
@@ -114,10 +114,13 @@ never "sprig" or "leaf".
 - Whole produce is counted whatever measure the recipe uses: "1/2 cup \
 diced shallot" is "shallot", a count of about 1.
 - "grams" is the weight a shopper buys for this ingredient at the amount \
-given, in grams. Set it for a food bought by weight: a solid (spoonfuls \
-included), a herb measure, or counted produce or meat. Use null for a \
-liquid, a food bought by volume (milk, stock, oil), eggs, a line with no \
-amount, and a container counted whole (a tin).
+given, in grams, whatever "count" is (counted produce or meat still gets \
+grams). Always null, even when a count is set, for: eggs ("3 large eggs" \
+gives null); a line with no amount ("parsley, to garnish" gives null, as \
+does "salt to taste"); a liquid or a food bought by volume (milk, stock, \
+oil); and a container counted whole (a tin). Otherwise set it for a food \
+bought by weight: a solid (spoonfuls included), a herb measure, or counted \
+produce or meat.
 - Answer every ingredient by its "key", each exactly once.
 
 KNOWN FOODS:
