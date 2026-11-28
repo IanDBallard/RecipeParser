@@ -110,6 +110,41 @@ Do not stage or commit generated trees such as `dist/` or `build/`.
 `recipeparser/adapters/`. Adapters may import from both `core/` and `io/` (`GEMINI.md`,
 No Cross-Layer Imports).
 
+ruff checks the plain-import case (`TID251`), with the ban declared in
+`recipeparser/core/ruff.toml` so it applies to `core/` only. The review rule
+`soft.layer-imports` covers lazy, `TYPE_CHECKING` and indirect crossings.
+
+## Model SDK owners
+
+Only these modules import a model SDK (`google.genai`, `anthropic`):
+
+- `recipeparser/gemini.py`, `recipeparser/core/picture_gen.py` and
+  `recipeparser/adapters/ai_search/**`, which call the models;
+- `recipeparser/__init__.py`, `recipeparser/__main__.py`, `recipeparser/adapters/api.py` and
+  `recipeparser/adapters/gui.py`, which build a client from an API key;
+- `recipeparser/adapters/search_api.py`, which types the Anthropic client it is handed, and
+  `recipeparser/adapters/api.py` and `recipeparser/adapters/shopping_api.py`, which catch
+  `google.genai.errors.APIError` to answer 503.
+
+Every other module takes the client it is given and never imports the SDK. ruff enforces
+this (`TID251`, banned-api in `pyproject.toml` and `recipeparser/core/ruff.toml`). An
+owner is listed in `pyproject.toml`'s per-file-ignores; `core/picture_gen.py` carries a
+line `noqa: TID251` instead, since a file ignore would also lift `core/`'s layer ban.
+Adding an owner means adding it to this list and to the ignores together. Tests and
+scripts are exempt.
+
+Recount: `ruff check --select TID251 recipeparser` reports nothing.
+
+## One clock
+
+Every datetime RecipeParser makes is timezone-aware. A stored timestamp is written with
+`recipeparser/core/clock.py`'s `utc_timestamp`, the one format; a time shown to the person
+is local and aware (`datetime.now().astimezone()`). ruff enforces the aware half (`DTZ`)
+under `recipeparser/`; tests and scripts are exempt, since tests build naive datetimes on
+purpose.
+
+Recount: `ruff check --select DTZ recipeparser` reports nothing.
+
 ## State machines
 
 A pipeline run's status changes only through `PipelineController.transition()` (or

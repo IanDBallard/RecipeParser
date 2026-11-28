@@ -75,7 +75,7 @@ class QuotaWait:
                 delay = min(delay, self._give_up_after - spent)
                 until = self._resume_at = now + delay
                 self.pauses += 1
-                wall = datetime.datetime.now() + datetime.timedelta(seconds=delay)
+                wall = datetime.datetime.now().astimezone() + datetime.timedelta(seconds=delay)
                 log.warning(
                     "Gemini's daily request quota is used up. Waiting until %s (%s), then trying again. "
                     "Press Ctrl-C to stop and save the recipes made so far.",
