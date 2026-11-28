@@ -103,23 +103,28 @@ and then cooked or prepared ("cooked rice", "melted butter", "toasted \
 almonds") is not made, and neither is one that may be shop-bought; when \
 unsure, "made" is false.
 - "count" is how many whole units a shopper buys for this ingredient (2.2 \
-onion, 0.3 head garlic, 1 tin). When "count" is set, "count_unit" names what \
-is counted: the food itself, singular ("onion", "egg"), or how it is bought \
-("tin", "head", "bunch") - never a cooking measure ("cup", "tbsp"). Use null \
-for both "count" and "count_unit" when the food is bought by weight or \
-volume (flour, milk, mince).
+onion, 0.3 head garlic, 1 tin). When "count" is set, "count_unit" names \
+what is counted: the food itself, singular ("onion", "egg"), or how it is \
+bought ("tin", "head", "bunch", "stick") - never a cooking measure ("cup", \
+"tbsp"). Use null for both "count" and "count_unit" when the food is \
+bought by weight or volume (flour, milk, mince, cheese); never invent a \
+pack ("block", "bag", "packet", "wedge") the recipe does not name.
 - Fresh herbs are counted in "bunch", "count" being the fraction of a \
 supermarket bunch the amount needs (2 tbsp chopped parsley is 0.25 bunch); \
-never "sprig" or "leaf".
-- Whole produce is counted whatever measure the recipe uses: "1/2 cup \
-diced shallot" is "shallot", a count of about 1.
+never "sprig" or "leaf". Dried or ground herbs are not bunches: no count.
+- Whole produce sold as separate items (onion, shallot, carrot, lemon) is \
+counted whatever measure the recipe uses: "1/2 cup diced shallot" is \
+"shallot", a count of about 1. Produce sold by weight (spinach, berries, \
+frozen peas, potatoes) is not counted.
 - "grams" is the weight a shopper buys for this ingredient at the amount \
-given, in grams, whatever "count" is (counted produce or meat still gets \
-grams). Always null, even when a count is set, for: eggs ("3 large eggs" \
-gives null); a line with no amount ("parsley, to garnish" gives null, as \
-does "salt to taste"); a liquid or a food bought by volume (milk, stock, \
-oil); and a container counted whole (a tin). Otherwise set it for a food \
-bought by weight: a solid (spoonfuls included), a herb measure, or counted \
+given, in grams, of the food as bought (raw or dry, not cooked: "2 cups \
+cooked rice" is the dry rice), whatever "count" is (counted produce or \
+meat still gets grams). Never 0: use null when there is nothing to buy. \
+Always null, even when a count is set, for: eggs ("3 large eggs" gives \
+null); a line with no amount ("parsley, to garnish" gives null, as does \
+"salt to taste"); a liquid or a food bought by volume (milk, stock, oil); \
+and a container counted whole (a tin). Otherwise set it for a food bought \
+by weight: a solid (spoonfuls included), a herb measure, or counted \
 produce or meat.
 - Answer every ingredient by its "key", each exactly once.
 

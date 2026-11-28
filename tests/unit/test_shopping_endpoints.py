@@ -149,13 +149,16 @@ def test_classify_response_always_carries_grams(client, monkeypatch):
          "count": None, "count_unit": None, "made": False, "grams": 250.0},
         {"key": "r1:i2", "food": "crème fraîche", "aisle": "dairy_eggs", "pantry": False,
          "count": None, "count_unit": None, "made": False, "grams": None},
+        {"key": "r1:i3", "food": "salt", "aisle": "spices", "pantry": True,
+         "count": None, "count_unit": None, "made": False},
     ]})
     monkeypatch.setattr(api, "_get_client", lambda: ScriptedClient([with_grams]))
-    response = _post(_as(client))
+    salt = {"key": "r1:i3", "text": "salt", "name": "salt", "amount": None, "unit": None}
+    response = _post(_as(client), ingredients=[*ING, salt])
     assert response.status_code == 200
     items = response.json()["items"]
     assert all("grams" in i for i in items)
-    assert [i["grams"] for i in items] == [250.0, None]
+    assert [i["grams"] for i in items] == [250.0, None, None]
 
 
 def test_too_many_ingredients_is_400_without_a_call(client, monkeypatch):

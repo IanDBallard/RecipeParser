@@ -11,10 +11,10 @@ The shopping classifier estimates the grams a shopper buys, counts fresh herbs i
 
 ### ✨ Added
 - The classify prompt gains a `grams` rule: the weight bought at the amount given, set for a solid (spoonfuls included), a herb measure or counted produce or meat, and null for a liquid, a food bought by volume, eggs, an unmeasured line and a container counted whole (a tin).
-- Fresh herbs are counted in `bunch`, `count` being the fraction of a supermarket bunch, never `sprig` or `leaf`. Whole produce is counted whatever measure the recipe uses ("1/2 cup diced shallot" is a shallot count).
+- Fresh herbs are counted in `bunch`, `count` being the fraction of a supermarket bunch, never `sprig` or `leaf`; dried herbs have no count. Produce sold as separate items is counted whatever measure the recipe uses ("1/2 cup diced shallot" is a shallot count). `count` is null for a food bought by weight or volume, never an invented pack ("1 block" of cheese). `grams` is for the food as bought (not cooked) and never 0.
 
 ### 🧪 Tests
-- `tests/goldens/test_classify_golden.py` gains five cases (gruyere grams, shallot by the cup, herbs in bunches, no grams for liquid, tin and eggs, no grams for a garnish). **Not recorded yet:** each raises `MissingRecordingError` until someone with a real key runs `pytest tests/goldens/test_classify_golden.py --record-gemini-missing -n0` (five paid calls). The recording key covers the work unit, not the rules, so the existing classify recordings still replay (their replies carry no `grams`).
+- `tests/goldens/test_classify_golden.py` gains goldens for gruyere grams, shallot by the cup, herbs in bunches, dried herbs, no grams for liquid, tin, eggs and a garnish, counted meat, and meat and mince by weight. All classify goldens re-recorded with this prompt (owner approved 2026-11-28).
 
 ## [9.51.3] — 2026-11-28
 

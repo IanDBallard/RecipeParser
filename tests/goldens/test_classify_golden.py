@@ -215,9 +215,8 @@ def test_a_word_that_makes_another_purchase_stays(golden_client):
 
 
 # Batch 90 (Cayenne F-882, F-883): grams estimates, herbs in bunches, whole
-# produce counted. Each test below is one new work unit; none is recorded yet,
-# so each raises MissingRecordingError until a run with a real key records it:
-#   pytest tests/goldens/test_classify_golden.py --record-gemini-missing -n0
+# produce counted. All classify goldens re-recorded with this prompt (owner
+# approved 2026-11-28).
 
 
 def test_holiday_gruyere_has_grams(golden_client):
@@ -230,6 +229,7 @@ def test_holiday_gruyere_has_grams(golden_client):
         ),
     ], []))
     assert items["a"].grams is not None and 120 <= items["a"].grams <= 260
+    assert items["a"].count is None and items["a"].count_unit is None
 
 
 def test_shallot_measured_by_cup_is_counted(golden_client):
@@ -268,3 +268,30 @@ def test_unmeasured_garnish_has_no_grams(golden_client):
         ing("a", "parsley, to garnish", "parsley"),
     ], []))
     assert items["a"].grams is None
+
+
+def test_dried_herb_is_not_a_bunch(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "1 tsp dried oregano", "dried oregano", 1.0, "tsp"),
+    ], []))
+    assert items["a"].count is None and items["a"].count_unit is None
+    assert items["a"].grams is None or 0.3 <= items["a"].grams <= 5
+
+
+def test_counted_meat_has_count_and_grams(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "4 boneless chicken breasts (about 800 g)", "boneless chicken breasts", 4.0),
+    ], []))
+    assert items["a"].count is not None and 3.5 <= items["a"].count <= 4.5
+    assert items["a"].grams is not None and 600 <= items["a"].grams <= 1000
+
+
+def test_meat_by_weight_has_grams_and_no_count(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "2 kg chicken thighs", "chicken thighs", 2.0, "kg"),
+        ing("b", "500 g mince", "mince", 500.0, "g"),
+    ], []))
+    assert items["a"].count is None
+    assert items["a"].grams is not None and 1500 <= items["a"].grams <= 2500
+    assert items["b"].count is None
+    assert items["b"].grams is not None and 400 <= items["b"].grams <= 600
