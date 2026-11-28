@@ -189,3 +189,45 @@ def test_the_made_rule_counters_a_bought_food_in_a_prepared_state():
     for example in ("cooked rice", "melted butter", "toasted almonds"):
         assert example in prompt
     assert 'when unsure, "made" is false' in prompt
+
+
+class TestGradeAndOriginWords:
+    """F-891: the food drops words that only name a grade, grain, origin or
+    brand of one base food, as a rule over that class of words rather than a
+    list of foods (Cayenne batch 87's variant classes are the floor). Words
+    that make it another purchase stay; the prompt names the ones a word-level
+    rule would wrongly fold, so the model is told them outright."""
+
+    def test_the_rule_names_the_class_of_words(self):
+        prompt = build_classify_prompt(ING, [])
+        assert "grade, grain, origin or brand" in prompt
+
+    @pytest.mark.parametrize("example", [
+        '"kosher salt", "Maldon salt" and "flaky sea salt" are "salt"',
+        '"granulated sugar" is "sugar"',
+        '"freshly ground black pepper" is "black pepper"',
+        '"Diamond Crystal kosher salt" is "salt"',
+    ])
+    def test_the_folds_are_shown(self, example):
+        assert example in build_classify_prompt(ING, [])
+
+    @pytest.mark.parametrize("kept", [
+        # Another purchase in the same aisle (F-891's own examples).
+        "celery salt", "smoked paprika", "caster sugar", "brown sugar", "white pepper",
+        # A grade word that names a different food elsewhere: a word-level
+        # rule would fold these, and must not.
+        "sea bass", "flaky pastry", "granulated garlic", "fine green beans",
+        # An origin that names a style sold apart.
+        "Dijon mustard", "Greek yogurt", "Thai basil",
+    ])
+    def test_the_wrong_folds_are_named_as_kept(self, kept):
+        prompt = build_classify_prompt(ING, [])
+        head = prompt[:prompt.index("KNOWN FOODS:")]
+        assert kept in head
+
+    def test_finishing_salt_is_no_longer_a_distinct_product(self):
+        # Batch 87 folds flaky sea salt into salt (owner-approved 2026-11-27),
+        # and F-891 names Maldon salt; the old guardrail example said otherwise.
+        prompt = build_classify_prompt(ING, [])
+        assert "flaky finishing salt" not in prompt
+        assert "celery salt is not salt" in prompt

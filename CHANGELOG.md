@@ -5,6 +5,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.51.1] — 2026-11-27
+
+The shopping classifier's food leaves out words that only name a grade, grain, origin or brand of one food (Cayenne F-891), so "Maldon salt" or "granulated sugar" no longer reaches the list as its own food.
+
+### 🐛 Fixed
+- The classify prompt gains a rule over that class of words, not a list of foods: "kosher salt", "Maldon salt", "flaky sea salt" and "Diamond Crystal kosher salt" are "salt", "granulated sugar" is "sugar", "freshly ground black pepper" is "black pepper", and the rule holds for foods it does not name. Cayenne batch 87's variant classes (`FOOD_VARIANT_CLASSES`, #652) stay the predictable floor for salt and black pepper.
+- A word that makes it another purchase stays, and the prompt names the ones a word-level rule would wrongly fold: celery salt, smoked paprika, caster sugar, brown sugar, white pepper; sea bass, flaky pastry, granulated garlic, fine green beans; Dijon mustard, Greek yogurt, Thai basil.
+- The functionally-distinct guardrail's third example, "table salt is not flaky finishing salt", becomes "celery salt is not salt": batch 87 folds flaky sea salt into salt (owner-approved 2026-11-27).
+
+### 🧪 Tests
+- `tests/goldens/test_classify_golden.py` gains a fold set and a keep set. **Not recorded yet:** both skip until someone with a real key runs `pytest tests/goldens/test_classify_golden.py --record-gemini-missing -n0` (two paid calls). The other classify recordings replay with a prompt-drift warning.
+- Labels already stored keep their old food until they are classified again.
+
 ## [9.51.0] — 2026-11-27
 
 `scripts/backfill_f888.py` brings recipes stored before 9.48.1 and 9.50.1 in line with the parser fixes new imports have (Cayenne F-888). No change to the package's behaviour.

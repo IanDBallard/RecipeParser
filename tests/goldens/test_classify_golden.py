@@ -12,7 +12,10 @@ classification to Generate to avoid.
 """
 from __future__ import annotations
 
+import pytest
+
 from recipeparser.shopping import ClassifyIngredient, classify_ingredients
+from tests.goldens.golden_client import MissingRecordingError
 
 FIXTURE = "shopping-classify"
 
@@ -93,8 +96,11 @@ def test_a_variety_that_changes_the_buy_stays(golden_client):
 
 def test_functionally_distinct_products_never_collapse(golden_client):
     """A near-twin on KNOWN FOODS must not swallow a chemically or functionally
-    different product (the owner's guardrail, 2026-10-03): leavening, canned
-    milks and finishing salt are the classic collapses."""
+    different product (the owner's guardrail, 2026-10-03): leavening and canned
+    milks are the classic collapses. Finishing salt was the third until F-891:
+    batch 87 folds flaky sea salt into salt (owner-approved 2026-11-27), so its
+    case is judged by test_grade_and_origin_words_fold_into_the_base_food. The
+    ingredient stays in the request so the recording's key does not move."""
     items = by_key(classify_ingredients(golden_client(FIXTURE), [
         ing("a", "1 tsp baking powder", "baking powder", 1.0, "tsp"),
         ing("b", "1 cup evaporated milk", "evaporated milk", 1.0, "cup"),
@@ -102,7 +108,7 @@ def test_functionally_distinct_products_never_collapse(golden_client):
     ], ["baking soda", "sweetened condensed milk", "salt"]))
     assert items["a"].food == "baking powder"
     assert items["b"].food == "evaporated milk"
-    assert items["c"].food != "salt"
+    assert "c" in items
 
 
 def test_a_tin_and_the_aisles(golden_client):
@@ -148,3 +154,61 @@ def test_a_bought_food_cooked_or_prepared_is_not_made(golden_client):
     assert items["a"].made is False
     assert items["b"].made is False
     assert items["c"].made is False
+
+
+def _classify_or_skip(client, ingredients, known):
+    """F-891's sets are new work units: until a run with a real key records
+    them (``--record-gemini-missing``, two paid calls) they skip, as the
+    tagging set did (9.x precedent in CHANGELOG)."""
+    try:
+        return by_key(classify_ingredients(client, ingredients, known))
+    except MissingRecordingError:
+        pytest.skip(
+            "F-891's classify golden is not recorded yet. Record it with "
+            "`pytest tests/goldens/test_classify_golden.py --record-gemini-missing -n0` "
+            "and a real GOOGLE_API_KEY."
+        )
+
+
+def test_grade_and_origin_words_fold_into_the_base_food(golden_client):
+    """F-891: a word that only names a grade, grain, origin or brand of one
+    base food is dropped, for variants Cayenne's table does not list too."""
+    items = _classify_or_skip(golden_client(FIXTURE), [
+        ing("a", "1 tsp kosher salt", "kosher salt", 1.0, "tsp"),
+        ing("b", "Maldon salt, to finish", "Maldon salt"),
+        ing("c", "flaky sea salt, to finish", "flaky sea salt"),
+        ing("d", "1 tsp Diamond Crystal kosher salt", "Diamond Crystal kosher salt", 1.0, "tsp"),
+        ing("e", "200 g granulated sugar", "granulated sugar", 200.0, "g"),
+        ing("f", "freshly ground black pepper", "freshly ground black pepper"),
+        ing("g", "1/2 tsp fine sea salt", "fine sea salt", 0.5, "tsp"),
+    ], [])
+    for key in "abcdg":
+        assert items[key].food == "salt", key
+    assert items["e"].food == "sugar"
+    assert items["f"].food == "black pepper"
+
+
+def test_a_word_that_makes_another_purchase_stays(golden_client):
+    """F-891's other half, and the foods a word-level rule would wrongly fold:
+    same-aisle purchases, grade words that name another food, and origins that
+    name a style sold apart."""
+    items = _classify_or_skip(golden_client(FIXTURE), [
+        ing("a", "1 tsp celery salt", "celery salt", 1.0, "tsp"),
+        ing("b", "2 tsp smoked paprika", "smoked paprika", 2.0, "tsp"),
+        ing("c", "100 g caster sugar", "caster sugar", 100.0, "g"),
+        ing("d", "2 sea bass fillets", "sea bass fillets", 2.0),
+        ing("e", "320 g ready-rolled flaky pastry", "flaky pastry", 320.0, "g"),
+        ing("f", "1 tsp granulated garlic", "granulated garlic", 1.0, "tsp"),
+        ing("g", "1 tbsp Dijon mustard", "Dijon mustard", 1.0, "tbsp"),
+        ing("h", "200 g Greek yogurt", "Greek yogurt", 200.0, "g"),
+        ing("i", "1/2 tsp ground white pepper", "ground white pepper", 0.5, "tsp"),
+    ], ["salt", "paprika", "sugar", "pastry", "garlic", "mustard", "yogurt"])
+    assert items["a"].food == "celery salt"
+    assert items["b"].food == "smoked paprika"
+    assert items["c"].food == "caster sugar"
+    assert items["d"].food == "sea bass"
+    assert items["e"].food == "flaky pastry"
+    assert items["f"].food == "granulated garlic"
+    assert items["g"].food == "dijon mustard"
+    assert items["h"].food == "greek yogurt"
+    assert items["i"].food == "white pepper"
