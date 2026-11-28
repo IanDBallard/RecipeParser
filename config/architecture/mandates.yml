@@ -50,6 +50,26 @@
   params:
     path_prefixes: [dist/, build/]
 
+# A job cancellation and an exhausted daily quota must pass through every broad handler
+# (recipeparser/exceptions.py). A host detector, so each person approves it once with
+# /acf-approve; CI trusts it through the workflow. Added except lines only: the existing
+# stock (88 handlers, see ARCHITECTURE.md) is not flagged until its except line is edited.
+# Not at `hook`: the edit hook checks whole files and would report that stock on every edit.
+- id: fail-loud.quota-cancel-propagate
+  title: Broad handlers let JobCancelledError and DailyQuotaExhaustedError through
+  severity: BLOCK
+  detection: ast
+  detector: config/architecture/detectors/quota_cancel.py:check
+  languages: python
+  call_sites: [ci, precommit]
+  exemption_tokens: [fail-loud.quota-cancel-ok]
+  status: enforced
+  arch_anchor: "## Quota and cancel propagate"
+  params:
+    exceptions: [JobCancelledError, DailyQuotaExhaustedError]
+    ancestors: [RecipeParserError]
+    roots: [recipeparser]
+
 # The whole-tree count of bare/broad except handlers, per file, may only fall. The
 # per-line row above stops new handlers; this one stops the old stock growing, and an
 # exempted handler still counts. Regenerate the baseline when a count falls (see the
