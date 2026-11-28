@@ -35,6 +35,8 @@ def test_garlic_two_writings_one_food(golden_client):
     ], []))
     assert items["a"].food == items["b"].food
     assert "garlic" in items["a"].food
+    assert items["a"].count_unit == "head" and 0.2 <= items["a"].count <= 0.7
+    assert items["b"].count_unit == "head" and 0.1 <= items["b"].count <= 0.5
 
 
 def test_onion_whole_and_chopped_one_food(golden_client):
