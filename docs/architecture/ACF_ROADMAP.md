@@ -1,6 +1,6 @@
 # Architecture compliance roadmap
 
-**Status:** in progress: Phases 0 to 2 done, Phase 3 started (updated 2026-11-28). **Owner:** the repository owner.
+**Status:** in progress: Phases 0 to 2 done, Phase 3 started; outside review of 2026-11-28 folded in as Phase 3b (updated 2026-11-28). **Owner:** the repository owner.
 **Scope:** what RecipeParser checks automatically about its own code, and in what order
 the remaining checks are added. It covers the Architecture Compliance Framework (ACF:
 `config/architecture/`, the `arch-compliance` plugin) and the standard Python tools that
@@ -30,7 +30,7 @@ sit beside it (ruff, mypy, vulture), because both feed the same gates.
 | pytest (+ coverage) | tests | CI (`build-installer.yml`) | |
 
 `arch-compliance` and `ruff` run on every pull request but are not yet required checks
-(decision 1), so a red check can still merge. The reviews of 2026-11-19 and 2026-11-25
+(decision 1, recommended now), so a red check can still merge. The reviews of 2026-11-19 and 2026-11-25
 and the baseline are committed (`docs/reviews/architecture/`,
 `config/architecture/review_baseline.json`). The adversarial design review is configured
 (`config/architecture/adr.yml`).
@@ -44,6 +44,14 @@ and the baseline are committed (`docs/reviews/architecture/`,
   recipes, the server as sole writer of derived columns (Phases 3 and 4). Quota and cancel
   propagation is checked since 9.51.2; model SDK owners and one clock since 9.51.3.
 - **Types are not gated** (Phase 5, decision 4).
+- **Dependencies are not checked.** `adapters/api.py` and `io/readers/url.py` import
+  `requests`, which neither `pyproject.toml` nor `requirements.txt` declares; it arrives
+  only as another package's dependency. The Docker image installs `requirements.txt`, a
+  second hand-kept manifest whose pins differ from `pyproject.toml`'s (Phase 3b).
+- **`core/` reaches the model layer directly.** `core/pipeline.py` and the `extract`,
+  `refine` and `embed` stages import `recipeparser.gemini`. The layer ban covers only
+  `io/` and `adapters/`, so this passes unseen, and `import recipeparser` loads `.env` and
+  builds a `genai.Client` as a side effect (Phase 3b).
 
 ## 2. Principles
 
@@ -107,6 +115,21 @@ workflow.
 `soft.layer-imports` stays as a review rule for lazy, `TYPE_CHECKING` and indirect
 crossings; the plain-import case moves to ruff (Phase 1).
 
+### Phase 3b — Boundary, dependency and doc fixes (from the 2026-11-28 outside review)
+
+An outside review of the repository made five recommendations; each claim was checked
+against master at 9.51.3. Items 1 and 5 were already here (decision 1, Phase 5) and are
+updated in place; the rest are new. Suggested order: decision 1, then the items below in
+table order. The docs rewrite comes last so it describes the shape the boundary fix leaves.
+
+| Item | Mechanism | Done when |
+|---|---|---|
+| Declare and unify dependencies | Replace `requests` in `adapters/api.py` and `io/readers/url.py` with `httpx` (declared, used everywhere else); the `Dockerfile` installs from `pyproject.toml` (or a lockfile generated from it) instead of the hand-kept `requirements.txt`; `deptry` in CI (promoted from Phase 5's optional item) | No module imports an undeclared package; one manifest; `deptry` reports nothing on the PR diff. |
+| Dead models and package-wide ruff | Delete `TocEntry`, `TocList`, `TocRecipeClassification` from `models.py` (no reference outside it); clear the 38 findings `ruff check recipeparser` reports today | `ruff check recipeparser` is clean, so CI runs it on the whole package, not only on changed lines; `scripts/` and `tests/` stay diff-only. |
+| `core/` takes its model calls by injection | A typed protocol for the model calls (`LLMCalls`, or one callable per stage) passed into `RecipePipeline`, as `CategorySource`, `ImageStore` and `AskFood` already are; `core/` stops importing `recipeparser.gemini`. A real refactor: spec first, through `/adversarial-design-review` | `recipeparser.gemini` joins the banned-api list in `recipeparser/core/ruff.toml`, and ruff reports nothing. |
+| No import side effects | `load_dotenv()` and `genai.Client(...)` move out of `recipeparser/__init__.py` into the entry points (`__main__`/`adapters/cli.py`, `adapters/gui.py`, `adapters/api.py`); the 7 scripts that read `recipeparser.client` build their own | `import recipeparser` reads no file and builds no client; `__init__.py` leaves the model SDK owners (`pyproject.toml` per-file-ignores, doctrine "Model SDK owners"). |
+| Rewrite `GEMINI.md`, prune `ARCHITECTURE.md` | `GEMINI.md` describes 9.51+ (`RecipePipeline`, `PipelineController`, the current model ids, no package-root shims or `api.py`); `ARCHITECTURE.md` loses the design blocks that were never built and names each model once, pointing at `config.py` | Both match the code; `soft.layer-imports`, which cites `GEMINI.md`, reads current guidance. |
+
 ### Phase 4 — New review rules (month 2)
 
 Rules the plugin ships, added as `auditor` rows with settings:
@@ -126,9 +149,8 @@ cross-platform path classifier needed).
 These are not architecture rules, so they are not ACF mandates, but they run in the same
 CI job and pre-push hook and follow the same ratchet principle.
 
-**Coding standards — ruff.** Today's selection (`E`, `F`, `I`, `TID`) has 69 findings
-(35 long lines, 20 import orders, 6 unused imports, 6 mis-scoped layer bans, 1 ambiguous
-name, 1 undefined name). Proposed additions, in order, with today's counts on
+**Coding standards — ruff.** Today's selection (`E`, `F`, `I`, `TID`, `DTZ`) has 38 findings
+under `recipeparser/` (2026-11-28; Phase 3b clears them). Proposed additions, in order, with today's counts on
 `recipeparser/`:
 
 | Rules | Count | Notes |
@@ -140,7 +162,8 @@ name, 1 undefined name). Proposed additions, in order, with today's counts on
 | `DTZ` | 0 | **Adopted in 9.51.3** (`layers.one-clock`). |
 | `UP` (pyupgrade) | ~1,500 | Almost all auto-fixable annotation modernisation; one mechanical PR, not a ratchet. |
 
-**Types — mypy.** 208 errors today. Record a per-file count (like the fail-loud ratchet),
+**Types — mypy.** 197 errors in 27 files (2026-11-28; was 208 in 29), among them real
+`arg-type` / `assignment` errors in `adapters/api.py` worth fixing first. Record a per-file count (like the fail-loud ratchet),
 run mypy in CI on changed files, and refuse a file whose count rises. Delete the stale
 `baseline_mypy.txt` / `baseline_ruff.txt` / `baseline_violations.txt` once the ratchets
 replace them.
@@ -153,12 +176,14 @@ replace them.
 - A small host check, `deadcode.test-only-modules`: a module under `recipeparser/` that
   only `tests/` imports is reported. This is the case vulture cannot see, because the
   tests count as callers; it is exactly how `toc.py` survived.
-- Optional: `deptry` for declared-but-unused and used-but-undeclared dependencies.
+- `deptry` moved to Phase 3b (it found a real case: `requests`).
 
 ## 4. Decisions needed
 
-1. **Required checks:** make the ACF/ruff CI job required on `master` (repository
-   settings), or keep it advisory until Phase 2's ratchet removes the old-violation noise.
+1. **Required checks:** make `arch-compliance` and `ruff` required on `master` (repository
+   settings). Recommended now: both check only changed lines and the Phase 2 ratchet has
+   landed, so the old-violation noise this waited on is gone (the 2026-11-28 outside
+   review recommends it too).
 2. **Supabase migrations:** track them in this repository, or point
    `data-access-boundary` at Cayenne's.
 3. **`UP` modernisation:** one mechanical PR now, or leave annotations as they are.
