@@ -212,3 +212,59 @@ def test_a_word_that_makes_another_purchase_stays(golden_client):
     assert items["g"].food.lower() == "dijon mustard"
     assert items["h"].food.lower() == "greek yogurt"
     assert items["i"].food.lower() == "white pepper"
+
+
+# Batch 90 (Cayenne F-882, F-883): grams estimates, herbs in bunches, whole
+# produce counted. Each test below is one new work unit; none is recorded yet,
+# so each raises MissingRecordingError until a run with a real key records it:
+#   pytest tests/goldens/test_classify_golden.py --record-gemini-missing -n0
+
+
+def test_holiday_gruyere_has_grams(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing(
+            "a",
+            "2 cups gruyere or Colby cheese, shred yourself (or cheddar, Monterey Jack, "
+            "OR 1 cup / 100g shredded parmesan) (Note 4)",
+            "gruyere", 2.0, "cup",
+        ),
+    ], []))
+    assert items["a"].grams is not None and 120 <= items["a"].grams <= 260
+
+
+def test_shallot_measured_by_cup_is_counted(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "½ cup diced shallot", "shallot", 0.5, "cup"),
+    ], []))
+    assert items["a"].count is not None and 0.5 <= items["a"].count <= 3
+    assert "shallot" in (items["a"].count_unit or "")
+    assert items["a"].grams is not None
+
+
+def test_herbs_counted_in_bunches(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "2 tbsp chopped parsley", "parsley", 2.0, "tbsp"),
+        ing("b", "4 sprigs thyme", "thyme", 4.0, "sprig"),
+        ing("c", "1 bunch coriander", "coriander", 1.0, "bunch"),
+    ], []))
+    for key in "abc":
+        assert items[key].count_unit == "bunch", key
+        assert items[key].count is not None and 0.05 <= items[key].count <= 1.5, key
+        assert items[key].grams is not None, key
+
+
+def test_liquid_and_tin_and_eggs_have_no_grams(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "1 cup milk", "milk", 1.0, "cup"),
+        ing("b", "1 tin tomatoes", "tomatoes", 1.0, "tin"),
+        ing("c", "3 large eggs", "eggs", 3.0),
+    ], []))
+    for key in "abc":
+        assert items[key].grams is None, key
+
+
+def test_unmeasured_garnish_has_no_grams(golden_client):
+    items = by_key(classify_ingredients(golden_client(FIXTURE), [
+        ing("a", "parsley, to garnish", "parsley"),
+    ], []))
+    assert items["a"].grams is None

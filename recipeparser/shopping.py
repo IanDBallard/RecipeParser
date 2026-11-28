@@ -108,6 +108,16 @@ is counted: the food itself, singular ("onion", "egg"), or how it is bought \
 ("tin", "head", "bunch") - never a cooking measure ("cup", "tbsp"). Use null \
 for both "count" and "count_unit" when the food is bought by weight or \
 volume (flour, milk, mince).
+- Fresh herbs are counted in "bunch", "count" being the fraction of a \
+supermarket bunch the amount needs (2 tbsp chopped parsley is 0.25 bunch); \
+never "sprig" or "leaf".
+- Whole produce is counted whatever measure the recipe uses: "1/2 cup \
+diced shallot" is "shallot", a count of about 1.
+- "grams" is the weight a shopper buys for this ingredient at the amount \
+given, in grams. Set it for a food bought by weight: a solid (spoonfuls \
+included), a herb measure, or counted produce or meat. Use null for a \
+liquid, a food bought by volume (milk, stock, oil), eggs, a line with no \
+amount, and a container counted whole (a tin).
 - Answer every ingredient by its "key", each exactly once.
 
 KNOWN FOODS:
