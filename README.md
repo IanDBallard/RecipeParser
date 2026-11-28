@@ -108,7 +108,7 @@ The pre-push hook runs two checks. A pushed release tag (`v*`) must match the ve
 pip install "git+https://github.com/IanDBallard/arch-compliance-for-superpowers@v0.3.4"
 ```
 
-Pull requests run the same gate, and ruff on the changed lines, in CI (`.github/workflows/arch-compliance.yml`).
+Pull requests run the same gate, and ruff (all of `recipeparser/`, and changed lines elsewhere), in CI (`.github/workflows/arch-compliance.yml`).
 
 ---
 

@@ -162,8 +162,8 @@ def check_yield(
     - a `crumb` container with no base is a crumble scattered on top (D96): its top reads 'crumble' and its
       component lines move to topping_lines, so it is never dropped as having no base and no top;
     - the tins are not read (D97);
-    - a pieces kind with no kept `pieces` group (no whole count of 1 or more) is stored as 'servings' too, container kept
-      with empty line lists, since a pieces recipe is scaled by that count and cannot be scaled without it;
+    - a pieces kind with no kept `pieces` group (no whole count of 1 or more) is stored as 'servings' too, container
+      kept with empty line lists, since a pieces recipe is scaled by that count and cannot be scaled without it;
     - a component that keeps its `area` but has no container (none given, or one dropped) gets the pizza-dough
       container Cayenne already assumes for it, every ingredient line its component, with a warning (F-559);
     - `edited` is always False from the parser.

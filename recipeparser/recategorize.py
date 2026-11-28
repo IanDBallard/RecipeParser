@@ -24,7 +24,7 @@ import zipfile
 from pathlib import Path
 from typing import NamedTuple, Optional
 
-from recipeparser.categories import load_category_tree, build_paprika_categories, categorise_recipe
+from recipeparser.categories import build_paprika_categories, categorise_recipe, load_category_tree
 from recipeparser.exceptions import DailyQuotaExhaustedError, JobCancelledError, RecategorizationError
 from recipeparser.models import RecipeExtraction
 

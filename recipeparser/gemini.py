@@ -16,6 +16,7 @@ import httpx
 from google.genai import errors as genai_errors
 from pydantic import BaseModel, Field, ValidationError
 
+from recipeparser import usage
 from recipeparser.config import (
     BACKOFF_BASE_SECS,
     BACKOFF_MAX_SECS,
@@ -32,7 +33,6 @@ from recipeparser.config import (
     VISION_MAX_EDGE_PX,
     VISION_TIMEOUT_SECS,
 )
-from recipeparser import usage
 from recipeparser.core import job_signal, quota_wait
 from recipeparser.core.pans import BAKE_TYPES, HINT_KEYS, PAN_FAMILIES, PAN_SHAPES
 from recipeparser.core.picture_check import FoodVerdict
@@ -935,7 +935,7 @@ def extract_text_from_images(
                 log.warning("Vision OCR page %d/%d: empty response.", page_num, count)
         except (JobCancelledError, DailyQuotaExhaustedError):
             raise
-        except Exception as exc:  # fail-loud.bare-except-ok: a non-transient failure re-raises; a transient one is logged and listed
+        except Exception as exc:  # fail-loud.bare-except-ok: non-transient re-raises; transient is logged and listed
             if not _is_transient_vision_failure(exc):
                 # A failure that would fail the same way again (a 4xx, a code bug) must
                 # not leave a transcript silently missing this page.
@@ -1103,7 +1103,7 @@ _TINS_BAKE = """\
         pie whose filling is not baked is null (banana cream, chiffon, mango and banoffee pie). Puff pastry rounds or sheets baked flat to be stacked with
         cream and fruit into a torte (Friesentorte, mille-feuille) are not a pie or tart crust: null.
      null: anything else, including roast meat, casseroles, cookies baked as separate pieces,
-     meringues and pavlova, granola, crackers, and anything cooked on the hob."""
+     meringues and pavlova, granola, crackers, and anything cooked on the hob."""  # noqa: E501 -- prompt text: wrapping it changes what the model reads
 _YIELD_RULES = """\
    - "yield_spec": how the recipe's yield is measured. First decide the kind, one of {kinds}, by one
      test, in this order:
@@ -1151,7 +1151,7 @@ _YIELD_RULES = """\
      puff lid -> servings, container base false, sides none, top full, puff;
      an apple crumble -> servings, container base false, sides none, top crumble, its crumble's lines
      topping_lines; a graham cracker crust in a 9-inch pie plate -> component, base true, sides full,
-     top none, crumb; a stew -> servings, no container."""
+     top none, crumb; a stew -> servings, no container."""  # noqa: E501 -- prompt text: wrapping it changes what the model reads
 # REFINE writes its own ingredient list, so it is told which list the positions count in.
 _YIELD_REFINE_NOTE = """\
    - In "yield_spec", INGREDIENTS is the structured_ingredients list you output: count every entry in it,
@@ -1300,7 +1300,7 @@ SOURCE HOST: {source_host or "none"}
 
 RAW RECIPE:
 {raw_recipe}
-"""
+"""  # noqa: E501 -- prompt text: wrapping it changes what the model reads
 
 
 def refine_json_schema() -> dict:
@@ -1571,7 +1571,9 @@ def tag_pans(
         config={
             "response_mime_type": "application/json",
             # RecipePan.edited and .removed are set by a person, never by the model.
-            "response_json_schema": _with_bake_step_description(schema_without_client_fields(_schema_for_gemini(PanAnswer))),
+            "response_json_schema": _with_bake_step_description(
+                schema_without_client_fields(_schema_for_gemini(PanAnswer))
+            ),
         },
         what="Pans",
         limiter=limiter,

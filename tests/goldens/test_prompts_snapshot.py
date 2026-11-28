@@ -19,8 +19,6 @@ from recipeparser.models import (
     RecipeList,
     StructuredIngredient,
     TemperatureMentions,
-    TocList,
-    TocRecipeClassification,
 )
 from recipeparser.shopping import ClassifyIngredient, ClassifyReply
 from tests.goldens.conftest import FIXED_AXES
@@ -169,18 +167,12 @@ class TestSchemaSnapshots:
     def test_temperature_mentions_schema(self, snapshot: SnapshotAssertion):
         assert gemini._schema_for_gemini(TemperatureMentions) == snapshot
 
-    def test_toc_list_schema(self, snapshot: SnapshotAssertion):
-        assert gemini._schema_for_gemini(TocList) == snapshot
-
-    def test_toc_classification_schema(self, snapshot: SnapshotAssertion):
-        assert gemini._schema_for_gemini(TocRecipeClassification) == snapshot
-
     def test_classify_schema(self, snapshot: SnapshotAssertion):
         assert gemini._schema_for_gemini(ClassifyReply) == snapshot
 
     @pytest.mark.parametrize(
         "model",
-        [RecipeList, CayenneRefinement, DirectionMentions, TemperatureMentions, TocList, TocRecipeClassification, ClassifyReply],
+        [RecipeList, CayenneRefinement, DirectionMentions, TemperatureMentions, ClassifyReply],
     )
     def test_no_schema_carries_additional_properties(self, model):
         rendered = json.dumps(gemini._schema_for_gemini(model))

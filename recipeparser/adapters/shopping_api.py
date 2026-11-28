@@ -24,8 +24,8 @@ from pydantic import BaseModel
 
 from recipeparser import usage
 from recipeparser.shopping import (
-    ClassifyCheckError,
     ClassifiedItem,
+    ClassifyCheckError,
     ClassifyIngredient,
     classify_ingredients,
 )

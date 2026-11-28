@@ -22,7 +22,11 @@ _DEGREE = re.compile(
     re.IGNORECASE,
 )
 _BARE = re.compile(r"(?<![\d.,])(\d{3})\s?(C|F)\b")  # case-sensitive: "180C", "350 F"; never "2 C flour"
-_GAS = re.compile(r"\bgas(?:\s+mark)?\s*(¼|½|1/4|1/2|[1-9])(?![\d/])(?!\s*(?:times?|burners?|rings?|hobs?|min(?:ute)?s?|hours?|hrs?|sec(?:ond)?s?)\b)", re.IGNORECASE)
+_GAS = re.compile(
+    r"\bgas(?:\s+mark)?\s*(¼|½|1/4|1/2|[1-9])"
+    r"(?![\d/])(?!\s*(?:times?|burners?|rings?|hobs?|min(?:ute)?s?|hours?|hrs?|sec(?:ond)?s?)\b)",
+    re.IGNORECASE,
+)
 _FAN_AFTER = re.compile(
     r"\s*(?:\(\s*)?(?:fan(?:[- ](?:forced|assisted))?|convection)(?:\s+oven)?(?:\s*\))?", re.IGNORECASE
 )

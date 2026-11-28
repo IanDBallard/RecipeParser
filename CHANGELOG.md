@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [9.52.1] — 2026-11-28
+
+ruff checks the whole package on every pull request, and three dead models are gone (architecture compliance roadmap, Phase 3b). No change to the package's behaviour.
+
+### 🔧 Changed
+- The 38 ruff findings under `recipeparser/` are cleared: import order, three unused imports and long lines. Every prompt and schema text is unchanged; the long prompt lines are exempt, since wrapping them would change what the model reads.
+- CI runs `ruff check recipeparser`. `scripts/` and `tests/` are still checked on the changed lines only.
+
+### 🗑️ Removed
+- `TocEntry`, `TocList` and `TocRecipeClassification` (`models.py`), unused since the table-of-contents code was deleted, with their two schema snapshots.
+
 ## [9.52.0] — 2026-11-28
 
 The shopping classifier estimates the grams a shopper buys, counts fresh herbs in bunches and counts whole produce whatever measure the recipe uses (Cayenne batch 90, F-882 and F-883).

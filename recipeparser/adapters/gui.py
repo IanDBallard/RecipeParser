@@ -11,15 +11,16 @@ import queue
 import subprocess
 import sys
 import threading
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
+from tkinter import filedialog, messagebox
 from typing import TYPE_CHECKING, Optional
 
 import customtkinter as ctk
 import yaml
-from tkinter import filedialog, messagebox
-from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
-from recipeparser.categories import _CATEGORIES_FILE, load_category_tree
+from recipeparser.categories import _CATEGORIES_FILE
 from recipeparser.paths import get_default_output_dir, get_env_file
 
 if TYPE_CHECKING:
@@ -587,7 +588,9 @@ class ParseFrame(ctk.CTkFrame):
         inputs.grid(row=2, column=0, sticky="ew", **pad)
         inputs.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(inputs, text="Cookbook (EPUB or PDF)", width=90, anchor="w").grid(row=0, column=0, sticky="w", pady=4)
+        ctk.CTkLabel(inputs, text="Cookbook (EPUB or PDF)", width=90, anchor="w").grid(
+            row=0, column=0, sticky="w", pady=4
+        )
         self._epub_var = ctk.StringVar()
         ctk.CTkEntry(inputs, textvariable=self._epub_var).grid(row=0, column=1, sticky="ew", padx=(0, 8))
         ctk.CTkButton(inputs, text="Browse…", width=90, command=self._browse_epub).grid(row=0, column=2)
@@ -762,6 +765,7 @@ class ParseFrame(ctk.CTkFrame):
             try:
                 os.environ["GOOGLE_API_KEY"] = api_key
                 from google import genai
+
                 from recipeparser.adapters.cli import run_cli_pipeline
                 client = genai.Client(api_key=api_key)
                 result_path = run_cli_pipeline(

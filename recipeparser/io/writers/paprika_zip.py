@@ -21,7 +21,7 @@ import zipfile
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Set, Tuple, Union
 
 from recipeparser.core.fat_tokens import strip_fat_tokens
 from recipeparser.io.writers import RecipeWriter

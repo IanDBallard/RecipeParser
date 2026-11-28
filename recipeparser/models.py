@@ -39,7 +39,10 @@ class RecipeExtraction(BaseModel):
         default=None, description="Cook time (e.g., '30 mins')."
     )
     ingredients: List[str] = Field(
-        description="List of ingredients, each copied exactly as the source writes it. Convert unicode fractions to text fractions (e.g. ½ -> 1/2)."
+        description=(
+            "List of ingredients, each copied exactly as the source writes it. Convert "
+            "unicode fractions to text fractions (e.g. ½ -> 1/2)."
+        ),
     )
     directions: List[str] = Field(
         description="List of step-by-step cooking instructions."
@@ -120,32 +123,6 @@ class RecipeList(BaseModel):
     )
 
 
-class TocEntry(BaseModel):
-    """Single TOC entry: recipe title and optional page/section reference."""
-
-    title: str = Field(description="The recipe or section title.")
-    page: Optional[int] = Field(
-        default=None,
-        description="Page number (1-based) if known; null otherwise.",
-    )
-
-
-class TocList(BaseModel):
-    """Parsed table of contents from a cookbook."""
-
-    entries: List[TocEntry] = Field(
-        description="Ordered list of TOC entries (recipe titles and optional page numbers)."
-    )
-
-
-class TocRecipeClassification(BaseModel):
-    """Result of classifying which TOC entries are recipe titles vs section headers."""
-
-    recipe_indices: List[int] = Field(
-        description="0-based indices of TOC entries that are specific recipe/dish names, not section headers."
-    )
-
-
 # --- Cayenne Specific Models ---
 
 class StructuredIngredient(BaseModel):
@@ -172,7 +149,11 @@ class StructuredIngredient(BaseModel):
         default=None, description="The OTHER measure's unit: the writer's own, else \"g\" or \"ml\"."
     )
     is_ai_converted: bool = Field(
-        default=False, description="True if the AI calculated the conversion; false for the writer's own second measure."
+        default=False,
+        description=(
+            "True if the AI calculated the conversion; false for the writer's own second "
+            "measure."
+        ),
     )
     state: Optional[Literal["liquid", "solid"]] = Field(
         default=None,
@@ -209,7 +190,10 @@ class DirectionMention(BaseModel):
     quote: str = Field(description="The words to wrap, copied exactly from that step.")
     context: str = Field(
         default="",
-        description="The quote with about five words around it, copied exactly from the step: it tells apart two mentions with the same words.",
+        description=(
+            "The quote with about five words around it, copied exactly from the step: it "
+            "tells apart two mentions with the same words."
+        ),
     )
     ingredient_id: str = Field(description="The id of the ingredient the words refer to.")
     use: str = Field(description="all, rest, none, or the amount as a decimal and a unit, e.g. '0.5 cup'.")
@@ -224,7 +208,13 @@ class TemperatureMention(BaseModel):
     """One temperature in a direction step, as the temperature backfill reports it (Cayenne oven temperatures)."""
     step: int = Field(description="1-based number of the step the temperature is in.")
     quote: str = Field(description="The words to wrap, copied exactly from that step.")
-    context: str = Field(default="", description="The quote with about five words around it, copied exactly from the step.")
+    context: str = Field(
+        default="",
+        description=(
+            "The quote with about five words around it, copied exactly from the "
+            "step."
+        ),
+    )
     value: str = Field(description="What the writer meant: '180C,oven', '350F', 'gas4', '180C,oven,fan=160C'.")
 
 
@@ -331,7 +321,11 @@ class RecipePan(BaseModel):
         default=None, description="round, square, rect, loaf, ring, flat-round, sheet; null if unknown."
     )
     family: Optional[str] = Field(
-        default=None, description="round-cake, square, traybake, sheet, loaf, ring, tart, pie, pizza, stovetop; null if unknown."
+        default=None,
+        description=(
+            "round-cake, square, traybake, sheet, loaf, ring, tart, pie, pizza, stovetop; "
+            "null if unknown."
+        ),
     )
     dims_mm: PanDims = Field(
         default_factory=PanDims,
@@ -426,7 +420,10 @@ class CayenneRefinement(BaseModel):
     )
     source_uom_system_evidence: Optional[str] = Field(
         default=None,
-        description="The words that judgement rests on, quoted exactly from the recipe, or the source host exactly as given.",
+        description=(
+            "The words that judgement rests on, quoted exactly from the recipe, or the "
+            "source host exactly as given."
+        ),
     )
     pans: List[RecipePan] = Field(
         default_factory=list, description="The tins the recipe bakes in; [] when none."
