@@ -383,7 +383,7 @@
      - "filling_quote": the words of the step that puts a filling or topping into or onto a pastry or
        crumb crust (pours, spreads, spoons, divides or arranges a custard, mousse, gelatin, cream, fruit
        or meat filling in it), copied exactly from that step; null when no step does or there is no crust.
-     - "bake_type": one of sponge, butter-cake, quick-bread, bar, bread-lean, bread-enriched, cheesecake, custard, pizza, pie-fruit, pie-custard, pie-nut, pie-savoury, pie-shell, or null. Decide by how the item is made, not by its name, and
+     - "bake_type": one of sponge, butter-cake, quick-bread, batter-pudding, bar, bread-lean, bread-enriched, cheesecake, custard, pizza, pie-fruit, pie-custard, pie-nut, pie-savoury, pie-shell, or null. Decide by how the item is made, not by its name, and
        take the first that fits, in this order:
        1. pizza: a yeast-dough base baked flat under its toppings.
        2. cheesecake: a filling that is mostly soft cheese (cream cheese, ricotta, quark) set with eggs
@@ -415,8 +415,11 @@
        5. bread-enriched / bread-lean: risen with yeast or a sourdough starter. bread-enriched when the
           dough has egg, or more than a spoonful of butter, oil, sugar or milk (brioche, challah, buns,
           rolls, babka, stollen, yeast cakes); otherwise bread-lean (baguette, sourdough, ciabatta, pitta).
-       6. quick-bread: a bread, loaf, muffin or scone raised with baking powder or soda (banana bread,
-          muffins, scones, soda bread, cornbread), and popovers, Yorkshire puddings and toad in the hole.
+       6. batter-pudding / quick-bread: batter-pudding when a thin pouring batter of eggs, milk and flour,
+          with no baking powder or soda, is poured into hot fat or a hot tin and puffs up in a hot oven
+          (Yorkshire puddings, popovers, toad in the hole, Dutch baby), whatever it is called; otherwise
+          quick-bread: a bread, loaf, muffin or scone raised with baking powder or soda (banana bread,
+          muffins, scones, soda bread, cornbread).
        7. butter-cake: a cake raised with baking powder or soda, its fat creamed, melted or oil (layer,
           pound, Bundt, loaf, fruit, carrot, gingerbread and upside-down cakes, cupcakes, steamed sponge
           puddings). A creamed cake
@@ -643,7 +646,7 @@
      - "filling_quote": the words of the step that puts a filling or topping into or onto a pastry or
        crumb crust (pours, spreads, spoons, divides or arranges a custard, mousse, gelatin, cream, fruit
        or meat filling in it), copied exactly from that step; null when no step does or there is no crust.
-     - "bake_type": one of sponge, butter-cake, quick-bread, bar, bread-lean, bread-enriched, cheesecake, custard, pizza, pie-fruit, pie-custard, pie-nut, pie-savoury, pie-shell, or null. Decide by how the item is made, not by its name, and
+     - "bake_type": one of sponge, butter-cake, quick-bread, batter-pudding, bar, bread-lean, bread-enriched, cheesecake, custard, pizza, pie-fruit, pie-custard, pie-nut, pie-savoury, pie-shell, or null. Decide by how the item is made, not by its name, and
        take the first that fits, in this order:
        1. pizza: a yeast-dough base baked flat under its toppings.
        2. cheesecake: a filling that is mostly soft cheese (cream cheese, ricotta, quark) set with eggs
@@ -675,8 +678,11 @@
        5. bread-enriched / bread-lean: risen with yeast or a sourdough starter. bread-enriched when the
           dough has egg, or more than a spoonful of butter, oil, sugar or milk (brioche, challah, buns,
           rolls, babka, stollen, yeast cakes); otherwise bread-lean (baguette, sourdough, ciabatta, pitta).
-       6. quick-bread: a bread, loaf, muffin or scone raised with baking powder or soda (banana bread,
-          muffins, scones, soda bread, cornbread), and popovers, Yorkshire puddings and toad in the hole.
+       6. batter-pudding / quick-bread: batter-pudding when a thin pouring batter of eggs, milk and flour,
+          with no baking powder or soda, is poured into hot fat or a hot tin and puffs up in a hot oven
+          (Yorkshire puddings, popovers, toad in the hole, Dutch baby), whatever it is called; otherwise
+          quick-bread: a bread, loaf, muffin or scone raised with baking powder or soda (banana bread,
+          muffins, scones, soda bread, cornbread).
        7. butter-cake: a cake raised with baking powder or soda, its fat creamed, melted or oil (layer,
           pound, Bundt, loaf, fruit, carrot, gingerbread and upside-down cakes, cupcakes, steamed sponge
           puddings). A creamed cake
@@ -1362,7 +1368,7 @@
           }),
         ]),
         'default': None,
-        'description': "What the recipe bakes, one word from the prompt's list of 14 bake types; null when nothing bakes.",
+        'description': "What the recipe bakes, one word from the prompt's list of 15 bake types; null when nothing bakes.",
         'title': 'Bake Type',
       }),
       'base_servings': dict({

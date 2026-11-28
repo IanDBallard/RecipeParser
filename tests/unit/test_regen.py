@@ -1,7 +1,8 @@
 """Pure regen helpers (spec 5.2, 5.7)."""
 import pytest
 
-from recipeparser.core.regen import build_extraction, build_update, raw_lines_from_derived, strip_fat_tokens
+from recipeparser.core.fat_tokens import strip_fat_tokens
+from recipeparser.core.regen import build_extraction, build_update, raw_lines_from_derived
 from recipeparser.models import CayenneRefinement, RecipePan, StructuredIngredient, TokenizedDirection
 
 
@@ -283,7 +284,7 @@ def _tin_refinement(pans):
     answer = YieldAnswer(kind="component")  # no area: only a tin keeps it a component
     ref = CayenneRefinement(title="Pastry", base_servings=4, structured_ingredients=[], tokenized_directions=[],
                             pans=pans, yield_spec=answer)
-    ref.yield_checked, _ = check_yield(answer, [], pans)
+    ref.yield_checked, _ = check_yield(answer, [])
     return ref
 
 

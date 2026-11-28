@@ -31,6 +31,22 @@ def test_pie_shell_is_a_bake_type_and_pie_a_family():
     assert "pie" in PAN_FAMILIES
 
 
+# Cayenne F-890: a batter pudding is its own bake type, so Cayenne gives it its own doneness cue
+# whatever the title says. It sits beside quick-bread, whose tins and band it keeps.
+def test_batter_pudding_is_a_bake_type_after_quick_bread():
+    from recipeparser.core.pans import BAKE_TYPES
+
+    assert BAKE_TYPES.index("batter-pudding") == BAKE_TYPES.index("quick-bread") + 1
+
+
+def test_check_bake_keeps_batter_pudding():
+    from recipeparser.core.pans import check_bake
+    from recipeparser.models import TokenizedDirection
+
+    d = [TokenizedDirection(step=1, text="Heat the fat in the tin."), TokenizedDirection(step=2, text="Bake 25 min.")]
+    assert check_bake("batter-pudding", 1, d, set()) == ("batter-pudding", 1)
+
+
 def test_a_pie_family_tin_is_kept_and_an_unknown_family_is_refused():
     from recipeparser.core.pans import normalise_pans
 

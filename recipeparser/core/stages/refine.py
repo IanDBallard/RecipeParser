@@ -727,9 +727,7 @@ def refine(
     # The yield's positions count in the ingredient list REFINE wrote, so it is checked against that list.
     # check_yield is not meant to raise; if it does, the slip costs the yield, never the recipe.
     try:
-        result.yield_checked, yield_warnings = check_yield(
-            result.yield_spec, result.structured_ingredients, result.pans
-        )
+        result.yield_checked, yield_warnings = check_yield(result.yield_spec, result.structured_ingredients)
     except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: any failure here is the field's, not the recipe's
         log.warning("refine(): '%s': yield check failed (%r); no yield_spec", result.title, exc)
         result.yield_checked, yield_warnings = None, []

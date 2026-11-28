@@ -153,7 +153,7 @@ def main() -> int:
                 steps, ingredients, pans, row.get("bake_type"), gemini_client, limiter=limiter,
                 yield_text=yield_text(row.get("servings_min"), row.get("servings_max"), row.get("servings_note")),
             )
-            spec, _ = check_yield(answer, ingredients, pans)
+            spec, _ = check_yield(answer, ingredients)
             return row["id"], answer_of(spec)
         except Exception as exc:  # noqa: BLE001
             print(f"  could not ask about {row.get('title')}: {exc}")
