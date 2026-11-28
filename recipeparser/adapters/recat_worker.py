@@ -253,7 +253,10 @@ class RecatWorker:
         """Resolve the job's categories and size once, at claim. None if it finished here."""
         user_id = job["user_id"]
         params = dict(job.get("params") or {})
-        cat_rows = self._sb.table("categories").select("id,name,parent_id,is_lists_root").eq("user_id", user_id).execute().data or []
+        cat_rows = (
+            self._sb.table("categories").select("id,name,parent_id,is_lists_root").eq("user_id", user_id).execute().data
+            or []
+        )
         cat_rows = without_lists(cat_rows)  # Lists are never tagged by the AI
         requested = list(params.get("category_ids") or [])
         new_axes, tag_ids = resolve_new_axes(cat_rows, requested)

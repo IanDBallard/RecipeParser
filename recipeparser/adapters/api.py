@@ -54,15 +54,16 @@ from pydantic import BaseModel, Field
 
 import recipeparser.gemini as _gemini_mod
 from recipeparser import usage
+from recipeparser.adapters import refusing_hosts
 from recipeparser.adapters.ai_gate import AiGate
+from recipeparser.adapters.household_api import build_router as _build_household_router
 from recipeparser.adapters.idempotency import HEADER as _IDEMPOTENCY_HEADER
 from recipeparser.adapters.idempotency import IdempotencyCache
 from recipeparser.adapters.job_sink import JobSink
+from recipeparser.adapters.search_api import build_router as _build_search_router
 from recipeparser.adapters.shares_api import RecipientCheckLimiter
 from recipeparser.adapters.shares_api import build_router as _build_share_router
 from recipeparser.adapters.shopping_api import build_router as _build_shopping_router
-from recipeparser.adapters.search_api import build_router as _build_search_router
-from recipeparser.adapters.household_api import build_router as _build_household_router
 from recipeparser.config import (
     AI_SEARCH_MODEL,
     MAX_PICTURE_BYTES,
@@ -70,11 +71,10 @@ from recipeparser.config import (
     ai_search_secrets,
     brave_secret,
 )
-from recipeparser.adapters import refusing_hosts
 from recipeparser.config import live_writes_blocked as _live_writes_blocked
+from recipeparser.core import job_signal
 from recipeparser.core.citation import host_of, web_citation
 from recipeparser.core.clock import utc_timestamp
-from recipeparser.core import job_signal
 from recipeparser.core.fsm import PipelineController, PipelineStatus
 from recipeparser.core.models import Chunk, InputType, SourceMeta
 from recipeparser.core.picture_check import MAX_PICTURE_CANDIDATES, AskFood, check_picture
@@ -90,6 +90,7 @@ from recipeparser.exceptions import (
     SiteRefusedError,
     UnreadableInputError,
 )
+from recipeparser.io.category_sources.restore_paths import clean_path, ensure_category_paths, restore_grid
 from recipeparser.io.category_sources.supabase_source import SupabaseCategorySource
 from recipeparser.io.readers.epub import EpubReader as _EpubReader
 from recipeparser.io.readers.image import ImageReader as _ImageReader
@@ -101,7 +102,6 @@ from recipeparser.io.readers.url import PageMeta, UrlReader, looks_like_badge, p
 from recipeparser.io.readers.url import is_unsafe_fetch_target as _is_unsafe_fetch_target
 from recipeparser.io.readers.url import page_fetch_proxy as _page_fetch_proxy
 from recipeparser.io.writers.image_store import SupabaseImageStore
-from recipeparser.io.category_sources.restore_paths import clean_path, ensure_category_paths, restore_grid
 from recipeparser.io.writers.supabase import _get_creds, write_recipe_to_supabase
 from recipeparser.logging_setup import configure_logging
 
@@ -1702,7 +1702,11 @@ async def submit_file_job(
             return client, chunks
 
         _create_ingestion_job(job_id, user_id, source_hint=filename or None)
-        asyncio.create_task(_run_ingestion_job(job_id, user_id, controller, _read, filename, "File job", gate_after_read=gate_after_read))
+        asyncio.create_task(
+            _run_ingestion_job(
+                job_id, user_id, controller, _read, filename, "File job", gate_after_read=gate_after_read
+            )
+        )
         slot.done({"job_id": job_id})
         return AsyncJobResponse(job_id=job_id)
 

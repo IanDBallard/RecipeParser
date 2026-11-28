@@ -192,7 +192,9 @@ def _repair_token_ids(refinement: CayenneRefinement) -> None:
     for step in refinement.tokenized_directions:
         step.text = TOKEN_RE.sub(fix, step.text)
     if repaired:
-        log.warning("refine(): '%s': Fat Token id(s) read as their ingredient: %s", refinement.title, ", ".join(repaired))
+        log.warning(
+            "refine(): '%s': Fat Token id(s) read as their ingredient: %s", refinement.title, ", ".join(repaired)
+        )
 
 
 def _validate_fat_tokens(refinement: CayenneRefinement) -> None:

@@ -9,10 +9,10 @@ import logging
 import sys
 from pathlib import Path
 
-from recipeparser.paprika_db import find_paprika_db, read_categories_from_db
-from recipeparser.categories import _CATEGORIES_FILE
-from recipeparser.paths import get_default_output_dir, get_env_file
 from recipeparser.adapters.cli import run_cli_pipeline
+from recipeparser.categories import _CATEGORIES_FILE
+from recipeparser.paprika_db import find_paprika_db, read_categories_from_db
+from recipeparser.paths import get_default_output_dir, get_env_file
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,8 +103,9 @@ def _cmd_sync_categories() -> None:
 def _cmd_merge(paths: list, output_dir: str) -> None:
     """Merge multiple .paprikarecipes archives into one."""
     from pathlib import Path as _Path
-    from recipeparser.io.writers.paprika_zip import merge_exports
+
     from recipeparser.exceptions import RecipeParserError
+    from recipeparser.io.writers.paprika_zip import merge_exports
 
     resolved = [_Path(p) for p in paths]
     missing = [str(p) for p in resolved if not p.exists()]
@@ -134,8 +135,9 @@ def _cmd_recategorize(paprika_path: str, output_dir: str) -> None:
     """Re-run categorisation on an existing .paprikarecipes archive."""
     import os
     from pathlib import Path as _Path
-    from recipeparser.recategorize import recategorize
+
     from recipeparser.exceptions import RecipeParserError
+    from recipeparser.recategorize import recategorize
 
     api_key = os.environ.get("GOOGLE_API_KEY", "")
     if not api_key:
@@ -175,7 +177,8 @@ def _cmd_recategorize(paprika_path: str, output_dir: str) -> None:
 
 
 def main():
-    from importlib.metadata import version as _pkg_version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
     try:
         _version = _pkg_version("recipeparser")
     except PackageNotFoundError:
@@ -292,8 +295,9 @@ def main():
             print(f"Error: No .epub or .pdf files found in '{folder}'.", file=sys.stderr)
             sys.exit(1)
 
-        from recipeparser.exceptions import RecipeParserError
         import os
+
+        from recipeparser.exceptions import RecipeParserError
 
         api_key = os.environ.get("GOOGLE_API_KEY", "")
         if not api_key:
@@ -358,6 +362,7 @@ def main():
     book_path = _resolve_book(args.epub)
 
     import os
+
     from recipeparser.exceptions import RecipeParserError
 
     api_key = os.environ.get("GOOGLE_API_KEY", "")

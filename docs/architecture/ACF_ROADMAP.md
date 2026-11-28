@@ -23,7 +23,7 @@ sit beside it (ruff, mypy, vulture), because both feed the same gates.
 | `soft.layer-imports` | ACF review rule (host prompt) | `/architecture-review` | Plain imports also checked by ruff `TID251`, declared in `recipeparser/core/ruff.toml`. |
 | `soft.state-machines` | ACF review rule | `/architecture-review` | `PipelineController.transition()` / `status`. |
 | `soft.class-cohesion` | ACF review rule | `/architecture-review` | |
-| ruff `E`, `F`, `I`, `TID` | lint | CI (`ruff` job) | Since 9.46.2, on the lines a pull request changes; older findings are Phase 5's. |
+| ruff `E`, `F`, `I`, `TID`, `DTZ` | lint | CI (`ruff` job) | Since 9.52.1 on all of `recipeparser/`; `scripts/` and `tests/` on the lines a pull request changes (since 9.46.2), their older findings being Phase 5's. |
 | `layers.model-sdk-owners` | ruff `TID251` | CI (`ruff` job) | Since 9.51.3: only the listed owners import `google.genai` / `anthropic` (doctrine "Model SDK owners"). |
 | `layers.one-clock` | ruff `DTZ` | CI (`ruff` job) | Since 9.51.3: no naive datetime under `recipeparser/` (doctrine "One clock"). |
 | dependencies | `deptry` and the lock check | CI (`dependencies` job) | Since 9.51.4: every import under `recipeparser/` is declared in `pyproject.toml`, and `requirements.txt` is its generated lock. |
@@ -126,7 +126,7 @@ table order. The docs rewrite comes last so it describes the shape the boundary 
 | Item | Mechanism | Done when |
 |---|---|---|
 | Declare and unify dependencies | Declare `requests` and `postgrest`; generate `requirements.txt` from `pyproject.toml` (`scripts/ci/lock_requirements.py`); `deptry` in CI | No module under `recipeparser/` imports an undeclared package; the lock matches `pyproject.toml`. **Done in 9.51.4.** The review's proposal to replace `requests` with `httpx` is **rejected**: through the page proxy, Dotdash Meredith's sites answered `httpx` 403 and `requests` 200 (Cayenne F-687, `_fetch_page_meta`'s docstring), so the swap would bring that bug back. |
-| Dead models and package-wide ruff | Delete `TocEntry`, `TocList`, `TocRecipeClassification` from `models.py` (no reference outside it); clear the 38 findings `ruff check recipeparser` reports today | `ruff check recipeparser` is clean, so CI runs it on the whole package, not only on changed lines; `scripts/` and `tests/` stay diff-only. |
+| Dead models and package-wide ruff | Delete `TocEntry`, `TocList`, `TocRecipeClassification` from `models.py` (no production reference; the prompt-snapshot tests used two of them); clear the 38 findings `ruff check recipeparser` reported; prompt text is exempt from E501 with a reason, since wrapping it changes what the model reads | `ruff check recipeparser` is clean, so CI runs it on the whole package, not only on changed lines; `scripts/` and `tests/` stay diff-only. **Done in 9.52.1.** |
 | `core/` takes its model calls by injection | A typed protocol for the model calls (`LLMCalls`, or one callable per stage) passed into `RecipePipeline`, as `CategorySource`, `ImageStore` and `AskFood` already are; `core/` stops importing `recipeparser.gemini`. It must also cover the two private error classifiers `core/pipeline.py:842` imports (`_is_rate_limit_error`, `_is_transient_server_error`) and `core/engine.py`'s docstring, which lists `recipeparser.gemini` as an allowed import; delete the empty `core/providers/`. The spec decides whether `core/picture_gen.py`'s call moves too; if it does, it keeps skipping `_call_with_retry`, since a cook is waiting (its docstring, D8). Pillow in `core/` is not part of this: it works on bytes in memory. A real refactor: spec first, through `/adversarial-design-review` | `recipeparser.gemini` joins the banned-api list in `recipeparser/core/ruff.toml`, and ruff reports nothing. |
 | No import side effects | `load_dotenv()` and `genai.Client(...)` move out of `recipeparser/__init__.py`, and `load_dotenv()` out of `io/writers/supabase.py:29`, into the entry points (`__main__`/`adapters/cli.py`, `adapters/gui.py`, `adapters/api.py`); the 7 scripts that read `recipeparser.client` build their own | A test imports every `recipeparser` module in a subprocess and finds no `.env` read and no client built; `tests/conftest.py` no longer needs to blank `REGEN_WORKER_ENABLED` before its import; `__init__.py` leaves the model SDK owners (`pyproject.toml` per-file-ignores, doctrine "Model SDK owners"). |
 | Rewrite `GEMINI.md`, prune `ARCHITECTURE.md` | `GEMINI.md` describes 9.51+ (`RecipePipeline`, `PipelineController`, the current model ids, no package-root shims or `api.py`); `ARCHITECTURE.md` loses the design blocks that were never built and names each model once, pointing at `config.py` | Both match the code; `soft.layer-imports`, which cites `GEMINI.md`, reads current guidance. |
@@ -166,8 +166,8 @@ cross-platform path classifier needed).
 These are not architecture rules, so they are not ACF mandates, but they run in the same
 CI job and pre-push hook and follow the same ratchet principle.
 
-**Coding standards — ruff.** Today's selection (`E`, `F`, `I`, `TID`, `DTZ`) has 38 findings
-under `recipeparser/` (2026-11-28; Phase 3b clears them). Proposed additions, in order, with today's counts on
+**Coding standards — ruff.** Today's selection (`E`, `F`, `I`, `TID`, `DTZ`) has no finding
+under `recipeparser/` (since 9.52.1). Proposed additions, in order, with today's counts on
 `recipeparser/`:
 
 | Rules | Count | Notes |
