@@ -51,7 +51,7 @@ and the baseline are committed (`docs/reviews/architecture/`,
   when a key is set, builds a `genai.Client` as a side effect (Phase 3b).
 - **Nothing limits a module's size or mix of duties.** `soft.class-cohesion` reads class
   bodies only, so `adapters/api.py` (2,398 lines) and `gemini.py` (1,814), which are mostly
-  module-level functions, pass it. They are also the two most-changed modules: 76 and 53
+  module-level functions, pass it. They are also the two most-changed modules: about 75 and 55
   commits from 2026-08-28 to 2026-11-28 (`git log --name-only`; Phase 3c).
 
 ## 2. Principles
