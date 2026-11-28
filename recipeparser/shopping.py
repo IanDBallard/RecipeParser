@@ -76,9 +76,20 @@ food ("cheese", "flour", "chicken") for a specific ingredient ("cheddar", \
 "bread flour", "turkey").
 - Keep a variety only when it changes what is bought: "red onion" stays \
 "red onion"; "diced onion" is "onion"; "free-range eggs" is "egg".
+- Leave out every word that only names a grade, grain, origin or brand of \
+one food, where a shopper could buy any of them for the recipe: "kosher \
+salt", "Maldon salt" and "flaky sea salt" are "salt"; "granulated sugar" is \
+"sugar"; "freshly ground black pepper" is "black pepper"; "Diamond Crystal \
+kosher salt" is "salt". This holds for foods not named here too.
+- Keep a word that makes it another purchase, even when it looks like a \
+grade or origin: celery salt, smoked paprika, caster sugar, brown sugar and \
+white pepper are each their own food; so are sea bass, flaky pastry, \
+granulated garlic and fine green beans, where the word names another food; \
+and so are Dijon mustard, Greek yogurt and Thai basil, where the origin names \
+a style sold apart.
 - Never equate functionally distinct products, even when a KNOWN FOOD is \
 close: baking soda is not baking powder, sweetened condensed milk is not \
-evaporated milk, table salt is not flaky finishing salt.
+evaporated milk, celery salt is not salt.
 - "aisle" is the store aisle the food is found in, one of: {aisles}.
 - "pantry" is true for what a typical home kitchen keeps in stock (salt, oil, \
 flour, dried spices).
@@ -167,7 +178,7 @@ def _once(client, prompt: str) -> List[ClassifiedItem]:
         raise ValueError("the model returned an empty reply that cannot be read")
     try:
         reply = ClassifyReply.model_validate(json.loads(text))
-    except Exception as exc:
+    except Exception as exc:  # fail-loud.bare-except-ok: re-raised as the stable ValueError the check-retry reads
         # The Pydantic/JSON detail is for the log, not the cook: the 502 this
         # feeds (classify_ingredients -> ClassifyCheckError -> the endpoint)
         # must stay a stable sentence, never a raw exception dump.
