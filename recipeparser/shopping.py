@@ -117,8 +117,8 @@ counted whatever measure the recipe uses, and "count" stays the number of \
 items the amount needs, a fraction when it is less than one (4 garlic \
 cloves is 0.4 head). Estimate it from the volume or weight, not by echoing \
 the amount: "1/2 cup diced shallot" is "shallot", a count of about 2. \
-Produce sold by weight (spinach, berries, frozen peas, potatoes) is not \
-counted.
+Produce the recipe gives by weight, or sold loose in bags (spinach, \
+berries, frozen peas), is not counted; potatoes given as a number are.
 - "grams" is the weight a shopper buys for this ingredient at the amount \
 given, in grams, of the food as bought (raw or dry, not cooked: "2 cups \
 cooked rice" is the dry rice), whatever "count" is (counted produce or \
