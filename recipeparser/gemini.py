@@ -1082,8 +1082,11 @@ _TINS_BAKE = """\
      5. bread-enriched / bread-lean: risen with yeast or a sourdough starter. bread-enriched when the
         dough has egg, or more than a spoonful of butter, oil, sugar or milk (brioche, challah, buns,
         rolls, babka, stollen, yeast cakes); otherwise bread-lean (baguette, sourdough, ciabatta, pitta).
-     6. quick-bread: a bread, loaf, muffin or scone raised with baking powder or soda (banana bread,
-        muffins, scones, soda bread, cornbread), and popovers, Yorkshire puddings and toad in the hole.
+     6. batter-pudding / quick-bread: batter-pudding when a thin pouring batter of eggs, milk and flour,
+        with no baking powder or soda, is poured into hot fat or a hot tin and puffs up in a hot oven
+        (Yorkshire puddings, popovers, toad in the hole, Dutch baby), whatever it is called; otherwise
+        quick-bread: a bread, loaf, muffin or scone raised with baking powder or soda (banana bread,
+        muffins, scones, soda bread, cornbread).
      7. butter-cake: a cake raised with baking powder or soda, its fat creamed, melted or oil (layer,
         pound, Bundt, loaf, fruit, carrot, gingerbread and upside-down cakes, cupcakes, steamed sponge
         puddings). A creamed cake

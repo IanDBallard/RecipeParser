@@ -1,5 +1,5 @@
 """
-One-off (Cayenne F-888): bring recipes stored before RecipeParser 9.48.1/9.49.2 in line with the parser
+One-off (Cayenne F-888): bring recipes stored before RecipeParser 9.48.1/9.50.1 in line with the parser
 fixes new imports have. The planners call the shipped rules, so the backfill and ingestion cannot
 disagree. Design: Cayenne docs/superpowers/specs/2026-11-27-f888-stored-recipe-backfill-design.md.
 

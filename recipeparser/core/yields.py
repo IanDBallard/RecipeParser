@@ -10,7 +10,7 @@ Pure: no I/O, no imports from recipeparser.io or recipeparser.adapters.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from recipeparser.models import StructuredIngredient, YieldAnswer, YieldContainer
 
@@ -143,7 +143,6 @@ def yield_text(servings_min: object, servings_max: object, servings_note: Option
 def check_yield(
     answer: Optional[YieldAnswer],
     ingredients: Sequence[StructuredIngredient],
-    pans: Sequence[Any],
 ) -> Tuple[Optional[dict], List[str]]:
     """The yield_spec to store, or None, and the warnings. Pure. It never raises and never costs the recipe.
 
@@ -162,7 +161,7 @@ def check_yield(
       kinds 7.8: the client fits one with neither); a crumb crust is a component like any other (D95);
     - a `crumb` container with no base is a crumble scattered on top (D96): its top reads 'crumble' and its
       component lines move to topping_lines, so it is never dropped as having no base and no top;
-    - `pans` is not read since D97 (kept for the four callers);
+    - the tins are not read (D97);
     - a pieces kind with no kept `pieces` group (no whole count of 1 or more) is stored as 'servings' too, container kept
       with empty line lists, since a pieces recipe is scaled by that count and cannot be scaled without it;
     - a component that keeps its `area` but has no container (none given, or one dropped) gets the pizza-dough

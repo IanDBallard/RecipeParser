@@ -77,7 +77,7 @@ def test_bake_types_are_decided_by_method_in_a_fixed_order():
     p = _bake_rule()
     assert "Decide by how the item is made, not by its name" in p
     order = ["1. pizza:", "2. cheesecake:", "3. a pie or tart,", "4. custard:", "5. bread-enriched / bread-lean:",
-             "6. quick-bread:", "7. butter-cake:", "8. sponge:", "9. bar:"]
+             "6. batter-pudding / quick-bread:", "7. butter-cake:", "8. sponge:", "9. bar:"]
     positions = [p.index(label) for label in order]
     assert positions == sorted(positions)
 
@@ -115,7 +115,21 @@ def test_a_mashed_potato_lid_still_makes_a_pie():
     assert "a mashed-potato lid is not a topping" in p
 
 
-def test_a_crust_alone_is_pie_shell_other_pastry_is_null_and_batter_puddings_are_quick_bread():
+def test_a_batter_pudding_is_decided_by_its_batter_not_its_name():
+    # Cayenne F-890: #648 told batter puddings apart by their titles, so "Sunday puds" or a pudding titled
+    # in another language read a bread's skewer cue. The type is now chosen by how the batter is made.
+    p = _bake_rule()
+    assert (
+        "6. batter-pudding / quick-bread: batter-pudding when a thin pouring batter of eggs, milk and flour,"
+        " with no baking powder or soda, is poured into hot fat or a hot tin and puffs up in a hot oven" in p
+    )
+    step6 = p.split("6. batter-pudding / quick-bread:")[1].split("7. butter-cake:")[0]
+    for example in ("Yorkshire puddings", "popovers", "toad in the hole", "Dutch baby"):
+        assert example in step6
+    assert "and popovers, Yorkshire puddings and toad in the hole" not in p
+
+
+def test_a_crust_alone_is_pie_shell_other_pastry_is_null_and_batter_puddings_are_their_own_type():
     # Cayenne pie tins D57: a pie or tart crust alone is pie-shell; puff for palmiers or choux stays null.
     # It is the last step, and step 3's crust-only-bake null stops there: inside step 3 the live probe
     # read banana cream, chiffon and banoffee pie as pie-shell.
@@ -127,7 +141,7 @@ def test_a_crust_alone_is_pie_shell_other_pastry_is_null_and_batter_puddings_are
         " other pastry or dough alone is null. The recipe's whole result is an empty crust" in p
     )
     assert p.index("10. pie-shell:") > p.index("9. bar:")
-    assert "Yorkshire puddings and toad in the hole" in p
+    assert "(Yorkshire puddings, popovers, toad in the hole, Dutch baby)" in p
     assert "steamed sponge puddings" in p
 
 

@@ -18,7 +18,7 @@ from recipeparser.core.pans import check_pan_tokens
 from recipeparser.core.yields import check_yield
 from recipeparser.models import CayenneRefinement, RecipeExtraction, StructuredIngredient, TokenizedDirection
 
-__all__ = ["strip_fat_tokens", "raw_lines_from_derived", "raw_body_column", "build_extraction", "build_update"]
+__all__ = ["raw_lines_from_derived", "raw_body_column", "build_extraction", "build_update"]
 
 log = logging.getLogger(__name__)
 
@@ -101,14 +101,14 @@ def _fold(text: str) -> str:
     return " ".join(text.lower().split())
 
 
-def _checked_against(refinement: CayenneRefinement, pans: List[Any]) -> Optional[Dict[str, Any]]:
-    """REFINE's yield re-checked against the tins actually written (the cook's, when they edited one), so
-    a component keeps its kind (Cayenne fits a size when it has no tin or area). A failed check costs the
+def _checked_against(refinement: CayenneRefinement) -> Optional[Dict[str, Any]]:
+    """REFINE's yield re-checked when the cook's tins are written back. The check reads no tins (D97), so a
+    component keeps its kind (Cayenne fits a size when it has no tin or area). A failed check costs the
     yield."""
     if refinement.yield_spec is None:
         return refinement.yield_checked
     try:
-        checked, warnings = check_yield(refinement.yield_spec, refinement.structured_ingredients, pans)
+        checked, warnings = check_yield(refinement.yield_spec, refinement.structured_ingredients)
     except Exception as exc:  # noqa: BLE001  # fail-loud.bare-except-ok: any failure here is the field's, not the regeneration's
         log.warning("regen: '%s': yield check failed (%r); no yield_spec", refinement.title, exc)
         return None
@@ -206,6 +206,6 @@ def build_update(
         "bake_type": refinement.bake_type,
         "bake_step": refinement.bake_step,
         "yield_spec": _yield_to_write(
-            _checked_against(refinement, pans) if edited else refinement.yield_checked, current_yield
+            _checked_against(refinement) if edited else refinement.yield_checked, current_yield
         ),
     }
