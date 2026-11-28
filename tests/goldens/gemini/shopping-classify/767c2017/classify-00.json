@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "4dd42001c86ff26f2e076b66928b62ad69a85203e3d66bd40288ff187c57ded5",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"red onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"red onion\",\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\",\n      \"made\": false\n    }\n  ]\n}"
+  "prompt_sha256": "37b251d20222fe869a3715c698e131dccbf3e67c6b746451c9de27907d5761ab",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"red onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\",\n      \"made\": false,\n      \"grams\": 150\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"onion\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 1,\n      \"count_unit\": \"onion\",\n      \"made\": false,\n      \"grams\": 150\n    }\n  ]\n}"
 }

@@ -1,0 +1,16 @@
+{
+  "stage": "classify",
+  "ordinal": 0,
+  "model": "gemini-3.1-flash-lite",
+  "config": {
+    "response_mime_type": "application/json",
+    "http_options": {
+      "timeout": 60000
+    },
+    "thinking_config": {
+      "thinking_level": "minimal"
+    }
+  },
+  "prompt_sha256": "08f7b32ac2de6808ed71b66c8620bc0b94c47570603f18b7d66de111f3595ffa",
+  "response_text": "{\"items\": [{\"key\": \"a\", \"food\": \"parsley\", \"aisle\": \"produce\", \"pantry\": false, \"count\": 0.25, \"count_unit\": \"bunch\", \"made\": false, \"grams\": 4}, {\"key\": \"b\", \"food\": \"thyme\", \"aisle\": \"produce\", \"pantry\": false, \"count\": 0.25, \"count_unit\": \"bunch\", \"made\": false, \"grams\": 5}, {\"key\": \"c\", \"food\": \"coriander\", \"aisle\": \"produce\", \"pantry\": false, \"count\": 1, \"count_unit\": \"bunch\", \"made\": false, \"grams\": 20}]}"
+}

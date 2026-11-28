@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "c75465c7284d2bb08f1c8c675d07f5a9243aa988682e5dc049fc28cc2381ccb6",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"salt\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    }\n  ]\n}"
+  "prompt_sha256": "32a9c02d3325462050387e552a9c30fe75f45701f461483c9b7de6fea3d29c36",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"salt\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    }\n  ]\n}"
 }

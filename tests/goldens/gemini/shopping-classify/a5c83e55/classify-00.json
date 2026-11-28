@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "9fa8d37ebe05835262f9516b9d21aac42931d1bb73dd6e0750e5f1bde1cac5f4",
-  "response_text": "{\"items\": [{\"key\": \"a\", \"food\": \"baking powder\", \"aisle\": \"dry_goods\", \"pantry\": true, \"count\": null, \"count_unit\": null, \"made\": false}, {\"key\": \"b\", \"food\": \"evaporated milk\", \"aisle\": \"tins_jars\", \"pantry\": false, \"count\": null, \"count_unit\": null, \"made\": false}, {\"key\": \"c\", \"food\": \"flaky sea salt\", \"aisle\": \"spices\", \"pantry\": true, \"count\": null, \"count_unit\": null, \"made\": false}]}"
+  "prompt_sha256": "f4968fef4608992ac47772ed0f232116516814816e5ca6f1f30ac6951f2dea4d",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"baking powder\",\n      \"aisle\": \"dry_goods\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 5\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"evaporated milk\",\n      \"aisle\": \"tins_jars\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"salt\",\n      \"aisle\": \"spices\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": null\n    }\n  ]\n}"
 }

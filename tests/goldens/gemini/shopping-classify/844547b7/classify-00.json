@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "016b02b396cf2bf230638c2d735ab061f95d9a5e523073e8888a4b7eabfaa419",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"turkey\",\n      \"aisle\": \"meat_fish\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": true\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"chocolate ganache\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": true\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false\n    }\n  ]\n}"
+  "prompt_sha256": "eededf2ee4d3f505a38ecda002e93d8733ab2b97b1a8c5e4386aab1e68eb63c5",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"turkey\",\n      \"aisle\": \"meat_fish\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": true,\n      \"grams\": null\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"chocolate ganache\",\n      \"aisle\": \"bakery\",\n      \"pantry\": false,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": true,\n      \"grams\": null\n    },\n    {\n      \"key\": \"c\",\n      \"food\": \"butter\",\n      \"aisle\": \"dairy_eggs\",\n      \"pantry\": true,\n      \"count\": null,\n      \"count_unit\": null,\n      \"made\": false,\n      \"grams\": 200\n    }\n  ]\n}"
 }

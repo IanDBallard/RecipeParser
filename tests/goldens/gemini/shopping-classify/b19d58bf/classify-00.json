@@ -11,6 +11,6 @@
       "thinking_level": "minimal"
     }
   },
-  "prompt_sha256": "f01f3388cf442764b98661dd7f5c1b2797ef3ad408125cfd4bbd55e9fd6f7619",
-  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"garlic\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 0.4,\n      \"count_unit\": \"head\",\n      \"made\": false\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"garlic\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 0.2,\n      \"count_unit\": \"head\",\n      \"made\": false\n    }\n  ]\n}"
+  "prompt_sha256": "a67dd36df0cdacc2a9b3467cee6f3bb6486c098b3820c7bb3e5045d138995f6c",
+  "response_text": "{\n  \"items\": [\n    {\n      \"key\": \"a\",\n      \"food\": \"garlic\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 0.4,\n      \"count_unit\": \"head\",\n      \"made\": false,\n      \"grams\": 20\n    },\n    {\n      \"key\": \"b\",\n      \"food\": \"garlic\",\n      \"aisle\": \"produce\",\n      \"pantry\": false,\n      \"count\": 0.2,\n      \"count_unit\": \"head\",\n      \"made\": false,\n      \"grams\": 10\n    }\n  ]\n}"
 }
